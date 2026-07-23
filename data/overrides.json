@@ -1,0 +1,94 @@
+{
+  "country_iso_overrides": {
+    "BS": {
+      "country_slug": "the_bahamas"
+    },
+    "ZA": {
+      "country_slug": "south_africa"
+    },
+    "GB": {
+      "embedding_slug": "great-britain",
+      "country_slug": "united-kingdom"
+    },
+    "VU": {
+      "embedding_slug": "vanuatu",
+      "country_slug": "wallis-et-futuna"
+    }
+  },
+  "embedding_edge_cases": {
+    "poland": {
+      "shared_location_overrides": [
+        {
+          "override_type": "shared_locations",
+          "source": "europe-east",
+          "targets": [
+            "poland"
+          ],
+          "note": "Poland borrows europe-east location index but keeps its own tags shard"
+        }
+      ]
+    },
+    "germany": {
+      "shared_location_overrides": [
+        {
+          "override_type": "shared_locations",
+          "source": "germany-node-location",
+          "targets": [
+            "germany-node-location",
+            "germany-ways-location"
+          ],
+          "note": "Germany node-relations and ways share locations"
+        }
+      ],
+      "shared_tag_overrides": [
+        {
+          "override_type": "shared_tags",
+          "source": "germany-node-tags",
+          "targets": [
+            "germany-ways-tags"
+          ],
+          "note": "Germany has separate tag views but shared locations"
+        }
+      ]
+    },
+    "indonesia": {
+      "shared_tag_overrides": [
+        {
+          "override_type": "shared_tags",
+          "source": "asia-tags",
+          "targets": [
+            "indonesia",
+            "japan"
+          ],
+          "note": "Asia/Indonesia/Japan share tag embeddings while locations differ"
+        }
+      ]
+    },
+    "japan": {
+      "shared_tag_overrides": [
+        {
+          "override_type": "shared_tags",
+          "source": "asia-tags",
+          "targets": [
+            "indonesia",
+            "japan"
+          ],
+          "note": "Asia/Indonesia/Japan share tag embeddings while locations differ"
+        }
+      ]
+    },
+    "united_states": {
+      "shared_location_overrides": [
+        {
+          "override_type": "shared_locations",
+          "source": "us-west",
+          "targets": [
+            "us-other"
+          ],
+          "note": "US-Other borrows US-West location index but keeps its own tags shard"
+        }
+      ]
+    }
+  },
+  "continents": {}
+}

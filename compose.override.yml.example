@@ -1,0 +1,22 @@
+services:
+  backend:
+    # Example local overrides. Copy this file to compose.override.yml and edit
+    # values that differ from your machine or workflow.
+    environment:
+      TZ: ${TZ:-America/Toronto}
+      # Uncomment and adjust if your planet file name differs from the default:
+      # PLANET_OSM_FILE_PATH: /app/data/OSM-PBF-FILES/planet/latest.osm.pbf
+    # Optional: add extra host binds, GPU reservations, or debugging ports.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  worker:
+    environment:
+      TZ: ${TZ:-America/Toronto}
+      # Optional: override per-worker GPU assignment
+      # NVIDIA_VISIBLE_DEVICES: "0"

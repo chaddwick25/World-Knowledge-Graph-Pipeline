@@ -1,0 +1,157 @@
+services:
+  postgres-default:
+    build:
+      context: .
+      dockerfile: postgres-default.Dockerfile
+    container_name: postgres-default
+    shm_size: 1g  
+    command: ["postgres", "-c", "synchronous_commit=off", "-c", "maintenance_work_mem=16GB", "-c", "max_wal_size=32GB", "-c", "checkpoint_timeout=1h", "-c", "shared_buffers=32GB", "-c", "work_mem=128MB"]
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ${POSTGRES_DEFAULT_DATA_DIR}:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-vectors:
+    build:
+      context: .
+      dockerfile: postgres-vectors.Dockerfile
+    container_name: postgres-vectors
+    shm_size: 1g
+    command: ["postgres", "-c", "synchronous_commit=off", "-c", "maintenance_work_mem=16GB", "-c", "max_wal_size=32GB", "-c", "checkpoint_timeout=1h", "-c", "shared_buffers=32GB", "-c", "work_mem=128MB"]
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${PGVECTOR_DB}
+      POSTGRES_USER: ${PGVECTOR_USER}
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - ${POSTGRES_VECTORS_DATA_DIR}:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGVECTOR_USER} -d ${PGVECTOR_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: eda-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ${REDIS_DATA_DIR}:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: eda-backend
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=backend.settings
+      - POSTGRES_HOST=postgres-default
+      - PGVECTOR_HOST=postgres-vectors
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - BASE_DATA_DIR=/app/data
+      - OSM_WIKIDATA_EXTRACTIONS_DIR=/app/data/OSM-PBF-FILES/osm_wikidata_extractions
+      - POLYGON_FILES_DIR=/app/data/osm_polygon_files
+      - OSMIUM_EXECUTABLE=/usr/bin/osmium
+      - OSMIUM_BINARY_PATH=/usr/bin/osmium
+      - WORLDKG_ONTOLOGY_PATH=/app/data/OSM-PBF-FILES/world_kg_ontology/WorldKG_Ontolgy.ttl
+      - CONTINENTS_ROOT=/app/data/OSM-PBF-FILES/osm_wikidata_extractions/continents
+      - HOT_STORAGE_PATH=/app/data
+      - COLD_STORAGE_BASE_DIR=${COLD_STORAGE_BASE_DIR}
+      - COLD_STORAGE_PATH=${COLD_STORAGE_BASE_DIR}
+      - EMBEDDINGS_ROOT=${EMBEDDINGS_ROOT}
+      - OVERRIDES_JSON_PATH=${OVERRIDES_JSON_PATH}
+      - PLANET_OSM_FILE_PATH=/app/data/OSM-PBF-FILES/planet/history-260209.osm.pbf
+      - FASTTEXT_MODEL_PATH=/app/data/OSM-PBF-FILES/models/fasttext/cc.en.300.bin
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
+      - ${POLYGON_FILES_DIR}:/app/data/osm_polygon_files
+      - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
+      - ./backend/data:/app/data
+    depends_on:
+      postgres-default:
+        condition: service_healthy
+      postgres-vectors:
+        condition: service_healthy
+    restart: unless-stopped
+    command: poetry run python manage.py runserver 0.0.0.0:8000
+
+  # Optional: Worker service for background tasks
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: eda-worker
+    runtime: nvidia
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=backend.settings
+      - POSTGRES_HOST=postgres-default
+      - PGVECTOR_HOST=postgres-vectors
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - BASE_DATA_DIR=/app/data
+      - OSM_WIKIDATA_EXTRACTIONS_DIR=/app/data/OSM-PBF-FILES/osm_wikidata_extractions
+      - POLYGON_FILES_DIR=/app/data/osm_polygon_files
+      - OSMIUM_EXECUTABLE=/usr/bin/osmium
+      - OSMIUM_BINARY_PATH=/usr/bin/osmium
+      - WORLDKG_ONTOLOGY_PATH=/app/data/OSM-PBF-FILES/world_kg_ontology/WorldKG_Ontolgy.ttl
+      - CONTINENTS_ROOT=/app/data/OSM-PBF-FILES/osm_wikidata_extractions/continents
+      - HOT_STORAGE_PATH=/app/data
+      - COLD_STORAGE_BASE_DIR=${COLD_STORAGE_BASE_DIR}
+      - COLD_STORAGE_PATH=${COLD_STORAGE_BASE_DIR}
+      - EMBEDDINGS_ROOT=${EMBEDDINGS_ROOT}
+      - OVERRIDES_JSON_PATH=${OVERRIDES_JSON_PATH}
+      - PLANET_OSM_FILE_PATH=/app/data/OSM-PBF-FILES/planet/history-260209.osm.pbf
+      - FASTTEXT_MODEL_PATH=/app/data/OSM-PBF-FILES/models/fasttext/cc.en.300.bin
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ./backend:/app
+      - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
+      - ${POLYGON_FILES_DIR}:/app/data/osm_polygon_files
+      - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
+      - ./backend/data:/app/data
+    depends_on:
+      backend:
+        condition: service_started
+      postgres-default:
+        condition: service_healthy
+      postgres-vectors:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command: poetry run celery -A pipeline.celery_app worker --loglevel=info --pool=solo --concurrency=1
+
+volumes:
+  polygon_files:

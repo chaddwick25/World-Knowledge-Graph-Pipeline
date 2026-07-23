@@ -1,0 +1,25 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Ontology endpoints
+    path('ontology/info/', views.worldkg_ontology_info, name='nca_ontology_info'),
+    path('ontology/class/<str:class_name>/', views.worldkg_class_hierarchy, name='nca_class_hierarchy'),
+    
+    # Entity enrichment
+    path('enrich/entity/', views.worldkg_enrich_entity, name='nca_enrich_entity'),
+    
+    # Entity queries
+    path('entities/', views.worldkg_entities_by_class, name='nca_query_entities'),
+    path('entities/detail/<str:osm_type>/<int:osm_id>/', views.worldkg_entity_detail, name='nca_entity_detail'),
+    path('distribution/', views.worldkg_class_distribution, name='nca_class_distribution'),
+    path('semantic-query/plan/', views.worldkg_semantic_query_plan, name='nca_semantic_query_plan'),
+    path('semantic-triplet-search/', views.worldkg_semantic_triplet_search, name='nca_semantic_triplet_search'),
+    path('link-candidates/', views.worldkg_link_candidates, name='nca_link_candidates'),
+    path('apply-link/', views.worldkg_apply_link, name='nca_apply_link'),
+    
+    # Temporal analysis
+    path('fingerprint/compute/', views.worldkg_compute_fingerprint, name='nca_compute_fingerprint'),
+    path('drift/compute/', views.worldkg_compute_drift, name='nca_compute_drift'),
+    path('drift/', views.worldkg_drift_list, name='nca_list_drift'),
+]
