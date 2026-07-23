@@ -1,0 +1,95 @@
+# Python
+__pycache__/
+__pycache__
+
+# Poetry
+.venv/
+
+# IDE / Editor
+.vscode/
+.idea/
+.windsurf
+
+# Windsurf
+.windsurf/
+
+# Caches
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Env
+# .env
+
+# Model Assets
+# Ignore large files within any model asset bundle
+model_assets/**/*.bin
+model_assets/**/*.nt
+model_assets/**/*.tsv
+
+# Local Data & Models (too large for git)
+GeoVectors-master/snapshots/
+GeoVectors-master/models/fasttext/*.bin
+osmium-tool
+
+# Output Directories
+GeoVectors-master/embeddings_tags/
+GeoVectors-master/scripts/timed_embedding_runs/
+GeoVectors-master/scripts/results/
+
+Logs
+*.log
+personal_logs.txt
+.agent
+
+# Backend
+backend/downloads
+
+.env
+compose.override.yml
+# TODO: look into this later
+# Generated data artifacts with absolute paths
+backend/data/country_relations.json
+
+# Database
+*.sqlite3
+
+# Vector files
+GeoVectors-master/models/fasttext/cc.en.300.vec
+GeoVectors-master/corpus.txt
+*.pbf
+
+# Generated reports and plots
+model_report.xlsx
+model_comparison_plot.png
+model_test_scatter_plot.png
+
+
+docs
+
+
+# Backup files
+*.bk
+
+# PROJECT_OVERVIEW.md
+# WINDSURF_RULES.md
+
+Updated_Implementation_Plans.txt
+premium_ai_slop.txt
+# schematics.MD
+
+# docs
+backend/data_old
+backend/toronto_data/data
+backend/backend/data
+osmium-tool
+*__pycache__
+# data
+papers
+
+# AI agent configs
+.claude/
+.continue/
+.continueignore
+.devin/
+config.json
