@@ -8,12 +8,12 @@
 
 
 // TODO: Refactor this and use better patterns
-
 import { ref, computed, onUnmounted } from 'vue'
 import axios from 'axios'
 
+
+// TODO: maybe fetch this
 // ── Planet init step definitions ──────────────────────────
-// TODO: move these steps to a API
 const PLANET_STEPS = [
   { name: 'planet_init',              label: 'Initialize Planet',               pct: 100 },
   { name: 'continent_init',           label: 'Extract Continent PBFs',          pct: 100 },
@@ -28,7 +28,7 @@ const PLANET_STEPS = [
   { name: 'prebuild_subgraphs',       label: 'Generate Subgraph Profiles',      pct: 100 },
   { name: 'prebuild_wikidata_ids',    label: 'Backfill Wikidata IDs',           pct: 100 },
 ]
-
+// TODO: refactor and rename
 function makeStepStates() {
   return PLANET_STEPS.map((s) => ({
     name: s.name,
@@ -45,6 +45,7 @@ export function usePlanetInit() {
   // Singleton pattern — all callers share the same reactive state
   if (_instance) return _instance
 
+  //TODO: replace this with proper state management
   // ── State ───────────────────────────────────────────────
   const isRunning = ref(false)
   const isComplete = ref(false)
@@ -135,6 +136,7 @@ export function usePlanetInit() {
   }
 
   // ── Auto-trigger continent snapshots ──────────────────
+  // TODO: refactor this and  use proper state management
   async function triggerContinentSnapshots() {
     const csStep = steps.value.find((s) => s.name === 'continent_snapshots')
     if (!csStep) return
@@ -146,7 +148,6 @@ export function usePlanetInit() {
       time: new Date().toLocaleTimeString(),
       message: '🔄 Extracting historical continent snapshots...',
     })
-
     try {
       const { data } = await axios.post('/planet/extract-continent-snapshots/', { force: false })
 
@@ -181,16 +182,16 @@ export function usePlanetInit() {
   }
 
   function connectWebSocket(sessionId) {
+    // TODO: remove this conditional
     if (!sessionId) return
 
     // Close existing
     if (ws.value) {
       ws.value.onclose = null
       ws.value.close()
-    }
-
+    } 
+    // TODO: refactor this
     const url = `ws://localhost:8000/ws/pipeline/${sessionId}/`
-
     try {
       const socket = new WebSocket(url)
 
@@ -288,6 +289,7 @@ export function usePlanetInit() {
     }
 
     // When continent_init completes, auto-trigger continent snapshots
+    // TODO: update the validation - makes the 
     if (msg.name === 'continent_init' && msg.status === 'completed') {
       triggerContinentSnapshots()
     }
@@ -411,7 +413,9 @@ export function usePlanetInit() {
       ws.value = null
     }
   }
-
+  
+  // TODO: remove this complicated logic by just using a table to hold the init state directly 
+  // Then re-write the logic for instance
   _instance = {
     isRunning,
     isComplete,

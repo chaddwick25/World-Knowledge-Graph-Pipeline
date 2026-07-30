@@ -1,18 +1,3 @@
-/**
- * Pinia store for pipeline runtime state.
- *
- * Key design:
- *  - One store instance manages ALL pipeline runs across all countries.
- *  - WebSocket connections are owned by the store so they survive
- *    component mounts/unmounts.
- *  - State is reactive everywhere Pinia is available.
- *
- * Message flow from the backend (consumers.py):
- *   { type: "step_update", step, total, name, status, message, pct }
- *   { type: "pipeline_complete", session_id, status, error? }
- *   { type: "log", message }
- */
-
 import { defineStore } from 'pinia'
 import axios from 'axios'
 

@@ -7,6 +7,8 @@ from logging.handlers import RotatingFileHandler
 LOGS_DIR = Path(__file__).parent / 'logs'
 LOGS_DIR.mkdir(exist_ok=True)
 
+
+#  TODO: refactor this
 def setup_pipeline_logger(pipeline_run_id: str, country_iso: str = "") -> str:
     """Setup the consolidated pipeline run logger.
     
@@ -65,6 +67,7 @@ def setup_pipeline_logger(pipeline_run_id: str, country_iso: str = "") -> str:
 
 # Backward-compatible alias for planet_initialization_service
 setup_logger = setup_pipeline_logger
+
 
 # Backward-compatible aliases for module-level loggers
 gv_nle_logger = logging.getLogger('pipeline')

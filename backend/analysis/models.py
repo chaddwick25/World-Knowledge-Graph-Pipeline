@@ -2,6 +2,7 @@ from django.db import models
 import uuid
 
 
+# TODO: refactor this
 class TemporalSnapshot(models.Model):
     """
     Temporal snapshot - exists solely to generate AssetBundles.
