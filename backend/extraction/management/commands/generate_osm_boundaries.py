@@ -6,10 +6,10 @@ PolygonFile tables, parses the geometry with the multi-ring-aware
 parse_poly_file(), and stores the result in OsmBoundary for cartographic display.
 
 Usage:
-    poetry run python manage.py generate_osm_boundaries
-    poetry run python manage.py generate_osm_boundaries --country scotland
-    poetry run python manage.py generate_osm_boundaries --country scotland --country england
-    poetry run python manage.py generate_osm_boundaries --clear
+    python manage.py generate_osm_boundaries
+    python manage.py generate_osm_boundaries --country scotland
+    python manage.py generate_osm_boundaries --country scotland --country england
+    python manage.py generate_osm_boundaries --clear
 
 NOTE on maritime areas:
   .poly files from Geofabrik include territorial waters (the 12 NM EEZ).

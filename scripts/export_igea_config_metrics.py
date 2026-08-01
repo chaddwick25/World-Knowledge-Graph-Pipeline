@@ -6,11 +6,11 @@ management command, to match the existing scripts/ ergonomics.
 
 Usage (from project root):
 
-    poetry run python scripts/export_igea_config_metrics.py
+    python scripts/export_igea_config_metrics.py
 
 You can pass additional arguments through to the management command, e.g.:
 
-    poetry run python scripts/export_igea_config_metrics.py --output data/custom_igea_config_metrics.csv
+    python scripts/export_igea_config_metrics.py --output data/custom_igea_config_metrics.csv
 """
 
 import os

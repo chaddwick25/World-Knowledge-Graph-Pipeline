@@ -5,7 +5,7 @@ WorldKG Unified Country Pipeline Service
 This thread-based pipeline service is superseded by the Celery Canvas
 pipeline. Use ``pipeline.canvas.run_worldkg_pipeline()`` instead.
 
-  1. Celery version: ``poetry run python manage.py run_pipeline <ISO>``
+  1. Celery version: ``python manage.py run_pipeline <ISO>``
   2. API version: ``POST /api/worldkg-pipeline-v2/start/``
   3. Step 0 (planet init) and Step 0.5 (continent init) available via
      ``pipeline.canvas.run_planet_initialization()``.

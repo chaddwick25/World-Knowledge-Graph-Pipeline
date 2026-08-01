@@ -27,37 +27,37 @@ This app implements a complete data ingestion pipeline that:
 ***REMOVED******REMOVED******REMOVED*** 1. Ingest Metadata Only
 ```bash
 ***REMOVED*** Fetch metadata and quality scores for all TARGET_DATASETS
-poetry run python manage.py ingest_toronto_metadata
+python manage.py ingest_toronto_metadata
 
 ***REMOVED*** Fetch specific datasets
-poetry run python manage.py ingest_toronto_metadata --datasets traffic-volumes-at-intersections-for-all-modes
+python manage.py ingest_toronto_metadata --datasets traffic-volumes-at-intersections-for-all-modes
 ```
 
 ***REMOVED******REMOVED******REMOVED*** 2. Download Data Files
 ```bash
 ***REMOVED*** Download and parse all CSV/JSON files
-poetry run python manage.py download_toronto_data
+python manage.py download_toronto_data
 
 ***REMOVED*** Download specific dataset
-poetry run python manage.py download_toronto_data --dataset ttc-subway-delay-data
+python manage.py download_toronto_data --dataset ttc-subway-delay-data
 
 ***REMOVED*** Force re-download even if not modified
-poetry run python manage.py download_toronto_data --force
+python manage.py download_toronto_data --force
 
 ***REMOVED*** Append data instead of truncating
-poetry run python manage.py download_toronto_data --no-truncate
+python manage.py download_toronto_data --no-truncate
 ```
 
 ***REMOVED******REMOVED******REMOVED*** 3. Full Ingestion Pipeline
 ```bash
 ***REMOVED*** Run complete workflow: metadata + quality + data download
-poetry run python manage.py ingest_toronto_full
+python manage.py ingest_toronto_full
 
 ***REMOVED*** Skip data download (metadata only)
-poetry run python manage.py ingest_toronto_full --skip-download
+python manage.py ingest_toronto_full --skip-download
 
 ***REMOVED*** Process specific datasets
-poetry run python manage.py ingest_toronto_full --datasets traffic-volumes ttc-subway-delay
+python manage.py ingest_toronto_full --datasets traffic-volumes ttc-subway-delay
 ```
 
 ***REMOVED******REMOVED*** REST API Endpoints
@@ -134,19 +134,19 @@ CKAN API → CkanMetadataService → CkanDataset/CkanResource tables
 
 ***REMOVED******REMOVED******REMOVED*** Fetch metadata and view in admin
 ```bash
-poetry run python manage.py ingest_toronto_metadata
+python manage.py ingest_toronto_metadata
 ***REMOVED*** Visit http://localhost:8000/admin/toronto_data/ckandataset/
 ```
 
 ***REMOVED******REMOVED******REMOVED*** Download traffic data and query via API
 ```bash
-poetry run python manage.py download_toronto_data --dataset traffic-volumes-at-intersections-for-all-modes
+python manage.py download_toronto_data --dataset traffic-volumes-at-intersections-for-all-modes
 ***REMOVED*** Query: http://localhost:8000/api/toronto/traffic/?date=2024-01-15
 ```
 
 ***REMOVED******REMOVED******REMOVED*** Full pipeline with specific dataset
 ```bash
-poetry run python manage.py ingest_toronto_full --datasets ttc-subway-delay-data
+python manage.py ingest_toronto_full --datasets ttc-subway-delay-data
 ```
 
 ***REMOVED******REMOVED*** Performance Optimization
@@ -170,12 +170,12 @@ All models include strategic indexes on:
 
 Run Django checks:
 ```bash
-poetry run python manage.py check
+python manage.py check
 ```
 
 Test metadata ingestion (dry run):
 ```bash
-poetry run python manage.py ingest_toronto_metadata --verbosity 2
+python manage.py ingest_toronto_metadata --verbosity 2
 ```
 
 ***REMOVED******REMOVED*** Troubleshooting
@@ -189,5 +189,5 @@ The download service stores raw CSV data in the `raw_data` JSONField for debuggi
 ***REMOVED******REMOVED******REMOVED*** Missing Dependencies
 ```bash
 poetry install
-poetry run python manage.py migrate toronto_data
+python manage.py migrate toronto_data
 ```

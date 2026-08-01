@@ -7,7 +7,7 @@ Management command to train GV-NLE embeddings for OSM entities using:
 3. Skip-Gram training (Word2Vec-style)
 
 Usage:
-    poetry run python manage.py train_gv_nle --region=gibraltar --k=50 --workers=8
+    python manage.py train_gv_nle --region=gibraltar --k=50 --workers=8
 """
 
 from django.core.management.base import BaseCommand

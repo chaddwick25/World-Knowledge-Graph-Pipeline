@@ -4,9 +4,9 @@ Management command: enrich_with_places
 Best-effort Google Places enrichment for OSM entities lacking Wikidata alignment.
 
 Usage:
-    poetry run python manage.py enrich_with_places --iso CV
-    poetry run python manage.py enrich_with_places --iso CV --max-entities 500
-    poetry run python manage.py enrich_with_places --iso CV --dry-run
+    python manage.py enrich_with_places --iso CV
+    python manage.py enrich_with_places --iso CV --max-entities 500
+    python manage.py enrich_with_places --iso CV --dry-run
 """
 
 from django.core.management.base import BaseCommand

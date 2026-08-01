@@ -286,7 +286,7 @@ def run_planet_initialization(
     if not CELERY_AVAILABLE:
         raise ImportError(
             "Celery is required to run planet initialization. "
-            "Install with: poetry add celery"
+            "Install with: pip install celery"
         )
     from celery import chain
 
@@ -468,7 +468,7 @@ def run_worldkg_pipeline(
     if not CELERY_AVAILABLE:
         raise ImportError(
             "Celery is required to run the pipeline. "
-            "Install with: poetry add celery"
+            "Install with: pip install celery"
         )
     from celery import chain
 

@@ -12,9 +12,9 @@ No external APIs are called; this is purely filesystem + DB metadata.
 
 Typical usage (from backend/):
 
-    poetry run python manage.py prebuild_filesystem_subgraphs --dry-run
-    poetry run python manage.py prebuild_filesystem_subgraphs --iso CV
-    poetry run python manage.py prebuild_filesystem_subgraphs --iso BZ --iso CA
+    python manage.py prebuild_filesystem_subgraphs --dry-run
+    python manage.py prebuild_filesystem_subgraphs --iso CV
+    python manage.py prebuild_filesystem_subgraphs --iso BZ --iso CA
 """
 
 from __future__ import annotations

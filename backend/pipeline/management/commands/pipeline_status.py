@@ -2,9 +2,9 @@
 Management command to check pipeline status.
 
 Usage:
-    poetry run python manage.py pipeline_status <pipeline_run_id>
-    poetry run python manage.py pipeline_status --country MZ
-    poetry run python manage.py pipeline_status --list
+    python manage.py pipeline_status <pipeline_run_id>
+    python manage.py pipeline_status --country MZ
+    python manage.py pipeline_status --list
 """
 
 import json

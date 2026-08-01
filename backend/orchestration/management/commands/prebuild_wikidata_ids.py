@@ -22,9 +22,9 @@ state. This command does not perform any live SPARQL/Wikidata queries.
 
 Usage examples (from backend/):
 
-    poetry run python manage.py prebuild_wikidata_ids --dry-run
-    poetry run python manage.py prebuild_wikidata_ids --iso CV
-    poetry run python manage.py prebuild_wikidata_ids \
+    python manage.py prebuild_wikidata_ids --dry-run
+    python manage.py prebuild_wikidata_ids --iso CV
+    python manage.py prebuild_wikidata_ids \
         --countries-from-csv ../data/country_identifier_gaps.csv \
         --subgraphs-from-csv ../data/subgraph_igea_gaps.csv
 """

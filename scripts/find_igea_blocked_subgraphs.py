@@ -14,7 +14,7 @@ optionally writes a CSV with one row per subgraph.
 
 Usage (from project root):
 
-    poetry run python scripts/find_igea_blocked_subgraphs.py \
+    python scripts/find_igea_blocked_subgraphs.py \
         --country-iso CV \
         --output data/subgraph_igea_gaps.csv
 
