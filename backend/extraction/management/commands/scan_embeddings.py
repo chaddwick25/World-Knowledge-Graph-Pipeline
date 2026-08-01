@@ -9,9 +9,9 @@ Currently targeted:
   - United States (needs merging from shards: us-midwest, us-northeast, etc.)
 
 Usage:
-    poetry run python manage.py scan_embeddings
-    poetry run python manage.py scan_embeddings --dry-run
-    poetry run python manage.py scan_embeddings --clear
+    python manage.py scan_embeddings
+    python manage.py scan_embeddings --dry-run
+    python manage.py scan_embeddings --clear
 """
 
 import logging

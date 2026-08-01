@@ -24,14 +24,22 @@ echo "Creating extensions in postgres-vectors..."
 PGPASSWORD="$PGVECTOR_PASSWORD" psql -h "$PGVECTOR_HOST" -p 5432 -U "$PGVECTOR_USER" -d "$PGVECTOR_DB" \
   -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
+# Seed /app/.venv from the image bootstrap if the named volume is empty
+# (e.g. on first run or after a volume wipe). The bootstrap lives under /opt
+# so it is not hidden by the ./backend:/app bind mount.
+if [ ! -f "/app/.venv/bin/python" ]; then
+    echo "/app/.venv is empty; seeding from image bootstrap..."
+    cp -a /opt/venv_bootstrap/. /app/.venv/
+fi
+
 echo "Running makemigrations..."
-poetry run python manage.py makemigrations
+python manage.py makemigrations
 
 echo "Running migrations for default database..."
-poetry run python manage.py migrate
+python manage.py migrate
 
 echo "Running migrations for vectors database..."
-poetry run python manage.py migrate --database=vectors
+python manage.py migrate --database=vectors
 
 echo "Entrypoint setup complete!"
 

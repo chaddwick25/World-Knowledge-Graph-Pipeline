@@ -27,37 +27,37 @@ This app implements a complete data ingestion pipeline that:
 ### 1. Ingest Metadata Only
 ```bash
 # Fetch metadata and quality scores for all TARGET_DATASETS
-poetry run python manage.py ingest_toronto_metadata
+python manage.py ingest_toronto_metadata
 
 # Fetch specific datasets
-poetry run python manage.py ingest_toronto_metadata --datasets traffic-volumes-at-intersections-for-all-modes
+python manage.py ingest_toronto_metadata --datasets traffic-volumes-at-intersections-for-all-modes
 ```
 
 ### 2. Download Data Files
 ```bash
 # Download and parse all CSV/JSON files
-poetry run python manage.py download_toronto_data
+python manage.py download_toronto_data
 
 # Download specific dataset
-poetry run python manage.py download_toronto_data --dataset ttc-subway-delay-data
+python manage.py download_toronto_data --dataset ttc-subway-delay-data
 
 # Force re-download even if not modified
-poetry run python manage.py download_toronto_data --force
+python manage.py download_toronto_data --force
 
 # Append data instead of truncating
-poetry run python manage.py download_toronto_data --no-truncate
+python manage.py download_toronto_data --no-truncate
 ```
 
 ### 3. Full Ingestion Pipeline
 ```bash
 # Run complete workflow: metadata + quality + data download
-poetry run python manage.py ingest_toronto_full
+python manage.py ingest_toronto_full
 
 # Skip data download (metadata only)
-poetry run python manage.py ingest_toronto_full --skip-download
+python manage.py ingest_toronto_full --skip-download
 
 # Process specific datasets
-poetry run python manage.py ingest_toronto_full --datasets traffic-volumes ttc-subway-delay
+python manage.py ingest_toronto_full --datasets traffic-volumes ttc-subway-delay
 ```
 
 ## REST API Endpoints
@@ -134,19 +134,19 @@ CKAN API → CkanMetadataService → CkanDataset/CkanResource tables
 
 ### Fetch metadata and view in admin
 ```bash
-poetry run python manage.py ingest_toronto_metadata
+python manage.py ingest_toronto_metadata
 # Visit http://localhost:8000/admin/toronto_data/ckandataset/
 ```
 
 ### Download traffic data and query via API
 ```bash
-poetry run python manage.py download_toronto_data --dataset traffic-volumes-at-intersections-for-all-modes
+python manage.py download_toronto_data --dataset traffic-volumes-at-intersections-for-all-modes
 # Query: http://localhost:8000/api/toronto/traffic/?date=2024-01-15
 ```
 
 ### Full pipeline with specific dataset
 ```bash
-poetry run python manage.py ingest_toronto_full --datasets ttc-subway-delay-data
+python manage.py ingest_toronto_full --datasets ttc-subway-delay-data
 ```
 
 ## Performance Optimization
@@ -170,12 +170,12 @@ All models include strategic indexes on:
 
 Run Django checks:
 ```bash
-poetry run python manage.py check
+python manage.py check
 ```
 
 Test metadata ingestion (dry run):
 ```bash
-poetry run python manage.py ingest_toronto_metadata --verbosity 2
+python manage.py ingest_toronto_metadata --verbosity 2
 ```
 
 ## Troubleshooting
@@ -189,5 +189,5 @@ The download service stores raw CSV data in the `raw_data` JSONField for debuggi
 ### Missing Dependencies
 ```bash
 poetry install
-poetry run python manage.py migrate toronto_data
+python manage.py migrate toronto_data
 ```

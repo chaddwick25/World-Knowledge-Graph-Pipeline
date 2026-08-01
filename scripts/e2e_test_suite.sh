@@ -29,12 +29,8 @@ pass() { echo "   ✓ $1"; PASS=$((PASS + 1)); }
 fail() { echo "   ✗ $1"; FAIL=$((FAIL + 1)); }
 warn() { echo "   ⚠ $1"; WARN=$((WARN + 1)); }
 
-# Detect Poetry or fall back to plain python
-if [ -f "$BACKEND_DIR/pyproject.toml" ] && command -v poetry > /dev/null 2>&1; then
-    PY_CMD="poetry run python"
-else
-    PY_CMD="python"
-fi
+# Use the venv python (PATH is set in the container image)
+PY_CMD="python"
 
 echo "========================================="
 echo "  EDA Vector Search Toolkit"

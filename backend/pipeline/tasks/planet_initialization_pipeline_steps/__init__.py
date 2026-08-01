@@ -30,7 +30,7 @@ else:
     def _no_celery_error(*args, **kwargs):  # type: ignore[override]
         raise ImportError(
             "Celery is required to run planet initialization tasks. "
-            "Install with: poetry add celery"
+            "Install with: pip install celery"
         )
 
     step_0_initialize_planet = _no_celery_error

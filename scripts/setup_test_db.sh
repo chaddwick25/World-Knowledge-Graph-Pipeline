@@ -18,6 +18,6 @@ sleep 10
 # Run Django migrations on the test database.
 echo "Running migrations on the test database..."
 cd "$PROJECT_ROOT/backend"
-poetry run python manage.py migrate --settings=backend.settings_test
+python manage.py migrate --settings=backend.settings_test
 
 echo "Test database setup complete."

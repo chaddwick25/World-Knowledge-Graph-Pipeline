@@ -112,7 +112,7 @@ if [ "$ALL_OK" = true ]; then
     echo -e "${GREEN}✓ System is ready for Recipe Builder${NC}"
     echo ""
     echo "You can now:"
-    echo "  1. Start backend: cd backend && poetry run python manage.py runserver"
+    echo "  1. Start backend: cd backend && python manage.py runserver"
     echo "  2. Start frontend: cd frontend && npm run serve"
     echo "  3. Navigate to: http://localhost:8080/recipe-builder"
 else

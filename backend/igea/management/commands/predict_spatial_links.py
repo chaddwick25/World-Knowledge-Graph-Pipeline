@@ -9,9 +9,9 @@ Based on:
     Semantic Embeddings", ISWC 2023 Best Paper.
 
 Usage:
-    poetry run python manage.py predict_spatial_links
-    poetry run python manage.py predict_spatial_links --threshold 0.7 --limit 50000
-    poetry run python manage.py predict_spatial_links --snapshot-id <uuid>
+    python manage.py predict_spatial_links
+    python manage.py predict_spatial_links --threshold 0.7 --limit 50000
+    python manage.py predict_spatial_links --snapshot-id <uuid>
 """
 
 # TODO: Refactor and take notes

@@ -1,12 +1,9 @@
-# Backend/worker image with CUDA 11.8 + cuDNN 8 runtime, Python 3.8, Poetry, GDAL, and osmium-tool
+# Backend/worker image with CUDA 11.8 + cuDNN 8 runtime, Python 3.8, venv, GDAL, and osmium-tool
 
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu20.04
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    POETRY_VERSION=1.8.3 \
-    POETRY_VIRTUALENVS_CREATE=true \
-    POETRY_VIRTUALENVS_IN_PROJECT=false \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH \
@@ -47,34 +44,29 @@ RUN ln -sf /usr/bin/python3.8 /usr/bin/python && \
 
 RUN python -m pip install --upgrade pip
 RUN python -m pip install --upgrade packaging setuptools wheel
-RUN python -m pip install "poetry==${POETRY_VERSION}"
 
 WORKDIR /app
 
-# Copy backend pyproject.toml and entrypoint script
-COPY pyproject.toml ./
-COPY poetry.lock ./
+# Copy requirements and entrypoint script
+COPY requirements.txt ./
 COPY docker-entrypoint.sh ./
 
-# Configure Poetry to use the correct Python and install dependencies
-RUN poetry config virtualenvs.create true && \
-    poetry env use /usr/bin/python3.8 && \
-    poetry lock --no-update && \
-    poetry install --no-interaction --no-ansi && \
-    # Ensure CUDA CUPTI runtime (libcupti.so.11.7) is available inside the Poetry venv
-    poetry run python -m pip install "nvidia-cuda-cupti-cu11==11.7.101"
+# Create a virtual environment and install runtime dependencies.
+# Keep a bootstrap copy under /opt so the ./backend:/app bind mount does not
+# hide it; the entrypoint seeds /app/.venv from this copy on first run.
+RUN python -m venv .venv && \
+    .venv/bin/pip install --upgrade "pip<24.1" setuptools wheel && \
+    .venv/bin/pip install -r requirements.txt && \
+    .venv/bin/pip install "nvidia-cuda-cupti-cu11==11.7.101" && \
+    .venv/bin/pip install \
+      pyg-lib torch-scatter torch-sparse torch-cluster \
+      -f https://data.pyg.org/whl/torch-2.0.1+cu118.html && \
+    cp -a .venv /opt/venv_bootstrap
 
 # Make entrypoint script executable
 RUN chmod +x docker-entrypoint.sh
 
-# Install PyTorch Geometric extension packages with CUDA 11.8 wheels
-# into the Poetry virtualenv so Node2Vec and related ops are available.
-# These wheels must match the pinned torch version (2.0.1) from backend/pyproject.toml
-RUN poetry run python -m pip install \
-      pyg-lib torch-scatter torch-sparse torch-cluster \
-      -f https://data.pyg.org/whl/torch-2.0.1+cu118.html
-
-ENV PATH="/root/.local/bin:${PATH}"
+ENV PATH="/app/.venv/bin:${PATH}"
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["bash"]

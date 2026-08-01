@@ -51,16 +51,16 @@ Normalize the score to [0,1] before applying threshold:
 Since databases were dropped and recreated, old migrations were removed and fresh migration generated:
 ```bash
 cd backend
-poetry run python manage.py makemigrations igea
-poetry run python manage.py migrate igea
-poetry run python manage.py migrate igea --database=vectors
+python manage.py makemigrations igea
+python manage.py migrate igea
+python manage.py migrate igea --database=vectors
 ```
 
 ## Testing
 Run pipeline test to verify normalization works correctly:
 ```bash
 cd backend
-poetry run python manage.py predict_spatial_links \
+python manage.py predict_spatial_links \
     --country LU \
     --max-heads 10000 \
     --limit 100000 \

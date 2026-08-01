@@ -13,9 +13,9 @@ tag.  Each iteration accepts new alignments (cosine ≥ threshold, within 2500m,
 same wkg_class) and adds them to the seed for the next iteration.
 
 Usage:
-    poetry run python manage.py iterative_entity_alignment
-    poetry run python manage.py iterative_entity_alignment --country DE --iterations 3
-    poetry run python manage.py iterative_entity_alignment --dry-run
+    python manage.py iterative_entity_alignment
+    python manage.py iterative_entity_alignment --country DE --iterations 3
+    python manage.py iterative_entity_alignment --dry-run
 """
 
 # TODO: Refactor and take notes

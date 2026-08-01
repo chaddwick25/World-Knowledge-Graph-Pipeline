@@ -6,7 +6,7 @@ and verifies that persist_links can handle it without OOM by chunking
 bulk_create in batches of 5000.
 
 Usage (from backend/):
-    DJANGO_SETTINGS_MODULE=backend.settings poetry run python -m igea.test_persist_links_chunked
+    DJANGO_SETTINGS_MODULE=backend.settings python -m igea.test_persist_links_chunked
 
 Options:
     --links   Number of synthetic links to generate  (default: 100_000)

@@ -11,28 +11,28 @@ discovered in regions where nobody has manually added wikidata= OSM tags.
 
 Usage:
     # Harvest for Germany
-    poetry run python manage.py harvest_wikidata_candidates --country DE
+    python manage.py harvest_wikidata_candidates --country DE
 
     # Harvest and cache to JSON for reuse (avoids re-querying Wikidata)
-    poetry run python manage.py harvest_wikidata_candidates \
+    python manage.py harvest_wikidata_candidates \
         --country DE --cache-file data/wikidata_cache/de_candidates.json
 
     # Load from existing cache and run IGEA immediately
-    poetry run python manage.py harvest_wikidata_candidates \
+    python manage.py harvest_wikidata_candidates \
         --country DE \
         --cache-file data/wikidata_cache/de_candidates.json \
         --run-igea
 
     # Restrict to a specific WorldKG class
-    poetry run python manage.py harvest_wikidata_candidates \
+    python manage.py harvest_wikidata_candidates \
         --country DE --wkg-class wkgs:Restaurant
 
     # Harvest by explicit bounding box
-    poetry run python manage.py harvest_wikidata_candidates \
+    python manage.py harvest_wikidata_candidates \
         --bbox 5.87,47.27,15.04,55.06
 
     # Dry run (harvest only, print class breakdown, no IGEA)
-    poetry run python manage.py harvest_wikidata_candidates \
+    python manage.py harvest_wikidata_candidates \
         --country DE --dry-run
 
 Reference:

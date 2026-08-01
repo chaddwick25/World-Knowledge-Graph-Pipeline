@@ -3,22 +3,22 @@ Management command to trigger the WorldKG Pipeline v2.
 
 Usage:
     # Full pipeline (Steps 1–5)
-    poetry run python manage.py run_pipeline MZ
+    python manage.py run_pipeline MZ
 
     # Full pipeline + pre-processing (phases 1–3)
-    poetry run python manage.py run_pipeline MC --preprocess
+    python manage.py run_pipeline MC --preprocess
 
     # Full pipeline + pre-processing + GeoVectors pickle (phases 1–4)
-    poetry run python manage.py run_pipeline MC --preprocess --preprocess-phases 1,2,3,4
+    python manage.py run_pipeline MC --preprocess --preprocess-phases 1,2,3,4
 
     # Full pipeline with entropy gate bypass
-    poetry run python manage.py run_pipeline GB --skip-entropy-gate
+    python manage.py run_pipeline GB --skip-entropy-gate
 
     # Single stage (for debugging / resume)
-    poetry run python manage.py run_pipeline MZ --stage 3
+    python manage.py run_pipeline MZ --stage 3
 
     # With custom snapshot date
-    poetry run python manage.py run_pipeline MZ --snapshot-date 2024_06_30
+    python manage.py run_pipeline MZ --snapshot-date 2024_06_30
 """
 
 from django.core.management.base import BaseCommand, CommandError
@@ -153,7 +153,7 @@ class Command(BaseCommand):
                 f'Pipeline dispatched — pipeline_run_id={pipeline_run_id}\n'
                 f'Track progress via:\n'
                 f'  celery -A pipeline.celery_app status\n'
-                f'  poetry run python manage.py pipeline_status {pipeline_run_id}\n'
+                f'  python manage.py pipeline_status {pipeline_run_id}\n'
             )
         )
 

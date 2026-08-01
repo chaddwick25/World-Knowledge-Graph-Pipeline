@@ -37,7 +37,7 @@ else:
     def _no_celery_error(*args, **kwargs):
         raise ImportError(
             "Celery is required to run pipeline tasks. "
-            "Install with: poetry add celery"
+            "Install with: pip install celery"
         )
     step_0_initialize_planet = _no_celery_error
     step_0b_initialize_continent = _no_celery_error
@@ -66,7 +66,7 @@ else:
     def _embed_subgraph(*args, **kwargs):
         raise ImportError(
             "Celery is required to run pipeline tasks. "
-            "Install with: poetry add celery"
+            "Install with: pip install celery"
         )
     step_1_embed_osm_entities = _no_celery_error
 
@@ -104,13 +104,13 @@ else:
     def _run_subgraph_uslp(*args, **kwargs):
         raise ImportError(
             "Celery is required to run pipeline tasks. "
-            "Install with: poetry add celery"
+            "Install with: pip install celery"
         )
 
     def step_4b_finalize_subgraph_uslp(*args, **kwargs):
         raise ImportError(
             "Celery is required to run pipeline tasks. "
-            "Install with: poetry add celery"
+            "Install with: pip install celery"
         )
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -128,7 +128,7 @@ else:
     def _train_subgraph_gv_nle(*args, **kwargs):
         raise ImportError(
             "Celery is required to run pipeline tasks. "
-            "Install with: poetry add celery"
+            "Install with: pip install celery"
         )
 
 # ══════════════════════════════════════════════════════════════════════════

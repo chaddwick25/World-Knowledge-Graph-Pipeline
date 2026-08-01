@@ -11,17 +11,17 @@ This script:
 
 Usage:
   cd backend
-  DJANGO_SETTINGS_MODULE=backend.settings poetry run python ../scripts/audit_populate_bbox.py [--csv output.csv] [--dry-run]
+  DJANGO_SETTINGS_MODULE=backend.settings python ../scripts/audit_populate_bbox.py [--csv output.csv] [--dry-run]
 
 Examples:
   # Just print to terminal
-  DJANGO_SETTINGS_MODULE=backend.settings poetry run python ../scripts/audit_populate_bbox.py
+  DJANGO_SETTINGS_MODULE=backend.settings python ../scripts/audit_populate_bbox.py
 
   # Save CSV
-  DJANGO_SETTINGS_MODULE=backend.settings poetry run python ../scripts/audit_populate_bbox.py --csv bbox_audit.csv
+  DJANGO_SETTINGS_MODULE=backend.settings python ../scripts/audit_populate_bbox.py --csv bbox_audit.csv
 
   # Dry-run (don't persist changes, just report current state)
-  DJANGO_SETTINGS_MODULE=backend.settings poetry run python ../scripts/audit_populate_bbox.py --dry-run
+  DJANGO_SETTINGS_MODULE=backend.settings python ../scripts/audit_populate_bbox.py --dry-run
 
 Output CSV columns:
   iso2, iso3, canonical_name, canonical_slug, has_embeddings, 

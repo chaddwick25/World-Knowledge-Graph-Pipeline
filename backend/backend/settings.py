@@ -180,9 +180,12 @@ USLP_USE_FP64 = os.getenv('USLP_USE_FP64', 'false').lower() == 'true'
 CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:6379/0"
 
 # ── Celery Result Backend ──
-# Enables chord/group tracking, zombie detection, and per-subgraph progress.
-# Uses Redis DB 1 (broker uses DB 0).
-CELERY_RESULT_BACKEND = os.environ.get(
+# Use Django's SQL DB via django-celery-results for durable, queryable task
+# results. Redis remains the broker (DB 0) for task routing.
+CELERY_RESULT_BACKEND = "django-db"
+# Keep the Redis URL fallback available for environments that have not yet
+# adopted the SQL result backend.
+CELERY_RESULT_BACKEND_URL = os.environ.get(
     "CELERY_RESULT_BACKEND_URL",
     f"redis://{os.getenv('REDIS_HOST', 'localhost')}:6379/1"
 )
@@ -241,6 +244,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.gis',
+    'django_celery_results',
     'rest_framework',
     'corsheaders',
     'django_extensions',

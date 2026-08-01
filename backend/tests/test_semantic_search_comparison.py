@@ -7,7 +7,7 @@ This test compares the performance and results of:
 
 Usage:
     cd backend
-    poetry run python manage.py test tests.test_semantic_search_comparison
+    python manage.py test tests.test_semantic_search_comparison
 
 Note: This test uses the actual 'vectors' database, not the test database.
 """

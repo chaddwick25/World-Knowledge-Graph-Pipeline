@@ -9,10 +9,10 @@ This approach does NOT depend on the vectors DB being populated, so it works
 even on a fresh planet reset.
 
 Usage:
-    poetry run python manage.py preprocess_embeddings --dry-run
-    poetry run python manage.py preprocess_embeddings
-    poetry run python manage.py preprocess_embeddings --country scotland
-    poetry run python manage.py preprocess_embeddings --country malaysia
+    python manage.py preprocess_embeddings --dry-run
+    python manage.py preprocess_embeddings
+    python manage.py preprocess_embeddings --country scotland
+    python manage.py preprocess_embeddings --country malaysia
 
 Supported splits:
     great-britain-location  -> scotland, england, wales

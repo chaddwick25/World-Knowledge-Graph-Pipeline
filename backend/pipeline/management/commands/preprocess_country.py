@@ -12,18 +12,18 @@ Phases:
     4. Generate GeoVectors spatial index (pickle)
 
 Usage:
-    poetry run python manage.py preprocess_country MC --continent europe
+    python manage.py preprocess_country MC --continent europe
 
     # With custom snapshot date
-    poetry run python manage.py preprocess_country MC \
+    python manage.py preprocess_country MC \
         --continent europe --snapshot-date 2025_12_31
 
     # Skip phases (e.g., only generate poly)
-    poetry run python manage.py preprocess_country MC \
+    python manage.py preprocess_country MC \
         --continent europe --phases 3
 
     # Include GeoVectors pickle generation
-    poetry run python manage.py preprocess_country MC \
+    python manage.py preprocess_country MC \
         --continent europe --phases 1,2,3,4
 """
 

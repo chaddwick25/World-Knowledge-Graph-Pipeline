@@ -93,6 +93,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - backend_venv:/app/.venv
       - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
       - ${POLYGON_FILES_DIR}:/app/data/osm_polygon_files
       - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
@@ -103,7 +104,7 @@ services:
       postgres-vectors:
         condition: service_healthy
     restart: unless-stopped
-    command: poetry run python manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:8000
 
   # Optional: Worker service for background tasks
   worker:
@@ -137,6 +138,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
     volumes:
       - ./backend:/app
+      - backend_venv:/app/.venv
       - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
       - ${POLYGON_FILES_DIR}:/app/data/osm_polygon_files
       - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
@@ -151,7 +153,8 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    command: poetry run celery -A pipeline.celery_app worker --loglevel=info --pool=solo --concurrency=1
+    command: celery -A pipeline.celery_app worker --loglevel=info --pool=solo --concurrency=1
 
 volumes:
+  backend_venv:
   polygon_files:

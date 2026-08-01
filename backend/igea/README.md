@@ -142,10 +142,10 @@ Run IGEA iterative entity alignment.
 **Usage**:
 ```bash
 # Basic usage
-poetry run python manage.py run_igea_alignment
+python manage.py run_igea_alignment
 
 # With options
-poetry run python manage.py run_igea_alignment \
+python manage.py run_igea_alignment \
     --country DE \
     --method cosine \
     --iterations 3 \
@@ -167,10 +167,10 @@ Predict spatial entity links using USLP.
 **Usage**:
 ```bash
 # Basic usage
-poetry run python manage.py predict_spatial_links
+python manage.py predict_spatial_links
 
 # With options
-poetry run python manage.py predict_spatial_links \
+python manage.py predict_spatial_links \
     --threshold 0.7 \
     --top-k 10 \
     --limit 50000 \
@@ -262,7 +262,7 @@ Validate triplet using TransE.
 Run comprehensive mathematical property tests:
 
 ```bash
-poetry run pytest igea/tests/test_invariants.py -v
+pytest igea/tests/test_invariants.py -v
 ```
 
 **Test Coverage**:

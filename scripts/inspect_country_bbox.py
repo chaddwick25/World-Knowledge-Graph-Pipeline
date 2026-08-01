@@ -13,7 +13,7 @@ For each ISO country code provided, this script prints:
 Usage (from repo root):
 
     cd backend
-    poetry run python ../scripts/inspect_country_bbox.py --country MC --country MZ
+    python ../scripts/inspect_country_bbox.py --country MC --country MZ
 
 If no --country codes are provided, the script defaults to ["MC", "MZ"].
 """

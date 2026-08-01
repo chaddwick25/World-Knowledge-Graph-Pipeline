@@ -79,7 +79,6 @@ echo ""
 echo -e "${YELLOW}═══ PHASE 1: Django Migrations ═══${NC}"
 echo ""
 
-cd "$BACKEND_DIR"
 
 # Check if migration files exist
 echo -e "${BLUE}Checking migration files...${NC}"
@@ -91,7 +90,7 @@ VECTORS_HAS_MIGRATIONS=$(find "$VECTORS_MIGRATIONS" -name "0*.py" 2>/dev/null | 
 
 if [ "$API_HAS_MIGRATIONS" -eq 0 ] || [ "$VECTORS_HAS_MIGRATIONS" -eq 0 ]; then
     echo -e "${YELLOW}Migration files not found. Creating migrations...${NC}"
-    poetry run python manage.py makemigrations
+    docker compose exec backend python manage.py makemigrations
     echo -e "${GREEN}✓ Migration files created${NC}"
 else
     echo -e "${GREEN}✓ Migration files exist${NC}"
@@ -100,7 +99,7 @@ echo ""
 
 # Run migrations
 echo -e "${BLUE}Applying migrations...${NC}"
-poetry run python manage.py migrate
+docker compose exec backend python manage.py migrate
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}ERROR: Failed to apply migrations${NC}"
@@ -142,14 +141,14 @@ else
         echo "  Estimated time: ~30-60 minutes"
         echo ""
         
-        poetry run python manage.py run_continents_recipe
+        docker compose exec backend python manage.py run_continents_recipe
         
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}✓ Continents recipe completed successfully${NC}"
         else
             echo -e "${YELLOW}⚠ Continents recipe failed (non-critical)${NC}"
             echo "  You can run it manually later with:"
-            echo "  poetry run python manage.py run_continents_recipe"
+            echo "  docker compose exec backend python manage.py run_continents_recipe"
         fi
     fi
 fi
@@ -244,7 +243,7 @@ echo ""
 echo -e "${CYAN}Next Steps:${NC}"
 echo ""
 echo "1. Start the backend server:"
-echo -e "   ${BLUE}cd backend && poetry run python manage.py runserver${NC}"
+echo -e "   ${BLUE}docker compose up -d backend${NC}"
 echo ""
 echo "2. Start the frontend server (in another terminal):"
 echo -e "   ${BLUE}cd frontend && npm run serve${NC}"
