@@ -42,7 +42,7 @@ class WorldKGTriplesService:
     Prerequisites:
         - Python >= 3.7 in the worldkg_dir virtualenv
         - osmium Python library installed (pip install osmium)
-        - rdflib installed (already in pyproject.toml)
+        - rdflib installed (in backend/requirements.txt)
         - WorldKG repo cloned: git clone https://github.com/alishiba14/WorldKG-Knowledge-Graph
     """
 

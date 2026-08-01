@@ -188,6 +188,6 @@ The download service stores raw CSV data in the `raw_data` JSONField for debuggi
 
 ### Missing Dependencies
 ```bash
-poetry install
+pip install -r requirements.txt
 python manage.py migrate toronto_data
 ```

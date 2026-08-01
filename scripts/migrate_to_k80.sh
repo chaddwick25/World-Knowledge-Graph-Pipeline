@@ -75,15 +75,14 @@ echo
 echo "Step 1: Install Python dependencies"
 echo "-----------------------------------------"
 
-if command -v poetry > /dev/null 2>&1; then
-    echo "   Installing with Poetry..."
-    cd "$BACKEND_DIR"
-    poetry install --no-interaction 2>&1 | tail -5
-    echo "   ✓ Dependencies installed"
-else
-    echo "   ⚠ Poetry not found. Install with: curl -sSL https://install.python-poetry.org | python -"
-    exit 1
+cd "$BACKEND_DIR"
+if [ ! -d ".venv" ]; then
+    python -m venv .venv
 fi
+source .venv/bin/activate
+pip install --upgrade "pip<24.1" setuptools wheel
+pip install -r requirements.txt
+echo "   ✓ Dependencies installed"
 
 echo
 
