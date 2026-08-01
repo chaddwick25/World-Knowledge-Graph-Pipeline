@@ -51,7 +51,6 @@ export default {
       ],
       encoderOptions: [
         { value: 'fasttext', text: 'FastText (CPU)' },
-        { value: 'sbert', text: 'SBERT (GPU)' },
       ],
     }
   },

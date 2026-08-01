@@ -17,7 +17,6 @@ from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 from semantic_search.services.worldkg_drift_service import get_worldkg_drift_service
 from api.models import TemporalSnapshot, WorldKGClassDrift, WorldKGClassFingerprint
 from semantic_search.services.fasttext_service import FastTextEmbeddingService
-from semantic_search.services.sbert_service import SBERTEmbeddingService
 from extraction.services.osm_wikidata_resolver import resolve_country_bbox, get_country_by_name
 from worldkg_nca.services.link_candidate_service import WorldKGLinkCandidateService
 from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
@@ -714,10 +713,7 @@ def worldkg_semantic_triplet_search(request):
 
         # Generate 300D query embedding from tags
         tag_counts = FastTextEmbeddingService.build_tag_counts_from_osm_tags(query_tags)
-        if encoder == 'sbert':
-            query_embedding_300d = SBERTEmbeddingService.encode_tags(tag_counts)
-        else:
-            query_embedding_300d = FastTextEmbeddingService.calculate_embedding(tag_counts)
+        query_embedding_300d = FastTextEmbeddingService.calculate_embedding(tag_counts)
         query_list_300d = query_embedding_300d.tolist()
 
         # Pad to 400D (100D spatial component = zeros for now)
@@ -835,16 +831,10 @@ def worldkg_semantic_triplet_search(request):
     # Triple-Space Search Path (current implementation)
     # Support both structured tag queries and natural language queries.
     if natural_query:
-        if encoder == 'sbert':
-            query_embedding = SBERTEmbeddingService.encode_text(natural_query)
-        else:
-            query_embedding = FastTextEmbeddingService.calculate_text_embedding(natural_query)
+        query_embedding = FastTextEmbeddingService.calculate_text_embedding(natural_query)
     else:
         tag_counts = FastTextEmbeddingService.build_tag_counts_from_osm_tags(query_tags)
-        if encoder == 'sbert':
-            query_embedding = SBERTEmbeddingService.encode_tags(tag_counts)
-        else:
-            query_embedding = FastTextEmbeddingService.calculate_embedding(tag_counts)
+        query_embedding = FastTextEmbeddingService.calculate_embedding(tag_counts)
     query_list = query_embedding.tolist()
 
     qs = qs.annotate(

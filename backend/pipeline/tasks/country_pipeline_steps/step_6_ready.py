@@ -31,10 +31,9 @@ if CELERY_AVAILABLE:
         """Step 6: Mark country as search-ready in CountrySearchProcessing.
 
         After all pipeline steps succeed, this task:
-          1. Train SBERT projection heads (country/subgraph level)
-          2. Upserts CountrySearchProcessing with is_processed=True
-          3. Finalizes PipelineRun as COMPLETED
-          4. Sends pipeline_complete WebSocket message
+          1. Upserts CountrySearchProcessing with is_processed=True
+          2. Finalizes PipelineRun as COMPLETED
+          3. Sends pipeline_complete WebSocket message
         """
         config_dict = self.setup_pipeline_context(config_dict)
         cfg = CountryConfig.from_dict(config_dict)
@@ -65,41 +64,7 @@ if CELERY_AVAILABLE:
                     pipeline_run_id=cfg.pipeline_run_id,
                 )
 
-        # Train SBERT projection heads following GV-NLE pattern
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="train_sbert_projection",
-            status="in_progress",
-            message="Training SBERT projection heads...",
-            pct=10,
-            step=7,
-        )
-
-        if cfg.has_subgraphs and cfg.subgraphs:
-            subgraph_tasks = [
-                _train_subgraph_sbert_projection.s(sg.to_dict(), cfg.to_dict())
-                for sg in cfg.subgraphs
-            ]
-            group(subgraph_tasks).apply_async()
-        else:
-            _log(
-                logger,
-                "info",
-                "No subgraphs — training SBERT projection at country level",
-                country=cfg.iso,
-                pipeline_run_id=cfg.pipeline_run_id,
-            )
-            _train_country_sbert_projection(cfg)
-
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="train_sbert_projection",
-            status="completed",
-            message="SBERT projection training complete.",
-            pct=100,
-            step=7,
-        )
-
+        
         _mark_country_search_ready(cfg)
 
         # Finalize PipelineRun as COMPLETED
@@ -147,122 +112,7 @@ if CELERY_AVAILABLE:
         )
         return config_dict
 
-    def _train_country_sbert_projection(cfg: CountryConfig) -> None:
-        """Train SBERT projection head at country level (small territory)."""
-        from django.core.management import call_command
-        from pathlib import Path
 
-        # Resolve base path from country's poly_path or pbf_path
-        base_path = None
-        if cfg.poly_path:
-            base_path = str(Path(cfg.poly_path).parent.parent)
-        elif cfg.snapshot_pbf_path:
-            base_path = str(Path(cfg.snapshot_pbf_path).parent)
-        else:
-            # Fallback to settings
-            base_path = str(Path(settings.BASE_DATA_DIR or "/app/data") / "countries" / cfg.slug)
-
-        _log(
-            logger,
-            "info",
-            "Training SBERT projection head at country level",
-            country=cfg.iso,
-            base_path=base_path,
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-
-        try:
-            call_command(
-                "train_sbert_projection",
-                region=cfg.slug or cfg.name,
-                base_path=base_path,
-                sample_size=10000,
-                epochs=50,
-                batch_size=256,
-            )
-            _log(
-                logger,
-                "info",
-                "Country-level SBERT projection head training complete",
-                country=cfg.iso,
-                pipeline_run_id=cfg.pipeline_run_id,
-            )
-        except Exception as e:
-            _log(
-                logger,
-                "error",
-                f"Failed to train country-level SBERT projection head: {e}",
-                exc_info=True,
-                country=cfg.iso,
-                pipeline_run_id=cfg.pipeline_run_id,
-            )
-
-    @celery_app.task(
-        bind=True, base=PipelineTask,
-        name="sub_train_subgraph_sbert_projection",
-    )
-    def _train_subgraph_sbert_projection(
-        self, subgraph_dict: dict, parent_config: dict
-    ) -> dict:
-        """Train SBERT projection head for a single subgraph."""
-        from pipeline.config import SubgraphConfig
-        from django.core.management import call_command
-        from pathlib import Path
-
-        sg = SubgraphConfig.from_dict(subgraph_dict)
-        cfg = CountryConfig.from_dict(parent_config)
-
-        # Resolve base path from subgraph's poly_path or pbf_path
-        base_path = None
-        if sg.poly_path:
-            base_path = str(Path(sg.poly_path).parent.parent)
-        elif sg.pbf_path:
-            base_path = str(Path(sg.pbf_path).parent)
-        elif cfg.poly_path:
-            base_path = str(Path(cfg.poly_path).parent.parent)
-        else:
-            # Fallback to settings
-            base_path = str(Path(settings.BASE_DATA_DIR or "/app/data") / "countries" / cfg.slug)
-
-        _log(
-            logger,
-            "info",
-            "Training SBERT projection head for subgraph",
-            subgraph=sg.name,
-            country=cfg.iso,
-            base_path=base_path,
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-
-        try:
-            call_command(
-                "train_sbert_projection",
-                region=sg.slug,
-                base_path=base_path,
-                sample_size=10000,
-                epochs=50,
-                batch_size=256,
-            )
-            _log(
-                logger,
-                "info",
-                "Subgraph SBERT projection head training complete",
-                subgraph=sg.name,
-                country=cfg.iso,
-                pipeline_run_id=cfg.pipeline_run_id,
-            )
-            return {"subgraph": sg.name, "success": True}
-        except Exception as e:
-            _log(
-                logger,
-                "error",
-                f"Failed to train subgraph SBERT projection head: {e}",
-                exc_info=True,
-                subgraph=sg.name,
-                country=cfg.iso,
-                pipeline_run_id=cfg.pipeline_run_id,
-            )
-            return {"subgraph": sg.name, "success": False, "error": str(e)}
 
     def _mark_country_search_ready(cfg: CountryConfig) -> None:
         """Upsert CountrySearchProcessing to mark a country as search-ready."""

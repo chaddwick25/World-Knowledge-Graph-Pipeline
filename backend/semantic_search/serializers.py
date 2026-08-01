@@ -57,9 +57,9 @@ class SemanticSearchRequestSerializer(serializers.Serializer):
     """Serializer for semantic search API requests."""
     
     method = serializers.ChoiceField(
-        choices=['fasttext', 'sbert', 'hidden_state'],
+        choices=['fasttext', 'hidden_state'],
         default='fasttext',
-        help_text="Embedding method to use: fasttext (CPU), sbert (GPU), hidden_state (future)"
+        help_text="Embedding method to use: fasttext (CPU), hidden_state (future)"
     )
     tag_counts = serializers.JSONField(
         help_text="Tag counts dictionary, e.g., {'cafe': 40, 'residential': 30}"
@@ -96,8 +96,8 @@ class ComparisonRequestSerializer(serializers.Serializer):
         help_text="Tag counts dictionary"
     )
     methods = serializers.ListField(
-        child=serializers.ChoiceField(choices=['fasttext', 'sbert', 'hidden_state']),
-        default=['fasttext', 'sbert'],
+        child=serializers.ChoiceField(choices=['fasttext', 'hidden_state']),
+        default=['fasttext', 'hidden_state'],
         help_text="Methods to compare"
     )
     filters = serializers.JSONField(
