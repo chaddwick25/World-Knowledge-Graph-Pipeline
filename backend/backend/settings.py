@@ -414,9 +414,4 @@ SPATIAL_SEMANTICS_CONFIG = {
     'hnsw_ef_construction': 64,
 }
 
-***REMOVED*** SBERT Projection Head Configuration
-***REMOVED*** Path to trained projection head weights (384D -> 300D)
-***REMOVED*** If not set, projection head will use random initialization
-SBERT_PROJECTION_PATH = os.path.join(BASE_DATA_DIR, 'models', 'sbert_projection_head.pt') if BASE_DATA_DIR else None
-
 TIME_ZONE = 'America/Toronto'
