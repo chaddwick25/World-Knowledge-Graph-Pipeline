@@ -150,11 +150,9 @@ EXTRA_EMBEDDINGS_ROOT = _extra_embeddings_dir
 _default_overrides_json = os.path.join(COLD_STORAGE_BASE_DIR, 'overrides.json') if COLD_STORAGE_BASE_DIR else None
 OVERRIDES_JSON_PATH = os.getenv('OVERRIDES_JSON_PATH', _default_overrides_json)
 
-# # Embedding splits/merges config (cold storage)
-# _default_embedding_splits_cfg = os.path.join(COLD_STORAGE_BASE_DIR, 'embedding_splits.json') if COLD_STORAGE_BASE_DIR else None
-# EMBEDDING_SPLITS_CONFIG_PATH = os.getenv('EMBEDDING_SPLITS_CONFIG_PATH', _default_embedding_splits_cfg)
-
-EMBEDDING_SPLITS_CONFIG_PATH = "/media/thanos/f5d95b0c-9c60-433c-a76f-3c12175d4f27/OSM/embedding_splits.json"
+# Embedding splits/merges config (cold storage)
+_default_embedding_splits_cfg = os.path.join(COLD_STORAGE_BASE_DIR, 'embedding_splits.json') if COLD_STORAGE_BASE_DIR else None
+EMBEDDING_SPLITS_CONFIG_PATH = os.getenv('EMBEDDING_SPLITS_CONFIG_PATH', _default_embedding_splits_cfg)
 
 _default_downloads_dir = os.path.join(BASE_DATA_DIR, 'downloads') if BASE_DATA_DIR else str(BASE_DIR / 'downloads')
 DOWNLOADS_DIR = os.getenv('DOWNLOADS_DIR', _default_downloads_dir)
