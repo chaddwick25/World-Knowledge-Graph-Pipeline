@@ -266,7 +266,6 @@ if CELERY_AVAILABLE:
         )
         return cfg.to_dict()
 
-    # TODO: rewrite this code 
     @celery_app.task(
         bind=True, base=PipelineTask,
         name="step_0j_prebuild_merge_us_embeddings",
@@ -306,61 +305,82 @@ if CELERY_AVAILABLE:
         )
         # (removed ThreadPool — sequential streaming is faster for single HDD)
 
+        from extraction.services.embedding_spatial_split_service import load_embedding_splits_config
+
         emb_root = Path(settings.EMBEDDINGS_ROOT)
         us_dir = emb_root / "north-america" / "us"
         us_dir.mkdir(parents=True, exist_ok=True)
 
-        # ── US regional shards ────────────────────────────────────────
-        US_SHARD_TARGETS = [
-            {"source": "us-midwest",   "location": "north-america/us-other-location/us-midwest-location.tsv.gz",   "tags": "north-america/us-other-tags/us-midwest-tags.tsv.gz"},
-            {"source": "us-northeast", "location": "north-america/us-other-location/us-northeast-location.tsv.gz",  "tags": "north-america/us-other-tags/us-northeast-tags.tsv.gz"},
-            {"source": "us-pacific",   "location": "north-america/us-other-location/us-pacific-location.tsv.gz",    "tags": "north-america/us-other-tags/us-pacific-tags.tsv.gz"},
-            {"source": "us-south",     "location": "north-america/us-south-location/us-south-location.tsv.gz",      "tags": "north-america/us-south-tags.tsv/us-south-latest_fasttext.tsv"},
-            {"source": "us-west",      "location": "north-america/us-other-location/us-west-location.tsv.gz",        "tags": "north-america/us-west-tags/us-west-tags.tsv.gz"},
-        ]
+        # Load merges configuration (US merge is the first entry in "merges")
+        splits_cfg = load_embedding_splits_config()
+        merges = splits_cfg.get("merges", [])
+        us_merge = None
+        for m in merges:
+            if m.get("slug") == "us":
+                us_merge = m
+                break
 
-        def _merge_tsv_parallel(shards: list, tsv_key: str, output_path: Path, label: str):
-            """Merge shards sequentially — streaming line-by-line.
+        if not us_merge:
+            _log(
+                logger,
+                "info",
+                "No US merge configuration found in embedding_splits.json; skipping step 0j.",
+                pipeline_run_id=pipeline_cfg.pipeline_run_id,
+            )
+            return pipeline_cfg.to_dict()
 
-            Parallel decompression doesn't help when all shards live on the
-            same HDD (I/O contention). Sequential streaming is faster:
-            reads each shard once, pipes directly into the gzip output,
-            never writes temp files.
+        shards: list = us_merge.get("shards") or []
+        output_rel = us_merge.get("output") or "us-location.tsv.gz"
+
+        def _merge_tsv_atomic(shard_paths: list, output_path: Path, label: str):
+            """Merge shards sequentially with atomic write and integrity check.
+
+            Optimized: uses binary mode + shutil.copyfileobj with large buffer
+            to avoid per-line Python overhead and double gzip decode/encode.
             """
+            import os
+            import shutil
+
+            tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+
             if output_path.exists():
-                _log(logger, "info", f"  {label} already exists at {output_path} — skipping")
-                return
+                # Gzip integrity check before trusting existing file
+                try:
+                    with gzip.open(str(output_path), "rt") as f:
+                        _ = f.readline()
+                    _log(logger, "info", f"  {label} already exists at {output_path} — skipping")
+                    return
+                except OSError:
+                    _log(logger, "info", f"  {label} at {output_path} is corrupt; re-merging")
 
-            _log(logger, "info", f"  Merging {label} from {len(shards)} shards (streaming) -> {output_path}")
+            _log(logger, "info", f"  Merging {label} from {len(shard_paths)} shards (streaming) -> {output_path}")
 
+            # 16 MB buffer for copyfileobj (reduces syscalls dramatically)
+            BUF = 16 * 1024 * 1024
+            # compresslevel=1 trades ~5% size for ~2x compression speed
             total = 0
-            with gzip.open(str(output_path), "wt") as out:
-                for i, shard in enumerate(shards):
-                    src = Path(emb_root) / shard[tsv_key]
+            with gzip.open(str(tmp_path), "wb", compresslevel=1) as out:
+                for i, rel_path in enumerate(shard_paths):
+                    src = Path(emb_root) / rel_path
                     if not src.exists():
-                        _log(logger, "info", f"    [{i+1}/{len(shards)}] {src.name} NOT FOUND — skipping")
+                        _log(logger, "info", f"    [{i+1}/{len(shard_paths)}] {src} NOT FOUND — skipping")
                         continue
                     row_count = 0
-                    with (gzip.open(str(src), "rt") if str(src).endswith(".gz") else open(str(src), "rt")) as f:
-                        for j, line in enumerate(f):
-                            # Skip header from all shards except the first
-                            if j == 0 and i > 0:
-                                continue
-                            out.write(line)
-                            row_count += 1
-                    total += row_count
-                    _log(logger, "info", f"    [{i+1}/{len(shards)}] {src.name}: {row_count:,} rows ({_time.time()-t0:.0f}s)")
-            _log(logger, "info", f"  {label} merge complete: {total:,} total rows in {_time.time()-t0:.0f}s")
+                    with gzip.open(str(src), "rb") as f:
+                        if i > 0:
+                            f.readline()  # skip header from shards 2..N
+                        # copyfileobj is a C-level loop; much faster than Python per-line
+                        shutil.copyfileobj(f, out, BUF)
+                    _log(logger, "info", f"    [{i+1}/{len(shard_paths)}] {src.name}: merged ({_time.time()-t0:.0f}s)")
 
-        # Merge location.tsv.gz
-        loc_out = us_dir / "us-location.tsv.gz"
-        _merge_tsv_parallel(US_SHARD_TARGETS, "location", loc_out, "location TSV")
+            os.replace(tmp_path, output_path)
+            _log(logger, "info", f"  {label} merge complete in {_time.time()-t0:.0f}s")
 
-        # Tags TSV merge is SKIPPED — only location TSV is needed for subgraph
-        # pickle generation. Tags are consumed later during entity embedding.
-        _log(logger, "info", "  tags TSV: skipped (not needed for subgraph pickles)")
+        # Merge location TSV only; tags TSV merge remains intentionally skipped.
+        loc_out = us_dir / output_rel
+        _merge_tsv_atomic(shards, loc_out, "location TSV")
 
-        # Copy header.tsv from first available shard
+        # Copy header.tsv from first available shard directory
         header_sources = [
             emb_root / "north-america" / "us-other-location" / "header.tsv",
             emb_root / "north-america" / "us-south-location" / "header.tsv",
@@ -373,6 +393,8 @@ if CELERY_AVAILABLE:
                     shutil.copy2(str(hs), str(tgt_header))
                     _log(logger, "info", f"  Copied header.tsv from {hs}")
                 break
+
+        _log(logger, "info", "  tags TSV: skipped (not needed for subgraph pickles)")
 
         _push_update(
             pipeline_run_id=cfg.pipeline_run_id,

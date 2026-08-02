@@ -23,28 +23,66 @@ from django.core.management.base import BaseCommand, CommandError
 logger = logging.getLogger(__name__)
 
 
-# ── The targets we care about ─────────────────────────────────────────
+# ── The targets we care about (derived from embedding_splits.json) ─────
 
-SPLIT_TARGETS = {
-    # Great Britain split
-    'Scotland': {'slug': 'scotland', 'continent': 'europe', 'source_tsv': 'great-britain-location',
-                 'source_dir': 'great-britain-location'},
-    'England':  {'slug': 'england',  'continent': 'europe', 'source_tsv': 'great-britain-location',
-                 'source_dir': 'great-britain-location'},
-    'Wales':    {'slug': 'wales',    'continent': 'europe', 'source_tsv': 'great-britain-location',
-                 'source_dir': 'great-britain-location'},
-    # Malaysia/Singapore/Brunei split (multi-country TSV inside asia-location/)
-    'Malaysia': {'slug': 'malaysia', 'continent': 'asia', 'source_tsv': 'malaysia-singapore-brunei-location',
-                 'source_dir': 'asia-location'},
-    'Singapore': {'slug': 'singapore', 'continent': 'asia', 'source_tsv': 'malaysia-singapore-brunei-location',
-                  'source_dir': 'asia-location'},
-    'Brunei':   {'slug': 'brunei',   'continent': 'asia', 'source_tsv': 'malaysia-singapore-brunei-location',
-                 'source_dir': 'asia-location'},
-}
+from extraction.services.embedding_spatial_split_service import load_embedding_splits_config
 
-MERGE_TARGETS = {
-    # Deferred: United States (needs DB sharding & pipeline test first)
-}
+
+def _build_targets_from_config():
+    """Derive SPLIT_TARGETS and MERGE_TARGETS from the embedding splits config.
+
+    SPLIT_TARGETS mirror the legacy structure but are computed from the
+    ``splits`` list in the JSON config. MERGE_TARGETS exposes configured
+    merges (currently the US) so that scan_embeddings can report NEEDS_MERGE
+    correctly.
+    """
+
+    cfg = load_embedding_splits_config()
+    splits = cfg.get('splits', []) or []
+    merges = cfg.get('merges', []) or []
+
+    split_targets = {}
+    for split in splits:
+        continent = split.get('continent')
+        source_rel = split.get('source_tsv') or ''
+        # Directory name is everything up to the last path component
+        # (e.g. europe/great-britain-location/great-britain-location.tsv.gz)
+        parts = source_rel.split('/')
+        if len(parts) < 2:
+            continue
+        source_dir = '/'.join(parts[:-1])
+        source_stem = parts[-1].replace('.tsv.gz', '')
+
+        for tgt in split.get('targets') or []:
+            slug = tgt.get('slug')
+            if not slug:
+                continue
+            name = slug.replace('-', ' ').title()
+            split_targets[name] = {
+                'slug': slug,
+                'continent': continent,
+                'source_tsv': source_stem,
+                'source_dir': source_dir.split('/')[-1],
+            }
+
+    merge_targets = {}
+    for merge in merges:
+        slug = merge.get('slug')
+        continent = merge.get('continent')
+        shards = merge.get('shards') or []
+        if not slug or not continent or not shards:
+            continue
+        name = slug.upper() if slug == 'us' else slug.replace('-', ' ').title()
+        merge_targets[name] = {
+            'slug': slug,
+            'continent': continent,
+            'shards': shards,
+        }
+
+    return split_targets, merge_targets
+
+
+SPLIT_TARGETS, MERGE_TARGETS = _build_targets_from_config()
 
 
 class Command(BaseCommand):
