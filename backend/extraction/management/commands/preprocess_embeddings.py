@@ -3,8 +3,7 @@ Preprocess GSGV Embeddings -- Align with Geofabrik Naming (config-driven).
 
 Splits multi-country GeoVectors location TSVs into per-country TSVs using a
 single-pass spatial assignment engine (pyosmium + shapely). Split definitions
-are read from the JSON config referenced by
-``settings.EMBEDDING_SPLITS_CONFIG_PATH``.
+are read from the "embedding_splits" section in ``settings.OVERRIDES_JSON_PATH``.
 
 This approach does NOT depend on the vectors DB being populated, so it works
 even on a fresh planet reset.
@@ -160,7 +159,7 @@ class Command(BaseCommand):
         if not splits:
             self.stdout.write(
                 self.style.WARNING(
-                    "No embedding splits configured (EMBEDDING_SPLITS_CONFIG_PATH empty or missing).",
+                    "No embedding splits configured (embedding_splits section missing from overrides.json).",
                 ),
             )
             return

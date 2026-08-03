@@ -78,7 +78,7 @@ NON_SOVEREIGN_TERRITORIES: Dict[str, Dict[str, Optional[Union[str, int]]]] = {
     ***REMOVED*** Crown dependencies (orphan TSVs that exist on disk)
     "IM": {  ***REMOVED*** Isle of Man — OSM relation 62269
         "name": "Isle of Man",
-        "slug": "isle-of-man",
+        "slug": "im",
         "continent": "europe-west",
         "parent_iso": "GB",
         "wikidata_qid": "Q9676",
@@ -86,10 +86,18 @@ NON_SOVEREIGN_TERRITORIES: Dict[str, Dict[str, Optional[Union[str, int]]]] = {
     },
     "GG": {  ***REMOVED*** Guernsey — OSM relation 270747
         "name": "Guernsey",
-        "slug": "guernsey-jersey",  ***REMOVED*** GeoVectors slug is guernsey-jersey
+        "slug": "gg",
         "continent": "europe-west",
         "parent_iso": "GB",
         "wikidata_qid": "Q423",
+        "osm_relation_id": 270747,
+    },
+    "JE": {  ***REMOVED*** Jersey — OSM relation 270747 (same relation as Guernsey)
+        "name": "Jersey",
+        "slug": "je",
+        "continent": "europe-west",
+        "parent_iso": "GB",
+        "wikidata_qid": "Q270747",
         "osm_relation_id": 270747,
     },
     ***REMOVED*** Future additions can be added here:
