@@ -16,6 +16,7 @@ from shapely.ops import unary_union
 from shapely.prepared import prep
 
 from extraction.services.geofabrik_index_service import geofabrik_index_service
+from extraction.services.country_override_service import load_overrides
 
 
 logger = logging.getLogger(__name__)
@@ -69,51 +70,39 @@ class AssignmentIndex:
 
 
 def load_embedding_splits_config() -> Dict[str, List[dict]]:
-    """Load the embedding splits/merges JSON config from cold storage.
+    """Load the embedding splits/merges config from overrides.json.
 
-    Returns a dict with ``splits`` and ``merges`` lists. Missing/invalid
-    configs are treated as "no splits/merges configured" rather than fatal
-    errors so that commands can degrade gracefully.
+    Reads the "embedding_splits" section from the shared overrides.json
+    (via OVERRIDES_JSON_PATH). Returns a dict with ``splits`` and ``merges`` lists.
+    Missing/invalid configs are treated as "no splits/merges configured"
+    rather than fatal errors so that commands can degrade gracefully.
     """
 
-    path_str = getattr(settings, "EMBEDDING_SPLITS_CONFIG_PATH", None)
-    if not path_str:
+    overrides = load_overrides()
+    embedding_splits = overrides.get("embedding_splits", {}) if isinstance(overrides, dict) else {}
+
+    if not embedding_splits:
         logger.info(
-            "EMBEDDING_SPLITS_CONFIG_PATH is not configured; no embedding splits/merges will run.",
+            "No 'embedding_splits' section found in overrides.json; no embedding splits/merges will run.",
         )
         return {"splits": [], "merges": []}
 
-    path = Path(path_str)
-    if not path.exists():
-        logger.warning(
-            "Embedding splits config not found at %s; no embedding splits/merges will run.",
-            path,
-        )
+    if not isinstance(embedding_splits, dict):
+        logger.error("'embedding_splits' in overrides.json is not a JSON object")
         return {"splits": [], "merges": []}
 
-    try:
-        with path.open("r") as f:
-            data = json.load(f) or {}
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Failed to load embedding splits config from %s: %s", path, exc)
-        return {"splits": [], "merges": []}
-
-    if not isinstance(data, dict):
-        logger.error("Embedding splits config at %s is not a JSON object", path)
-        return {"splits": [], "merges": []}
-
-    data.setdefault("splits", [])
-    data.setdefault("merges", [])
+    splits = embedding_splits.get("splits", [])
+    merges = embedding_splits.get("merges", [])
 
     # Ensure both keys are lists for downstream use
-    if not isinstance(data["splits"], list):
-        logger.error("'splits' key in embedding splits config must be a list")
-        data["splits"] = []
-    if not isinstance(data["merges"], list):
-        logger.error("'merges' key in embedding splits config must be a list")
-        data["merges"] = []
+    if not isinstance(splits, list):
+        logger.error("'splits' key in embedding_splits must be a list")
+        splits = []
+    if not isinstance(merges, list):
+        logger.error("'merges' key in embedding_splits must be a list")
+        merges = []
 
-    return data
+    return {"splits": splits, "merges": merges}
 
 
 class EmbeddingSpatialSplitService:

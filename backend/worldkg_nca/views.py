@@ -506,7 +506,6 @@ def worldkg_semantic_triplet_search(request):
     name_distance_threshold = request.data.get("name_distance_threshold", 0.95)
     use_ann = request.data.get("use_ann", False)
     use_learned_weights = request.data.get("use_learned_weights", False)
-    encoder = request.data.get("encoder", "fasttext")  # fasttext or sbert
 
     # Auto-infer rdf_type from query_tags if not provided
     if not rdf_type and query_tags:

@@ -4,7 +4,6 @@ from rest_framework import status
 from django.db.models import Q
 from .models import CensusTract
 from .services.fasttext_service import FastTextEmbeddingService
-from .services.sbert_service import SBERTEmbeddingService
 from .serializers import (
     SemanticSearchRequestSerializer,
     SemanticSearchResponseSerializer,
@@ -49,9 +48,6 @@ class SemanticSearchView(APIView):
         try:
             if method == 'fasttext':
                 query_vector = FastTextEmbeddingService.calculate_embedding(tag_counts)
-                query_text = None
-            elif method == 'sbert':
-                query_vector = SBERTEmbeddingService.encode_tags(tag_counts)
                 query_text = None
             elif method == 'hidden_state':
                 return Response(

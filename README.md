@@ -54,9 +54,6 @@ There are two main pipeline types, both driven by Celery:
         -> The embeddings saved for each entity are used to train graph representation learning models.
           ==> FastText: 300D semantic embeddings via weighted average of tag embeddings (entity-local, no retraining)
           ==> DeepWalk: 100D spatial embeddings via weighted random walks on k-NN graphs (IDW edge weights)
-          ==> SBERT: 384D→300D projection head for knowledge distillation from FastText space
-            -> Region-specific projection heads (country/subgraph level) for local adaptation
-            -> Trained via knowledge distillation using (SBERT embedding, FastText embedding) pairs   
 
 ## Quickstart
 
