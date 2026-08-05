@@ -2,7 +2,6 @@
 Celery tasks: Embedding Pre-build Steps
 
 These steps handle embedding-related pre-build work during planet initialization:
-
   - step_0h_scan_embeddings      — Scan EMBEDDINGS_ROOT, populate EligibleCountry rows
   - step_0h_copy_gb_to_uk        — Copy great-britain TSVs to united-kingdom naming
   - step_0i_prebuild_split_embeddings — Split multi-country TSVs (GB, Malaysia/Singapore/Brunei) using shapely spatial splitter
@@ -32,6 +31,8 @@ from pipeline.celery_app import (
     CELERY_AVAILABLE,
 )
 
+# TODO: replace the hard-coded paths with some type of object that has the relavant configs
+# Maybe use some type of dataclass facade to create the structure of the object reference
 if CELERY_AVAILABLE:
     logger = logging.getLogger("pipeline")
     @celery_app.task(
