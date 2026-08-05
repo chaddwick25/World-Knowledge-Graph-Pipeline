@@ -30,6 +30,7 @@ from extraction.services.embedding_spatial_split_service import (
     EmbeddingSpatialSplitService,
     load_embedding_splits_config,
 )
+from extraction.services.embedding_shapely_splitter import ShapelySpatialSplitter
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ def _run_split_group_task(args) -> None:
         country_filter: Optional[str],
         force: bool,
         force_snapshot: bool,
+        backend: str,
     )
     """
     (
@@ -55,18 +57,27 @@ def _run_split_group_task(args) -> None:
         country_filter,
         force,
         force_snapshot,
+        backend,
     ) = args
 
     emb_root = Path(emb_root_str)
     polys_root = Path(polys_root_str)
     continents_root = Path(continents_root_str)
 
-    service = EmbeddingSpatialSplitService(
-        embeddings_root=emb_root,
-        polygons_root=polys_root,
-        continents_root=continents_root,
-        stdout=None,
-    )
+    if backend == "shapely":
+        service = ShapelySpatialSplitter(
+            embeddings_root=emb_root,
+            polygons_root=polys_root,
+            continents_root=continents_root,
+            stdout=None,
+        )
+    else:
+        service = EmbeddingSpatialSplitService(
+            embeddings_root=emb_root,
+            polygons_root=polys_root,
+            continents_root=continents_root,
+            stdout=None,
+        )
     service.process_split_group(
         split_def,
         country_filter=country_filter,
@@ -78,7 +89,8 @@ def _run_split_group_task(args) -> None:
 class Command(BaseCommand):
     help = (
         "Preprocess GSGV embeddings -- split multi-country TSVs using a "
-        "single-pass spatial assignment engine (pyosmium + shapely)."
+        "single-pass spatial assignment engine. "
+        "Backend options: 'shapely' (fast, vectorized, default) or 'pyosmium' (legacy)."
     )
 
     def add_arguments(self, parser) -> None:  # type: ignore[override]
@@ -129,6 +141,13 @@ class Command(BaseCommand):
             action="store_true",
             help="Force re-processing even if output TSV files already exist",
         )
+        parser.add_argument(
+            "--backend",
+            type=str,
+            choices=["pyosmium", "shapely"],
+            default="shapely",
+            help="Spatial splitter backend: 'pyosmium' (legacy) or 'shapely' (fast, vectorized, default)",
+        )
 
     def handle(self, *args, **options) -> None:  # type: ignore[override]
         emb_root = Path(options["embeddings_root"]) if options["embeddings_root"] else Path(settings.EMBEDDINGS_ROOT)
@@ -140,6 +159,7 @@ class Command(BaseCommand):
         country_filter: Optional[str] = options.get("country")
         force_snapshot: bool = options["force_snapshot"]
         force: bool = options["force"]
+        backend: str = options["backend"]
 
         if not emb_root.exists():
             self.stdout.write(self.style.ERROR(f"Embeddings root not found: {emb_root}"))
@@ -275,6 +295,22 @@ class Command(BaseCommand):
         workers = max(1, workers)
         workers = min(workers, len(task_defs))
 
+        # Create the appropriate service based on backend
+        if backend == "shapely":
+            service = ShapelySpatialSplitter(
+                embeddings_root=emb_root,
+                polygons_root=polys_root,
+                continents_root=continents_root,
+                stdout=self.stdout,
+            )
+        else:
+            service = EmbeddingSpatialSplitService(
+                embeddings_root=emb_root,
+                polygons_root=polys_root,
+                continents_root=continents_root,
+                stdout=self.stdout,
+            )
+
         if workers == 1:
             # Sequential processing (default)
             for split_def in task_defs:
@@ -296,7 +332,7 @@ class Command(BaseCommand):
         else:
             # Multi-process execution across split groups
             self.stdout.write(
-                f"\nRunning embedding splits with {workers} worker processes...",
+                f"\nRunning embedding splits with {workers} worker processes (backend: {backend})...",
             )
             args_list = [
                 (
@@ -307,6 +343,7 @@ class Command(BaseCommand):
                     country_filter,
                     force,
                     force_snapshot,
+                    backend,
                 )
                 for split_def in task_defs
             ]

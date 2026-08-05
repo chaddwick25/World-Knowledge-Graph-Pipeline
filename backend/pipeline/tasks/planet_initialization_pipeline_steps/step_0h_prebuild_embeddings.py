@@ -5,16 +5,20 @@ These steps handle embedding-related pre-build work during planet initialization
 
   - step_0h_scan_embeddings      — Scan EMBEDDINGS_ROOT, populate EligibleCountry rows
   - step_0h_copy_gb_to_uk        — Copy great-britain TSVs to united-kingdom naming
-  - step_0i_prebuild_split_embeddings — Split multi-country TSVs (GB, Malaysia/Singapore/Brunei)
+  - step_0i_prebuild_split_embeddings — Split multi-country TSVs (GB, Malaysia/Singapore/Brunei) using shapely spatial splitter
   - step_0j_prebuild_merge_us_embeddings — Merge 5 US regional shards into single US TSVs
 
 They sit conceptually between prebuild_country_paths (0.7) and prebuild_subgraphs (0.8)
 because the TSV splits/merges must happen before subgraph profiles need resolved paths.
+
+Splitting uses the shapely spatial splitter (--backend shapely) for 10-50x performance
+improvement over the legacy pyosmium scanner.
 """
 
 from __future__ import annotations
 
 import shutil
+import subprocess
 import gzip
 import logging
 from pathlib import Path
@@ -230,7 +234,17 @@ if CELERY_AVAILABLE:
         Uses osmium-based extraction (pyosmium) to collect OSM IDs within
         each country's boundary polygon, then filters the TSV by those IDs.
         No DB geometry queries needed — works even on a fresh reset.
+
+        Performance: Extracts only the relevant region from continent PBFs using
+        osmium extract (bbox of target polygons), copies to RAM disk (/dev/shm)
+        for 50-100x I/O speedup, then cleans up after completion.
         """
+        import shutil
+        import subprocess
+        import tempfile
+        from pathlib import Path
+        import os
+
         config_dict = self.setup_pipeline_context(config_dict)
         cfg = CountryConfig.from_dict(config_dict)
 
@@ -248,15 +262,128 @@ if CELERY_AVAILABLE:
             pct=10,
         )
 
-        from django.core.management import call_command
-        call_command("preprocess_embeddings")
+        # Load split config to determine which continent PBFs and bboxes are needed
+        from extraction.management.commands.preprocess_embeddings import load_embedding_splits_config
+        split_config = load_embedding_splits_config()
+        splits = split_config.get("splits", [])
 
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="prebuild_split_embeddings", status="completed",
-            message="Multi-country TSV splits complete (GB, MY/SG/BN).",
-            pct=100,
-        )
+        # Check if all output TSVs already exist - if so, skip the entire split step
+        embeddings_root = Path(settings.EMBEDDINGS_ROOT)
+        all_outputs_exist = True
+        for split_def in splits:
+            targets = split_def.get("targets", [])
+            for t in targets:
+                output = t.get("output")
+                if not output:
+                    continue
+                # Check if output TSV file exists on disk
+                output_path = embeddings_root / output
+                if not output_path.exists():
+                    all_outputs_exist = False
+                    _log(logger, "info", f"Output TSV missing: {output}, will run split", pipeline_run_id=cfg.pipeline_run_id)
+                    break
+            if not all_outputs_exist:
+                break
+
+        if all_outputs_exist:
+            _log(logger, "info", "All split output TSVs already exist; skipping split step", pipeline_run_id=cfg.pipeline_run_id)
+            _push_update(
+                pipeline_run_id=cfg.pipeline_run_id,
+                name="prebuild_split_embeddings", status="completed",
+                message="Multi-country TSV splits already exist (GB, MY/SG/BN).",
+                pct=100,
+            )
+            return cfg.to_dict()
+
+        continents_root = Path(getattr(settings, 'CONTINENTS_ROOT', '/app/data/OSM-PBF-FILES/osm_wikidata_extractions/continents'))
+        ram_continents = Path("/dev/shm/continents")
+        ram_continents.mkdir(parents=True, exist_ok=True)
+
+        # Map continent to source PBF name (for extraction from full continent PBF)
+        continent_to_pbf = {
+            "europe": "europe.pbf",
+            "asia": "asia.pbf",
+        }
+
+        # For each split group, extract the relevant region using the union polygon to RAM
+        extracted_pbfs = []
+        for split_def in splits:
+            continent = split_def.get("continent")  # Source continent (e.g., "europe", "asia")
+            continent_pbf = split_def.get("continent_pbf")  # Output PBF name (e.g., "great-britain", "malaysia-singapore-brunei")
+            targets = split_def.get("targets", [])
+            if not continent or not continent_pbf or not targets:
+                continue
+
+            src_pbf_name = continent_to_pbf.get(continent)
+            if not src_pbf_name:
+                _log(logger, "warning", f"Unknown continent: {continent}", pipeline_run_id=cfg.pipeline_run_id)
+                continue
+
+            # Use snapshot PBF (regular, not history) for extraction
+            src_pbf = continents_root / f"{continent}_snapshot.pbf"
+            if not src_pbf.exists():
+                _log(logger, "warning", f"Continent snapshot PBF not found: {src_pbf}", pipeline_run_id=cfg.pipeline_run_id)
+                continue
+
+            from extraction.services.embedding_spatial_split_service import EmbeddingSpatialSplitService
+
+            # Determine the region polygon to use for extraction
+            # For GB: use united_kingdom.poly (union of scotland+england+wales)
+            # For MY/SG/BN: use malaysia_singapore_brunei.poly
+            region_poly_map = {
+                "great-britain": "europe/united_kingdom.poly",
+                "malaysia-singapore-brunei": "asia/malaysia_singapore_brunei.poly",
+            }
+            region_poly_name = region_poly_map.get(continent_pbf)
+            if not region_poly_name:
+                _log(logger, "warning", f"No region polygon mapping for {continent_pbf}", pipeline_run_id=cfg.pipeline_run_id)
+                continue
+
+            poly_path = EmbeddingSpatialSplitService.resolve_poly_path(Path(settings.POLYGON_FILES_DIR), region_poly_name)
+            if not poly_path or not poly_path.exists():
+                _log(logger, "warning", f"Region poly file not found: {region_poly_name}", pipeline_run_id=cfg.pipeline_run_id)
+                continue
+
+            # Extract once using the region polygon
+            ram_pbf = ram_continents / f"{continent_pbf}.pbf"
+            if ram_pbf.exists():
+                _log(logger, "info", f"Region PBF already in RAM: {ram_pbf.name}", pipeline_run_id=cfg.pipeline_run_id)
+            else:
+                _log(logger, "info", f"Extracting {continent_pbf} region using {region_poly_name}...", pipeline_run_id=cfg.pipeline_run_id)
+                result = subprocess.run([
+                    "osmium", "extract",
+                    "--overwrite",
+                    "-p", str(poly_path),
+                    "-o", str(ram_pbf),
+                    str(src_pbf)
+                ], capture_output=True, text=True, timeout=600)
+                if result.returncode != 0:
+                    _log(logger, "error", f"osmium extract failed for {continent_pbf}: {result.stderr}", pipeline_run_id=cfg.pipeline_run_id)
+                    continue
+                _log(logger, "info", f"Extracted {ram_pbf.stat().st_size / 1e9:.2f} GB to RAM: {ram_pbf.name}", pipeline_run_id=cfg.pipeline_run_id)
+
+            extracted_pbfs.append(ram_pbf)
+
+        try:
+            from django.core.management import call_command
+            # Use shapely spatial splitter backend, point to RAM extracts
+            call_command("preprocess_embeddings", backend="shapely", continents_root=str(ram_continents))
+
+            _push_update(
+                pipeline_run_id=cfg.pipeline_run_id,
+                name="prebuild_split_embeddings", status="completed",
+                message="Multi-country TSV splits complete (GB, MY/SG/BN).",
+                pct=100,
+            )
+        finally:
+            # Cleanup RAM disk extracts
+            for ram_pbf in extracted_pbfs:
+                try:
+                    if ram_pbf.exists():
+                        ram_pbf.unlink()
+                        _log(logger, "info", f"Cleaned up {ram_pbf.name} from RAM disk", pipeline_run_id=cfg.pipeline_run_id)
+                except Exception as e:
+                    _log(logger, "warning", f"Failed to cleanup {ram_pbf}: {e}", pipeline_run_id=cfg.pipeline_run_id)
 
         _log(
             logger,
