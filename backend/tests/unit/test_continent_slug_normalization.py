@@ -186,7 +186,7 @@ class TestFullResolutionChain:
     ])
     def test_from_db_to_path(self, temp_base_dir, cont_raw, country_raw,
                               exp_cont, exp_country):
-        """Simulates CountryConfig.from_db() path construction."""
+        """Simulates CountryEnvelope.from_db() path construction."""
         cont_norm = normalize_country_slug(cont_raw)
         country_norm = normalize_country_slug(country_raw)
         svc = RegionalPathService(base_dir=temp_base_dir)

@@ -16,13 +16,11 @@ improvement over the legacy pyosmium scanner.
 
 from __future__ import annotations
 
-import shutil
-import subprocess
-import gzip
 import logging
 from pathlib import Path
 from django.conf import settings
-from pipeline.config import CountryConfig
+from pipeline.envelopes import PlanetEnvelope
+from pipeline.task_decorator import pipeline_step
 from django.core.management import call_command
 from pipeline.tasks.helper import _log, _push_update
 from pipeline.celery_app import (
@@ -40,41 +38,16 @@ if CELERY_AVAILABLE:
         name="step_0h_scan_embeddings",
         max_retries=1, default_retry_delay=60,
     )
-    def step_0h_scan_embeddings(self, config_dict: dict) -> dict:
+    @pipeline_step("prebuild_scan_embeddings", PlanetEnvelope, 0.75)
+    def step_0h_scan_embeddings(self, env: PlanetEnvelope) -> PlanetEnvelope:
         """Step 0.75: Scan EMBEDDINGS_ROOT and populate EligibleCountry rows.
 
         Runs the ``scan_embeddings`` management command to check every
         target country's embedding availability (ready / needs split /
         needs merge / no embeddings), which drives map colouring.
         """
-        config_dict = self.setup_pipeline_context(config_dict)
-        cfg = CountryConfig.from_dict(config_dict)
-        _log(
-            logger,
-            "info",
-            "Step 0.75: Scan embeddings",
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="prebuild_scan_embeddings", status="in_progress",
-            message="Scanning EMBEDDINGS_ROOT for eligibility...",
-            pct=10,
-        )
         call_command("scan_embeddings", clear=True)
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="prebuild_scan_embeddings", status="completed",
-            message="Embedding scan complete — EligibleCountry table populated.",
-            pct=100,
-        )
-        _log(
-            logger,
-            "info",
-            "Step 0.75 complete",
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-        return cfg.to_dict()
+        return env
 
 
     @celery_app.task(
@@ -82,7 +55,8 @@ if CELERY_AVAILABLE:
         name="step_0h_copy_gb_to_uk",
         max_retries=1, default_retry_delay=60,
     )
-    def step_0h_copy_gb_to_uk(self, config_dict: dict) -> dict:
+    @pipeline_step("prebuild_copy_gb_to_uk", PlanetEnvelope, 0.755)
+    def step_0h_copy_gb_to_uk(self, env: PlanetEnvelope) -> PlanetEnvelope:
         """Step 0.755: Copy great-britain TSVs → united-kingdom naming.
 
         GeoVectors uses 'great-britain' as the slug but the pipeline uses
@@ -94,130 +68,18 @@ if CELERY_AVAILABLE:
         if the target already exists and is the same size as the source,
         the copy is skipped.
         """
-        config_dict = self.setup_pipeline_context(config_dict)
-        cfg = CountryConfig.from_dict(config_dict)
+        from extraction.services.gb_uk_copy_service import GbToUkCopyService
+        summary = GbToUkCopyService(Path(settings.EMBEDDINGS_ROOT)).run()
         _log(
             logger,
             "info",
-            "Step 0.755: Copy great-britain → united-kingdom",
-            pipeline_run_id=cfg.pipeline_run_id,
+            "GB→UK copy complete",
+            copied=len(summary["copied"]),
+            skipped=len(summary["skipped"]),
+            failed=len(summary["failed"]),
+            pipeline_run_id=env.pipeline_run_id,
         )
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="prebuild_copy_gb_to_uk", status="in_progress",
-            message="Copying great-britain TSVs to united-kingdom naming...",
-            pct=10,
-        )
-
-
-
-        emb_root = Path(settings.EMBEDDINGS_ROOT)
-        europe_dir = emb_root / "europe"
-        # TODO: Remove this when we have a better way to handle this we have to reorganize the original embeddings structure
-        # Source directories (great-britain naming)
-        gb_location_src = europe_dir / "great-britain-location" / "great-britain-location.tsv.gz"
-        gb_tags_src = europe_dir / "great-britain-tags" / "great-britain-tags.tsv.gz"
-        gb_header_location = europe_dir / "great-britain-location" / "header.tsv"
-        gb_header_tags = europe_dir / "great-britain-tags" / "header.tsv"
-
-        # Target directories (united-kingdom naming)
-        uk_location_dir = europe_dir / "united-kingdom-location"
-        uk_tags_dir = europe_dir / "united-kingdom-tags"
-        uk_location_tgt = uk_location_dir / "united-kingdom-location.tsv.gz"
-        uk_tags_tgt = uk_tags_dir / "united-kingdom-tags.tsv.gz"
-
-        copies = [
-            ("location TSV", gb_location_src, uk_location_tgt, gb_header_location, uk_location_dir),
-            ("tags TSV", gb_tags_src, uk_tags_tgt, gb_header_tags, uk_tags_dir),
-        ]
-
-        for label, src, tgt, header_src, tgt_dir in copies:
-            if not src.exists():
-                _log(
-                    logger,
-                    "info",
-                    f"  {label}: source not found at {src} — skipping",
-                    pipeline_run_id=cfg.pipeline_run_id,
-                )
-                continue
-
-            # Check if target exists and is same size (idempotent)
-            src_size = src.stat().st_size
-            if tgt.exists():
-                tgt_size = tgt.stat().st_size
-                if src_size == tgt_size:
-                    _log(
-                        logger,
-                        "info",
-                        f"  {label}: already exists at {tgt} ({src_size:,} bytes) — skipping",
-                        pipeline_run_id=cfg.pipeline_run_id,
-                    )
-                    continue
-                _log(
-                    logger,
-                    "info",
-                    f"  {label}: target exists but size differs ({src_size:,} vs {tgt_size:,}) — re-copying",
-                    pipeline_run_id=cfg.pipeline_run_id,
-                )
-
-            # Ensure target directory exists
-            tgt_dir.mkdir(parents=True, exist_ok=True)
-
-            # Copy the TSV file
-            _log(
-                logger,
-                "info",
-                f"  {label}: copying {src} ({src_size:,} bytes) → {tgt}",
-                pipeline_run_id=cfg.pipeline_run_id,
-            )
-            shutil.copy2(str(src), str(tgt))
-
-            # Copy header.tsv if available
-            if header_src.exists():
-                header_tgt = tgt_dir / "header.tsv"
-                if not header_tgt.exists():
-                    shutil.copy2(str(header_src), str(header_tgt))
-                    _log(
-                        logger,
-                        "info",
-                        f"  {label}: copied header.tsv",
-                        pipeline_run_id=cfg.pipeline_run_id,
-                    )
-
-            # Verify
-            tgt_size = tgt.stat().st_size
-            if tgt_size == src_size:
-                _log(
-                    logger,
-                    "info",
-                    f"  {label}: verified — {tgt_size:,} bytes",
-                    pipeline_run_id=cfg.pipeline_run_id,
-                )
-            else:
-                _log(
-                    logger,
-                    "info",
-                    f"  {label}: WARNING — size mismatch ({src_size:,} vs {tgt_size:,})",
-                    pipeline_run_id=cfg.pipeline_run_id,
-                )
-
-        # Also copy tags TSV — note that tags files are much smaller
-        # (great-britain-tags is ~14GB, the full tag set for GB)
-
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="prebuild_copy_gb_to_uk", status="completed",
-            message="Great-Britain → United-Kingdom TSV copy complete.",
-            pct=100,
-        )
-
-        _log(
-            logger,
-            "info",
-            "Step 0.755 complete",
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-        return cfg.to_dict()
+        return env
 
 
     @celery_app.task(
@@ -225,7 +87,8 @@ if CELERY_AVAILABLE:
         name="step_0i_prebuild_split_embeddings",
         max_retries=1, default_retry_delay=120,
     )
-    def step_0i_prebuild_split_embeddings(self, config_dict: dict) -> dict:
+    @pipeline_step("prebuild_split_embeddings", PlanetEnvelope, 0.76)
+    def step_0i_prebuild_split_embeddings(self, env: PlanetEnvelope) -> PlanetEnvelope:
         """Step 0.76: Split multi-country TSVs into individual country TSVs.
 
         Runs the ``preprocess_embeddings`` management command to split:
@@ -240,166 +103,31 @@ if CELERY_AVAILABLE:
         osmium extract (bbox of target polygons), copies to RAM disk (/dev/shm)
         for 50-100x I/O speedup, then cleans up after completion.
         """
-        import shutil
-        import subprocess
-        import tempfile
-        from pathlib import Path
-        import os
-
-        config_dict = self.setup_pipeline_context(config_dict)
-        cfg = CountryConfig.from_dict(config_dict)
-
-        _log(
-            logger,
-            "info",
-            "Step 0.76: Split multi-country embeddings",
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="prebuild_split_embeddings", status="in_progress",
-            message="Splitting multi-country TSVs (GB, MY/SG/BN)...",
-            pct=10,
-        )
-
-        # Load split config to determine which continent PBFs and bboxes are needed
-        from extraction.management.commands.preprocess_embeddings import load_embedding_splits_config
-        split_config = load_embedding_splits_config()
-        splits = split_config.get("splits", [])
-
-        # Check if all output TSVs already exist - if so, skip the entire split step
-        embeddings_root = Path(settings.EMBEDDINGS_ROOT)
-        all_outputs_exist = True
-        for split_def in splits:
-            targets = split_def.get("targets", [])
-            for t in targets:
-                output = t.get("output")
-                if not output:
-                    continue
-                # Check if output TSV file exists on disk
-                output_path = embeddings_root / output
-                if not output_path.exists():
-                    all_outputs_exist = False
-                    _log(logger, "info", f"Output TSV missing: {output}, will run split", pipeline_run_id=cfg.pipeline_run_id)
-                    break
-            if not all_outputs_exist:
-                break
-
-        if all_outputs_exist:
-            _log(logger, "info", "All split output TSVs already exist; skipping split step", pipeline_run_id=cfg.pipeline_run_id)
-            _push_update(
-                pipeline_run_id=cfg.pipeline_run_id,
-                name="prebuild_split_embeddings", status="completed",
-                message="Multi-country TSV splits already exist (GB, MY/SG/BN).",
-                pct=100,
-            )
-            return cfg.to_dict()
-
+        from extraction.services.embedding_split_service import EmbeddingSplitService
         continents_root = Path(getattr(settings, 'CONTINENTS_ROOT', '/app/data/OSM-PBF-FILES/osm_wikidata_extractions/continents'))
-        ram_continents = Path("/dev/shm/continents")
-        ram_continents.mkdir(parents=True, exist_ok=True)
-
-        # Map continent to source PBF name (for extraction from full continent PBF)
-        continent_to_pbf = {
-            "europe": "europe.pbf",
-            "asia": "asia.pbf",
-        }
-
-        # For each split group, extract the relevant region using the union polygon to RAM
-        extracted_pbfs = []
-        for split_def in splits:
-            continent = split_def.get("continent")  # Source continent (e.g., "europe", "asia")
-            continent_pbf = split_def.get("continent_pbf")  # Output PBF name (e.g., "great-britain", "malaysia-singapore-brunei")
-            targets = split_def.get("targets", [])
-            if not continent or not continent_pbf or not targets:
-                continue
-
-            src_pbf_name = continent_to_pbf.get(continent)
-            if not src_pbf_name:
-                _log(logger, "warning", f"Unknown continent: {continent}", pipeline_run_id=cfg.pipeline_run_id)
-                continue
-
-            # Use snapshot PBF (regular, not history) for extraction
-            src_pbf = continents_root / f"{continent}_snapshot.pbf"
-            if not src_pbf.exists():
-                _log(logger, "warning", f"Continent snapshot PBF not found: {src_pbf}", pipeline_run_id=cfg.pipeline_run_id)
-                continue
-
-            from extraction.services.embedding_spatial_split_service import EmbeddingSpatialSplitService
-
-            # Determine the region polygon to use for extraction
-            # For GB: use united_kingdom.poly (union of scotland+england+wales)
-            # For MY/SG/BN: use malaysia_singapore_brunei.poly
-            region_poly_map = {
-                "great-britain": "europe/united_kingdom.poly",
-                "malaysia-singapore-brunei": "asia/malaysia_singapore_brunei.poly",
-            }
-            region_poly_name = region_poly_map.get(continent_pbf)
-            if not region_poly_name:
-                _log(logger, "warning", f"No region polygon mapping for {continent_pbf}", pipeline_run_id=cfg.pipeline_run_id)
-                continue
-
-            poly_path = EmbeddingSpatialSplitService.resolve_poly_path(Path(settings.POLYGON_FILES_DIR), region_poly_name)
-            if not poly_path or not poly_path.exists():
-                _log(logger, "warning", f"Region poly file not found: {region_poly_name}", pipeline_run_id=cfg.pipeline_run_id)
-                continue
-
-            # Extract once using the region polygon
-            ram_pbf = ram_continents / f"{continent_pbf}.pbf"
-            if ram_pbf.exists():
-                _log(logger, "info", f"Region PBF already in RAM: {ram_pbf.name}", pipeline_run_id=cfg.pipeline_run_id)
-            else:
-                _log(logger, "info", f"Extracting {continent_pbf} region using {region_poly_name}...", pipeline_run_id=cfg.pipeline_run_id)
-                result = subprocess.run([
-                    "osmium", "extract",
-                    "--overwrite",
-                    "-p", str(poly_path),
-                    "-o", str(ram_pbf),
-                    str(src_pbf)
-                ], capture_output=True, text=True, timeout=600)
-                if result.returncode != 0:
-                    _log(logger, "error", f"osmium extract failed for {continent_pbf}: {result.stderr}", pipeline_run_id=cfg.pipeline_run_id)
-                    continue
-                _log(logger, "info", f"Extracted {ram_pbf.stat().st_size / 1e9:.2f} GB to RAM: {ram_pbf.name}", pipeline_run_id=cfg.pipeline_run_id)
-
-            extracted_pbfs.append(ram_pbf)
-
-        try:
-            from django.core.management import call_command
-            # Use shapely spatial splitter backend, point to RAM extracts
-            call_command("preprocess_embeddings", backend="shapely", continents_root=str(ram_continents))
-
-            _push_update(
-                pipeline_run_id=cfg.pipeline_run_id,
-                name="prebuild_split_embeddings", status="completed",
-                message="Multi-country TSV splits complete (GB, MY/SG/BN).",
-                pct=100,
-            )
-        finally:
-            # Cleanup RAM disk extracts
-            for ram_pbf in extracted_pbfs:
-                try:
-                    if ram_pbf.exists():
-                        ram_pbf.unlink()
-                        _log(logger, "info", f"Cleaned up {ram_pbf.name} from RAM disk", pipeline_run_id=cfg.pipeline_run_id)
-                except Exception as e:
-                    _log(logger, "warning", f"Failed to cleanup {ram_pbf}: {e}", pipeline_run_id=cfg.pipeline_run_id)
-
+        summary = EmbeddingSplitService(
+            embeddings_root=Path(settings.EMBEDDINGS_ROOT),
+            continents_root=continents_root,
+            polygons_root=Path(settings.POLYGON_FILES_DIR),
+        ).run()
         _log(
             logger,
             "info",
-            "Step 0.76 complete",
-            pipeline_run_id=cfg.pipeline_run_id,
+            "Split complete",
+            split=len(summary["split"]),
+            skipped=len(summary["skipped"]),
+            failed=len(summary["failed"]),
+            pipeline_run_id=env.pipeline_run_id,
         )
-        return cfg.to_dict()
+        return env
 
     @celery_app.task(
         bind=True, base=PipelineTask,
         name="step_0j_prebuild_merge_us_embeddings",
         max_retries=1, default_retry_delay=120,
     )
-    def step_0j_prebuild_merge_us_embeddings(self, config_dict: dict) -> dict:
+    @pipeline_step("prebuild_merge_us_embeddings", PlanetEnvelope, 0.77)
+    def step_0j_prebuild_merge_us_embeddings(self, env: PlanetEnvelope) -> PlanetEnvelope:
         """Step 0.77: Merge 5 US regional shards into single US location/tags TSVs.
 
         GeoVectors stores the United States as 5 regional shards:
@@ -412,132 +140,17 @@ if CELERY_AVAILABLE:
         Sequential streaming — reads each shard line-by-line and pipes
         directly into the gzip output. No temp files, no ThreadPool.
         """
-        import time as _time
-        t0 = _time.time()
-
-        config_dict = self.setup_pipeline_context(config_dict)
-        cfg = CountryConfig.from_dict(config_dict)
-
+        from extraction.services.embedding_merge_service import EmbeddingMergeService
+        summary = EmbeddingMergeService(Path(settings.EMBEDDINGS_ROOT)).run()
         _log(
             logger,
             "info",
-            "Step 0.77: Merge US regional embeddings",
-            pipeline_run_id=cfg.pipeline_run_id,
+            "Step 0.77 complete ({:.0f}s)".format(summary["elapsed_s"]),
+            status=summary["status"],
+            output=summary["output"],
+            pipeline_run_id=env.pipeline_run_id,
         )
-
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="prebuild_merge_us_embeddings", status="in_progress",
-            message="Merging 5 US regional shards into single TSV...",
-            pct=10,
-        )
-        # (removed ThreadPool — sequential streaming is faster for single HDD)
-
-        from extraction.services.embedding_spatial_split_service import load_embedding_splits_config
-
-        emb_root = Path(settings.EMBEDDINGS_ROOT)
-        us_dir = emb_root / "north-america" / "us"
-        us_dir.mkdir(parents=True, exist_ok=True)
-
-        # Load merges configuration (US merge is the first entry in "merges")
-        splits_cfg = load_embedding_splits_config()
-        merges = splits_cfg.get("merges", [])
-        us_merge = None
-        for m in merges:
-            if m.get("slug") == "us":
-                us_merge = m
-                break
-
-        if not us_merge:
-            _log(
-                logger,
-                "info",
-                "No US merge configuration found in embedding_splits.json; skipping step 0j.",
-                pipeline_run_id=pipeline_cfg.pipeline_run_id,
-            )
-            return pipeline_cfg.to_dict()
-
-        shards: list = us_merge.get("shards") or []
-        output_rel = us_merge.get("output") or "us-location.tsv.gz"
-
-        def _merge_tsv_atomic(shard_paths: list, output_path: Path, label: str):
-            """Merge shards sequentially with atomic write and integrity check.
-
-            Optimized: uses binary mode + shutil.copyfileobj with large buffer
-            to avoid per-line Python overhead and double gzip decode/encode.
-            """
-            import os
-            import shutil
-
-            tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
-
-            if output_path.exists():
-                # Gzip integrity check before trusting existing file
-                try:
-                    with gzip.open(str(output_path), "rt") as f:
-                        _ = f.readline()
-                    _log(logger, "info", f"  {label} already exists at {output_path} — skipping")
-                    return
-                except OSError:
-                    _log(logger, "info", f"  {label} at {output_path} is corrupt; re-merging")
-
-            _log(logger, "info", f"  Merging {label} from {len(shard_paths)} shards (streaming) -> {output_path}")
-
-            # 16 MB buffer for copyfileobj (reduces syscalls dramatically)
-            BUF = 16 * 1024 * 1024
-            # compresslevel=1 trades ~5% size for ~2x compression speed
-            total = 0
-            with gzip.open(str(tmp_path), "wb", compresslevel=1) as out:
-                for i, rel_path in enumerate(shard_paths):
-                    src = Path(emb_root) / rel_path
-                    if not src.exists():
-                        _log(logger, "info", f"    [{i+1}/{len(shard_paths)}] {src} NOT FOUND — skipping")
-                        continue
-                    row_count = 0
-                    with gzip.open(str(src), "rb") as f:
-                        if i > 0:
-                            f.readline()  # skip header from shards 2..N
-                        # copyfileobj is a C-level loop; much faster than Python per-line
-                        shutil.copyfileobj(f, out, BUF)
-                    _log(logger, "info", f"    [{i+1}/{len(shard_paths)}] {src.name}: merged ({_time.time()-t0:.0f}s)")
-
-            os.replace(tmp_path, output_path)
-            _log(logger, "info", f"  {label} merge complete in {_time.time()-t0:.0f}s")
-
-        # Merge location TSV only; tags TSV merge remains intentionally skipped.
-        loc_out = us_dir / output_rel
-        _merge_tsv_atomic(shards, loc_out, "location TSV")
-
-        # Copy header.tsv from first available shard directory
-        header_sources = [
-            emb_root / "north-america" / "us-other-location" / "header.tsv",
-            emb_root / "north-america" / "us-south-location" / "header.tsv",
-            emb_root / "north-america" / "us-west-tags" / "header.tsv",
-        ]
-        for hs in header_sources:
-            if hs.exists():
-                tgt_header = us_dir / "header.tsv"
-                if not tgt_header.exists():
-                    shutil.copy2(str(hs), str(tgt_header))
-                    _log(logger, "info", f"  Copied header.tsv from {hs}")
-                break
-
-        _log(logger, "info", "  tags TSV: skipped (not needed for subgraph pickles)")
-
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="prebuild_merge_us_embeddings", status="completed",
-            message="US regional embeddings merged.",
-            pct=100,
-        )
-
-        _log(
-            logger,
-            "info",
-            "Step 0.77 complete ({:.0f}s)".format(_time.time() - t0),
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-        return cfg.to_dict()
+        return env
 
 
     @celery_app.task(
@@ -545,44 +158,13 @@ if CELERY_AVAILABLE:
         name="step_0k_rescan_embeddings",
         max_retries=1, default_retry_delay=60,
     )
-    def step_0k_rescan_embeddings(self, config_dict: dict) -> dict:
+    @pipeline_step("prebuild_rescan_embeddings", PlanetEnvelope, 0.78)
+    def step_0k_rescan_embeddings(self, env: PlanetEnvelope) -> PlanetEnvelope:
         """Step 0.78: Re-scan embeddings after split/merge operations.
 
         After splits and merges complete, run scan_embeddings again so the
         EligibleCountry rows reflect the new READY statuses instead of
         NEEDS_SPLIT or NEEDS_MERGE.
         """
-        config_dict = self.setup_pipeline_context(config_dict)
-        cfg = CountryConfig.from_dict(config_dict)
-
-        _log(
-            logger,
-            "info",
-            "Step 0.78: Re-scan embeddings (post split/merge)",
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="prebuild_rescan_embeddings", status="in_progress",
-            message="Re-scanning embeddings after split/merge...",
-            pct=10,
-        )
-
-        from django.core.management import call_command
         call_command("scan_embeddings", clear=True)
-
-        _push_update(
-            pipeline_run_id=cfg.pipeline_run_id,
-            name="prebuild_rescan_embeddings", status="completed",
-            message="Embedding re-scan complete — statuses updated.",
-            pct=100,
-        )
-
-        _log(
-            logger,
-            "info",
-            "Step 0.78 complete",
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-        return cfg.to_dict()
+        return env

@@ -24,11 +24,11 @@ show available countries and their status without requiring country PBFs.
 """
 
 from __future__ import annotations
+import dataclasses
 import logging
 from uuid import uuid4
 from typing import Optional
 from datetime import datetime, timezone
-from pipeline.config import CountryConfig
 from pipeline.tasks.helper import _push_update
 from pipeline.exceptions import PipelineDispatchError, PipelineAlreadyRunning
 from pipeline.celery_app import (
@@ -216,7 +216,7 @@ def _get_step_tasks():
 # ══════════════════════════════════════════════════════════════════════════
 # Subgraph USLP Chord Helpers
 # ══════════════════════════════════════════════════════════════════════════
-def _get_subgraph_uslp_tasks(cfg: CountryConfig) -> list:
+def _get_subgraph_uslp_tasks(cfg) -> list:
     """Build the header for a parallel subgraph USLP chord.
 
     Returns a list of Celery task signatures (one per subgraph).
@@ -290,13 +290,12 @@ def run_planet_initialization(
         )
     from celery import chain
 
-    # Build a minimal CountryConfig for tracking
-    cfg = CountryConfig(
-        iso="PL",
-        name="Planet",
-        slug="planet",
-        continent="planet",
+    # Build a PlanetEnvelope for tracking
+    from pipeline.envelopes import PlanetEnvelope
+    cfg = PlanetEnvelope(
         pipeline_run_id=str(uuid4()),
+        pbf_path=planet_pbf_path,
+        extract_continents=extract_continents,
     )
 
     from orchestration.models import PipelineRun
@@ -310,7 +309,7 @@ def run_planet_initialization(
             "extract_continents": extract_continents,
         },
     )
-    cfg.pipeline_run_id = str(run.id)
+    cfg = dataclasses.replace(cfg, pipeline_run_id=str(run.id))
 
     # Set up per-run log file
     setup_pipeline_run_logger(
@@ -389,12 +388,11 @@ def run_continent_initialization(
     if not CELERY_AVAILABLE:
         raise ImportError("Celery is required to run continent extraction.")
 
-    cfg = CountryConfig(
-        iso=continent_slug.upper(),
-        name=continent_slug.capitalize(),
-        slug=continent_slug,
-        continent=continent_slug,
+    from pipeline.envelopes import PlanetEnvelope
+    cfg = PlanetEnvelope(
         pipeline_run_id=str(uuid4()),
+        pbf_path=planet_pbf_path,
+        extract_continents=True,
     )
 
     from orchestration.models import PipelineRun
@@ -408,7 +406,7 @@ def run_continent_initialization(
             "planet_pbf_path": planet_pbf_path,
         },
     )
-    cfg.pipeline_run_id = str(run.id)
+    cfg = dataclasses.replace(cfg, pipeline_run_id=str(run.id))
 
     steps = _get_step_tasks()
     task = steps[0.5]
@@ -457,7 +455,7 @@ def run_worldkg_pipeline(
 
     Args:
         iso: ISO 3166-1 alpha-2 code (e.g., "MZ", "GB", "CA")
-        snapshot_date: Override snapshot date (default from CountryConfig)
+        snapshot_date: Override snapshot date (default from CountryEnvelope)
         skip_entropy_gate: Bypass entropy check (for manual forcing)
         skip_enrich: Skip WorldKG enrichment step (for debugging)
 
@@ -477,16 +475,19 @@ def run_worldkg_pipeline(
     _check_existing_run(iso)
 
     # ── 1. Build centralized config ─────────────────────────────────────
-    cfg = CountryConfig.from_db(iso, snapshot_date=snapshot_date)
+    from pipeline.envelopes import CountryEnvelope
+    cfg = CountryEnvelope.from_db(iso, snapshot_date=snapshot_date)
 
     if skip_entropy_gate:
-        cfg.min_entropy = 0.0  # Effectively disable the gate
+        # Override frozen hyperparams to disable the entropy gate
+        new_hp = dataclasses.replace(cfg.hyperparams, min_entropy=0.0)
+        cfg = dataclasses.replace(cfg, hyperparams=new_hp)
 
     if skip_enrich:
-        cfg.skip_enrich = True
+        cfg = cfg.with_state(skip_enrich=True)
 
     # Monaco handling: small territories without subgraphs run fine at
-    # country level. The CountryConfig.from_db() will naturally set
+    # country level. The CountryEnvelope.from_db() will naturally set
     # has_subgraphs=False, and the task implementations handle this.
     _log(logger, "info",
         "Country pipeline config",
@@ -507,7 +508,7 @@ def run_worldkg_pipeline(
         status=PipelineRun.PipelineStatus.PENDING,
         configuration=cfg.to_dict(),
     )
-    cfg.pipeline_run_id = str(run.id)
+    cfg = cfg.with_state(pipeline_run_id=str(run.id))
 
     # Set up per-run log file
     setup_pipeline_run_logger(
@@ -676,7 +677,7 @@ def run_worldkg_pipeline(
         # single country-level USLP task.
         # The chord callback receives the aggregated list of subgraph results;
         # we wrap it with .s() and pass the config_dict so the callback can
-        # reconstruct CountryConfig for logging and chain continuation.
+        # reconstruct CountryEnvelope for logging and chain continuation.
         uslp_header = _get_subgraph_uslp_tasks(cfg)
         uslp_callback = steps[4.5].s(cfg.to_dict())  # step_4b_finalize_subgraph_uslp
         uslp_chord = chord(uslp_header, uslp_callback)
@@ -723,7 +724,8 @@ def run_pipeline_stage(
             "Celery is required to run pipeline stages."
         )
 
-    cfg = CountryConfig.from_db(iso, snapshot_date=snapshot_date)
+    from pipeline.envelopes import CountryEnvelope
+    cfg = CountryEnvelope.from_db(iso, snapshot_date=snapshot_date)
     steps = _get_step_tasks()
     task = steps.get(stage)
     if not task:

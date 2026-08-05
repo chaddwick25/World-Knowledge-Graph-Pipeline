@@ -4,7 +4,7 @@ Unit tests for country resolution logic.
 Tests two fixes:
   1. _resolve_iso_code() fast path for already-ISO inputs (like "CV", "BZ")
   2. CountryRelationResolver continent normalization (hyphens -> underscores)
-  3. CountryConfig.from_db() slug normalization across the pipeline
+  3. CountryEnvelope.from_db() slug normalization across the pipeline
 
 Markers:
     @pytest.mark.unit -- pure logic, no DB/network/GPU required
@@ -319,13 +319,13 @@ class TestCountryRelationResolverContinentNormalization:
 
 
 # =============================================================================
-# 3. CountryConfig.from_db() — slug normalisation guarantees
+# 3. CountryEnvelope.from_db() — slug normalisation guarantees
 # =============================================================================
 
 
-class TestCountryConfigSlugNormalization:
+class TestCountryEnvelopeSlugNormalization:
     """
-    CountryConfig.from_db() must produce underscore paths regardless
+    CountryEnvelope.from_db() must produce underscore paths regardless
     of whether the DB slug uses hyphens, spaces, or underscores.
     """
 
@@ -489,51 +489,52 @@ class TestPathFromResolvedIso:
 
 
 # =============================================================================
-# 7. CountryConfig.from_dict — subgraphs must survive pipeline hops
+# 7. CountryEnvelope.from_dict — subgraphs must survive pipeline hops
 # =============================================================================
 
 
-from pipeline.config import CountryConfig, SubgraphConfig
+from pipeline.config import SubgraphConfig
+from pipeline.envelopes import CountryEnvelope
 
 
-class TestCountryConfigSerialization:
+class TestCountryEnvelopeSerialization:
 
     @pytest.mark.unit
     def test_subgraphs_survive_multiple_from_dict_round_trips(self):
         """Subgraphs should not be dropped when config dict passes steps.
 
         This simulates the Celery pipeline where a config dict is passed from
-        step 1 → 2 → 3 → 4 → 5. Previously, CountryConfig.from_dict used
+        step 1 → 2 → 3 → 4 → 5. Previously, from_dict used
         d.pop("subgraphs", []), which removed the key from the shared dict
         on first deserialisation. Downstream steps then reconstructed a config
         with has_subgraphs=True but an empty subgraphs list, causing
         Step 5 (train_gv_nle) to skip subgraph fan-out.
         """
 
-        # Start with a config that has subgraphs
-        original = CountryConfig(
-            iso="CV",
-            name="Cape Verde",
-            slug="cape_verde",
-            continent="africa",
-            has_subgraphs=True,
-            subgraphs=[
-                SubgraphConfig(name="Tarrafal", slug="tarrafal"),
-                SubgraphConfig(name="Tarrafal de São Nicolau", slug="tarrafal_de_sao_nicolau"),
+        # Start with an envelope that has subgraphs
+        original = CountryEnvelope.from_dict({
+            "iso": "CV",
+            "name": "Cape Verde",
+            "slug": "cape_verde",
+            "continent": "africa",
+            "has_subgraphs": True,
+            "subgraphs": [
+                SubgraphConfig(name="Tarrafal", slug="tarrafal").to_dict(),
+                SubgraphConfig(name="Tarrafal de São Nicolau", slug="tarrafal_de_sao_nicolau").to_dict(),
             ],
-        )
+        })
 
         config_dict = original.to_dict()
 
         # Simulate passing through 4 intermediary steps that each
-        # reconstruct the config from the dict and then pass the dict on.
+        # reconstruct the envelope from the dict and then pass the dict on.
         for _ in range(4):
-            cfg = CountryConfig.from_dict(config_dict)
-            config_dict = cfg.to_dict()
+            env = CountryEnvelope.from_dict(config_dict)
+            config_dict = env.to_dict()
 
-        final_cfg = CountryConfig.from_dict(config_dict)
+        final_env = CountryEnvelope.from_dict(config_dict)
 
-        assert final_cfg.has_subgraphs is True
-        assert len(final_cfg.subgraphs) == 2
-        assert {sg.slug for sg in final_cfg.subgraphs} == {"tarrafal", "tarrafal_de_sao_nicolau"}
+        assert final_env.has_subgraphs is True
+        assert len(final_env.subgraphs) == 2
+        assert {sg.slug for sg in final_env.subgraphs} == {"tarrafal", "tarrafal_de_sao_nicolau"}
 

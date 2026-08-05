@@ -176,7 +176,7 @@ class Command(BaseCommand):
         except Exception:
             pass
 
-        TODO: remember to include this in docker
+        # TODO: remember to include this in docker
         # Fallback to country_relations.json
         rel_path = (
             Path(settings.BASE_DIR).parent / "data" / "country_relations.json"

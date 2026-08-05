@@ -4,11 +4,18 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from datetime import datetime
+from typing import TYPE_CHECKING, Union
 from django.core.management import call_command
 from django.conf import settings
-from pipeline.config import CountryConfig
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+
+if TYPE_CHECKING:
+    from pipeline.envelopes import CountryEnvelope, PlanetEnvelope
+
+# Type alias — helper functions accept either envelope (duck-typed).
+CfgLike = Union["CountryEnvelope", "PlanetEnvelope"]
+
 
 # Configuration Driven Development
 # Functions as first class objects with argument keyword capture via **kwargs
@@ -63,7 +70,7 @@ def _push_update(pipeline_run_id: str, name: str, status: str, message: str,
 # ---------------------------------------------------------------------------
 # WorldKG Enrichment
 # ---------------------------------------------------------------------------
-def enrich_worldkg_classes(cfg: CountryConfig, logger: logging.Logger) -> None:
+def enrich_worldkg_classes(cfg: CfgLike, logger: logging.Logger) -> None:
     """Populate wkg_class via Redis ontology matching """
     # Guard: skip enrichment if requested
     if getattr(cfg, "skip_enrich", False):
@@ -117,7 +124,7 @@ def enrich_worldkg_classes(cfg: CountryConfig, logger: logging.Logger) -> None:
 # Entropy Computation (v2)
 # ---------------------------------------------------------------------------
 # TODO: Review the math for this function
-def compute_entropy(cfg: CountryConfig, logger: logging.Logger) -> float:
+def compute_entropy(cfg: CfgLike, logger: logging.Logger) -> float:
     """Compute Shannon entropy of WorldKG class distribution (v2 helper)."""
     import numpy as np
     from semantic_search.services.worldkg_enrichment_service import (
@@ -171,46 +178,10 @@ def compute_entropy(cfg: CountryConfig, logger: logging.Logger) -> float:
 # GV-NLE Training (v2)
 # ---------------------------------------------------------------------------
 
-def run_gv_nle_training(cfg: CountryConfig, logger: logging.Logger) -> None:
-    """Run GV-NLE training at the country level (v2 helper)."""
-    _log(
-        logger,
-        "info",
-        "Training GV-NLE at country level",
-        country=cfg.iso,
-        region=cfg.slug,
-        poly_file=cfg.poly_path,
-        k=cfg.deepwalk_k,
-        embedding_dim=cfg.deepwalk_embedding_dim,
-        walk_length=cfg.deepwalk_walk_length,
-        num_walks=cfg.deepwalk_num_walks,
-        workers=cfg.deepwalk_workers,
-        use_gpu=cfg.deepwalk_use_gpu,
-        gpu_device=cfg.deepwalk_gpu_device,
-        buffer_deg=cfg.deepwalk_buffer_deg,
-    )
-
-    call_command(
-        "train_gv_nle",
-        region=cfg.slug,
-        poly_file=cfg.poly_path,
-        country=cfg.iso,
-        k=cfg.deepwalk_k,
-        embedding_dim=cfg.deepwalk_embedding_dim,
-        walk_length=cfg.deepwalk_walk_length,
-        num_walks=cfg.deepwalk_num_walks,
-        workers=cfg.deepwalk_workers,
-        gpu=cfg.deepwalk_use_gpu,
-        gpu_device=cfg.deepwalk_gpu_device,
-        buffer_deg=cfg.deepwalk_buffer_deg,
-        batch_size=10000,
-    )
-
-
 # ══════════════════════════════════════════════════════════════════════════
 # Planet Record
 # ══════════════════════════════════════════════════════════════════════════
-def create_planet_run_record(cfg: CountryConfig) -> None:
+def create_planet_run_record(cfg: CfgLike) -> None:
     """Create or update a PlanetSnapshot record for tracking."""
     from orchestration.models import PlanetSnapshot
     from django.utils import timezone as tz
@@ -227,7 +198,7 @@ def create_planet_run_record(cfg: CountryConfig) -> None:
     )
 
 
-def preprocess_snapshot(cfg: CountryConfig, logger: logging.Logger) -> None:
+def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
     """Generate snapshot PBF + poly file if they don't exist (v2 helper)."""
     from extraction.services.temporal_orchestrator_service import (
         TemporalOrchestratorService,
@@ -411,7 +382,7 @@ def preprocess_snapshot(cfg: CountryConfig, logger: logging.Logger) -> None:
 
 
 def _preprocess_synthetic_territory(
-    cfg: CountryConfig,
+    cfg: CfgLike,
     logger: logging.Logger,
 ) -> dict:
     """Direct extraction pipeline for synthetic non-sovereign territories (v2)."""

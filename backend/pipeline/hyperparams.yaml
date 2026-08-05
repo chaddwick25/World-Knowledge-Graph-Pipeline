@@ -1,0 +1,28 @@
+# Model hyperparameters for the WorldKG pipeline.
+# Loaded once at startup into a frozen ModelHyperparams dataclass.
+# Allows tuning without redeploying.
+
+uslp:
+  threshold: 0.7
+  top_k: 50
+  limit: 200000
+  max_heads: 50000
+  use_gpu: true
+  gpu_device: "cuda:0"
+
+deepwalk:
+  k: 50
+  embedding_dim: 100
+  walk_length: 80
+  num_walks: 10
+  workers: 26
+  use_gpu: true
+  gpu_device: "cuda:0"
+  buffer_deg: 0.45
+
+entropy:
+  min_entropy: 1.5
+  min_entropy_delta: 0.2
+
+fasttext:
+  model_path: null  # overridden by settings.FASTTEXT_MODEL_PATH
