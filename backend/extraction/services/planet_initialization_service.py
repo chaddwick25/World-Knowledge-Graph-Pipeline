@@ -126,7 +126,7 @@ class PlanetInitializationService:
         if not run_id:
             return
         try:
-            from pipeline.celery_app import _push_update
+            from pipeline.tasks.helper import _push_update
             _push_update(
                 pipeline_run_id=run_id,
                 name=name,
