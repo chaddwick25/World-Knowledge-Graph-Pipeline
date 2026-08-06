@@ -15,6 +15,8 @@ from extraction.services.extraction_service import ExtractionService
 from extraction.services.regional_path_service import normalize_country_slug, normalize_continent_slug
 from extraction.services.country_override_service import get_country_slug
 
+# TODO: the code is solid but the syntax and format is really weird and hard to read
+
 class PlanetInitializationService:
     """Foundation service that creates file structure, Wikidata alignment, and OSMWikiData primitives."""
     
