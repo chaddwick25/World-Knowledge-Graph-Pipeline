@@ -338,8 +338,9 @@ DATABASES = {
 }
 
 DATABASE_ROUTERS = [
+    'backend.database_router.ShardRouter',
     'backend.database_router.AppRouter',
-    'backend.database_router.VectorDBRouter'
+    'backend.database_router.VectorDBRouter',
 ]
 
 

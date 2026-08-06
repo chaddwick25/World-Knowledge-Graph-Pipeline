@@ -14,35 +14,69 @@ Usage:
 The decorated function's signature becomes ``def step_X(self, env: E) -> E``
 — a pure transform ``env → env'``. The task body is the data plane;
 the decorator is the control plane.
+
+The decorator owns the full seam: timing, error capture, PipelineRun
+stage updates, PipelineLogEntry writes (DB-backed structured logs), and
+WebSocket progress push. Task bodies stay pure transforms.
 """
 
 from __future__ import annotations
 
 import functools
 import logging
-from typing import Callable, Type, TypeVar
+import time
+from typing import Callable, Optional, Type, TypeVar
 
 logger = logging.getLogger("pipeline")
 
 E = TypeVar("E")
 
 
-def _log_step_start(step_name: str, step_index: float, env) -> None:
-    """Log the start of a pipeline step."""
-    run_id = getattr(env, "pipeline_run_id", None) or getattr(
-        getattr(env, "state", None), "pipeline_run_id", None
-    )
-    iso = getattr(env, "iso", None) or ""
-    logger.info("Step %s: %s [%s run_id=%s]", step_index, step_name, iso, run_id)
+def _resolve_run_id(env) -> Optional[str]:
+    """Extract pipeline_run_id from an envelope or its nested state."""
+    run_id = getattr(env, "pipeline_run_id", None)
+    if run_id:
+        return run_id
+    state = getattr(env, "state", None)
+    return getattr(state, "pipeline_run_id", None)
 
 
-def _log_step_complete(step_name: str, step_index: float, env) -> None:
-    """Log the completion of a pipeline step."""
-    run_id = getattr(env, "pipeline_run_id", None) or getattr(
-        getattr(env, "state", None), "pipeline_run_id", None
-    )
-    iso = getattr(env, "iso", None) or ""
-    logger.info("Step %s complete: %s [%s run_id=%s]", step_index, step_name, iso, run_id)
+def _extract_metrics(env) -> dict:
+    """Extract step-level metrics from the envelope for PipelineRun."""
+    metrics = {}
+    if hasattr(env, "igea_accepted"):
+        metrics["igea_accepted"] = env.igea_accepted
+    if hasattr(env, "has_subgraphs"):
+        metrics["has_subgraphs"] = env.has_subgraphs
+    if hasattr(env, "subgraphs"):
+        metrics["subgraph_count"] = len(env.subgraphs) if env.subgraphs else 0
+    return metrics
+
+
+def _update_run_stage(
+    run_id: Optional[str],
+    step_name: str,
+    started: bool = False,
+    completed: bool = False,
+    failed: bool = False,
+    metrics: Optional[dict] = None,
+) -> None:
+    """Update PipelineRun stage tracking. Never raises."""
+    if not run_id:
+        return
+    try:
+        from orchestration.models import PipelineRun
+        run = PipelineRun.objects.filter(id=run_id).first()
+        if not run:
+            return
+        if started:
+            run.start_stage(step_name)
+        elif completed:
+            run.complete_stage(step_name, metrics)
+        elif failed:
+            run.mark_failed(f"Step {step_name} failed")
+    except Exception as exc:
+        logger.warning("PipelineRun stage update failed: %s", exc)
 
 
 def pipeline_step(
@@ -65,20 +99,34 @@ def pipeline_step(
     def decorator(func: Callable[..., E]) -> Callable[..., dict]:
         @functools.wraps(func)
         def wrapper(self, config_dict: dict) -> dict:
-            # 1. Context setup (logger, validation)
+            # 1. Context setup (validation only — no file logger)
             config_dict = self.setup_pipeline_context(config_dict)
 
             # 2. Reconstruct envelope from dict
             env = envelope_cls.from_dict(config_dict)
 
-            # 3. Log start
-            _log_step_start(step_name, step_index, env)
+            # 3. Extract context
+            run_id = _resolve_run_id(env)
+            iso = getattr(env, "iso", None) or ""
+            continent = getattr(env, "continent", None) or ""
+            task_id = getattr(self.request, "id", None)
 
-            # 4. WS push: in_progress
-            from pipeline.tasks.helper import _push_update
-            run_id = getattr(env, "pipeline_run_id", None) or getattr(
-                getattr(env, "state", None), "pipeline_run_id", None
+            # 4. Initialize DB-backed logger
+            from pipeline.pipeline_logger import PipelineLogger
+            plog = PipelineLogger(
+                pipeline_run_id=run_id,
+                country_code=iso,
+                continent=continent,
             )
+
+            # 5. Log step start
+            plog.step_start(step_name, step_index, task_id)
+
+            # 6. Update PipelineRun
+            _update_run_stage(run_id, step_name, started=True)
+
+            # 7. WS push: in_progress
+            from pipeline.tasks.helper import _push_update
             _push_update(
                 pipeline_run_id=run_id,
                 name=step_name,
@@ -87,10 +135,34 @@ def pipeline_step(
                 pct=10,
             )
 
-            # 5. Run the task body (data plane)
-            result_env = func(self, env)
+            # 8. Run the task body (with timing + error capture)
+            start = time.monotonic()
+            try:
+                result_env = func(self, env)
+            except Exception as exc:
+                duration_ms = (time.monotonic() - start) * 1000
+                plog.step_error(step_name, step_index, exc, task_id)
+                _update_run_stage(run_id, step_name, started=False, failed=True)
+                _push_update(
+                    pipeline_run_id=run_id,
+                    name=step_name,
+                    status="failed",
+                    message=f"Step {step_index}: {step_name} failed: {exc}",
+                    pct=100,
+                )
+                raise
 
-            # 6. WS push: completed
+            # 9. Log step complete with timing + metrics
+            duration_ms = (time.monotonic() - start) * 1000
+            metrics = _extract_metrics(result_env)
+            plog.step_complete(step_name, step_index, duration_ms, task_id, metrics)
+
+            # 10. Update PipelineRun
+            _update_run_stage(
+                run_id, step_name, started=False, completed=True, metrics=metrics
+            )
+
+            # 11. WS push: completed
             _push_update(
                 pipeline_run_id=run_id,
                 name=step_name,
@@ -99,10 +171,7 @@ def pipeline_step(
                 pct=100,
             )
 
-            # 7. Log complete
-            _log_step_complete(step_name, step_index, result_env)
-
-            # 8. Serialize for the next task in the chain
+            # 12. Serialize for the next task in the chain
             return result_env.to_dict()
 
         return wrapper

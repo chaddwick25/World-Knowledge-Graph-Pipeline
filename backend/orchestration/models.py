@@ -537,6 +537,75 @@ class PipelineRun(models.Model):
         return f"{self.country_name} - {self.pipeline_type} ({self.get_status_display()})"
 
 
+class PipelineLogEntry(models.Model):
+    """Structured, queryable log entry for a pipeline run.
+
+    Replaces the file-based WatchedFileHandler logging. Each entry is a
+    single log line (step start, step complete, warning, error) with
+    optional structured metadata.
+
+    When DB sharding lands, this model routes to the shard DB via
+    StorageTarget.db_alias (see ShardRouter in database_router.py).
+    """
+
+    class Level(models.TextChoices):
+        DEBUG = 'DEBUG', 'Debug'
+        INFO = 'INFO', 'Info'
+        WARNING = 'WARNING', 'Warning'
+        ERROR = 'ERROR', 'Error'
+        CRITICAL = 'CRITICAL', 'Critical'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # FK is named `run` (auto-column `run_id`) so the denormalized
+    # `pipeline_run_id` UUID field below can coexist for shard routing.
+    run = models.ForeignKey(
+        PipelineRun,
+        on_delete=models.CASCADE,
+        related_name='log_entries',
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    pipeline_run_id = models.UUIDField(
+        null=True, blank=True, db_index=True,
+        help_text="Denormalized for shard routing without JOIN",
+    )
+    # Step context
+    step_name = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    step_index = models.FloatField(null=True, blank=True)
+    # Country context (denormalized for shard routing)
+    country_code = models.CharField(max_length=3, null=True, blank=True, db_index=True)
+    continent = models.CharField(max_length=50, null=True, blank=True, db_index=True)
+    # Log content
+    level = models.CharField(
+        max_length=10, choices=Level.choices, default=Level.INFO, db_index=True
+    )
+    message = models.TextField()
+    metadata = models.JSONField(
+        default=dict, blank=True,
+        help_text="Structured metadata: duration_ms, entity_count, error_traceback, etc."
+    )
+    # Celery task linkage
+    task_id = models.CharField(
+        max_length=255, null=True, blank=True, db_index=True,
+        help_text="Celery task ID (links to TaskResult.task_id)"
+    )
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'pipeline_log_entries'
+        ordering = ['timestamp']
+        indexes = [
+            models.Index(fields=['pipeline_run_id', 'timestamp']),
+            models.Index(fields=['country_code', 'timestamp']),
+            models.Index(fields=['level', 'timestamp']),
+            models.Index(fields=['step_name', 'timestamp']),
+        ]
+
+    def __str__(self):
+        return f"[{self.level}] {self.step_name or '-'}: {self.message[:80]}"
+
+
 class PipelineAsset(models.Model):
     """
     Track assets generated during pipeline execution with lineage.

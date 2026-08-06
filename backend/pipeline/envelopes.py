@@ -3,8 +3,9 @@
 The envelope is the **message** passed between tasks. It carries *addresses*
 of DB data (snapshot_id, country_code) but never the data itself.
 
-Structure:
-    CountryEnvelope (frozen except state)
+Two envelope types, one per pipeline flavor:
+
+    CountryEnvelope (frozen except state) — country pipeline (Steps 1–6)
     ├── identity: CountryIdentity (frozen) — iso, name, slug, continent, qids
     ├── paths: CountryPaths (frozen) — resolved filesystem paths
     ├── hyperparams: ModelHyperparams (frozen, from YAML) — USLP/DeepWalk/entropy
@@ -12,10 +13,24 @@ Structure:
     ├── state: CountryRunState (mutable) — pipeline_run_id, igea_accepted, etc.
     └── storage: StorageTarget (frozen) — which DB shard to query
 
+    PlanetEnvelope (frozen except state) — planet-init pipeline (Steps 0–0.97)
+    ├── pipeline_run_id: str
+    ├── pbf_path: Optional[str] — planet PBF path
+    ├── extract_continents: bool — whether to run continent extraction
+    └── state: PlanetRunState (mutable) — snapshot_date, continents_extracted
+
+    PlanetEnvelope is simpler than CountryEnvelope: planet-init has no country
+    identity, no per-country paths, no hyperparams, no subgraphs, and no
+    StorageTarget (always writes to `default`). It exposes the same `iso` /
+    `name` / `slug` / `continent` / `snapshot_date` accessors as
+    CountryEnvelope so the @pipeline_step decorator and task bodies can treat
+    both envelopes uniformly (duck-typed).
+
 Serialization:
-    to_dict() serializes identity + paths + state + subgraphs + storage.
-    Hyperparams are NOT serialized — they're a named constant re-attached
-    at from_dict() time.
+    to_dict() serializes identity + paths + state + subgraphs + storage
+    (CountryEnvelope) or pipeline_run_id + pbf_path + extract_continents +
+    state (PlanetEnvelope). Hyperparams are NOT serialized — they're a named
+    constant re-attached at from_dict() time.
 
 Compatibility:
     to_dict() output uses the SAME key names as the legacy CountryConfig.to_dict()
@@ -761,9 +776,21 @@ class PlanetRunState:
 
 @dataclasses.dataclass(frozen=True)
 class PlanetEnvelope:
-    """The message passed between planet-init Celery tasks.
+    """The message passed between planet-init Celery tasks (Steps 0–0.97).
 
-    Simpler than CountryEnvelope — planet-init doesn't have a country identity.
+    Simpler than CountryEnvelope — planet-init has no country identity, no
+    per-country paths, no hyperparams, no subgraphs, and no StorageTarget
+    (always writes to `default`).
+
+    Fields:
+        pipeline_run_id: UUID of the PipelineRun row.
+        pbf_path: Path to the planet OSM PBF file (or None to use default).
+        extract_continents: Whether Step 0.5 (continent extraction) runs.
+        state: PlanetRunState (mutable) — snapshot_date, continents_extracted.
+
+    Duck-typing: exposes `iso` ("PL"), `name` ("Planet"), `slug` ("planet"),
+    `continent` ("planet"), and `snapshot_date` so the @pipeline_step decorator
+    and task bodies can treat CountryEnvelope and PlanetEnvelope uniformly.
     """
     pipeline_run_id: str
     pbf_path: Optional[str] = None

@@ -1,18 +1,12 @@
-"""
-WorldKG Pipeline v2 — Celery App Definition
-This file is the Celery application entry point (called via -A pipeline.celery_app).
-"""
+"""WorldKG Pipeline v2 — Celery app entry point (``-A pipeline.celery_app``)."""
 
 from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path
 
-# --- Celery App Definition ---
-# NOTE: This file is imported by Celery CLI via \`-A pipeline.celery_app\`.
-# The app, PipelineTask base class, and logging helpers must be defined
-# INLINE here (not imported from self) to avoid circular imports.
-
+# --- Celery app (defined inline to avoid circular imports) ---
 try:
     from celery import Celery, Task as CeleryTask
     CELERY_AVAILABLE = True
@@ -32,86 +26,79 @@ else:
     celery_app = None  # type: ignore
     _TaskBase = object
 
-"""Logger — consolidated per-run log files + terminal output.
-
-The pipeline logger writes to both:
-  1. A per-run file (one file per pipeline_run_id, all steps append)
-  2. The terminal / stdout (Celery worker output)
-
-All pipeline modules import ``get_pipeline_logger()`` and use it directly.
-"""
+# --- Pipeline logger (console + per-run file) ---
+# DB-backed structured logs live in pipeline_logger.py (PipelineLogEntry);
+# this logger drives the human-readable per-run .log file + console output.
 logger = logging.getLogger("pipeline")
 logger.setLevel(logging.INFO)
 
-# Track the log file per run ID — ensures all Celery tasks in the same
-# run append to the same file, even across different worker processes.
-_log_file_registry: dict[str, str] = {}
+_log_file_registry: dict[str, str] = {}  # run_id -> log path (cross-process cache)
 
-# Console handler (stdout/stderr) — attached once at module level.
 if not logger.handlers:
-    _console_handler = logging.StreamHandler()
-    _console_handler.setLevel(logging.INFO)
-    _console_handler.setFormatter(
-        logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    )
-    logger.addHandler(_console_handler)
+    _console = logging.StreamHandler()
+    _console.setLevel(logging.INFO)
+    _console.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(_console)
 
-# TODO: refactor this 
+
+def _remove_file_handlers(log: logging.Logger) -> None:
+    """Remove + close all file handlers (baseFilename attr) from a logger."""
+    for h in list(log.handlers):
+        if hasattr(h, 'baseFilename'):
+            log.removeHandler(h)
+            try:
+                h.close()
+            except Exception:
+                pass
+
+
 def _run_log_path(pipeline_run_id: str, country_iso: str) -> Path:
-    """Determine a deterministic log file path for a given run ID.
+    """Deterministic per-run log path.
 
-    Uses the ``PipelineRun.queued_at`` timestamp stored in the DB at dispatch
-    time, so ALL Celery worker processes (each in its own memory space) resolve
-    to the SAME human-readable filename.
-
-    Falls back to ``datetime.now()`` if the DB record is not yet available
-    (e.g., during the dispatch call itself).
+    Uses ``PipelineRun.created_at`` (auto_now_add, UTC, always available right
+    after ``objects.create()``) so the backend (canvas.py) and all Celery
+    workers resolve to the SAME filename. ``queued_at`` is NOT used because it
+    is NULL until after ``apply_async()``, which caused a local-time fallback
+    that produced a different filename than the worker's UTC-based one.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     log_dir = Path(__file__).resolve().parent.parent / "logs" / "pipeline"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     run_short = (pipeline_run_id or "unknown")[:8]
     country_tag = (country_iso or "XX").upper()
 
-    # Use the queued_at timestamp from PipelineRun so all workers agree
     ts = None
     if pipeline_run_id:
         try:
             from orchestration.models import PipelineRun
-            run = PipelineRun.objects.filter(id=pipeline_run_id).only("queued_at").first()
-            if run and run.queued_at:
-                ts = run.queued_at.strftime('%Y-%m-%d_%H-%M-%S')
+            run = PipelineRun.objects.filter(id=pipeline_run_id).only("created_at").first()
+            if run and run.created_at:
+                ts = run.created_at.strftime('%Y-%m-%d_%H-%M-%S')
         except Exception:
             pass
-
     if not ts:
-        ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        ts = datetime.now(timezone.utc).strftime('%Y-%m-%d_%H-%M-%S')
 
     log_file = log_dir / f"pipeline_{country_tag}_{run_short}_{ts}.log"
-
-    # Track in local registry for early return in setup_pipeline_run_logger
     if pipeline_run_id not in _log_file_registry:
         _log_file_registry[pipeline_run_id] = str(log_file)
-
     return log_file
 
 
 def setup_pipeline_run_logger(pipeline_run_id: str, country_iso: str = "") -> str:
-    """Attach a file handler to the pipeline logger for a specific run.
+    """Attach a per-run WatchedFileHandler to the pipeline + root loggers.
 
-    Idempotent per ``pipeline_run_id`` — only creates the file handler once.
-    Subsequent calls re-use the same log file. This ensures all steps of a
-    single pipeline run (which may execute in different Celery worker processes)
-    share one consolidated log file.
+    Idempotent per run: re-attaching for the same run is a no-op. Attaching for
+    a new run removes the previous run's file handlers first (prevents cross-run
+    contamination). Returns the absolute log file path.
 
-    Also ensures the console handler is present so all log messages appear
-    in the terminal as well.
-
-    Returns the absolute path to the log file.
+    DB-backed logging is owned by the @pipeline_step decorator via
+    PipelineLogger; this is the human-readable companion track.
     """
-    log_file = _run_log_path(pipeline_run_id, country_iso)
-    log_file_str = str(log_file)
+    from logging.handlers import WatchedFileHandler
+
+    log_file_str = str(_run_log_path(pipeline_run_id, country_iso))
 
     # Ensure console handler is present (Celery workers may strip it)
     has_console = any(
@@ -125,81 +112,50 @@ def setup_pipeline_run_logger(pipeline_run_id: str, country_iso: str = "") -> st
         ch.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         logger.addHandler(ch)
 
-    # If we already have a file handler for this exact file, skip
-    for h in logger.handlers:
-        # Check by class name to avoid importing logging.handlers for cross-process refs
-        if hasattr(h, 'baseFilename'):
-            if h.baseFilename == log_file_str:
-                return log_file_str
+    # Already attached for this file? No-op.
+    if any(hasattr(h, 'baseFilename') and h.baseFilename == log_file_str for h in logger.handlers):
+        return log_file_str
 
-    # Attach a new file handler for this run's file.
-    # Use WatchedFileHandler (not RotatingFileHandler) because multiple Celery
-    # worker processes may write to the same log file concurrently.
-    # WatchedFileHandler re-opens the file if it's rotated externally, and
-    # avoids the cross-process locking issues of RotatingFileHandler.
-    from logging.handlers import WatchedFileHandler
-    file_handler = WatchedFileHandler(log_file_str)
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(
-        logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    )
-    logger.addHandler(file_handler)
+    # Remove previous run's file handler(s) to prevent cross-run contamination.
+    _remove_file_handlers(logger)
 
+    # WatchedFileHandler: cross-process safe (re-opens on external rotation,
+    # no RotatingFileHandler locking issues).
+    fh = WatchedFileHandler(log_file_str)
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(fh)
+
+    # Stop pipeline -> root propagation: otherwise each pipeline message is
+    # written by both the pipeline handler and the root handler below (double).
+    logger.propagate = False
     logger.info("Pipeline run log initialized: %s", log_file_str)
 
-    # Also capture Celery's own log messages (task received/succeeded/failed)
-    # into the same file. Celery logs through the root logger, not 'pipeline'.
+    # Also capture Celery/Django messages (root logger) into the same file.
     _root = logging.getLogger()
-    _already = False
-    for h in _root.handlers:
-        if hasattr(h, 'baseFilename') and h.baseFilename == log_file_str:
-            _already = True
-            break
-    if not _already:
-        from logging.handlers import WatchedFileHandler
-        root_fh = WatchedFileHandler(log_file_str)
-        root_fh.setLevel(logging.INFO)
-        root_fh.setFormatter(
-            logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        )
-        _root.addHandler(root_fh)
+    _remove_file_handlers(_root)
+    root_fh = WatchedFileHandler(log_file_str)
+    root_fh.setLevel(logging.INFO)
+    root_fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    _root.addHandler(root_fh)
 
     return log_file_str
 
 
 class PipelineTask(_TaskBase):
-    """Base class for pipeline Celery tasks.
-    
-    When Celery is available, inherits from celery.Task to provide
-    the required task protocol (bind, apply_async, etc.).
-    When Celery is unavailable, acts as a plain mixin for eager/sync mode.
-    """
-    # Celery Task protocol stubs (used when CELERY_AVAILABLE=False)
-    # When Celery IS available, @celery_app.task(base=PipelineTask)
-    # dynamically creates a proper Task subclass via Celery's metaclass.
-    # The 'bind' issue below only occurs if PipelineTask is NOT a Task subclass.
-    # We handle this by conditionally inheriting.
-    # Make this an abstract Task when Celery is available
-    # This allows @celery_app.task(base=PipelineTask) to work correctly
-    # by providing the Task superclass with the 'bind' method.
-    
+    """Base class for pipeline Celery tasks (celery.Task when Celery is available,
+    plain mixin for eager/sync mode otherwise)."""
+
     def setup_pipeline_context(self, config_dict: dict) -> dict:
+        """Validate the config dict and attach the per-run file handler."""
         if not isinstance(config_dict, dict):
             raise TypeError(
                 f"Expected dict for config_dict, got {type(config_dict).__name__}"
             )
-        required = ["iso", "name", "continent", "slug"]
-        for key in required:
+        for key in ("iso", "name", "continent", "slug"):
             if key not in config_dict:
                 raise ValueError(f"Missing required config key: {key}")
-        # Ensure a per-run file handler is attached (idempotent)
         run_id = config_dict.get("pipeline_run_id", "")
-        iso = config_dict.get("iso", "")
         if run_id:
-            setup_pipeline_run_logger(
-                pipeline_run_id=run_id,
-                country_iso=iso,
-            )
+            setup_pipeline_run_logger(run_id, config_dict.get("iso", ""))
         return config_dict
-
-

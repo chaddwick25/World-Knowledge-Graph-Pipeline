@@ -1,3 +1,37 @@
+class ShardRouter:
+    """Route pipeline models to the correct shard DB.
+
+    Currently a no-op (returns None → falls through to AppRouter →
+    'default'). When sharding lands, this router reads
+    StorageTarget.db_alias from the envelope context and routes
+    PipelineLogEntry / PipelineRun writes to the shard DB.
+    """
+
+    shard_models = {'PipelineLogEntry', 'PipelineRun'}
+
+    def db_for_read(self, model, **hints):
+        if model.__name__ in self.shard_models:
+            db_alias = hints.get('db_alias')
+            if db_alias:
+                return db_alias
+        return None
+
+    def db_for_write(self, model, **hints):
+        if model.__name__ in self.shard_models:
+            db_alias = hints.get('db_alias')
+            if db_alias:
+                return db_alias
+        return None
+
+    def allow_relation(self, obj1, obj2, **hints):
+        return None
+
+    def allow_migrate(self, db, app_label, model_name=None, **hints):
+        if model_name in ('pipelinelogentry', 'pipelinerun'):
+            return db == 'default'  # Migrations always on default
+        return None
+
+
 class AppRouter:
     """Route database operations for extraction, analysis, orchestration apps."""
     
