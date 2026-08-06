@@ -7,14 +7,13 @@ so the frontend UI updates.
 
 from __future__ import annotations
 from datetime import datetime, timezone
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
 import logging
 from orchestration.models import PipelineRun
 from pipeline.celery_app import (
     pipeline_task,
     PipelineTask,
 )
+from pipeline.tasks.helper import _send_pipeline_complete
 
 logger = logging.getLogger("pipeline")
 
@@ -50,28 +49,6 @@ def _finalize_planet_init_chain(self, previous_result, pipeline_run_id: str) -> 
             pipeline_run_id,
         )
 
-    # Send pipeline_complete WebSocket message
-    try:
-        channel_layer = get_channel_layer()
-        if channel_layer is not None:
-            async_to_sync(channel_layer.group_send)(
-                f"pipeline_{pipeline_run_id}",
-                {
-                    "type": "pipeline_complete",
-                    "session_id": pipeline_run_id,
-                    "status": "completed",
-                    "error": "",
-                },
-            )
-            logger.info(
-                "Sent pipeline_complete WS for %s",
-                pipeline_run_id,
-            )
-    except Exception as exc:
-        logger.warning(
-            "Failed to send pipeline_complete WS for %s: %s",
-            pipeline_run_id,
-            exc,
-        )
+    _send_pipeline_complete(pipeline_run_id, status="completed")
 
     return pipeline_run_id

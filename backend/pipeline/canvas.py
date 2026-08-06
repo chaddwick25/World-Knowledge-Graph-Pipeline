@@ -1,5 +1,5 @@
 """
-WorldKG Pipeline v2 — Celery Canvas Control Plane
+WorldKG Pipeline v3 — Celery Canvas Control Plane
 Pipeline steps (0-indexed):
     0. Initialize Planet          (infrastructure, runs once)
     0.5 Initialize Continents     (extract continent PBFs from planet)
@@ -23,13 +23,15 @@ planet initialization. They populate the DB structure so the frontend can
 show available countries and their status without requiring country PBFs.
 """
 
+# TODO: canvas might actually benefit from lazy loading the imports refactor imports below
+
 from __future__ import annotations
 import dataclasses
 import logging
 from uuid import uuid4
 from typing import Optional
 from datetime import datetime, timezone
-from pipeline.tasks.helper import _push_update
+from pipeline.tasks.helper import _push_update, _send_pipeline_complete
 from pipeline.exceptions import PipelineDispatchError, PipelineAlreadyRunning
 from pipeline.celery_app import celery_app
 from pipeline.pipeline_logger import setup_pipeline_run_logger
@@ -37,8 +39,6 @@ from celery import chord, group
 
 
 logger = logging.getLogger("pipeline")
-
-# Helper: convert kwargs to f-string suffix for stdlib logging
 def _log(logger, level, msg, **kwargs):
     extra = " ".join(f"{k}={v}" for k, v in kwargs.items() if v is not None)
     getattr(logger, level)(f"{msg} [{extra}]" if extra else msg)
@@ -152,7 +152,7 @@ def _check_existing_run(iso: str) -> None:
 # Pipeline Entry Points
 # ══════════════════════════════════════════════════════════════════════════
 def _get_step_tasks():
-    """Lazy-import Celery tasks to avoid import errors when Celery is missing."""
+    """Lazy-import Celery tasks to avoid circular imports at module load."""
     from pipeline.tasks import (
         step_0_initialize_planet,
         step_0b_initialize_continent,
@@ -417,10 +417,167 @@ def run_continent_initialization(
 
     return cfg.pipeline_run_id
 
-# TODO: Clean up this function
 # ══════════════════════════════════════════════════════════════════════════
 # Country-Level Pipeline
 # ══════════════════════════════════════════════════════════════════════════
+
+# Map 1-based step index to canonical name matching AppStateService.
+# Used by the eager path to label steps in logs/WS updates.
+_STEP_NAMES = {
+    1: 'embed_osm_entities',
+    2: 'harvest_wikidata',
+    3: 'run_igea',
+    4: 'predict_spatial_links',
+    5: 'train_gv_nle',
+    6: 'mark_search_ready',
+}
+
+
+def _mark_pipeline_failed(run, exc, cfg) -> None:
+    """Mark a PipelineRun as FAILED + log + send pipeline_complete WS.
+
+    Used by the eager path's outer except block. The on_failure hook handles
+    per-step failures; this handles the pipeline-level failure wrapper.
+    """
+    from orchestration.models import PipelineRun
+    run.status = PipelineRun.PipelineStatus.FAILED
+    run.error_message = str(exc)
+    run.completed_at = datetime.now(timezone.utc)
+    run.save(update_fields=["status", "error_message", "completed_at"])
+
+    _log(logger, "error",
+        "Pipeline FAILED",
+        country=cfg.iso,
+        error=str(exc),
+        pipeline_run_id=cfg.pipeline_run_id,
+    )
+    _send_pipeline_complete(
+        cfg.pipeline_run_id, status="failed",
+        error=str(exc), country=cfg.iso,
+    )
+
+
+def _run_eager(cfg, run, steps) -> None:
+    """Execute pipeline steps synchronously (eager mode).
+
+    Calls each task directly via ``task(config_dict)``. Stage tracking
+    (PipelineRun.start_stage / complete_stage / mark_failed) is owned by
+    the ``@pipeline_step`` decorator + on_success/on_failure hooks — this
+    function just calls the tasks and logs the orchestration-level view.
+    """
+    from orchestration.models import PipelineRun
+
+    _log(logger, "info",
+        "Eager mode detected — executing steps synchronously",
+        country=cfg.iso,
+        pipeline_run_id=cfg.pipeline_run_id,
+    )
+    # TODO: Reuse this pattern for the DAG implementation
+    tasks_list = [steps[1], steps[2], steps[3], steps[4], steps[5], steps[6]]
+    config_dict = cfg.to_dict()
+
+    # Mark as RUNNING before starting (eager runs synchronously)
+    run.status = PipelineRun.PipelineStatus.RUNNING
+    run.queued_at = datetime.now(timezone.utc)
+    run.started_at = datetime.now(timezone.utc)
+    run.save(update_fields=["status", "queued_at", "started_at"])
+
+    def _run_sync_step(name, task, config):
+        _log(logger, "info",
+            f"Starting step {name}",
+            country=cfg.iso,
+            pipeline_run_id=cfg.pipeline_run_id,
+        )
+        try:
+            result = task(config)
+            _log(logger, "info",
+                f"Step {name} completed",
+                country=cfg.iso,
+                pipeline_run_id=cfg.pipeline_run_id,
+            )
+            return result
+        except Exception as e:
+            _log(logger, "error",
+                f"Step {name} FAILED: {e}",
+                country=cfg.iso,
+                pipeline_run_id=cfg.pipeline_run_id,
+            )
+            raise
+
+    try:
+        for i, task in enumerate(tasks_list, 1):
+            step_name = _STEP_NAMES.get(i, f'step_{i}')
+            config_dict = _run_sync_step(step_name, task, config_dict)
+
+        run.status = PipelineRun.PipelineStatus.COMPLETED
+        run.completed_at = datetime.now(timezone.utc)
+        run.save(update_fields=["status", "completed_at"])
+
+        _log(logger, "info",
+            "Pipeline completed",
+            country=cfg.iso,
+            pipeline_run_id=cfg.pipeline_run_id,
+        )
+        _push_update(
+            pipeline_run_id=cfg.pipeline_run_id,
+            name="step_6_mark_search_ready",
+            status="completed",
+            message="Pipeline completed successfully",
+            pct=100,
+        )
+        _send_pipeline_complete(
+            cfg.pipeline_run_id, status="completed", country=cfg.iso,
+        )
+    except Exception as exc:
+        _mark_pipeline_failed(run, exc, cfg)
+
+
+def _run_async(cfg, run, steps) -> None:
+    """Execute pipeline steps via Celery Canvas (normal async mode).
+
+    Step 4 uses a chord for parallel subgraph USLP when subgraphs exist.
+    For small territories (no subgraphs), the chord still works with a
+    single country-level USLP task. The chord callback receives the
+    aggregated list of subgraph results; we wrap it with .s() and pass
+    the config_dict so the callback can reconstruct CountryEnvelope for
+    logging and chain continuation.
+    """
+    from celery import chain
+    from orchestration.models import PipelineRun
+
+    uslp_header = _get_subgraph_uslp_tasks(cfg)
+    uslp_callback = steps[4.5].s(cfg.to_dict())  # step_4b_finalize_subgraph_uslp
+    uslp_chord = chord(uslp_header, uslp_callback)
+
+    # Build chain — all tasks call _push_update internally,
+    # which now sends via Redis ChannelLayer (cross-process).
+    canvas = chain(
+        steps[1].s(cfg.to_dict()),
+        steps[2].s(),
+        steps[3].s(),
+        uslp_chord,
+        steps[5].s(),
+        steps[6].s(),
+    )
+
+    # Dispatch to Celery FIRST, then mark as RUNNING.
+    # This eliminates the PENDING -> RUNNING race window where Celery
+    # could pick up the task before the DB is updated.
+    result = canvas.apply_async(task_id=cfg.pipeline_run_id)
+
+    run.status = PipelineRun.PipelineStatus.RUNNING
+    run.queued_at = datetime.now(timezone.utc)
+    run.started_at = datetime.now(timezone.utc)
+    run.save(update_fields=["status", "queued_at", "started_at"])
+
+    _log(logger, "info",
+        "Pipeline dispatched",
+        country=cfg.iso,
+        pipeline_run_id=cfg.pipeline_run_id,
+        task_id=result.id,
+    )
+
+
 def run_worldkg_pipeline(
     iso: str,
     snapshot_date: Optional[str] = None,
@@ -431,7 +588,7 @@ def run_worldkg_pipeline(
 
     Small territories like Monaco (has_subgraphs=False) automatically skip
     the subgraph fan-out and run at country level only — this is built into
-    the task implementations (see tasks.py Step 1 and Step 5).
+    the task implementations (see step_1_embed.py and step_5_nle.py).
 
     Args:
         iso: ISO 3166-1 alpha-2 code (e.g., "MZ", "GB", "CA")
@@ -443,8 +600,6 @@ def run_worldkg_pipeline(
         pipeline_run_id (UUID string) — use this to track progress via
         PipelineRun model or Celery result backend.
     """
-    from celery import chain
-
     # ── 0. Concurrency guard ──
     # Reject duplicate runs BEFORE creating a new PipelineRun
     _check_existing_run(iso)
@@ -452,12 +607,10 @@ def run_worldkg_pipeline(
     # ── 1. Build centralized config ─────────────────────────────────────
     from pipeline.envelopes import CountryEnvelope
     cfg = CountryEnvelope.from_db(iso, snapshot_date=snapshot_date)
-
     if skip_entropy_gate:
         # Override frozen hyperparams to disable the entropy gate
         new_hp = dataclasses.replace(cfg.hyperparams, min_entropy=0.0)
         cfg = dataclasses.replace(cfg, hyperparams=new_hp)
-
     if skip_enrich:
         cfg = cfg.with_state(skip_enrich=True)
 
@@ -475,7 +628,6 @@ def run_worldkg_pipeline(
 
     # ── 2. Create PipelineRun (DB tracking) ────────────────────────────
     from orchestration.models import PipelineRun
-
     run = PipelineRun.objects.create(
         country_code=cfg.iso,
         country_name=cfg.name,
@@ -484,15 +636,12 @@ def run_worldkg_pipeline(
         configuration=cfg.to_dict(),
     )
     cfg = cfg.with_state(pipeline_run_id=str(run.id))
-
     # Set up per-run log file
     setup_pipeline_run_logger(
         pipeline_run_id=cfg.pipeline_run_id,
         country_iso=cfg.iso,
     )
-
     steps = _get_step_tasks()
-
     _log(logger, "info",
         "Starting WorldKG pipeline",
         country=cfg.iso,
@@ -505,176 +654,13 @@ def run_worldkg_pipeline(
     )
 
     # ── 3. Execute with tracking ────────────────────────────────────────
-    # Check if we're in eager/sync mode — use direct task calls (reliable)
-    # vs Celery Canvas chain (which can hang in eager mode).
+    # Eager mode: direct task calls (reliable). Async: Celery Canvas chain.
     eager = getattr(celery_app.conf, 'task_always_eager', False)
 
     if eager:
-        _log(logger, "info",
-            "Eager mode detected — executing steps synchronously",
-            country=cfg.iso,
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-        config_dict = cfg.to_dict()
-        tasks_list = [steps[1], steps[2], steps[3], steps[4], steps[5], steps[6]]
-
-        # Mark as RUNNING before starting (eager runs synchronously)
-        run.status = PipelineRun.PipelineStatus.RUNNING
-        run.queued_at = datetime.now(timezone.utc)
-        run.started_at = datetime.now(timezone.utc)
-        run.save(update_fields=["status", "queued_at", "started_at"])
-
-        def _run_sync_step(name, task, config):
-            _log(logger, "info",
-                f"Starting step {name}",
-                country=cfg.iso,
-                pipeline_run_id=cfg.pipeline_run_id,
-            )
-            # Stage tracking (PipelineRun.start_stage / complete_stage / mark_failed)
-            # is owned by the @pipeline_step decorator + on_success/on_failure hooks.
-            # This function just calls the task and logs the orchestration-level view.
-            try:
-                result = task(config)
-                _log(logger, "info",
-                    f"Step {name} completed",
-                    country=cfg.iso,
-                    pipeline_run_id=cfg.pipeline_run_id,
-                )
-                return result
-            except Exception as e:
-                _log(logger, "error",
-                    f"Step {name} FAILED: {e}",
-                    country=cfg.iso,
-                    pipeline_run_id=cfg.pipeline_run_id,
-                )
-                raise
-
-        try:
-            # Map 1-based step index to canonical name matching AppStateService
-            _STEP_NAMES = {
-                1: 'embed_osm_entities',
-                2: 'harvest_wikidata',
-                3: 'run_igea',
-                4: 'predict_spatial_links',
-                5: 'train_gv_nle',
-                6: 'mark_search_ready',
-            }
-            for i, task in enumerate(tasks_list, 1):
-                step_name = _STEP_NAMES.get(i, f'step_{i}')
-                config_dict = _run_sync_step(step_name, task, config_dict)
-
-            run.status = PipelineRun.PipelineStatus.COMPLETED
-            run.completed_at = datetime.now(timezone.utc)
-            run.save(update_fields=["status", "completed_at"])
-
-            _log(logger, "info",
-                "Pipeline completed",
-                country=cfg.iso,
-                pipeline_run_id=cfg.pipeline_run_id,
-            )
-
-            _push_update(
-                pipeline_run_id=cfg.pipeline_run_id,
-                name="step_6_mark_search_ready",
-                status="completed",
-                message="Pipeline completed successfully",
-                pct=100,
-            )
-
-            # Notify WebSocket consumers that the pipeline is done
-            try:
-                from channels.layers import get_channel_layer
-                from asgiref.sync import async_to_sync
-                channel_layer = get_channel_layer()
-                if channel_layer is not None:
-                    async_to_sync(channel_layer.group_send)(
-                        f"pipeline_{cfg.pipeline_run_id}",
-                        {
-                            "type": "pipeline_complete",
-                            "session_id": str(cfg.pipeline_run_id),
-                            "status": "completed",
-                            "error": "",
-                        },
-                    )
-            except Exception as exc:
-                _log(logger, "warning",
-                    "Failed to send pipeline_complete WS message",
-                    country=cfg.iso,
-                    error=str(exc),
-                )
-        except Exception as exc:
-            run.status = PipelineRun.PipelineStatus.FAILED
-            run.error_message = str(exc)
-            run.completed_at = datetime.now(timezone.utc)
-            run.save(update_fields=["status", "error_message", "completed_at"])
-
-            _log(logger, "error",
-                "Pipeline FAILED",
-                country=cfg.iso,
-                error=str(exc),
-                pipeline_run_id=cfg.pipeline_run_id,
-            )
-
-            try:
-                from channels.layers import get_channel_layer
-                from asgiref.sync import async_to_sync
-                channel_layer = get_channel_layer()
-                if channel_layer is not None:
-                    async_to_sync(channel_layer.group_send)(
-                        f"pipeline_{cfg.pipeline_run_id}",
-                        {
-                            "type": "pipeline_complete",
-                            "session_id": str(cfg.pipeline_run_id),
-                            "status": "failed",
-                            "error": str(exc),
-                        },
-                    )
-            except Exception as exc2:
-                _log(logger, "warning",
-                    "Failed to send pipeline_complete WS message",
-                    country=cfg.iso,
-                    error=str(exc2),
-                )
-
+        _run_eager(cfg, run, steps)
     else:
-        # Normal async Celery Canvas execution
-        # Step 4 uses a chord for parallel subgraph USLP when subgraphs exist.
-        # For small territories (no subgraphs), the chord still works with a
-        # single country-level USLP task.
-        # The chord callback receives the aggregated list of subgraph results;
-        # we wrap it with .s() and pass the config_dict so the callback can
-        # reconstruct CountryEnvelope for logging and chain continuation.
-        uslp_header = _get_subgraph_uslp_tasks(cfg)
-        uslp_callback = steps[4.5].s(cfg.to_dict())  # step_4b_finalize_subgraph_uslp
-        uslp_chord = chord(uslp_header, uslp_callback)
-
-        # Build chain — all tasks call _push_update internally,
-        # which now sends via Redis ChannelLayer (cross-process).
-        canvas = chain(
-            steps[1].s(cfg.to_dict()),
-            steps[2].s(),
-            steps[3].s(),
-            uslp_chord,
-            steps[5].s(),
-            steps[6].s(),
-        )
-
-        # Dispatch to Celery FIRST, then mark as RUNNING.
-        # This eliminates the PENDING -> RUNNING race window where Celery
-        # could pick up the task before the DB is updated.
-        result = canvas.apply_async(task_id=cfg.pipeline_run_id)
-
-        run.status = PipelineRun.PipelineStatus.RUNNING
-        run.queued_at = datetime.now(timezone.utc)
-        run.started_at = datetime.now(timezone.utc)
-        run.save(update_fields=["status", "queued_at", "started_at"])
-
-        _log(logger, "info",
-            "Pipeline dispatched",
-            country=cfg.iso,
-            pipeline_run_id=cfg.pipeline_run_id,
-            task_id=result.id,
-        )
+        _run_async(cfg, run, steps)
 
     return cfg.pipeline_run_id
 
@@ -684,14 +670,31 @@ def run_pipeline_stage(
     stage: int,
     snapshot_date: Optional[str] = None,
 ) -> str:
-    """Run a single pipeline stage independently (for debugging / resume)."""
+    """Run a single pipeline stage independently (for debugging / resume).
+
+    Creates a PipelineRun record (pipeline_type="single_stage") so the run
+    is tracked in the DB and visible in the frontend, consistent with
+    ``run_worldkg_pipeline``.
+    """
+    # TODO: might need to pass the config dict instead to support Agentic related envelopes(new type)
     from pipeline.envelopes import CountryEnvelope
+    from orchestration.models import PipelineRun
+
     cfg = CountryEnvelope.from_db(iso, snapshot_date=snapshot_date)
     steps = _get_step_tasks()
     task = steps.get(stage)
     if not task:
         raise ValueError(f"Invalid stage: {stage}. Must be 0–5, 0.5.")
 
+    # Create a PipelineRun for tracking (consistent with run_worldkg_pipeline)
+    run = PipelineRun.objects.create(
+        country_code=cfg.iso,
+        country_name=cfg.name,
+        pipeline_type="single_stage",
+        status=PipelineRun.PipelineStatus.PENDING,
+        configuration={"stage": stage, **cfg.to_dict()},
+    )
+    cfg = cfg.with_state(pipeline_run_id=str(run.id))
     # Set up per-run log file
     setup_pipeline_run_logger(
         pipeline_run_id=cfg.pipeline_run_id,
@@ -706,4 +709,8 @@ def run_pipeline_stage(
         kwargs={"config_dict": cfg.to_dict()},
         task_id=cfg.pipeline_run_id,
     )
+    run.status = PipelineRun.PipelineStatus.RUNNING
+    run.queued_at = datetime.now(timezone.utc)
+    run.started_at = datetime.now(timezone.utc)
+    run.save(update_fields=["status", "queued_at", "started_at"])
     return result.id

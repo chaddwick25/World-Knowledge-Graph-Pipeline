@@ -1,4 +1,4 @@
-"""WorldKG Pipeline v2 — Celery app entry point (``-A pipeline.celery_app``).
+"""WorldKG Pipeline v3 — Celery app entry point (``-A pipeline.celery_app``).
 
 This module owns ONLY the Celery app + ``PipelineTask`` (lifecycle hooks) +
 ``pipeline_task`` decorator + Celery signal connections. All logging
@@ -15,7 +15,6 @@ there is no import guard or availability flag. Task files use the
 """
 
 from __future__ import annotations
-
 from pipeline.celery_factory import create_celery_app
 
 # --- Celery app (parameterized factory call) ---

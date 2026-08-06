@@ -67,6 +67,44 @@ def _push_update(pipeline_run_id: str, name: str, status: str, message: str,
         _logger.debug(f"Failed to push update: {exc}")
 
 
+def _send_pipeline_complete(
+    pipeline_run_id: str,
+    status: str,
+    error: str = "",
+    country: str = None,
+) -> None:
+    """Send a ``pipeline_complete`` WebSocket message.
+
+    Used by canvas.py (eager path success/failure) and
+    ``step_finalize_planet_init`` (async planet init completion) to notify
+    the frontend that a pipeline run has finished.
+
+    Args:
+        pipeline_run_id: UUID of the pipeline run.
+        status: ``"completed"`` or ``"failed"``.
+        error: Error message if status is ``"failed"`` (empty string otherwise).
+        country: Optional ISO code for logging context.
+    """
+    _logger = logging.getLogger("pipeline")
+    try:
+        channel_layer = get_channel_layer()
+        if channel_layer is not None:
+            async_to_sync(channel_layer.group_send)(
+                f"pipeline_{pipeline_run_id}",
+                {
+                    "type": "pipeline_complete",
+                    "session_id": str(pipeline_run_id),
+                    "status": status,
+                    "error": error,
+                },
+            )
+    except Exception as exc:
+        _log(_logger, "warning",
+            "Failed to send pipeline_complete WS message",
+            country=country, error=str(exc),
+        )
+
+
 # ---------------------------------------------------------------------------
 # WorldKG Enrichment
 # ---------------------------------------------------------------------------
