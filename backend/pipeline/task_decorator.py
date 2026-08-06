@@ -15,9 +15,27 @@ The decorated function's signature becomes ``def step_X(self, env: E) -> E``
 — a pure transform ``env → env'``. The task body is the data plane;
 the decorator is the control plane.
 
-The decorator owns the full seam: timing, error capture, PipelineRun
-stage updates, PipelineLogEntry writes (DB-backed structured logs), and
-WebSocket progress push. Task bodies stay pure transforms.
+Responsibility split (post-refactor — uses Celery primitives):
+
+  Decorator (data-plane boundary + start-phase):
+    - config validation (dict type + required keys)
+    - envelope reconstruction (dict → env) / serialization (env → dict)
+    - step-start: PipelineLogEntry, PipelineRun.start_stage, WS in_progress
+    - register ``_invocations[task_id]`` so the hooks can finish the job
+
+  Celery signals (start-phase primitive):
+    ``task_prerun`` → attaches per-run file logger (setup_pipeline_run_logger)
+
+  PipelineTask hooks (completion/failure — Celery primitives):
+    - ``on_success`` → step-complete log + metrics, PipelineRun.complete_stage,
+      WS completed
+    - ``on_failure`` → step-error log, PipelineRun.mark_failed, WS failed
+    - ``after_return`` → defensive cleanup
+
+The wrapper calls ``on_success`` / ``on_failure`` directly so they fire in
+the direct-call eager path (``task(config)``) that bypasses Celery's trace.
+The hooks are idempotent via ``_invocations`` — Celery's trace calls them
+again after ``run`` returns, but the first caller already popped the entry.
 """
 
 from __future__ import annotations
@@ -99,8 +117,16 @@ def pipeline_step(
     def decorator(func: Callable[..., E]) -> Callable[..., dict]:
         @functools.wraps(func)
         def wrapper(self, config_dict: dict) -> dict:
-            # 1. Context setup (validation only — no file logger)
-            config_dict = self.setup_pipeline_context(config_dict)
+            # 1. Validate config dict (data-plane concern — lives here, not on
+            #    the Celery Task base class). File logger setup is handled by
+            #    the task_prerun signal (Celery primitive) in celery_app.py.
+            if not isinstance(config_dict, dict):
+                raise TypeError(
+                    f"Expected dict for config_dict, got {type(config_dict).__name__}"
+                )
+            for key in ("iso", "name", "continent", "slug"):
+                if key not in config_dict:
+                    raise ValueError(f"Missing required config key: {key}")
 
             # 2. Reconstruct envelope from dict
             env = envelope_cls.from_dict(config_dict)
@@ -119,13 +145,9 @@ def pipeline_step(
                 continent=continent,
             )
 
-            # 5. Log step start
+            # 5. Start-phase: step-start log, PipelineRun start, WS in_progress
             plog.step_start(step_name, step_index, task_id)
-
-            # 6. Update PipelineRun
             _update_run_stage(run_id, step_name, started=True)
-
-            # 7. WS push: in_progress
             from pipeline.tasks.helper import _push_update
             _push_update(
                 pipeline_run_id=run_id,
@@ -135,44 +157,32 @@ def pipeline_step(
                 pct=10,
             )
 
-            # 8. Run the task body (with timing + error capture)
-            start = time.monotonic()
+            # 6. Register invocation so on_success/on_failure hooks can finish
+            self._invocations[task_id] = {
+                "start": time.monotonic(),
+                "plog": plog,
+                "step_name": step_name,
+                "step_index": step_index,
+                "run_id": run_id,
+            }
+
+            # 7. Data plane — run the task body (pure transform env → env')
             try:
                 result_env = func(self, env)
             except Exception as exc:
-                duration_ms = (time.monotonic() - start) * 1000
-                plog.step_error(step_name, step_index, exc, task_id)
-                _update_run_stage(run_id, step_name, started=False, failed=True)
-                _push_update(
-                    pipeline_run_id=run_id,
-                    name=step_name,
-                    status="failed",
-                    message=f"Step {step_index}: {step_name} failed: {exc}",
-                    pct=100,
-                )
+                # on_failure hook: PipelineLogEntry, PipelineRun, WS push
+                # (idempotent — Celery's trace will call it again, no-op)
+                self.on_failure(exc, task_id, (config_dict,), {})
                 raise
 
-            # 9. Log step complete with timing + metrics
-            duration_ms = (time.monotonic() - start) * 1000
-            metrics = _extract_metrics(result_env)
-            plog.step_complete(step_name, step_index, duration_ms, task_id, metrics)
+            # 8. Stash metrics for on_success, serialize for the next chain link
+            self._invocations[task_id]["metrics"] = _extract_metrics(result_env)
+            retval = result_env.to_dict()
 
-            # 10. Update PipelineRun
-            _update_run_stage(
-                run_id, step_name, started=False, completed=True, metrics=metrics
-            )
-
-            # 11. WS push: completed
-            _push_update(
-                pipeline_run_id=run_id,
-                name=step_name,
-                status="completed",
-                message=f"Step {step_index}: {step_name} complete.",
-                pct=100,
-            )
-
-            # 12. Serialize for the next task in the chain
-            return result_env.to_dict()
+            # 9. on_success hook: step-complete log + metrics, PipelineRun, WS push
+            # (idempotent — Celery's trace will call it again, no-op)
+            self.on_success(retval, task_id, (config_dict,), {})
+            return retval
 
         return wrapper
 

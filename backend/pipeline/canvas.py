@@ -31,17 +31,9 @@ from typing import Optional
 from datetime import datetime, timezone
 from pipeline.tasks.helper import _push_update
 from pipeline.exceptions import PipelineDispatchError, PipelineAlreadyRunning
-from pipeline.celery_app import (
-    celery_app,
-    setup_pipeline_run_logger,
-    CELERY_AVAILABLE,
-)
-# TODO: Look into if this is really the official way to do this
-if CELERY_AVAILABLE:
-    from celery import chord, group
-else:
-    chord = None
-    group = None
+from pipeline.celery_app import celery_app
+from pipeline.pipeline_logger import setup_pipeline_run_logger
+from celery import chord, group
 
 
 logger = logging.getLogger("pipeline")
@@ -67,11 +59,7 @@ def _check_existing_run(iso: str) -> None:
     """
     from orchestration.models import PipelineRun
 
-    eager = (
-        getattr(celery_app.conf, "task_always_eager", False)
-        if CELERY_AVAILABLE
-        else False
-    )
+    eager = getattr(celery_app.conf, "task_always_eager", False)
 
     if eager:
         # In eager mode, a RUNNING record means the task is executing
@@ -283,11 +271,6 @@ def run_planet_initialization(
     Returns:
         pipeline_run_id (UUID string) — track progress via PipelineRun model.
     """
-    if not CELERY_AVAILABLE:
-        raise ImportError(
-            "Celery is required to run planet initialization. "
-            "Install with: pip install celery"
-        )
     from celery import chain
 
     # Build a PlanetEnvelope for tracking
@@ -385,9 +368,6 @@ def run_continent_initialization(
     Returns:
         pipeline_run_id (UUID string).
     """
-    if not CELERY_AVAILABLE:
-        raise ImportError("Celery is required to run continent extraction.")
-
     from pipeline.envelopes import PlanetEnvelope
     cfg = PlanetEnvelope(
         pipeline_run_id=str(uuid4()),
@@ -463,11 +443,6 @@ def run_worldkg_pipeline(
         pipeline_run_id (UUID string) — use this to track progress via
         PipelineRun model or Celery result backend.
     """
-    if not CELERY_AVAILABLE:
-        raise ImportError(
-            "Celery is required to run the pipeline. "
-            "Install with: pip install celery"
-        )
     from celery import chain
 
     # ── 0. Concurrency guard ──
@@ -534,7 +509,7 @@ def run_worldkg_pipeline(
     # vs Celery Canvas chain (which can hang in eager mode).
     eager = getattr(celery_app.conf, 'task_always_eager', False)
 
-    if eager and CELERY_AVAILABLE:
+    if eager:
         _log(logger, "info",
             "Eager mode detected — executing steps synchronously",
             country=cfg.iso,
@@ -555,22 +530,13 @@ def run_worldkg_pipeline(
                 country=cfg.iso,
                 pipeline_run_id=cfg.pipeline_run_id,
             )
-            # Update DB with current stage
-            run.current_stage = name
-            run.save(update_fields=["current_stage"])
-            t0 = datetime.now()
+            # Stage tracking (PipelineRun.start_stage / complete_stage / mark_failed)
+            # is owned by the @pipeline_step decorator + on_success/on_failure hooks.
+            # This function just calls the task and logs the orchestration-level view.
             try:
                 result = task(config)
-                dur = (datetime.now() - t0).total_seconds()
-                # Update DB with completed stage
-                completed = list(run.completed_stages or [])
-                if name not in completed:
-                    completed.append(name)
-                run.completed_stages = completed
-                run.current_stage = None
-                run.save(update_fields=["completed_stages", "current_stage"])
                 _log(logger, "info",
-                    f"Step {name} completed in {dur:.0f}s",
+                    f"Step {name} completed",
                     country=cfg.iso,
                     pipeline_run_id=cfg.pipeline_run_id,
                 )
@@ -719,11 +685,6 @@ def run_pipeline_stage(
     snapshot_date: Optional[str] = None,
 ) -> str:
     """Run a single pipeline stage independently (for debugging / resume)."""
-    if not CELERY_AVAILABLE:
-        raise ImportError(
-            "Celery is required to run pipeline stages."
-        )
-
     from pipeline.envelopes import CountryEnvelope
     cfg = CountryEnvelope.from_db(iso, snapshot_date=snapshot_date)
     steps = _get_step_tasks()
