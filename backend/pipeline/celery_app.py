@@ -87,7 +87,7 @@ class PipelineTask(_TaskBase):
         if not inv:
             return
         import time
-        from pipeline.task_decorator import _update_run_stage
+        from pipeline.task_decorator import _update_run_stage, _emit_pipeline_assets
         from pipeline.tasks.helper import _push_update
         duration_ms = (time.monotonic() - inv["start"]) * 1000
         inv["plog"].step_complete(
@@ -98,6 +98,9 @@ class PipelineTask(_TaskBase):
             inv["run_id"], inv["step_name"], completed=True,
             metrics=inv.get("metrics"),
         )
+        # Phase 1/2: emit PipelineAsset rows for descriptors the task body
+        # stashed on the envelope (links task_id via metadata → TaskResult).
+        _emit_pipeline_assets(inv, task_id)
         _push_update(
             pipeline_run_id=inv["run_id"], name=inv["step_name"],
             status="completed",

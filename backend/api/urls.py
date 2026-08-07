@@ -11,6 +11,7 @@ from . import projection_weight_views
 from . import views_augmented_data
 from . import views_system_summary
 from .services import views_app_state
+from .services import views_artifact_registry
 from .views import (
     InitialStatusView,
     RegisterPlanetPbfView,
@@ -69,6 +70,16 @@ urlpatterns = [
     # Search Update Pipeline
     path('search/update/', search_update_views.SearchUpdateView.as_view(), name='search_update'),
     path('search/update/status/<uuid:session_id>/', search_update_views.SearchUpdateStatusView.as_view(), name='search_update_status'),
+
+    # Artifact Registry (TEMPORAL_SHARDING_ARTIFACT_PLAN.md Phase 3)
+    # Note: '/api/artifacts/<str:country_code>/' (CountryArtifactsView) exists
+    # below; these static 'artifacts/registry/...' routes MUST be declared
+    # before it, otherwise <str:country_code> would swallow 'registry'.
+    path('artifacts/registry/', views_artifact_registry.ArtifactListView.as_view(), name='artifact_registry_list'),
+    path('artifacts/registry/by-stage/', views_artifact_registry.ArtifactAvailabilityView.as_view(), name='artifact_registry_availability'),
+    path('artifacts/registry/<uuid:artifact_id>/', views_artifact_registry.ArtifactDetailView.as_view(), name='artifact_registry_detail'),
+    path('task-results/<uuid:run_id>/', views_artifact_registry.TaskResultListView.as_view(), name='task_results'),
+
     path('artifacts/<str:country_code>/', search_update_views.CountryArtifactsView.as_view(), name='country_artifacts'),
     path('artifacts/monthly/check/<str:country_code>/', search_update_views.CheckMonthlyAvailabilityView.as_view(), name='check_monthly_availability'),
     
@@ -101,6 +112,16 @@ urlpatterns = [
 
     # System Summary
     path('system/summary/', views_system_summary.SystemSummaryView.as_view(), name='system_summary'),
+
+    # Artifact Registry (TEMPORAL_SHARDING_ARTIFACT_PLAN.md Phase 3)
+    # Note: '/api/artifacts/<country_code>/' already exists (CountryArtifactsView);
+    # the new registry endpoints live under '/api/artifacts/registry/' to avoid
+    # colliding with that route. 'by-stage/' is declared before '<uuid:artifact_id>'
+    # so the static path wins (the uuid converter would otherwise reject 'by-stage').
+    path('artifacts/registry/', views_artifact_registry.ArtifactListView.as_view(), name='artifact_registry_list'),
+    path('artifacts/registry/by-stage/', views_artifact_registry.ArtifactAvailabilityView.as_view(), name='artifact_registry_availability'),
+    path('artifacts/registry/<uuid:artifact_id>/', views_artifact_registry.ArtifactDetailView.as_view(), name='artifact_registry_detail'),
+    path('task-results/<uuid:run_id>/', views_artifact_registry.TaskResultListView.as_view(), name='task_results'),
 
     # Projection weight assets
     path('projection-weights/', projection_weight_views.ProjectionWeightAssetListView.as_view(), name='projection_weight_list'),

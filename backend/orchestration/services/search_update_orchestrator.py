@@ -29,6 +29,19 @@ from api.models import (
     EmbeddingArtifact,
 )
 
+
+def _vec_to_str(vec) -> str:
+    """Convert a numpy array / list / None to pgvector's text format `[a,b,c]`.
+
+    Returns ``"\\N"`` (the CSV NULL sentinel) when ``vec`` is None so the
+    COPY stream represents NULL embeddings correctly.
+    """
+    if vec is None:
+        return "\\N"
+    if hasattr(vec, 'tolist'):
+        vec = vec.tolist()
+    return "[" + ",".join(map(str, vec)) + "]"
+
 logger = logging.getLogger(__name__)
 
 
@@ -512,102 +525,84 @@ class SearchUpdateOrchestrator:
     # ------------------------------------------------------------------
 
     def _upsert_and_diff(self, embedding_result, config, session):
-        """
-        Upsert OsmEntity rows for all embedded entities and record a SnapshotDiff.
+        """Upsert OsmEntity rows via COPY + ON CONFLICT and record a SnapshotDiff.
 
-        For each entity:
-        - INSERT new row if (osm_type, osm_id) is unseen  → entities_added
-        - UPDATE existing row if tags changed               → entities_modified
-        - Entities absent from current but present before  → entities_deleted (soft-marked)
+        Replaces the former per-entity ``get()`` + mutate loop (a
+        read-modify-write race under concurrency) with the same COPY + temp
+        table + ``ON CONFLICT (osm_type, osm_id, gv_tags_version) DO UPDATE``
+        pattern used by ``VectorStorageService``. Postgres resolves conflicts
+        atomically per row, so this is safe to call from parallel workers
+        (e.g. subgraph fan-out) as long as the workers touch disjoint
+        ``(osm_type, osm_id)`` keys — which they do, since subgraphs are
+        admin-boundary-disjoint.
 
-        Snapshot provenance is tracked via source_snapshot_id on each OsmEntity.
+        Added/modified classification is computed atomically inside the
+        upsert via a ``xmax`` sentinel (``xmax = 0`` means the row was
+        inserted, not updated) returned through ``RETURNING``. This avoids
+        the prior approach's separate pre-scan of existing IDs.
+
+        Soft-delete (entities present before, absent now) is still a separate
+        bulk ``UPDATE`` keyed on the set difference of osm_ids.
         """
         from worldkg_nca.models import OsmEntity
         from semantic_search.models import SnapshotDiff
         from django.contrib.gis.geos import Point
+        from django.db import connections
+        import io
+        import csv
+        import json as _json
+        import random
+        import time as _time
 
         entities = embedding_result.get('entities', [])
-        snapshot_id = uuid.uuid4()   # new snapshot UUID for this run
+        snapshot_id = uuid.uuid4()
 
-        # Collect previous snapshot's entity IDs (for soft-delete tracking)
+        if not entities:
+            diff = SnapshotDiff.objects.create(
+                snapshot_id=snapshot_id,
+                country_code=config.get('country_code', ''),
+                country_name=config.get('country_name', ''),
+                entities_added=0, entities_modified=0, entities_deleted=0,
+                entities_re_embedded=0, gv_nle_inductive_count=0,
+            )
+            return {
+                'snapshot_id': str(snapshot_id), 'diff_id': str(diff.id),
+                'entities_added': 0, 'entities_modified': 0,
+                'entities_deleted': 0, 'gv_nle_inductive_count': 0,
+            }
+
+        # ── Collect previous snapshot's osm_ids for soft-delete tracking ──
         prev_ids = set(
-            OsmEntity.objects.using('vectors')
-            .values_list('osm_id', flat=True)
+            OsmEntity.objects.using('vectors').values_list('osm_id', flat=True)
         )
 
-        added = modified = inductive_count = 0
-        BATCH = 500
-        batch = []
+        gv_tags_version = '1.0'
+        inductive_count = sum(
+            1 for e in entities if e.get('gv_nle_embedding') is not None
+        )
 
+        # ── Batched COPY + ON CONFLICT upsert ─────────────────────────────
+        BATCH = 5000
+        added = modified = 0
         current_ids = set()
-        for entity in entities:
-            osm_type = entity['osm_type']
-            osm_id = entity['osm_id']
-            tags = entity.get('tags', {})
-            gv_tags_emb = entity.get('gv_tags_embedding')
-            gv_nle_emb = entity.get('gv_nle_embedding')
 
-            geom = None
-            if entity.get('lat') is not None and entity.get('lon') is not None:
-                geom = Point(entity['lon'], entity['lat'], srid=4326)
+        for i in range(0, len(entities), BATCH):
+            chunk = entities[i:i + BATCH]
+            a, m = self._upsert_chunk_via_copy(
+                chunk, snapshot_id, gv_tags_version,
+            )
+            added += a
+            modified += m
+            current_ids.update(int(e['osm_id']) for e in chunk)
 
-            current_ids.add(osm_id)
-
-            try:
-                existing = OsmEntity.objects.using('vectors').get(
-                    osm_type=osm_type, osm_id=osm_id
-                )
-                # Update if tags or embeddings changed
-                existing.tags = tags
-                existing.geom = geom
-                existing.version = entity.get('version')
-                existing.timestamp = entity.get('timestamp')
-                existing.source_snapshot_id = snapshot_id
-                if gv_tags_emb is not None:
-                    existing.gv_tags_embedding = gv_tags_emb
-                if gv_nle_emb is not None:
-                    existing.gv_nle_embedding = gv_nle_emb
-                    existing.gv_nle_trained = True
-                batch.append(('update', existing))
-                modified += 1
-            except OsmEntity.DoesNotExist:
-                new_entity = OsmEntity.create_from_osm(
-                    osm_type=osm_type,
-                    osm_id=osm_id,
-                    tags=tags,
-                    gv_tags_embedding=gv_tags_emb,
-                    gv_nle_embedding=gv_nle_emb,
-                    geom=geom,
-                    version=entity.get('version'),
-                    timestamp=entity.get('timestamp'),
-                )
-                new_entity.source_snapshot_id = snapshot_id
-                batch.append(('insert', new_entity))
-                added += 1
-
-            if entity.get('gv_nle_embedding') is not None:
-                inductive_count += 1
-
-            # Flush batch
-            if len(batch) >= BATCH:
-                self._flush_entity_batch(batch)
-                batch = []
-
-        if batch:
-            self._flush_entity_batch(batch)
-
-        # Soft-mark deleted entities (present before, absent now)
+        # ── Soft-delete: entities present before but absent now ───────────
         deleted_ids = prev_ids - current_ids
         if deleted_ids:
             OsmEntity.objects.using('vectors').filter(
                 osm_id__in=deleted_ids
-            ).update(
-                gv_nle_trained=False,
-                gv_nle_version=None,
-            )
+            ).update(gv_nle_trained=False, gv_nle_version=None)
         deleted = len(deleted_ids)
 
-        # Persist SnapshotDiff
         diff = SnapshotDiff.objects.create(
             snapshot_id=snapshot_id,
             country_code=config.get('country_code', ''),
@@ -625,16 +620,138 @@ class SearchUpdateOrchestrator:
         )
 
         return {
-            'snapshot_id': str(snapshot_id),
-            'diff_id': str(diff.id),
-            'entities_added': added,
-            'entities_modified': modified,
-            'entities_deleted': deleted,
-            'gv_nle_inductive_count': inductive_count,
+            'snapshot_id': str(snapshot_id), 'diff_id': str(diff.id),
+            'entities_added': added, 'entities_modified': modified,
+            'entities_deleted': deleted, 'gv_nle_inductive_count': inductive_count,
         }
 
+    def _upsert_chunk_via_copy(self, chunk, snapshot_id, gv_tags_version):
+        """COPY a chunk into a temp table, then INSERT ... ON CONFLICT.
+
+        Returns ``(added, modified)`` counts, classified atomically by
+        Postgres via the ``xmax`` sentinel (``xmax = 0`` → inserted).
+        This is the parallel-safe equivalent of the old per-entity
+        ``get()`` / ``DoesNotExist`` branch.
+        """
+        from django.db import connections
+        import io
+        import csv
+        import json as _json
+        import random
+        import time as _time
+
+        # Small jitter to stagger parallel workers writing to the same
+        # monolithic table (no-op once temporal sharding lands — disjoint
+        # leaf partitions never contend).
+        _time.sleep(random.uniform(0, 0.05))
+
+        csv_buffer = io.StringIO()
+        writer = csv.writer(csv_buffer, delimiter='\t', quoting=csv.QUOTE_MINIMAL)
+
+        for entity in chunk:
+            osm_type = entity['osm_type']
+            osm_id = int(entity['osm_id'])
+            tags = entity.get('tags', {})
+            tags_json = _json.dumps({str(k): str(v) for k, v in tags.items()})
+
+            lat = entity.get('lat')
+            lon = entity.get('lon')
+            geom_wkt = f"SRID=4326;POINT({lon} {lat})" if (lat is not None and lon is not None) else "\\N"
+
+            gv_tags_emb = entity.get('gv_tags_embedding')
+            gv_tags_str = _vec_to_str(gv_tags_emb)
+
+            gv_nle_emb = entity.get('gv_nle_embedding')
+            gv_nle_str = _vec_to_str(gv_nle_emb)
+            gv_nle_trained = 't' if gv_nle_emb is not None else 'f'
+
+            version = entity.get('version')
+            version_str = str(version) if version is not None else "\\N"
+
+            ts = entity.get('timestamp')
+            ts_str = ts.isoformat() if hasattr(ts, 'isoformat') else (str(ts) if ts else "\\N")
+
+            writer.writerow([
+                osm_type, osm_id, tags_json, geom_wkt,
+                gv_tags_str, gv_nle_str, gv_tags_version,
+                gv_nle_trained, version_str, ts_str,
+                str(snapshot_id),
+            ])
+
+        csv_buffer.seek(0)
+
+        temp_table = f"temp_upsert_{int(_time.time() * 1000)}_{random.randint(0, 100000)}"
+        with connections['vectors'].cursor() as cursor:
+            try:
+                cursor.execute(f"""
+                    CREATE UNLOGGED TABLE {temp_table} (
+                        osm_type VARCHAR(10),
+                        osm_id BIGINT,
+                        tags JSONB,
+                        geom GEOMETRY(Point, 4326),
+                        gv_tags_embedding VECTOR,
+                        gv_nle_embedding VECTOR,
+                        gv_tags_version VARCHAR(50),
+                        gv_nle_trained BOOLEAN,
+                        version INT,
+                        timestamp TIMESTAMPTZ,
+                        source_snapshot_id UUID
+                    );
+                """)
+                cursor.execute(f"CREATE INDEX ON {temp_table} (osm_type, osm_id);")
+
+                psycopg_cursor = cursor.cursor if hasattr(cursor, 'cursor') else cursor.connection.cursor()
+                psycopg_cursor.copy_expert(f"""
+                    COPY {temp_table} (osm_type, osm_id, tags, geom,
+                        gv_tags_embedding, gv_nle_embedding, gv_tags_version,
+                        gv_nle_trained, version, timestamp, source_snapshot_id)
+                    FROM STDIN WITH (FORMAT csv, DELIMITER '\\t', NULL '\\N')
+                """, csv_buffer)
+
+                # INSERT ... ON CONFLICT DO UPDATE, classifying insert vs
+                # update atomically via xmax (0 = inserted, >0 = updated).
+                cursor.execute(f"""
+                    INSERT INTO semantic_search_osmentity
+                        (osm_type, osm_id, tags, geom,
+                         gv_tags_embedding, gv_nle_embedding, gv_tags_version,
+                         gv_nle_trained, version, timestamp, source_snapshot_id,
+                         created_at, updated_at)
+                    SELECT osm_type, osm_id, tags, geom,
+                           gv_tags_embedding, gv_nle_embedding, gv_tags_version,
+                           gv_nle_trained, version, timestamp, source_snapshot_id,
+                           NOW(), NOW()
+                    FROM {temp_table}
+                    ON CONFLICT (osm_type, osm_id, gv_tags_version) DO UPDATE SET
+                        tags = EXCLUDED.tags,
+                        geom = COALESCE(EXCLUDED.geom, semantic_search_osmentity.geom),
+                        gv_tags_embedding = COALESCE(EXCLUDED.gv_tags_embedding, semantic_search_osmentity.gv_tags_embedding),
+                        gv_nle_embedding = COALESCE(EXCLUDED.gv_nle_embedding, semantic_search_osmentity.gv_nle_embedding),
+                        gv_nle_trained = EXCLUDED.gv_nle_trained,
+                        version = EXCLUDED.version,
+                        timestamp = EXCLUDED.timestamp,
+                        source_snapshot_id = EXCLUDED.source_snapshot_id,
+                        updated_at = NOW()
+                    RETURNING
+                        (CASE WHEN xmax = 0 THEN 'inserted' ELSE 'updated' END) AS op;
+                """)
+                rows = cursor.fetchall()
+                added = sum(1 for r in rows if r[0] == 'inserted')
+                modified = sum(1 for r in rows if r[0] == 'updated')
+                return added, modified
+            except Exception as e:
+                logger.error(f"  [SQL ERROR] _upsert_chunk_via_copy failed: {e}", exc_info=True)
+                raise
+            finally:
+                cursor.execute(f"DROP TABLE IF EXISTS {temp_table};")
+
     def _flush_entity_batch(self, batch):
-        """Bulk-write a mixed insert/update batch to pgvector DB."""
+        """Bulk-write a mixed insert/update batch to pgvector DB.
+
+        Deprecated — retained for backward compatibility with any callers
+        that still build ``('insert'|'update', entity)`` tuples. New code
+        should use ``_upsert_chunk_via_copy`` (the ON CONFLICT path), which
+        is parallel-safe and avoids the read-modify-write race.
+        """
         inserts = [e for op, e in batch if op == 'insert']
         updates = [e for op, e in batch if op == 'update']
 

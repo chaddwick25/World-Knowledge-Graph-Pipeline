@@ -193,6 +193,11 @@ class CountryRunState:
     has_subgraphs: bool = False
     igea_accepted: int = 0
     igea_stats: Optional[dict] = None
+    # Transient (NOT serialized by to_dict): artifact descriptors produced by
+    # the task body, consumed by the @pipeline_step on_success hook to emit
+    # PipelineAsset rows. Each descriptor is a dict with keys like
+    # asset_type, asset_name, stage_name, storage_path, record_count, ...
+    pending_assets: List[dict] = dataclasses.field(default_factory=list)
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -772,6 +777,10 @@ class PlanetRunState:
     """Mutable state for planet-init runs."""
     snapshot_date: str = "2025_12_31"
     continents_extracted: bool = False
+    # Transient (NOT serialized by to_dict): artifact descriptors produced by
+    # the task body, consumed by the @pipeline_step on_success hook to emit
+    # PipelineAsset rows. See CountryRunState.pending_assets for the shape.
+    pending_assets: List[dict] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass(frozen=True)

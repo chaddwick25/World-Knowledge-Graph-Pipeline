@@ -45,6 +45,8 @@ import logging
 import time
 from typing import Callable, Optional, Type, TypeVar
 
+from django.utils import timezone
+
 logger = logging.getLogger("pipeline")
 
 E = TypeVar("E")
@@ -69,6 +71,100 @@ def _extract_metrics(env) -> dict:
     if hasattr(env, "subgraphs"):
         metrics["subgraph_count"] = len(env.subgraphs) if env.subgraphs else 0
     return metrics
+
+
+def _extract_pending_assets(env) -> list:
+    """Collect artifact descriptors the task body stashed on the envelope.
+
+    Task bodies append dicts to ``env.state.pending_assets`` (transient — not
+    serialized by ``to_dict()``). Each descriptor may carry:
+
+        asset_type, asset_name, stage_name, storage_type, storage_path,
+        record_count, file_size_bytes, metadata, parent_asset_id
+
+    The ``@pipeline_step`` on_success hook turns these into ``PipelineAsset``
+    rows (Phase 1/2 of TEMPORAL_SHARDING_ARTIFACT_PLAN.md). Returns ``[]`` when
+    the task body produced no artifacts — emission is opt-in and backward
+    compatible.
+    """
+    state = getattr(env, "state", None)
+    pending = getattr(state, "pending_assets", None)
+    if pending is None:
+        pending = getattr(env, "pending_assets", None)
+    if not pending:
+        return []
+    return [d for d in pending if isinstance(d, dict)]
+
+
+def _emit_pipeline_assets(inv: dict, task_id) -> None:
+    """Emit one ``PipelineAsset`` row per descriptor stashed in ``inv``.
+
+    Called from the ``on_success`` hook (idempotent — the hook pops
+    ``_invocations`` first). Never raises: artifact emission is observability,
+    not on the critical path of the pipeline. Records the producing
+    ``task_id`` in ``metadata`` so ``TaskResult`` (django-celery-results) can
+    be joined to ``PipelineAsset``.
+    """
+    descriptors = inv.get("pending_assets") or []
+    run_id = inv.get("run_id")
+    if not descriptors or not run_id:
+        return
+    try:
+        from orchestration.models import PipelineAsset, PipelineRun
+    except Exception as exc:  # pragma: no cover - import-time safety
+        logger.warning("PipelineAsset import failed, skipping emission: %s", exc)
+        return
+
+    run = PipelineRun.objects.filter(id=run_id).first()
+    if run is None:
+        return
+
+    continent = inv.get("continent") or ""
+    step_name = inv.get("step_name", "")
+    valid_types = {c for c, _ in PipelineAsset.AssetType.choices}
+    valid_statuses = {c for c, _ in PipelineAsset.AssetStatus.choices}
+
+    for desc in descriptors:
+        try:
+            asset_type = desc.get("asset_type")
+            if asset_type not in valid_types:
+                logger.warning(
+                    "Skipping PipelineAsset emit: invalid asset_type=%r (step=%s)",
+                    asset_type, step_name,
+                )
+                continue
+            storage_path = desc.get("storage_path")
+            if not storage_path:
+                logger.warning(
+                    "Skipping PipelineAsset emit: missing storage_path (step=%s, type=%s)",
+                    step_name, asset_type,
+                )
+                continue
+            meta = dict(desc.get("metadata") or {})
+            if task_id:
+                meta["task_id"] = task_id
+            asset = PipelineAsset(
+                pipeline_run=run,
+                asset_type=asset_type,
+                asset_name=desc.get("asset_name") or f"{step_name}_{asset_type}",
+                stage_name=desc.get("stage_name") or step_name,
+                storage_type=desc.get("storage_type") or "filesystem",
+                storage_path=storage_path,
+                status=desc.get("status") or PipelineAsset.AssetStatus.COMPLETED,
+                file_size_bytes=desc.get("file_size_bytes"),
+                record_count=desc.get("record_count"),
+                continent=continent or None,
+                completed_at=timezone.now() if (desc.get("status") or PipelineAsset.AssetStatus.COMPLETED) in (
+                    PipelineAsset.AssetStatus.COMPLETED,
+                ) else None,
+                metadata=meta,
+            )
+            parent_id = desc.get("parent_asset_id")
+            if parent_id:
+                asset.parent_asset_id = parent_id
+            asset.save()
+        except Exception as exc:  # pragma: no cover - per-descriptor safety
+            logger.warning("PipelineAsset emit failed for one descriptor: %s", exc)
 
 
 def _update_run_stage(
@@ -164,6 +260,8 @@ def pipeline_step(
                 "step_name": step_name,
                 "step_index": step_index,
                 "run_id": run_id,
+                "continent": continent,
+                "iso": iso,
             }
 
             # 7. Data plane — run the task body (pure transform env → env')
@@ -175,8 +273,9 @@ def pipeline_step(
                 self.on_failure(exc, task_id, (config_dict,), {})
                 raise
 
-            # 8. Stash metrics for on_success, serialize for the next chain link
+            # 8. Stash metrics + artifact descriptors for on_success, serialize
             self._invocations[task_id]["metrics"] = _extract_metrics(result_env)
+            self._invocations[task_id]["pending_assets"] = _extract_pending_assets(result_env)
             retval = result_env.to_dict()
 
             # 9. on_success hook: step-complete log + metrics, PipelineRun, WS push

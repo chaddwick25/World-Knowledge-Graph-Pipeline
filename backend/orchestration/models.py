@@ -667,16 +667,26 @@ class PipelineAsset(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     
     metadata = models.JSONField(default=dict)
-    
+
+    # Denormalized for ShardRouter routing (same pattern as PipelineLogEntry).
+    # Backfilled from PipelineRun.country_code -> CountryPipelineProfile ->
+    # country_relations_payload["continent"]. Lets ShardRouter route writes to
+    # the continent-scoped shard DB without a JOIN to PipelineRun.
+    continent = models.CharField(
+        max_length=50, null=True, blank=True, db_index=True,
+        help_text="Denormalized for shard routing without JOIN",
+    )
+
     class Meta:
         db_table = 'pipeline_assets'
         indexes = [
             models.Index(fields=['pipeline_run', 'asset_type']),
             models.Index(fields=['pipeline_run', 'stage_name']),
             models.Index(fields=['status']),
+            models.Index(fields=['continent', 'asset_type']),
         ]
         ordering = ['pipeline_run', 'stage_name', 'asset_type']
-    
+
     def __str__(self):
         return f"{self.asset_name} ({self.get_asset_type_display()})"
 
@@ -1369,3 +1379,128 @@ class PartitionRegistry(models.Model):
         if self.subdivision:
             parts.append(self.subdivision)
         return f"PartitionRegistry({'/'.join(parts)}) [{self.status}]"
+
+
+class ReasoningWorkflow(models.Model):
+    """Stores the agent's proposed GeoFlow Graph and its lifecycle.
+
+    The agentic application layer (see ``docs/plans/GEO_SPATIAL_AGENT_CELERY_PLAN_V3.md``)
+    proposes a DAG of operators to answer a natural-language question. This
+    model records that proposal and tracks it through approval and execution.
+
+    ``geo_flow_graph`` is the proposed operator DAG (a list of
+    ``OperatorSignature``-shaped dicts, v3 §2/§5). ``status`` moves through
+    ``proposed -> approved|rejected -> executed``.
+    """
+
+    class WorkflowStatus(models.TextChoices):
+        PROPOSED = 'proposed', 'Proposed'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
+        EXECUTED = 'executed', 'Executed'
+        FAILED = 'failed', 'Failed'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    question = models.TextField()
+    geo_flow_graph = models.JSONField(
+        default=dict,
+        help_text="The proposed operator DAG (list of OperatorSignature-shaped dicts).",
+    )
+    status = models.CharField(
+        max_length=16, choices=WorkflowStatus.choices,
+        default=WorkflowStatus.PROPOSED, db_index=True,
+    )
+    pipeline_run = models.ForeignKey(
+        PipelineRun, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='reasoning_workflows',
+        help_text="Set once the workflow is executed (the dispatched Celery chain's run).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'reasoning_workflows'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['pipeline_run']),
+        ]
+
+    def mark_approved(self):
+        self.status = self.WorkflowStatus.APPROVED
+        self.approved_at = timezone.now()
+        self.save(update_fields=['status', 'approved_at'])
+
+    def mark_rejected(self):
+        self.status = self.WorkflowStatus.REJECTED
+        self.save(update_fields=['status'])
+
+    def mark_executed(self, pipeline_run=None):
+        self.status = self.WorkflowStatus.EXECUTED
+        if pipeline_run is not None:
+            self.pipeline_run = pipeline_run
+        self.save(update_fields=['status', 'pipeline_run'])
+
+    def __str__(self):
+        return f"ReasoningWorkflow({self.status}) {self.question[:60]}"
+
+
+class ReasoningStep(models.Model):
+    """Stores each cognitive step (LLM/operator call) linked to the spatial
+    artifacts it used.
+
+    ``envelope`` stores the serialized ``OperatorEnvelope.to_dict()`` (v3 §2.3),
+    not the legacy mutable ``OperatorConfig``. ``concept`` is a ``LatentSpace``
+    enum value (v3: was ``CoreConcept``). ``artifacts`` is a JSON list of
+    ``PipelineAsset.id`` UUIDs — the actual model name is ``PipelineAsset``
+    (the plan referred to it as ``PipelineArtifact``).
+    """
+
+    class Feedback(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        APPROVED = 'approved', 'Approved'
+        EDITED = 'edited', 'Edited'
+        REJECTED = 'rejected', 'Rejected'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workflow = models.ForeignKey(
+        ReasoningWorkflow, on_delete=models.CASCADE, related_name='steps',
+    )
+    step_index = models.IntegerField()
+    concept = models.CharField(
+        max_length=32,
+        help_text="LatentSpace enum value (semantic/geographic/ontological/topological/spectral/temporal).",
+    )
+    role = models.CharField(
+        max_length=32,
+        help_text="FunctionalRole IntEnum value (SUBCOND/COND/SUPPORT/MEASURE).",
+    )
+    operator = models.CharField(max_length=64)
+    envelope = models.JSONField(
+        default=dict,
+        help_text="Frozen, serializable OperatorEnvelope.to_dict() (v3 §2.3).",
+    )
+    prompt = models.TextField(blank=True, default='')
+    response = models.TextField(blank=True, default='')
+    artifacts = models.JSONField(
+        default=list, blank=True,
+        help_text="List of PipelineAsset.id UUIDs used/produced by this step.",
+    )
+    result = models.JSONField(default=dict, blank=True)
+    feedback = models.CharField(
+        max_length=16, choices=Feedback.choices, default=Feedback.PENDING,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'reasoning_steps'
+        ordering = ['workflow', 'step_index']
+        unique_together = [('workflow', 'step_index')]
+        indexes = [
+            models.Index(fields=['workflow', 'step_index']),
+            models.Index(fields=['concept']),
+            models.Index(fields=['feedback']),
+        ]
+
+    def __str__(self):
+        return f"ReasoningStep({self.workflow_id}, #{self.step_index}) {self.operator}"
