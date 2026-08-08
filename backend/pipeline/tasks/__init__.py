@@ -13,7 +13,6 @@ from pipeline.tasks.planet_initialization_pipeline_steps import (  # noqa: F401
     step_0d_prebuild_country_paths,
     step_0e_prebuild_subgraphs,
     step_0f_prebuild_wikidata_ids,
-    step_0g_extract_continent_snapshots,  # LEGACY: kept for import compat — to be removed
     step_0h_scan_embeddings,
     step_0h_copy_gb_to_uk,
     step_0i_prebuild_split_embeddings,

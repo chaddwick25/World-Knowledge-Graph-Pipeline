@@ -517,6 +517,8 @@ def worldkg_semantic_triplet_search(request):
     name_distance_threshold = request.data.get("name_distance_threshold", 0.95)
     use_ann = request.data.get("use_ann", False)
     use_learned_weights = request.data.get("use_learned_weights", False)
+    # snapshot_date filters OsmEntity by snapshot_id (CharField, e.g. "2025_12_31")
+    snapshot_date = request.data.get("snapshot_date")
 
     # Auto-infer rdf_type from query_tags if not provided
     if not rdf_type and query_tags:
@@ -669,6 +671,10 @@ def worldkg_semantic_triplet_search(request):
         geom__within=polygon,
         gv_tags_embedding__isnull=False,
     )
+
+    # Filter by snapshot_date when provided (OsmEntity.snapshot_id is a CharField)
+    if snapshot_date:
+        qs = qs.filter(snapshot_id=snapshot_date)
 
     # Filter by inferred or provided rdf_type (when auto-inferred, filter to ensure relevance)
     auto_inferred_rdf_type = rdf_type and not request.data.get("rdf_type")

@@ -35,13 +35,21 @@ class SearchReadyService:
     def run(self, cfg: "CountryEnvelope") -> Dict:
         """Mark country as search-ready, finalize PipelineRun, send WS.
 
+        Also transitions the linked ``SnapshotJob`` (if any) to COMPLETED
+        with the run's entity/alignment/spatial-link counts. This is the
+        DB ground-truth update described in
+        ``docs/plans/TEMPORAL_SNAPSHOT_REFACTOR.md`` Phase D1.
+
         Args:
             cfg: CountryEnvelope with iso, slug, name, pipeline_run_id.
 
         Returns:
-            ``{"country": str, "created": bool, "run_finalized": bool}``.
+            ``{"country": str, "created": bool, "run_finalized": bool,
+            "snapshot_job_updated": bool}``.
         """
-        from orchestration.models import CountrySearchProcessing, PipelineRun
+        from orchestration.models import (
+            CountrySearchProcessing, PipelineRun, SnapshotJob,
+        )
 
         # 1. Upsert CountrySearchProcessing
         country_processing, created = CountrySearchProcessing.objects.update_or_create(
@@ -58,6 +66,7 @@ class SearchReadyService:
 
         # 2. Finalize PipelineRun as COMPLETED
         run_finalized = False
+        run = None
         try:
             run = PipelineRun.objects.get(id=cfg.pipeline_run_id)
             run.status = PipelineRun.PipelineStatus.COMPLETED
@@ -70,7 +79,30 @@ class SearchReadyService:
                 cfg.pipeline_run_id,
             )
 
-        # 3. Send pipeline_complete WebSocket message
+        # 3. Transition the linked SnapshotJob to COMPLETED (DB ground truth)
+        snapshot_job_updated = False
+        if run is not None:
+            for job in SnapshotJob.objects.filter(pipeline_run=run):
+                try:
+                    job.mark_completed(
+                        total_entities=(
+                            run.total_entities_processed if run else 0
+                        ),
+                        total_aligned=(
+                            run.total_entities_aligned if run else 0
+                        ),
+                        total_spatial_links=(
+                            run.total_spatial_links if run else 0
+                        ),
+                    )
+                    snapshot_job_updated = True
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to mark SnapshotJob %s as COMPLETED: %s",
+                        job.id, exc,
+                    )
+
+        # 4. Send pipeline_complete WebSocket message
         try:
             from channels.layers import get_channel_layer
             from asgiref.sync import async_to_sync
@@ -92,4 +124,5 @@ class SearchReadyService:
             "country": cfg.iso,
             "created": created,
             "run_finalized": run_finalized,
+            "snapshot_job_updated": snapshot_job_updated,
         }

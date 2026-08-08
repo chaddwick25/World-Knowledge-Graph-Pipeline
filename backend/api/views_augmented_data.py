@@ -31,6 +31,11 @@ class AugmentedDataSummaryView(APIView):
     - Augmentation estimate via Google Places geocoding
     - Entity counts (total and with WorldKG class)
     - Relation distribution with acceptance rates
+
+    Query params:
+        snapshot_date - Optional. Snapshot date string (e.g. "2025_12_31").
+                        Accepted for forward compatibility; the data layer
+                        currently returns the latest run's data regardless.
     """
     permission_classes = [AllowAny]
 
@@ -42,10 +47,13 @@ class AugmentedDataSummaryView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # snapshot_date filters entity counts by OsmEntity.snapshot_id
+        snapshot_date = request.query_params.get('snapshot_date')
+
         try:
             from api.services.augmented_data_service import AugmentedDataService
             service = AugmentedDataService()
-            summary = service.get_summary(country_name)
+            summary = service.get_summary(country_name, snapshot_date=snapshot_date)
 
             return Response({
                 'country_name': summary.country_name,
@@ -85,6 +93,7 @@ class AugmentedDataDetailView(APIView):
     - Link type classification for each individual link
 
     Supports pagination via ?page=1&page_size=100 query params.
+    Also accepts ?snapshot_date=2025_12_31 (forward-compatible, not yet filtered).
     """
     permission_classes = [AllowAny]
 
@@ -95,6 +104,9 @@ class AugmentedDataDetailView(APIView):
                 {'error': 'country_name is required'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # snapshot_date filters entity counts by OsmEntity.snapshot_id
+        snapshot_date = request.query_params.get('snapshot_date')
 
         # Pagination params
         try:
@@ -116,15 +128,16 @@ class AugmentedDataDetailView(APIView):
             iso = service._resolve_iso(country_name)
 
             country_filter = service._country_filter(country_name, iso)
+            snapshot_filter = service._snapshot_filter(snapshot_date)
 
             # Query accepted links with pagination
             accepted_qs = SpatialTripletScore.objects.filter(
-                country_filter & Q(predicted=True)
+                country_filter & Q(predicted=True) & snapshot_filter
             ).order_by('-normalized_score')
 
             # Query rejected links with pagination
             rejected_qs = SpatialTripletScoreRejected.objects.filter(
-                country_filter
+                country_filter & snapshot_filter
             ).order_by('-normalized_score')
 
             total_accepted = accepted_qs.count()

@@ -308,6 +308,10 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # WorldKG Pipeline snapshot date range defaults
 WORLDKG_SNAPSHOT_START_YEAR = int(os.getenv('WORLDKG_SNAPSHOT_START_YEAR', '2021'))
 WORLDKG_SNAPSHOT_END_YEAR = int(os.getenv('WORLDKG_SNAPSHOT_END_YEAR', '2025'))
+# Short aliases used by SnapshotDatesView and SnapshotJobStatusView
+# (TEMPORAL_SNAPSHOT_REFACTOR.md Phase C). Fall back to the WORLDKG_* names.
+SNAPSHOT_START_YEAR = WORLDKG_SNAPSHOT_START_YEAR
+SNAPSHOT_END_YEAR = WORLDKG_SNAPSHOT_END_YEAR
 
 
 # Database

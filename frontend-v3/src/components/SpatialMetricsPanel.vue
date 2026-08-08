@@ -8,6 +8,10 @@ export default {
       type: String,
       required: true,
     },
+    snapshotDate: {
+      type: String,
+      default: null,
+    },
   },
   data() {
     return {
@@ -66,6 +70,9 @@ export default {
     countryName() {
       this.fetchData()
     },
+    snapshotDate() {
+      this.fetchData()
+    },
   },
   mounted() {
     if (this.countryName) {
@@ -84,10 +91,12 @@ export default {
       try {
         // Fetch both subgraph profiles and augmented summary in parallel
         const encoded = encodeURIComponent(this.countryName)
+        const params = {}
+        if (this.snapshotDate) params.snapshot_date = this.snapshotDate
 
         // 1. Fetch subgraphs from country-subgraphs endpoint
         const sgPromise = axios
-          .get(`/country-subgraphs/${encoded}/`)
+          .get(`/country-subgraphs/${encoded}/`, { params })
           .then((r) => {
             this.subgraphs = (r.data?.subgraphs || r.data?.results || []).map((sg) => ({
               slug: sg.slug || sg.subgraph_slug || '',
@@ -108,7 +117,7 @@ export default {
 
         // 2. Fetch augmented summary for link metrics
         const summaryPromise = axios
-          .get(`/data/augmented-summary/${encoded}/`)
+          .get(`/data/augmented-summary/${encoded}/`, { params })
           .then((r) => {
             this.summary = r.data
           })

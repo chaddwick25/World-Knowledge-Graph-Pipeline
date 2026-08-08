@@ -38,7 +38,6 @@ from api.models import (
     Task
 )
 from extraction.services.extraction_service import run_pbf_extraction
-from extraction.services.temporal_orchestrator_service import TemporalOrchestratorService
 from extraction.services.graph_asset_service import GraphAssetService
 
 import glob
@@ -642,32 +641,42 @@ class CountryPreProcessView(APIView):
                         except Exception:
                             pass
 
-                    # Instantiate orchestrator with session_id for websocket updates
-                    orchestrator = TemporalOrchestratorService(session_id=str(session.id))
-
-                    # Trigger parallel extraction with single snapshot mode
-                    results = orchestrator.run_pipeline(
-                        continent=continent,
-                        country=country_name,
-                        source_pbf_path=settings.PLANET_OSM_FILE_PATH,
-                        start_year=2021,
-                        end_year=2025,
-                        phases=[1, 2, 3, 4],  # Setup + Preprocessing + Polys + GeoVectors pickle
-                        single_snapshot_mode=True  # Force single snapshot mode
+                    # Use the new SnapshotExtractionService (replaces TemporalOrchestratorService)
+                    from extraction.services.snapshot_extraction_service import (
+                        SnapshotExtractionService,
                     )
 
-                    if not results.get('success'):
-                        logger.error(f"Temporal pipeline failed for {country_name}: {results.get('error')}")
-                        push_complete('failed', results.get('error', 'Temporal pipeline failed'))
-                        return
-
-                    # After temporal snapshot succeeds, run subgraph generation via Celery
                     iso = _resolve_iso_from_country_name(country_name)
                     if not iso:
                         logger.error(f"Failed to resolve ISO for country {country_name}")
                         push_complete('failed', 'Failed to resolve ISO')
                         return
 
+                    from orchestration.models import CountryPipelineProfile
+                    profile = CountryPipelineProfile.objects.filter(
+                        iso2__iexact=iso,
+                    ).first()
+                    osm_relation_id = profile.osm_relation_id if profile else None
+
+                    snapshot_date = getattr(settings, 'SINGLE_SNAPSHOT_DATE', '2025_12_31')
+
+                    push_update('extract_region_pbf', 'in_progress', 'Extracting snapshot from planet PBF…', 25)
+                    service = SnapshotExtractionService()
+                    results = service.extract_country_snapshot(
+                        country_code=iso,
+                        country_name=country_name,
+                        continent=continent,
+                        snapshot_date=snapshot_date,
+                        osm_relation_id=osm_relation_id,
+                    )
+
+                    if not results.get('success'):
+                        logger.error(f"Snapshot extraction failed for {country_name}: {results.get('error')}")
+                        push_complete('failed', results.get('error', 'Snapshot extraction failed'))
+                        return
+
+                    push_update('extract_region_pbf', 'completed', 'Snapshot extraction complete', 50)
+                    push_update('monthly_snapshots', 'completed', 'Snapshot ready', 75)
                     logger.info(f"Subgraph generation handled by pipeline Phase 3 for {iso}")
                     push_update('subgraph_generation', 'completed', 'Subgraph generation complete', 100)
 

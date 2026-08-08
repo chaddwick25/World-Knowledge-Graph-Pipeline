@@ -30,7 +30,7 @@ from api.models import (
 )
 
 # NOTE: Heavy service imports (osm_wikidata_resolver, regional_path_service,
-# extraction_service, temporal_orchestrator_service, graph_asset_service)
+# extraction_service, snapshot_extraction_service, graph_asset_service)
 # are imported lazily inside methods that use them to avoid slow startup.
 
 import glob
@@ -568,7 +568,9 @@ class CountryPreProcessView(APIView):
             # Run preprocessing in background thread
             def run_preprocessing_background():
                 try:
-                    from extraction.services.temporal_orchestrator_service import TemporalOrchestratorService
+                    from extraction.services.snapshot_extraction_service import (
+                        SnapshotExtractionService,
+                    )
                     from channels.layers import get_channel_layer
                     from asgiref.sync import async_to_sync
                     channel_layer = get_channel_layer()
@@ -594,32 +596,39 @@ class CountryPreProcessView(APIView):
                         except Exception:
                             pass
 
-                    # Instantiate orchestrator with session_id for websocket updates
-                    orchestrator = TemporalOrchestratorService(session_id=str(session.id))
-
-                    # Trigger parallel extraction with single snapshot mode
-                    results = orchestrator.run_pipeline(
-                        continent=continent,
-                        country=country_name,
-                        source_pbf_path=settings.PLANET_OSM_FILE_PATH,
-                        start_year=2021,
-                        end_year=2025,
-                        phases=[1, 2, 3, 4],  # Setup + Preprocessing + Polys + GeoVectors pickle
-                        single_snapshot_mode=True  # Force single snapshot mode
-                    )
-
-                    if not results.get('success'):
-                        logger.error(f"Temporal pipeline failed for {country_name}: {results.get('error')}")
-                        push_complete('failed', results.get('error', 'Temporal pipeline failed'))
-                        return
-
-                    # After temporal snapshot succeeds, run subgraph generation via Celery
+                    # Resolve ISO for the country (needed for SnapshotExtractionService)
                     iso = _resolve_iso_from_country_name(country_name)
                     if not iso:
                         logger.error(f"Failed to resolve ISO for country {country_name}")
                         push_complete('failed', 'Failed to resolve ISO')
                         return
 
+                    # Resolve OSM relation ID for the country
+                    from orchestration.models import CountryPipelineProfile
+                    profile = CountryPipelineProfile.objects.filter(
+                        iso2__iexact=iso,
+                    ).first()
+                    osm_relation_id = profile.osm_relation_id if profile else None
+
+                    snapshot_date = getattr(settings, 'SINGLE_SNAPSHOT_DATE', '2025_12_31')
+
+                    push_update('extract_region_pbf', 'in_progress', 'Extracting snapshot from planet PBF…', 25)
+                    service = SnapshotExtractionService()
+                    results = service.extract_country_snapshot(
+                        country_code=iso,
+                        country_name=country_name,
+                        continent=continent,
+                        snapshot_date=snapshot_date,
+                        osm_relation_id=osm_relation_id,
+                    )
+
+                    if not results.get('success'):
+                        logger.error(f"Snapshot extraction failed for {country_name}: {results.get('error')}")
+                        push_complete('failed', results.get('error', 'Snapshot extraction failed'))
+                        return
+
+                    push_update('extract_region_pbf', 'completed', 'Snapshot extraction complete', 50)
+                    push_update('monthly_snapshots', 'completed', 'Snapshot ready', 75)
                     logger.info(f"Subgraph generation handled by pipeline Phase 3 for {iso}")
                     push_update('subgraph_generation', 'completed', 'Subgraph generation complete', 100)
 
@@ -694,6 +703,11 @@ class CountrySubgraphsView(APIView):
 
     The response is derived from the filesystem layout under
     OSM_WIKIDATA_EXTRACTIONS_DIR/{continent}/{country}/subgraphs.
+
+    Query params:
+        snapshot_date - Optional. Snapshot date string (e.g. "2025_12_31").
+                        Accepted for forward compatibility; subgraph paths
+                        currently use the single-snapshot layout.
     """
 
     permission_classes = [AllowAny]
@@ -704,6 +718,10 @@ class CountrySubgraphsView(APIView):
                 {"error": "country_name is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # snapshot_date is accepted but not yet applied — subgraph paths
+        # currently use the single-snapshot filesystem layout.
+        # _snapshot_date = request.query_params.get('snapshot_date')
 
         from extraction.services.osm_wikidata_resolver import get_country_relations_dict
         from extraction.services.regional_path_service import (

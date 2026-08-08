@@ -128,15 +128,54 @@ class Command(BaseCommand):
             for state in target_states:
                 if state.region_type == RegionalExtractionState.RegionType.CONTINENT:
                     self.stdout.write(self.style.SUCCESS(f"Extracting Continent: {state.region_name}"))
-                    
+
                     try:
-                        from extraction.services.temporal_orchestrator_service import temporal_orchestrator
-                        temporal_orchestrator.run_pipeline(
-                            continent=state.region_name,
-                            country=None,  # Signal Batch 1 (Continent only)
-                            source_pbf_path=source_pbf_path,
-                            phases=[1]
+                        # Direct continent extraction via osmium extract --polygon.
+                        # Replaces the legacy temporal_orchestrator.run_pipeline(phases=[1])
+                        # call. Uses the continent's .poly file to extract from the planet PBF.
+                        from extraction.services.regional_path_service import (
+                            regional_path_service,
+                            normalize_continent_slug,
                         )
+                        cont_slug = normalize_continent_slug(state.region_name)
+                        output_pbf = regional_path_service.get_continent_pbf_path(cont_slug)
+
+                        # Continent .poly files live in POLYGON_FILES_DIR
+                        poly_dir = Path(getattr(settings, 'POLYGON_FILES_DIR', ''))
+                        poly_path = poly_dir / f"{cont_slug}.poly"
+                        if not poly_path.exists():
+                            # Try alternate naming (e.g., underscores vs hyphens)
+                            alt_poly = poly_dir / f"{cont_slug.replace('-', '_')}.poly"
+                            if alt_poly.exists():
+                                poly_path = alt_poly
+
+                        if not poly_path.exists():
+                            self.stdout.write(self.style.ERROR(
+                                f"✗ Poly file not found for {cont_slug}: {poly_path}"
+                            ))
+                            continue
+
+                        Path(output_pbf).parent.mkdir(parents=True, exist_ok=True)
+                        if Path(output_pbf).exists() and not self.force:
+                            self.stdout.write(f"  ✓ {cont_slug} PBF already exists — skipping")
+                            continue
+
+                        import subprocess
+                        osmium_path = getattr(settings, 'OSMIUM_BINARY_PATH', 'osmium')
+                        cmd = [
+                            osmium_path, 'extract',
+                            '--with-history',
+                            '--strategy=complete_ways',
+                            '--overwrite',
+                            '-p', str(poly_path),
+                            '-o', str(output_pbf),
+                            source_pbf_path,
+                        ]
+                        self.stdout.write(f"  Running: {' '.join(cmd)}")
+                        subprocess.run(cmd, check=True)
+                        self.stdout.write(self.style.SUCCESS(
+                            f"  ✓ Extracted {cont_slug} → {output_pbf}"
+                        ))
                     except Exception as e:
                         self.stdout.write(self.style.ERROR(f"✗ Failed to extract {state.region_name}: {e}"))
                         # Continue to next continent

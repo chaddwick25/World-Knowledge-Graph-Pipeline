@@ -11,9 +11,6 @@ from .step_0_base import (  # noqa: F401
     step_0l_enrich_worldkg_classes,
     step_0m_generate_osm_boundaries,
 )
-from .step_0g_continent_snapshots import (  # noqa: F401  LEGACY: to be removed
-    step_0g_extract_continent_snapshots,
-)
 from .step_0h_prebuild_embeddings import (  # noqa: F401
     step_0h_scan_embeddings,
     step_0h_copy_gb_to_uk,

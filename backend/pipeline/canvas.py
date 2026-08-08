@@ -162,7 +162,6 @@ def _get_step_tasks():
         step_0f_prebuild_wikidata_ids,
         step_0l_enrich_worldkg_classes,
         step_0m_generate_osm_boundaries,
-        # step_0g_extract_continent_snapshots,  # LEGACY: historical continent snapshots — to be removed
         step_0h_scan_embeddings,
         step_0h_copy_gb_to_uk,
         step_0i_prebuild_split_embeddings,
@@ -179,7 +178,6 @@ def _get_step_tasks():
     return {
         0: step_0_initialize_planet,
         0.5: step_0b_initialize_continent,
-        # 0.6: step_0g_extract_continent_snapshots,  # LEGACY: historical continent snapshots — to be removed
         0.7: step_0c_prebuild_structure,
         0.8: step_0d_prebuild_country_paths,
         0.85: step_0h_scan_embeddings,              # Scan embeddings → EligibleCountry
@@ -315,10 +313,6 @@ def run_planet_initialization(
     canvas_tasks = [steps[0].s(cfg.to_dict())]
     if extract_continents:
         canvas_tasks.append(steps[0.5].s())
-
-    # Phase 1: Extract historical continent snapshots (idempotent)
-    # LEGACY: step_0g_extract_continent_snapshots disabled — to be removed
-    # canvas_tasks.append(steps[0.6].s())   # step_0g_extract_continent_snapshots
 
     # Pre-build steps after planet and continents are ready.
     # These populate DB records needed by the frontend and country pipeline.

@@ -17,7 +17,6 @@ from rest_framework.permissions import AllowAny
 
 # NOTE: WorldKGPipelineService imported lazily — it triggers heavy Django app resolution.
 from orchestration.models import ProcessingSession, Task, PipelineRun
-from extraction.services.regional_path_service import regional_path_service
 
 logger = logging.getLogger(__name__)
 
@@ -552,12 +551,25 @@ class WorldKGPipelineV2StartView(APIView):
     POST /api/worldkg-pipeline-v2/start/
 
     Triggers the full WorldKG pipeline for a country (Steps 1-5) via Celery Canvas.
+
+    SnapshotJob gate (TEMPORAL_SNAPSHOT_REFACTOR.md Phase D1):
+      - RUNNING exists (without force) → 409 "Currently running"
+      - COMPLETED or FAILED exists → delete old record, create new PENDING
+        (re-run always allowed; force=True also clears RUNNING)
+      - No record → create PENDING
+    The created SnapshotJob is linked to the PipelineRun and transitioned to
+    RUNNING on dispatch, then to COMPLETED/FAILED by Step 6 / on_failure.
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
         from pipeline.canvas import run_worldkg_pipeline
         from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
+        from orchestration.models import (
+            CountryPipelineProfile, EligibleCountry, SnapshotJob, PipelineRun,
+        )
+        from django.conf import settings
+        from django.utils import timezone
 
         country_name = request.data.get('country_name', '').strip()
         if not country_name:
@@ -568,17 +580,15 @@ class WorldKGPipelineV2StartView(APIView):
 
         # Resolve ISO code for the country.
         # Order: CountryPipelineProfile → _resolve_iso_code → EligibleCountry
-        from orchestration.models import CountryPipelineProfile, EligibleCountry
-        
         profile = CountryPipelineProfile.objects.filter(
             canonical_name__iexact=country_name
         ).first()
         iso = profile.iso2 if profile else None
-        
+
         if not iso:
             # Try the legacy resolver (now also checks non-sovereign synthetic ISOs)
             iso = WorldKGPipelineService._resolve_iso_code(country_name)
-        
+
         if not iso:
             # Fallback: check EligibleCountry (covers split territories like Wales,
             # Scotland, England that have no real ISO code)
@@ -590,7 +600,7 @@ class WorldKGPipelineV2StartView(APIView):
                 logger.info(
                     f"Resolved ISO for {country_name} from EligibleCountry: {iso}"
                 )
-        
+
         if not iso:
             return Response(
                 {'error': f'Could not resolve ISO code for {country_name}'},
@@ -599,7 +609,36 @@ class WorldKGPipelineV2StartView(APIView):
 
         skip_entropy = request.data.get('skip_entropy_gate', False)
         skip_enrich = request.data.get('skip_enrich', False)
-        snapshot_date = request.data.get('snapshot_date', None)
+        force = request.data.get('force', False)
+        snapshot_date = request.data.get('snapshot_date', None) or getattr(
+            settings, 'SINGLE_SNAPSHOT_DATE', '2025_12_31'
+        )
+
+        # ── SnapshotJob gate ───────────────────────────────────────────
+        existing = SnapshotJob.objects.filter(
+            snapshot_date=snapshot_date, country_code__iexact=iso,
+        ).first()
+        if existing:
+            if existing.status == SnapshotJob.Status.RUNNING and not force:
+                return Response(
+                    {
+                        'error': 'Currently running',
+                        'snapshot_date': snapshot_date,
+                        'country_code': iso,
+                        'snapshot_job_id': str(existing.id),
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            # COMPLETED with force=True → delete + re-run
+            # FAILED / stale PENDING → always allow re-run
+            existing.delete()
+
+        job = SnapshotJob.objects.create(
+            snapshot_date=snapshot_date,
+            country_code=iso,
+            country_name=country_name,
+            status=SnapshotJob.Status.PENDING,
+        )
 
         try:
             run_id = run_worldkg_pipeline(
@@ -609,10 +648,27 @@ class WorldKGPipelineV2StartView(APIView):
                 snapshot_date=snapshot_date,
             )
         except ImportError as e:
+            job.mark_failed(str(e))
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+        except Exception as e:
+            job.mark_failed(str(e))
+            raise
+
+        # Link the SnapshotJob to the PipelineRun and transition to RUNNING
+        try:
+            run = PipelineRun.objects.get(id=run_id)
+            job.pipeline_run = run
+        except PipelineRun.DoesNotExist:
+            run = None
+        job.status = SnapshotJob.Status.RUNNING
+        job.started_at = timezone.now()
+        job.celery_task_id = run_id
+        job.save(update_fields=[
+            'pipeline_run', 'status', 'started_at', 'celery_task_id',
+        ])
 
         ws_url = f'ws://localhost:8000/ws/pipeline/{run_id}/'
 
@@ -621,6 +677,8 @@ class WorldKGPipelineV2StartView(APIView):
             'ws_url': ws_url,
             'status': 'started',
             'country_name': country_name,
+            'snapshot_date': snapshot_date,
+            'snapshot_job_id': str(job.id),
         }, status=status.HTTP_202_ACCEPTED)
 
 
@@ -628,98 +686,177 @@ class SnapshotDatesView(APIView):
     """
     GET /api/planet/snapshot-dates/
 
-    Returns all available continent snapshot dates on disk.
-    Used by the frontend to populate the date selector.
+    Returns the snapshot date range (derived from settings) plus the set of
+    dates that have at least one completed ``SnapshotJob``. Replaces the
+    legacy filesystem scan of the ``continents/`` directory.
+
+    Response shape::
+
+        {
+            "snapshot_dates": ["2025_12_31", "2024_12_31", ...],
+            "completed_dates": ["2025_12_31", ...],
+            "default": "2025_12_31",
+            "count": 5
+        }
     """
     permission_classes = [AllowAny]
 
     def get(self, request):
         from django.conf import settings
+        from orchestration.models import SnapshotJob
+
+        start_year = getattr(settings, 'SNAPSHOT_START_YEAR',
+                             getattr(settings, 'WORLDKG_SNAPSHOT_START_YEAR', 2021))
+        end_year = getattr(settings, 'SNAPSHOT_END_YEAR',
+                           getattr(settings, 'WORLDKG_SNAPSHOT_END_YEAR', 2025))
+        all_dates = [f"{y}_12_31" for y in range(end_year, start_year - 1, -1)]
+
         try:
-            dates = regional_path_service.list_available_snapshot_dates()
+            completed = sorted(
+                set(
+                    SnapshotJob.objects.filter(
+                        status=SnapshotJob.Status.COMPLETED,
+                    ).values_list('snapshot_date', flat=True).distinct()
+                ),
+                reverse=True,
+            )
         except Exception as e:
-            logger.error(f"Failed to list snapshot dates: {e}")
-            dates = []
+            logger.error(f"Failed to query completed SnapshotJobs: {e}")
+            completed = []
 
         return Response({
-            'snapshot_dates': dates,
+            'snapshot_dates': all_dates,
+            'completed_dates': completed,
             'default': getattr(settings, 'SINGLE_SNAPSHOT_DATE', '2025_12_31'),
-            'count': len(dates),
+            'count': len(all_dates),
         })
 
 
-class ContinentSnapshotTriggerView(APIView):
+class SnapshotJobStatusView(APIView):
     """
-    POST /api/planet/extract-continent-snapshots/
+    Snapshot job status — DB ground truth for (country, snapshot_date).
 
-    Triggers the continent snapshot extraction script (Phase 1).
-    Extracts all continents from ALL available historical planet PBFs.
-    
-    This can be called independently after planet initialization to
-    backfill continent snapshots for historical dates.
+    GET /api/snapshot-jobs/{country_code}/
+        → All jobs for this country, with status per snapshot_date.
 
-    Payload (optional):
-        {"force": false}
+    GET /api/snapshot-jobs/?snapshot_date=2025_12_31
+        → All countries processed for this date.
+
+    GET /api/snapshot-jobs/{country_code}/{snapshot_date}/
+        → Single job detail with results summary.
     """
     permission_classes = [AllowAny]
 
-    def post(self, request):
-        from extraction.services.continent_snapshot_service import (
-            ContinentSnapshotService,
-            CONTINENTS,
-        )
-        from django.conf import settings
-        from pathlib import Path
+    def get(self, request, country_code=None, snapshot_date=None):
+        from orchestration.models import SnapshotJob
 
-        force = request.data.get('force', False)
+        qs = SnapshotJob.objects.all().order_by('-snapshot_date')
 
-        # Verify Step 0.5 produced flat continent PBFs
-        continents_dir = Path(settings.OSM_WIKIDATA_EXTRACTIONS_DIR) / "continents"
-        found = []
-        for slug in CONTINENTS:
-            pbf = continents_dir / f"{slug}.pbf"
-            if pbf.exists():
-                found.append(slug)
-            else:
-                alt = continents_dir / f"{slug.replace('_', '-')}.pbf"
-                if alt.exists():
-                    found.append(slug)
+        if country_code:
+            qs = qs.filter(country_code__iexact=country_code)
+        if snapshot_date:
+            qs = qs.filter(snapshot_date=snapshot_date)
+        # Query-param fallbacks
+        qp_date = request.query_params.get('snapshot_date')
+        if qp_date and not snapshot_date:
+            qs = qs.filter(snapshot_date=qp_date)
+        qp_country = request.query_params.get('country_code')
+        if qp_country and not country_code:
+            qs = qs.filter(country_code__iexact=qp_country)
 
-        if not found:
+        jobs = [
+            {
+                'snapshot_job_id': str(j.id),
+                'snapshot_date': j.snapshot_date,
+                'country_code': j.country_code,
+                'country_name': j.country_name,
+                'status': j.status,
+                'total_entities': j.total_entities,
+                'total_aligned': j.total_aligned,
+                'total_spatial_links': j.total_spatial_links,
+                'error_message': j.error_message,
+                'pipeline_run_id': str(j.pipeline_run_id) if j.pipeline_run_id else None,
+                'celery_task_id': j.celery_task_id,
+                'started_at': j.started_at.isoformat() if j.started_at else None,
+                'completed_at': j.completed_at.isoformat() if j.completed_at else None,
+                'created_at': j.created_at.isoformat() if j.created_at else None,
+            }
+            for j in qs.iterator()
+        ]
+
+        # Single-job detail path
+        if country_code and snapshot_date and jobs:
+            return Response(jobs[0])
+
+        # Country-grouped shape (matches the plan's response example)
+        if country_code and not snapshot_date:
             return Response({
-                'status': 'skipped',
-                'message': 'No flat continent PBFs found. Run planet initialization (Step 0.5) first.',
-                'continents_dir': str(continents_dir),
-                'continents_found': 0,
+                'country_code': country_code,
+                'jobs': jobs,
             })
 
-        service = ContinentSnapshotService(force=force, start_year=2021, end_year=2025)
-        results = service.run()
+        return Response({'jobs': jobs, 'count': len(jobs)})
 
-        total_continents = 0
-        total_success = 0
-        for date, res in results.items():
-            if isinstance(res, dict) and "status" not in res:
-                for cont, r in res.items():
-                    if isinstance(r, dict) and r.get('success'):
-                        total_success += 1
-                        total_continents += 1
-                    elif isinstance(r, dict) and not r.get('success'):
-                        total_continents += 1
-            elif isinstance(res, dict) and res.get("status") == "skipped":
-                # A "skipped" date was already complete — count continents from the message
-                msg = res.get("message", "")
-                import re
-                m = re.search(r"(\d+)/(\d+)", msg)
-                if m:
-                    total_continents += int(m.group(2))
-                    total_success += int(m.group(1))
+
+class SnapshotJobResultsView(APIView):
+    """
+    GET /api/snapshot-jobs/{country_code}/{snapshot_date}/results/
+
+    Durable, queryable results layer for a completed snapshot job. Joins
+    ``SnapshotJob`` → ``PipelineRun`` → ``TaskResult`` (django-celery-results)
+    via ``PipelineAsset.metadata.task_id`` so the frontend can render
+    step-by-step results without an active WebSocket connection.
+
+    This is the "durable results" half of Phase E — the WebSocket
+    ``_push_update`` channel remains the real-time progress channel during
+    execution; this endpoint is the post-completion record.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, country_code, snapshot_date):
+        from orchestration.models import SnapshotJob
+
+        job = SnapshotJob.objects.filter(
+            country_code__iexact=country_code, snapshot_date=snapshot_date,
+        ).first()
+        if not job:
+            return Response(
+                {'error': f'No SnapshotJob for {country_code}/{snapshot_date}'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        run_id = str(job.pipeline_run_id) if job.pipeline_run_id else None
+        task_results = []
+        if run_id:
+            try:
+                from api.services.views_artifact_registry import (
+                    _import_task_result,
+                    _collect_task_ids,
+                    _serialize_task_results,
+                )
+                TaskResult = _import_task_result()
+                if TaskResult is not None:
+                    task_ids = _collect_task_ids(run_id)
+                    if task_ids:
+                        task_results = _serialize_task_results(TaskResult, task_ids)
+                    task_results.sort(
+                        key=lambda t: (t.get('date_done') or '', t.get('task_id'))
+                    )
+            except Exception as exc:
+                logger.warning("Failed to load TaskResult rows: %s", exc)
 
         return Response({
-            'status': 'completed',
-            'message': f'Created {total_success}/{total_continents} continent snapshots across {len(results)} years',
-            'dates_processed': len(results),
-            'total_continents': total_continents,
-            'total_success': total_success,
-            'results': results,
+            'snapshot_job_id': str(job.id),
+            'country_code': job.country_code,
+            'country_name': job.country_name,
+            'snapshot_date': job.snapshot_date,
+            'status': job.status,
+            'total_entities': job.total_entities,
+            'total_aligned': job.total_aligned,
+            'total_spatial_links': job.total_spatial_links,
+            'error_message': job.error_message,
+            'pipeline_run_id': run_id,
+            'started_at': job.started_at.isoformat() if job.started_at else None,
+            'completed_at': job.completed_at.isoformat() if job.completed_at else None,
+            'task_results': task_results,
         })

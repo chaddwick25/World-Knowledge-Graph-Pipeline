@@ -8,6 +8,10 @@ export default {
       type: String,
       required: true,
     },
+    snapshotDate: {
+      type: String,
+      default: null,
+    },
   },
   data() {
     return {
@@ -47,6 +51,10 @@ export default {
     countryName() {
       this.fetchSummary()
     },
+    snapshotDate() {
+      this.fetchSummary()
+      if (this.activeView === 'detail') this.fetchDetail(this.detailPage)
+    },
   },
   mounted() {
     if (this.countryName) {
@@ -61,7 +69,9 @@ export default {
       this.summary = null
       try {
         const encoded = encodeURIComponent(this.countryName)
-        const { data } = await axios.get(`/data/augmented-summary/${encoded}/`)
+        const params = {}
+        if (this.snapshotDate) params.snapshot_date = this.snapshotDate
+        const { data } = await axios.get(`/data/augmented-summary/${encoded}/`, { params })
         this.summary = data
       } catch (e) {
         console.error('Error fetching augmented summary:', e)
@@ -76,8 +86,10 @@ export default {
       this.detailPage = page
       try {
         const encoded = encodeURIComponent(this.countryName)
+        const params = { page: page, page_size: this.detailPageSize }
+        if (this.snapshotDate) params.snapshot_date = this.snapshotDate
         const { data } = await axios.get(`/data/augmented-detail/${encoded}/`, {
-          params: { page: page, page_size: this.detailPageSize },
+          params,
         })
         this.detail = data
         this.detailTotalAccepted = data.total_accepted || 0

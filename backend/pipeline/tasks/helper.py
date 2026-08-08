@@ -237,9 +237,14 @@ def create_planet_run_record(cfg: CfgLike) -> None:
 
 
 def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
-    """Generate snapshot PBF + poly file if they don't exist (v2 helper)."""
-    from extraction.services.temporal_orchestrator_service import (
-        TemporalOrchestratorService,
+    """Generate snapshot PBF + poly file if they don't exist (v2 helper).
+
+    Replaces the legacy ``TemporalOrchestratorService`` call chain with a
+    direct planet-PBF extraction via ``SnapshotExtractionService``. See
+    ``docs/plans/TEMPORAL_SNAPSHOT_REFACTOR.md`` Phase B.
+    """
+    from extraction.services.snapshot_extraction_service import (
+        SnapshotExtractionService,
     )
     from extraction.services.regional_path_service import (
         regional_path_service,
@@ -266,7 +271,7 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
         _log(
             logger,
             "info",
-            "Pre-processing snapshot via TemporalOrchestratorService (phases 1-3)",
+            "Pre-processing snapshot via SnapshotExtractionService (planet PBF direct)",
             country=cfg.iso,
             continent=cfg.continent,
             osm_relation_id=cfg.osm_relation_id,
@@ -274,42 +279,14 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
             pipeline_run_id=cfg.pipeline_run_id,
         )
 
-        orchestrator = TemporalOrchestratorService()
-        result = orchestrator.run_pipeline(
+        service = SnapshotExtractionService()
+        result = service.extract_country_snapshot(
+            country_code=cfg.iso,
+            country_name=cfg.name,
             continent=cfg.continent,
-            country=cfg.name,
-            source_pbf_path=settings.PLANET_OSM_FILE_PATH,
-            start_year=int(cfg.snapshot_date.split("_")[0]) if cfg.snapshot_date else 2025,
-            end_year=int(cfg.snapshot_date.split("_")[0]) if cfg.snapshot_date else 2025,
-            phases=[1, 2, 3],
-            single_snapshot_mode=True,
             snapshot_date=cfg.snapshot_date,
+            osm_relation_id=cfg.osm_relation_id,
         )
-
-        if not result.get("success"):
-            err_msg = result.get("error", "")
-            if "not found in mapping" in err_msg:
-                _log(
-                    logger,
-                    "info",
-                    "Country not in OSMWikiDataHierarchy — using direct relation extraction",
-                    country=cfg.iso,
-                    osm_relation_id=cfg.osm_relation_id,
-                    pipeline_run_id=cfg.pipeline_run_id,
-                )
-                result = _preprocess_synthetic_territory(cfg, logger)
-            else:
-                _log(
-                    logger,
-                    "error",
-                    "Pre-processing failed",
-                    country=cfg.iso,
-                    error=err_msg,
-                    pipeline_run_id=cfg.pipeline_run_id,
-                )
-                raise RuntimeError(
-                    f"Pre-processing failed for {cfg.iso}: {err_msg}"
-                )
 
         if not result.get("success"):
             _log(
@@ -321,7 +298,7 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
                 pipeline_run_id=cfg.pipeline_run_id,
             )
             raise RuntimeError(
-                f"Pre-processing failed for {cfg.iso}: {result.get('error')}"
+                f"Snapshot extraction failed for {cfg.iso}: {result.get('error')}"
             )
 
         _log(
@@ -329,7 +306,10 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
             "info",
             "Pre-processing complete",
             country=cfg.iso,
-            phases=result.get("phases", {}),
+            snapshot_pbf_path=result.get("snapshot_pbf_path"),
+            poly_file_path=result.get("poly_file_path"),
+            entity_count=result.get("entity_count"),
+            skipped=result.get("skipped", False),
             pipeline_run_id=cfg.pipeline_run_id,
         )
 
@@ -348,6 +328,8 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
             )
             cfg.snapshot_pbf_path = str(ss_path)
             snapshot_exists = ss_path.exists()
+            if result.get("poly_file_path"):
+                cfg.poly_path = result["poly_file_path"]
         except Exception:
             snapshot_exists = cfg.snapshot_pbf_path and Path(cfg.snapshot_pbf_path).exists()
     else:
@@ -417,176 +399,6 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
                 error=str(exc),
                 pipeline_run_id=cfg.pipeline_run_id,
             )
-
-
-def _preprocess_synthetic_territory(
-    cfg: CfgLike,
-    logger: logging.Logger,
-) -> dict:
-    """Direct extraction pipeline for synthetic non-sovereign territories (v2)."""
-    from extraction.services.regional_path_service import (
-        regional_path_service,
-        normalize_continent_slug,
-        normalize_country_slug,
-    )
-    from extraction.services.extraction_service import (
-        run_pbf_extraction_with_relation,
-        ExtractionService,
-    )
-    from extraction.services.pbf_bounding_box_service import pbf_bounding_box_service
-    from api.models import PbfFile
-
-    cont_norm = normalize_continent_slug(cfg.continent)
-    country_slug = normalize_country_slug(cfg.name)
-    snapshot_date = cfg.snapshot_date
-    year = int(snapshot_date.split("_")[0]) if snapshot_date else 2025
-
-    osm_wikidata_dir = Path(settings.OSM_WIKIDATA_EXTRACTIONS_DIR)
-    possible_sources = [
-        regional_path_service.get_continent_snapshot_pbf_path(cont_norm, snapshot_date),
-        osm_wikidata_dir / "continents" / f"{cont_norm}.pbf",
-        osm_wikidata_dir / cont_norm / f"{cont_norm}.pbf",
-        Path(settings.PLANET_OSM_FILE_PATH),
-    ]
-
-    effective_source = None
-    for ps in possible_sources:
-        if ps.exists():
-            effective_source = str(ps)
-            break
-
-    if not effective_source:
-        return {"success": False, "error": "No continent source PBF found"}
-
-    rel_id = cfg.osm_relation_id
-    if not rel_id:
-        return {"success": False, "error": "No OSM relation ID for synthetic territory"}
-
-    generated = 0
-    failed = 0
-    shared_used_cores = set()
-
-    yearly_pbf_path = regional_path_service.get_yearly_pbf_path(cont_norm, country_slug, year)
-    if not yearly_pbf_path.exists():
-        _log(
-            logger,
-            "info",
-            "Phase 1: Extracting synthetic territory PBF via relation",
-            country=cfg.iso,
-            relation_id=rel_id,
-            source=effective_source,
-            output=str(yearly_pbf_path),
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-        res = run_pbf_extraction_with_relation(
-            effective_source,
-            rel_id,
-            str(yearly_pbf_path),
-            shared_used_cores,
-            f"syn_{cfg.iso}_{year}",
-        )
-        if res.get("success"):
-            generated += 1
-        else:
-            failed += 1
-            return {
-                "success": False,
-                "error": f"Phase 1 failed: {res.get('error', 'Unknown error')}",
-            }
-    else:
-        _log(
-            logger,
-            "info",
-            "Phase 1: Yearly PBF already exists",
-            path=str(yearly_pbf_path),
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-
-    snapshot_path = regional_path_service.get_single_snapshot_pbf_path(
-        cont_norm,
-        country_slug,
-        snapshot_date,
-    )
-    if not snapshot_path.exists():
-        syear, smonth, sday = map(int, snapshot_date.split("_"))
-        snapshot_timestamp = f"{syear}-{smonth:02d}-{sday:02d}T23:59:59Z"
-        _log(
-            logger,
-            "info",
-            "Phase 2: Creating single snapshot",
-            country=cfg.iso,
-            source=str(yearly_pbf_path),
-            output=str(snapshot_path),
-            timestamp=snapshot_timestamp,
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-        extraction_service = ExtractionService()
-        res = extraction_service.create_snapshot(
-            str(yearly_pbf_path),
-            str(snapshot_path),
-            snapshot_timestamp,
-            PbfFile.ExtractionLevel.SNAPSHOT,
-        )
-        if not res.get("success"):
-            failed += 1
-            return {
-                "success": False,
-                "error": f"Phase 2 failed: {res.get('error', 'Unknown error')}",
-            }
-        generated += 1
-    else:
-        _log(
-            logger,
-            "info",
-            "Phase 2: Snapshot already exists",
-            path=str(snapshot_path),
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-
-    pbf_name = snapshot_path.name
-    poly_name = pbf_name.replace(".pbf", ".poly", 1)
-    poly_path = snapshot_path.with_name(poly_name)
-    if not poly_path.exists():
-        _log(
-            logger,
-            "info",
-            "Phase 3: Generating poly boundary file",
-            country=cfg.iso,
-            snapshot=str(snapshot_path),
-            relation_id=rel_id,
-            output=str(poly_path),
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-        success = pbf_bounding_box_service.generate_high_res_poly(
-            str(snapshot_path),
-            rel_id,
-            str(poly_path),
-        )
-        if success:
-            generated += 1
-        else:
-            failed += 1
-            return {"success": False, "error": "Phase 3: poly generation failed"}
-    else:
-        _log(
-            logger,
-            "info",
-            "Phase 3: Poly already exists",
-            path=str(poly_path),
-            pipeline_run_id=cfg.pipeline_run_id,
-        )
-
-    cfg.snapshot_pbf_path = str(snapshot_path)
-    cfg.poly_path = str(poly_path)
-
-    return {
-        "success": failed == 0,
-        "phases": {
-            "1": {"success": True},
-            "2": {"success": True},
-            "3": {"success": True},
-        },
-    }
 
 
 def sync_subgraph_profiles(

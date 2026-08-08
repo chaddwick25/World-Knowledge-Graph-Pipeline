@@ -124,7 +124,12 @@ export default {
       if (this.pipelineDoneStatus === 'completed') return 'Pipeline Complete'
       if (this.pipelineDoneStatus === 'failed') return 'Pipeline Failed'
       if (this.pipelineDoneStatus === 'skipped') return 'Pipeline Skipped'
-      if (this.selectedYear) return `Run WorldKG Pipeline — ${this.selectedYear}`
+      if (this.selectedYear) {
+        const isReRun = this.isYearUsed(this.selectedYear)
+        return isReRun
+          ? `Re-run WorldKG Pipeline — ${this.selectedYear}`
+          : `Run WorldKG Pipeline — ${this.selectedYear}`
+      }
       return 'Run WorldKG Pipeline'
     },
     pipelineBtnDisabled() {
@@ -163,6 +168,18 @@ export default {
       async handler(newIds) {
         if (newIds.length === 1) {
           this.fetchCountryStatus()
+          // Fetch DB-backed snapshot job status so the year selector
+          // shows accurate "already processed" badges across refreshes.
+          if (this.singleCountry?.iso_code) {
+            const store = usePipelineStore()
+            await store.fetchSnapshotJobs(
+              this.singleCountry.name,
+              this.singleCountry.iso_code,
+            )
+            // If the default selected year is already completed, fetch
+            // its durable results so the progress panel shows them.
+            await this.maybeFetchDurableResults()
+          }
         } else {
           this.countryStatus = null
         }
@@ -174,6 +191,11 @@ export default {
         this.errorMessage = ''
       },
       deep: true,
+    },
+    // When the user selects a different year, fetch durable results
+    // from the DB if that year has a completed SnapshotJob.
+    selectedSnapshotDate() {
+      this.maybeFetchDurableResults()
     },
   },
   mounted() {
@@ -215,6 +237,7 @@ export default {
       this.allCountries = countries.map((c) => ({
         id: c.id,
         name: c.name,
+        iso_code: c.iso_code || '',
         continent: c.continent,
         continent_id: c.continent_id,
         is_geovectors_supported: c.is_geovectors_supported,
@@ -274,12 +297,35 @@ export default {
     // ── Year selector methods ──
     selectYear(year) {
       if (!this.singleCountry) return
-      const store = usePipelineStore()
-      const usedYears = store.runsByYear[this.singleCountry.name]
-      if (usedYears && usedYears.has(String(year))) return // Already used
-      // Use the matching date string from the API response, or fallback to YYYY_12_31
+      // Allow selecting any year, including completed ones (re-run with force=true)
       const matchingDate = this.snapshotDates.find(d => d.startsWith(String(year)))
       this.selectedSnapshotDate = matchingDate || `${year}_12_31`
+    },
+
+    /**
+     * If the selected year has a completed SnapshotJob, fetch its durable
+     * results from the DB so the progress panel renders step-by-step data
+     * without needing an active WebSocket connection.
+     */
+    async maybeFetchDurableResults() {
+      if (!this.singleCountry?.iso_code || !this.selectedSnapshotDate) return
+      // Don't fetch if a pipeline is actively running (WebSocket is live)
+      if (this.isPipelineRunning) return
+      const year = String(this.selectedSnapshotDate).split('_')[0]
+      const store = usePipelineStore()
+      const usedYears = store.runsByYear[this.singleCountry.name]
+      const isCompleted = usedYears && usedYears.has(year)
+      if (!isCompleted) return
+      await store.fetchSnapshotJobResults(
+        this.singleCountry.name,
+        this.singleCountry.iso_code,
+        this.selectedSnapshotDate,
+      )
+      // Update pipelineDoneStatus so the UI shows "Complete" badge
+      const run = store.runs[this.singleCountry.name]
+      if (run?.status === 'completed') {
+        this.pipelineDoneStatus = 'completed'
+      }
     },
     isYearUsed(year) {
       if (!this.singleCountry) return false
@@ -296,6 +342,7 @@ export default {
       if (!this.singleCountry) return
       const store = usePipelineStore()
       store.clearRunsByYear(this.singleCountry.name)
+      store.resetYearsForCountry(this.singleCountry.name)
       // Reset pipeline state
       this.pipelineSessionId = null
       this.pipelineDoneStatus = null
@@ -318,6 +365,16 @@ export default {
         this.pipelineDoneStatus = 'failed'
         return
       }
+
+      // If the selected year is already completed, confirm before re-running
+      const selectedYear = this.selectedSnapshotDate?.split('_')[0]
+      const isCompleted = selectedYear && this.isYearUsed(selectedYear)
+      if (isCompleted && !window.confirm(
+        `Pipeline already completed for ${selectedYear}. Re-run and overwrite?`
+      )) {
+        return
+      }
+
       this.isPipelineRunning = true
       this.pipelineDoneStatus = null
       this.errorMessage = ''
@@ -325,13 +382,28 @@ export default {
         const store = usePipelineStore()
         const sessionId = await store.startPipeline(
           this.singleCountry.name,
-          this.selectedSnapshotDate
+          this.selectedSnapshotDate,
+          { force: isCompleted }
         )
         this.pipelineSessionId = sessionId || null
       } catch (err) {
-        this.errorMessage = err.response?.data?.error || err.message || 'Failed to start pipeline'
+        const status = err.response?.status
+        const reason = err.response?.data?.error || err.message || 'Failed to start pipeline'
+        this.errorMessage = reason
         this.isPipelineRunning = false
-        this.pipelineDoneStatus = 'failed'
+        if (status === 409) {
+          this.pipelineDoneStatus = 'skipped'
+          // Refresh DB-backed snapshot jobs so the year badge updates.
+          if (this.singleCountry?.iso_code) {
+            const store = usePipelineStore()
+            await store.fetchSnapshotJobs(
+              this.singleCountry.name,
+              this.singleCountry.iso_code,
+            )
+          }
+        } else {
+          this.pipelineDoneStatus = 'failed'
+        }
       }
     },
     onPipelineDone(event) {
@@ -341,6 +413,14 @@ export default {
       if (event.status === 'completed') {
         // Refresh country status to see new data
         this.fetchCountryStatus()
+        // Refresh DB-backed snapshot jobs so the year badge updates
+        if (this.singleCountry?.iso_code) {
+          const store = usePipelineStore()
+          store.fetchSnapshotJobs(
+            this.singleCountry.name,
+            this.singleCountry.iso_code,
+          )
+        }
       }
     },
     // ── Semantic search ──
@@ -511,11 +591,11 @@ export default {
               :class="{
                 'sidebar__year-btn--active': isYearActive(year),
                 'sidebar__year-btn--used': isYearUsed(year) && !isYearActive(year),
-                'sidebar__year-btn--disabled': isYearUsed(year) || yearDisabled
+                'sidebar__year-btn--disabled': yearDisabled
               }"
-              :disabled="isYearUsed(year) || yearDisabled"
+              :disabled="yearDisabled"
               @click="selectYear(year)"
-              :title="isYearUsed(year) ? `Pipeline already run for ${year}` : `Use snapshot from ${year}`"
+              :title="isYearUsed(year) ? `Re-run pipeline for ${year}` : `Use snapshot from ${year}`"
             >
               <span class="sidebar__year-btn-label">{{ year }}</span>
               <span v-if="isYearUsed(year) && !isYearActive(year)" class="sidebar__year-btn-check">&#10003;</span>
@@ -579,6 +659,7 @@ export default {
             <SemanticSearchPanel
               v-if="activeTab === 'query'"
               :country-name="singleCountry.name"
+              :snapshot-date="selectedSnapshotDate"
               @search-results="onSearchResults"
             />
 
@@ -586,18 +667,21 @@ export default {
             <PipelineMetricsPanel
               v-else-if="activeTab === 'metrics'"
               :country-name="singleCountry.name"
+              :snapshot-date="selectedSnapshotDate"
             />
 
             <!-- Augmented Data tab -->
             <AugmentedDataPanel
               v-else-if="activeTab === 'augmented'"
               :country-name="singleCountry.name"
+              :snapshot-date="selectedSnapshotDate"
             />
 
             <!-- Spatial Layers tab -->
             <SpatialMetricsPanel
               v-else-if="activeTab === 'spatial'"
               :country-name="singleCountry.name"
+              :snapshot-date="selectedSnapshotDate"
             />
           </div>
         </div>
@@ -1032,9 +1116,14 @@ export default {
 }
 
 .sidebar__year-btn--used {
-  opacity: 0.5;
   border-color: #22c55e;
   color: #22c55e;
+}
+
+.sidebar__year-btn--used:hover:not(.sidebar__year-btn--active) {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: #16a34a;
+  color: #4ade80;
 }
 
 .sidebar__year-btn--disabled {

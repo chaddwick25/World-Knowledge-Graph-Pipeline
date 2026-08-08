@@ -8,6 +8,9 @@
  *
  * Props:
  *   countryName  - Required. Country to search within.
+ *   snapshotDate - Optional. Snapshot date string (e.g. "2025_12_31").
+ *                  Forwarded to the backend so searches can be scoped to a
+ *                  specific pipeline run once the data layer supports it.
  *
  * Emits:
  *   search-results  - Array of result objects (for map markers)
@@ -21,6 +24,10 @@ export default {
     countryName: {
       type: String,
       required: true,
+    },
+    snapshotDate: {
+      type: String,
+      default: null,
     },
   },
   emits: ['search-results'],
@@ -132,6 +139,10 @@ export default {
         if (this.lat) payload.lat = parseFloat(this.lat)
         if (this.lon) payload.lon = parseFloat(this.lon)
         if (this.rdfType) payload.rdf_type = this.rdfType
+
+        if (this.snapshotDate) {
+          payload.snapshot_date = this.snapshotDate
+        }
 
         const response = await axios.post('/nca/semantic-triplet-search/', payload)
         this.results = response.data.results || []

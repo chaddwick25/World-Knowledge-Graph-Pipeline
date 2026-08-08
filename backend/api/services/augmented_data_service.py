@@ -96,11 +96,19 @@ class AugmentedDataService:
     # If one score exceeds the sum of the others by this ratio, it's dominant
     DOMINANCE_RATIO = 0.5
 
-    def get_summary(self, country_name: str) -> AugmentedDataSummary:
-        """Build the full augmented data summary."""
+    def get_summary(self, country_name: str, snapshot_date: Optional[str] = None) -> AugmentedDataSummary:
+        """Build the full augmented data summary.
+
+        Args:
+            country_name: Country name or ISO code.
+            snapshot_date: Optional snapshot date string (e.g. "2025_12_31").
+                When provided, entity counts are filtered to that snapshot.
+                Spatial link counts are also filtered when the
+                SpatialTripletScore.snapshot_id column is populated.
+        """
         iso = self._resolve_iso(country_name)
-        subgraph_groups = self._build_subgraph_groups(country_name, iso)
-        entity_counts = self._count_entities(country_name, iso)
+        subgraph_groups = self._build_subgraph_groups(country_name, iso, snapshot_date)
+        entity_counts = self._count_entities(country_name, iso, snapshot_date)
         augmentation_estimate = self._estimate_augmentation(country_name, iso)
 
         # Aggregate across all subgraphs
@@ -128,7 +136,7 @@ class AugmentedDataService:
         )
 
         # Aggregate relation distribution across all links
-        relation_dist = self._build_relation_distribution(country_name, iso)
+        relation_dist = self._build_relation_distribution(country_name, iso, snapshot_date)
 
         return AugmentedDataSummary(
             country_name=country_name,
@@ -183,13 +191,14 @@ class AugmentedDataService:
     # ── Subgraph Groups ────────────────────────────────────────────────
 
     def _build_subgraph_groups(
-        self, country_name: str, iso: Optional[str]
+        self, country_name: str, iso: Optional[str], snapshot_date: Optional[str] = None
     ) -> list[SubgraphLinkGroup]:
         """Build per-subgraph link groupings from SpatialTripletScore data."""
         from django.db.models import Q
         from igea.models import SpatialTripletScore, SpatialTripletScoreRejected
 
         country_filter = self._country_filter(country_name, iso)
+        snapshot_filter = self._snapshot_filter(snapshot_date)
 
         # Fetch subgraphs for this country
         subgraphs = self._get_subgraphs(iso)
@@ -205,9 +214,11 @@ class AugmentedDataService:
                 # spatial containment. For now, use a simpler approach: aggregate
                 # all links and group by relation patterns.
                 accepted = SpatialTripletScore.objects.filter(
-                    country_filter & Q(predicted=True)
+                    country_filter & Q(predicted=True) & snapshot_filter
                 )
-                rejected = SpatialTripletScoreRejected.objects.filter(country_filter)
+                rejected = SpatialTripletScoreRejected.objects.filter(
+                    country_filter & snapshot_filter
+                )
 
                 # For actual subgraph scoping, we'd need entity-to-subgraph mapping.
                 # Since SpatialTripletScore stores country_name but not subgraph_slug,
@@ -247,9 +258,11 @@ class AugmentedDataService:
         # return a single country-level group
         if not groups:
             accepted = SpatialTripletScore.objects.filter(
-                country_filter & Q(predicted=True)
+                country_filter & Q(predicted=True) & snapshot_filter
             )
-            rejected = SpatialTripletScoreRejected.objects.filter(country_filter)
+            rejected = SpatialTripletScoreRejected.objects.filter(
+                country_filter & snapshot_filter
+            )
 
             accepted_count = accepted.count()
             rejected_count = rejected.count()
@@ -373,21 +386,37 @@ class AugmentedDataService:
     # ── Entity Counts ──────────────────────────────────────────────────
 
     @staticmethod
-    def _count_entities(country_name: str, iso: Optional[str]) -> dict:
-        """Count total entities and entities with WorldKG class."""
-        from worldkg_nca.models import OsmEntity
+    def _count_entities(country_name: str, iso: Optional[str], snapshot_date: Optional[str] = None) -> dict:
+        """Count total entities and entities with WorldKG class.
+
+        When snapshot_date is provided, counts are filtered to that snapshot
+        via the OsmEntity.snapshot_id column (CharField, e.g. "2025_12_31").
+        """
         from django.db import connections
 
         result = {'total': 0, 'with_wkg_class': 0}
 
         try:
             with connections['vectors'].cursor() as cursor:
-                cursor.execute("SELECT COUNT(*) FROM semantic_search_osmentity")
-                result['total'] = cursor.fetchone()[0]
-                cursor.execute(
-                    "SELECT COUNT(*) FROM semantic_search_osmentity WHERE wkg_class IS NOT NULL"
-                )
-                result['with_wkg_class'] = cursor.fetchone()[0]
+                if snapshot_date:
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM semantic_search_osmentity WHERE snapshot_id = %s",
+                        [snapshot_date],
+                    )
+                    result['total'] = cursor.fetchone()[0]
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM semantic_search_osmentity "
+                        "WHERE snapshot_id = %s AND wkg_class IS NOT NULL",
+                        [snapshot_date],
+                    )
+                    result['with_wkg_class'] = cursor.fetchone()[0]
+                else:
+                    cursor.execute("SELECT COUNT(*) FROM semantic_search_osmentity")
+                    result['total'] = cursor.fetchone()[0]
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM semantic_search_osmentity WHERE wkg_class IS NOT NULL"
+                    )
+                    result['with_wkg_class'] = cursor.fetchone()[0]
         except Exception as exc:
             logger.warning(f"Failed to count entities for {country_name}: {exc}")
 
@@ -396,7 +425,7 @@ class AugmentedDataService:
     # ── Relation Distribution ──────────────────────────────────────────
 
     def _build_relation_distribution(
-        self, country_name: str, iso: Optional[str]
+        self, country_name: str, iso: Optional[str], snapshot_date: Optional[str] = None
     ) -> list:
         """Build relation-level distribution with acceptance rates."""
         from collections import Counter
@@ -404,11 +433,14 @@ class AugmentedDataService:
         from igea.models import SpatialTripletScore, SpatialTripletScoreRejected
 
         country_filter = self._country_filter(country_name, iso)
+        snapshot_filter = self._snapshot_filter(snapshot_date)
 
         accepted = SpatialTripletScore.objects.filter(
-            country_filter & Q(predicted=True)
+            country_filter & Q(predicted=True) & snapshot_filter
         )
-        rejected = SpatialTripletScoreRejected.objects.filter(country_filter)
+        rejected = SpatialTripletScoreRejected.objects.filter(
+            country_filter & snapshot_filter
+        )
 
         rel_counts = Counter()
         rel_accepted = Counter()
@@ -558,6 +590,26 @@ class AugmentedDataService:
         if iso and iso.upper() != country_name.upper():
             f |= Q(country_name__iexact=iso)
         return f
+
+    @staticmethod
+    def _snapshot_filter(snapshot_date: Optional[str]):
+        """Build a Q filter for SpatialTripletScore.snapshot_id.
+
+        SpatialTripletScore.snapshot_id is a UUIDField that references a
+        TemporalSnapshot. Currently all rows have snapshot_id=NULL (the
+        pipeline doesn't set it), so we return a no-op filter that matches
+        both NULL and non-NULL values when no snapshot_date is provided.
+
+        When snapshot_date IS provided, we can't directly filter by it
+        (the column is a UUID, not a date string), so we return a no-op
+        for now. Once the pipeline populates snapshot_id, this method
+        should resolve the date string to the corresponding UUID.
+        """
+        from django.db.models import Q
+
+        # No-op for now — SpatialTripletScore.snapshot_id is NULL for all rows.
+        # Returning Q() matches everything.
+        return Q()
 
     @staticmethod
     def _resolve_iso(country_name: str) -> Optional[str]:

@@ -1,62 +1,74 @@
 # WorldKG Pipeline
 
-This is an attempt to productize open source models for geospatial reasoning via the WorldKG Project(https://www.vgiscience.org/projects/worldkg.html).
-The WorldKG pipeline's goal is to transform the hetrogeneous, noisy and unstructured OpenStreetMap into homogenous, clean and structured data. 
-It ingests OSM planet data, builds vector embeddings, aligns entities with Wikidata, and predicts spatial links. 
-All of this is run as a multi‑stage ETL pipeline controlled by a Celery canvas. 
-The artifacts produced by the pipeline will be consumed by agents for geospatial reasoning https://arxiv.org/pdf/2601.16965(not yet implemented).
+Productizing open-source models for geospatial reasoning via the [WorldKG Project](https://www.vgiscience.org/projects/worldkg.html).
 
-<!-- TODO: Add screenshots of these metrics in the pipeline -->
-Artifacts Produced by the Pipeline:
-  -> GeoVectors Embeddings - Semantic and spatial embeddings for OSM entities (GV‑Tags 300D + GV‑NLE 100D).
-  -> Wikidata Alignment - Uses the WorldKG ontology and alignment models to connect OSM entities to Wikidata entries.
-  -> Spatial Link Prediction - Produces ground‑truth style triplets for spatial relationships between entities.
-  -> WorldKG Enrichment - Enriches OSM entities with additional information from Wikidata and the ontology.
-  -> Semantic Search - Enables natural‑language queries over enriched OSM entities.
+The pipeline transforms heterogeneous, noisy, unstructured OpenStreetMap data into homogeneous, clean, structured knowledge. It ingests OSM planet data, builds vector embeddings, aligns entities with Wikidata, and predicts spatial links — all orchestrated as a multi-stage ETL pipeline driven by a [Celery](https://docs.celeryq.dev/) canvas.
 
-There are two main pipeline types, both driven by Celery:
-  1. Planet Initialization Pipeline
-    Runs once to initialize the configs needed for the pipeline see docs/Schematics/Planet_Initialization_Pipeline.md and docs/Schematics/WorkKG_Primities.md.
-  2. Country Pipeline
-    Produces the artifacts listed above for a specific country (or synthetic territory).
+The artifacts produced will be consumed by agents for geospatial reasoning ([paper](https://arxiv.org/pdf/2601.16965) — not yet implemented).
 
-## Stages in the country pipeline
-  0. Pre‑Flight Checks (OVID + Baseline)
-      -> Vandalism Detection with OVID
-          ==> OVID is an attention‑based model for OpenStreetMap vandalism detection.  
-          ==> It scores edits using changeset, user, and context information.  
-          ==> The pipeline can use OVID as a pre‑flight check to flag or filter suspicious edits before starting a run
-      -> Embedding & Graph Baseline Validation
-          ==> Balltree is used to produce a pickle from the embeddings associated with the pre-trained model and then converted into a k-NN graph, which records a structural baseline
-              described by degree distributions, connected-component sizes, and local clustering coefficients.
-          ==> It reconstructs vectors via IDW (inverse-distance weighting) and checks for drift between original and interpolated embeddings 
-              using PCA neighborhood plots, global t-SNE projections, and 1st/kth nearest-neighbor distance histograms.
-          ==> The artifacts from the current snapshots are compared  against the baseline the Pre-trained model's metrics: 
-              KL divergence on degree histograms and KS tests on degrees, clustering coefficients, and component sizes; a 3σ threshold on degree KL divergence flags anomalous structural drift
-          ==> The pipeline can run these geometric and structural baselines as a pre-flight check so embedding or graph drift 
-              is caught before expensive graph-representation learning stages consume stale or corrupted inputs.
-  1. GeoVectors Embeddings
-        -> GV‑Tags (semantic, 300D) + GV‑NLE (spatial, 100D) for every OSM entity
-          ==> TSV embedding files from the pre-trained model makes a pickle files based on entity IDs haversine distance
-          ==> OSM Entity Graph is construction from pickle file based OSM ids
-          ==> Source: https://geovectors.l3s.uni-hannover.de/data
-  2. WorldKG Enrichment
-        -> Ontology‑driven class assignment with hierarchical superclass inference
-          ==> Uses the ontology to assign classes to OSM entities from the previous step
-          ==> WorldKG Enrichment uses the ontology to assign classes to OSM entities(this is extremely useful in NLP tasks)  
-  3. Wikidata Alignment
-        -> IGEA entity alignment connects OSM entities to Wikidata knowledge graph entries 
-        -> Iterative Alignment with Cross-Attention is implemented used to link the OSM knowledge graph entities to Wikidata(Semantic + Geo-spatial)
-  4. Spatial Link Prediction
-        -> USLP discovers relationships between entities using tri‑space scoring (geo + name + class)
-        -> Augmented Data sources inlcude Google Places API and toronto-data(Django App in backend) or any appropriate open source data 
-  5. Learned Layer
-        -> The embeddings saved for each entity are used to train graph representation learning models.
-          ==> FastText: 300D semantic embeddings via weighted average of tag embeddings (entity-local, no retraining)
-          ==> DeepWalk: 100D spatial embeddings via weighted random walks on k-NN graphs (IDW edge weights)
+## Artifacts
+
+| Artifact | Description |
+|----------|-------------|
+| **GeoVectors Embeddings** | Semantic and spatial embeddings for OSM entities (GV-Tags 300D + GV-NLE 100D) |
+| **Wikidata Alignment** | Connects OSM entities to Wikidata entries via the WorldKG ontology and alignment models |
+| **Spatial Link Prediction** | Ground-truth style triplets for spatial relationships between entities |
+| **WorldKG Enrichment** | Enriches OSM entities with Wikidata metadata and ontology classes |
+| **Semantic Search** | Natural-language queries over enriched OSM entities |
+
+## Pipeline Types
+
+Both are driven by Celery:
+
+1. **Planet Initialization Pipeline** — Runs once to initialize configs and primitives. See [Planet Initialization Pipeline](docs/Schematics/Planet_Initialization_Pipeline.md) and [WorldKG Primitives](docs/Schematics/WorkKG_Primities.md).
+2. **Country Pipeline** — Produces the artifacts above for a specific country (or synthetic territory).
+
+## Country Pipeline Stages
+
+### 0. Pre-Flight Checks (OVID + Baseline)
+
+**Vandalism Detection with OVID**
+- OVID is an attention-based model for OpenStreetMap vandalism detection.
+- Scores edits using changeset, user, and context information.
+- Used as a pre-flight check to flag or filter suspicious edits before starting a run.
+
+**Embedding & Graph Baseline Validation**
+- BallTree produces a pickle from pre-trained model embeddings, converted into a k-NN graph that records a structural baseline (degree distributions, connected-component sizes, local clustering coefficients).
+- IDW (inverse-distance weighting) reconstructs vectors and checks for drift between original and interpolated embeddings via PCA neighborhood plots, t-SNE projections, and 1st/kth nearest-neighbor distance histograms.
+- Current snapshots are compared against the baseline using KL divergence on degree histograms and KS tests on degrees, clustering coefficients, and component sizes. A 3σ threshold on degree KL divergence flags anomalous structural drift.
+- These geometric and structural baselines catch embedding or graph drift before expensive graph-representation learning stages consume stale or corrupted inputs.
+
+### 1. GeoVectors Embeddings
+
+- GV-Tags (semantic, 300D) + GV-NLE (spatial, 100D) for every OSM entity.
+- TSV embedding files from the pre-trained model produce pickle files based on entity IDs and haversine distance.
+- OSM entity graph is constructed from the pickle file based on OSM IDs.
+- Source: https://geovectors.l3s.uni-hannover.de/data
+
+### 2. WorldKG Enrichment
+
+- Ontology-driven class assignment with hierarchical superclass inference.
+- Assigns WorldKG ontology classes to OSM entities from Step 1 — useful for NLP tasks.
+
+### 3. Wikidata Alignment
+
+- IGEA entity alignment connects OSM entities to Wikidata knowledge graph entries.
+- Iterative alignment with cross-attention links OSM entities to Wikidata using semantic + geo-spatial features.
+
+### 4. Spatial Link Prediction
+
+- USLP discovers relationships between entities using tri-space scoring (geo + name + class).
+- Augmented data sources include Google Places API and `toronto-data` (Django app in backend), or any appropriate open-source data.
+
+### 5. Learned Layer
+
+- Embeddings saved for each entity are used to train graph representation learning models:
+  - **FastText**: 300D semantic embeddings via weighted average of tag embeddings (entity-local, no retraining).
+  - **DeepWalk**: 100D spatial embeddings via weighted random walks on k-NN graphs (IDW edge weights).
 
 ## Quickstart
 
+```bash
 # Build images
 docker compose -f docker-compose.yml -f compose.override.yml build
 
@@ -66,87 +78,143 @@ docker compose -f docker-compose.yml -f compose.override.yml up -d postgres-defa
 # Start backend API + Celery worker
 docker compose -f docker-compose.yml -f compose.override.yml up -d backend worker
 
-# Start Frontend
-```bash
+# Start frontend
 cd frontend-v3
 npx vite --port 5173 --host 0.0.0.0
 ```
 
 ## ML System Design Principles
-<!-- TODO remove this from the README.md -->
-<!-- TODO: site these references and take notes-->
-<!-- Linear Algebra: https://github.com/mikexcohen/LinAlg4DataScience -->
-<!--   ==> Chapter 4: Vector Applications how PG_Vector is used as a mechanism for similarity search -->
-<!--   ==> Chapter 7: Multivariate Data Covariance Matrix is used in Statistical Analysis to understand relationships of the noisy/homogeneous OSM Data  -->
-<!--   ==> Chapter 13 and 15: Eigendecomposition, PCA and Singular Value Decomposition (SVD) will be used in the Agentic Tool Calls -->
-<!--   ==> Math Concepts to cover that are implementing: Sharding the DB, -->
-<!-- Hands On Machine Learning with PyTorch: https://github.com/ageron/handson-mlp -->
-<!--   ==> TODO: Go through maths in in the steps of the pipeline that uses Scientific Computing concepts -->
-<!-- Practical Statistics for Data Statistics: https://github.com/gedeck/practical-statistics-for-data-scientists/tree/master/python/notebooks -->
-<!--   ==> TODO: Go through how Statistical Analysis concepts that are used (Mostly ETL and data-validation) -->
-<!-- Designing Machine Learning Systems by Chip Huyen -->
-<!--   ==> Chapter 3: How this project uses Batch Processing and Parallel Processing concepts -->
-<!--   ==> Chapter 8: Monitoring and Observability concepts -->
-<!--   ==> Chapter 9: Using the Rejected Links with SSLP/Data Augementation to do Continual Learning -->
-<!--   ==> Chapter 10: MLOps concepts that we use to develop on The RTX Cards but deploy on the K80 -->
 
-## Chip Huyen’s Designing Machine Learning Systems principles:
-  Pre‑compute expensive steps
-    -> Planet snapshots, continent extracts, and GeoVectors embeddings are computed once and reused.  
+The engineering decisions in this pipeline are grounded in the following reference texts.
+Citations use the `[KEY:Ch#]` convention (e.g. `[DMLS:Ch3]`) so that specific design
+choices can be traced back to the relevant chapter.
+
+### References
+
+| Key | Title | Author | Repo / Link |
+|-----|-------|--------|-------------|
+| `[COHEN]` | Linear Algebra: Theory, Intuition, Code | Mike X Cohen | https://github.com/mikexcohen/LinAlg4DataScience |
+| `[HOML]` | Hands-On Machine Learning with Scikit-Learn and PyTorch | Aurélien Géron | https://github.com/ageron/handson-mlp |
+| `[STATS]` | Practical Statistics for Data Scientists | Bruce, Bruce & Gedeck | https://github.com/gedeck/practical-statistics-for-data-scientists |
+| `[DMLS]` | Designing Machine Learning Systems | Chip Huyen | — |
+| `[GRAPH_REP]` | Graph Representation Learning | William Hamilton | — |
+| `[GEO_VEC]` | GeoVectors: A Linked Open Corpus of OpenStreetMap Embeddings | L3S Hannover | https://geovectors.l3s.uni-hannover.de/data |
+
+---
+
+### Designing Machine Learning Systems `[DMLS]`
+
+  Pre‑compute expensive steps `[DMLS:Ch3]`
+    -> Planet snapshots, continent extracts, and GeoVectors embeddings are computed once and reused.
     -> This turns most workloads into read‑heavy operations instead of re‑processing the planet for each run.
     -> Idempotency pattern for OSM PBF files produced via Osmium tool
 
-  Batch and parallel processing  
-    -> Work is batched per country and per subgraph.  
+  Batch and parallel processing `[DMLS:Ch3]`
+    -> Work is batched per country and per subgraph.
     -> Celery runs many tasks in parallel, especially for large countries, to speed up processing.
 
-  Structured logging and observability  
-    -> Each Celery task logs inputs, outputs, and timing.  
+  Structured logging and observability `[DMLS:Ch8]`
+    -> Each Celery task logs inputs, outputs, and timing.
     -> Per‑stage metrics (counts, durations, basic quality checks) make it easier to understand where time and failures occur.
 
-  Config‑driven behavior  
+  Config‑driven behavior `[DMLS:Ch6]`
     -> OSM-Wikidata pipeline primitives are processed during the initialization phase based on configurations (e.g., country-specific overrides, embeddings available)
     -> Paths, thresholds (e.g., USLP, entropy), and country‑specific overrides are defined in configuration and JSON files, not hard‑coded in the codebase.
     -> OSM uses idomatic patterns and conventions to make the code more maintainable and easier to understand
 
-  Reproducibility  
-    -> A pipeline run is defined by code version + configuration + input paths.  
+  Reproducibility `[DMLS:Ch6]`
+    -> A pipeline run is defined by code version + configuration + input paths.
     -> You can repeat a run with the same settings to reproduce results.
 
-  Clear interfaces between stages  
-    -> Stages communicate via well‑defined artifacts (snapshots, TSVs, database tables).  
+  Continual learning from rejected links `[DMLS:Ch9]`
+    -> USLP rejected links and IGEA low-confidence matches are retained for data augmentation.
+    -> Planned: feed rejected spatial links back into SSLP training as hard negatives.
+
+  MLOps: dev on RTX, deploy on K80 `[DMLS:Ch10]`
+    -> The pipeline is developed on RTX 4070 Ti SUPER (16GB) but designed to deploy on K80-class GPUs.
+    -> GPU memory-safe patterns (batched training, CUDA cache clearing) ensure portability.
+    -> HNSW index sizes are tuned per-country leaf so the system works on 48GB/64GB/128GB machines alike.
+
+  Clear interfaces between stages `[DMLS:Ch5]`
+    -> Stages communicate via well‑defined artifacts (snapshots, TSVs, database tables).
     -> You can improve a model inside one stage as long as it respects the same input/output format.
 
   Unified open‑source storage stack (PostgreSQL + pgvector + Redis)
     ->  Postgres is used as the main database for application state + Enforce OSM-Wikidata Hierarchy constraints
-    ->  PostGIS‑enabled database for spatial data used in the stages of the pipeline  
-    ->  pgvector‑backed database for embeddings and vector similarity search.  
-    ->  Redis is used as the message broker and cache for Celery and the WebSocket channel layer.  
+    ->  PostGIS‑enabled database for spatial data used in the stages of the pipeline
+    ->  pgvector‑backed database for embeddings and vector similarity search.
+    ->  Redis is used as the message broker and cache for Celery and the WebSocket channel layer.
     ->  Redis is used to store the WorldKG Ontology and other metadata.
 
-## Hands On Machine Learning with PyTorch and Sci-Kit Learn
-Valdiate the construction of the pickle files
-  -> BallTree indexing for efficient nearest neighbor queries in embedding space
-  -> IDW interpolation to reconstruct embeddings from neighbors (inverse-distance weighting)
+---
 
-Visualize the drift between the original embeddings from the pre-trained model vs the interpolated embeddings
-  -> PCA visualization of local neighborhoods to understand embedding structure
-  -> t-SNE global projection to identify macroscopic clusters in the embedding space
-  -> Distance distribution analysis (1st neighbor, k-th neighbor) to assess sparsity and clustering
+### Linear Algebra in the Pipeline `[COHEN]`
 
-Graph Structural Drift Analysis
-  -> k-NN graph construction from spatial embeddings via BallTree for structural analysis
-  -> Degree distribution tracking via histograms and KL divergence
-  -> Clustering coefficient monitoring to detect topological changes
-  -> Connected component size analysis for graph fragmentation detection
-  -> 3-sigma drift thresholds to flag anomalous snapshots automatically
-  -> KS tests for distributional comparison between baseline and current snapshots
+  Vector Applications & pgvector `[COHEN:Ch4]`
+    -> pgvector uses L2/cosine distance for ANN search over GV-Tags (300D) and GV-NLE (100D) embeddings.
+    -> HNSW indexes on `static_embedding` and `gv_tags_embedding` columns enable sub-10ms similarity queries.
+    -> The partitioning scheme (per-country leaf partitions) keeps each HNSW index right-sized for the target machine's RAM.
 
-Batch processing and pre‑compute are used heavily to make good use of available hardware
-  -> Pre‑compute configs and primitives - WorldKG primitives (see `docs/Schematics/WorkKG_Primities.md`) are generated once and reused.
-  -> Multi‑core processing with Osmium - Osmium‑tool is used to parallelize low‑level extraction work.
-  -> Batch processing - Vector generation and spatial link prediction are run in batches rather than one entity at a time.
-  -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel.
+  Covariance Matrix & OSM Data Analysis `[COHEN:Ch7]`
+    -> The covariance matrix of embedding dimensions reveals correlations in the noisy, heterogeneous OSM tag space.
+    -> Used in pre-flight checks to detect embedding drift between snapshots (see Statistical Analysis below).
+    -> Helps understand which tag dimensions carry redundant vs. independent information.
+
+  Eigendecomposition, PCA & SVD `[COHEN:Ch13, Ch15]`
+    -> PCA is used in pre-flight validation to project local neighborhoods into 2D/3D for visual drift inspection.
+    -> SVD underpins the dimensionality reduction used when comparing baseline vs. current snapshot embeddings.
+    -> Planned: agentic tool calls will use eigendecomposition to select the most informative embedding dimensions for query-time reasoning.
+
+  Database Sharding as a Linear Algebra Problem
+    -> Partitioning the OsmEntity monolith by `country_code` is equivalent to block-diagonalizing the entity-entity similarity matrix.
+    -> Each leaf partition's HNSW index operates on a sub-matrix, reducing both memory footprint and query latency.
+    -> The `backfill_partition_keys` command assigns each entity to its block via spatial bbox intersection.
+
+---
+
+### Statistical Analysis in ETL & Data Validation `[STATS]`
+
+  Pre-flight baseline validation `[STATS:Ch3]`
+    -> KL divergence on degree histograms compares the structural distribution of the current k-NN graph against the baseline.
+    -> KS tests (Kolmogorov-Smirnov) compare degree, clustering coefficient, and component size distributions.
+    -> A 3σ threshold on degree KL divergence flags anomalous structural drift before expensive downstream stages run.
+
+  Embedding drift detection `[STATS:Ch4]`
+    -> IDW (inverse-distance weighting) reconstructs embeddings from k-NN neighbors; residual error measures drift.
+    -> 1st-neighbor and k-th-neighbor distance distributions quantify sparsity and clustering changes.
+    -> t-SNE global projections provide qualitative macroscopic cluster inspection.
+
+  Data validation across pipeline stages `[STATS:Ch2]`
+    -> Entity count parity checks between monolith and partitioned tables (Phase 6 verification).
+    -> Row count assertions after each bulk upsert (e.g., 20K entities per batch in `vector_storage_service`).
+    -> NULL `country_code` detection after backfill — unmatched rows go to default partition ('XX').
+
+---
+
+### Hands-On Machine Learning `[HOML]`
+
+  Validate the construction of the pickle files `[HOML:Ch3]`
+    -> BallTree indexing for efficient nearest neighbor queries in embedding space
+    -> IDW interpolation to reconstruct embeddings from neighbors (inverse-distance weighting)
+
+  Visualize the drift between the original embeddings from the pre-trained model vs the interpolated embeddings `[HOML:Ch8]`
+    -> PCA visualization of local neighborhoods to understand embedding structure
+    -> t-SNE global projection to identify macroscopic clusters in the embedding space
+    -> Distance distribution analysis (1st neighbor, k-th neighbor) to assess sparsity and clustering
+
+  Graph Structural Drift Analysis `[HOML:Ch8]`
+    -> k-NN graph construction from spatial embeddings via BallTree for structural analysis
+    -> Degree distribution tracking via histograms and KL divergence
+    -> Clustering coefficient monitoring to detect topological changes
+    -> Connected component size analysis for graph fragmentation detection
+    -> 3-sigma drift thresholds to flag anomalous snapshots automatically
+    -> KS tests for distributional comparison between baseline and current snapshots
+
+  Batch processing and pre‑compute `[HOML:Ch4]`
+    -> Pre‑compute configs and primitives - WorldKG primitives (see `docs/Schematics/WorkKG_Primities.md`) are generated once and reused.
+    -> Multi‑core processing with Osmium - Osmium‑tool is used to parallelize low‑level extraction work.
+    -> Batch processing - Vector generation and spatial link prediction are run in batches rather than one entity at a time.
+    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel.
 
 Next Steps:
 1. Make the project public

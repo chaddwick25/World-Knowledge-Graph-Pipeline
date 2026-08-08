@@ -51,6 +51,11 @@ export default {
     const errorMessage = computed(() => run.value?.error || null)
     const logs = computed(() => run.value?.logs || [])
 
+    // DB-backed durable results (from fetchSnapshotJobResults)
+    const isDurable = computed(() => run.value?.durable === true)
+    const summary = computed(() => run.value?.summary || null)
+    const snapshotDate = computed(() => run.value?.snapshotDate || null)
+
     const isRunning = computed(() => status.value === 'running' || status.value === 'in_progress')
     const isComplete = computed(() => status.value === 'completed')
     const isFailed = computed(() => status.value === 'failed')
@@ -141,6 +146,16 @@ export default {
       return 'step-label'
     }
 
+    // Format milliseconds as "Xs" or "Xm Ys"
+    function formatDuration(ms) {
+      if (!ms || ms < 0) return ''
+      const seconds = Math.round(ms / 1000)
+      if (seconds < 60) return `${seconds}s`
+      const minutes = Math.floor(seconds / 60)
+      const secs = seconds % 60
+      return `${minutes}m ${secs}s`
+    }
+
     return {
       run,
       steps,
@@ -150,6 +165,9 @@ export default {
       progressPct,
       errorMessage,
       logs,
+      isDurable,
+      summary,
+      snapshotDate,
       isRunning,
       isComplete,
       isFailed,
@@ -163,6 +181,7 @@ export default {
       handleRetry,
       iconClass,
       stepLabelClass,
+      formatDuration,
     }
   },
 }
@@ -178,6 +197,9 @@ export default {
     <header class="pipeline__header">
       <div class="pipeline__header-left">
         <span class="pipeline__title">{{ pipelineTitle }} — {{ countryName }}</span>
+        <span v-if="snapshotDate && isDurable" class="pipeline__snapshot-date">
+          {{ snapshotDate }}
+        </span>
         <span v-if="isRunning" class="pipeline__step-count">
           Step {{ completedCount }}/{{ totalCount }}
         </span>
@@ -210,6 +232,22 @@ export default {
       </div>
     </header>
 
+    <!-- ── Durable results summary (DB-backed) ─────────────── -->
+    <div v-if="isDurable && summary" class="pipeline__summary">
+      <span v-if="summary.totalEntities" class="pipeline__summary-item">
+        {{ summary.totalEntities.toLocaleString() }} entities
+      </span>
+      <span v-if="summary.totalAligned" class="pipeline__summary-item">
+        {{ summary.totalAligned }} aligned
+      </span>
+      <span v-if="summary.totalSpatialLinks" class="pipeline__summary-item">
+        {{ summary.totalSpatialLinks }} spatial links
+      </span>
+      <span v-if="run?.startedAt && run?.completedAt" class="pipeline__summary-item">
+        {{ formatDuration(new Date(run.completedAt) - new Date(run.startedAt)) }} total
+      </span>
+    </div>
+
     <!-- ── Progress bar (only when running) ──────────────── -->
     <div v-if="isRunning" class="pipeline__progress">
       <div class="pipeline__progress-bar" :style="{ width: progressPct + '%' }"></div>
@@ -240,13 +278,18 @@ export default {
           <div class="pipeline__step-body">
             <div class="pipeline__step-header">
               <span :class="stepLabelClass(step)">{{ step.label }}</span>
-              <span class="pipeline__step-status-icon">
-                <template v-if="step.status === 'completed'">&#10003;</template>
-                <template v-else-if="step.status === 'failed'">&#10007;</template>
-                <template v-else-if="step.status === 'skipped'">&mdash;</template>
-                <template v-else-if="step.status === 'in_progress'">
-                  <span class="pipeline__spinner"></span>
-                </template>
+              <span class="pipeline__step-meta">
+                <span v-if="step.durationMs" class="pipeline__step-duration">
+                  {{ formatDuration(step.durationMs) }}
+                </span>
+                <span class="pipeline__step-status-icon">
+                  <template v-if="step.status === 'completed'">&#10003;</template>
+                  <template v-else-if="step.status === 'failed'">&#10007;</template>
+                  <template v-else-if="step.status === 'skipped'">&mdash;</template>
+                  <template v-else-if="step.status === 'in_progress'">
+                    <span class="pipeline__spinner"></span>
+                  </template>
+                </span>
               </span>
             </div>
             <p v-if="step.message" class="pipeline__step-message">{{ step.message }}</p>
@@ -334,6 +377,30 @@ export default {
 
 .pipeline__title {
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.pipeline__snapshot-date {
+  font-size: 0.72rem;
+  color: #9ca3af;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ── Durable summary ─────────────────────────── */
+
+.pipeline__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding: 0.25rem 0.4rem;
+  background: rgba(34, 197, 94, 0.06);
+  border-radius: 0.4rem;
+}
+
+.pipeline__summary-item {
+  font-size: 0.72rem;
+  color: #9ca3af;
   white-space: nowrap;
 }
 
@@ -536,6 +603,19 @@ export default {
   flex-shrink: 0;
   width: 1rem;
   text-align: center;
+}
+
+.pipeline__step-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.pipeline__step-duration {
+  font-size: 0.68rem;
+  color: #6b7280;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .pipeline__spinner {

@@ -1504,3 +1504,104 @@ class ReasoningStep(models.Model):
 
     def __str__(self):
         return f"ReasoningStep({self.workflow_id}, #{self.step_index}) {self.operator}"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# SnapshotJob — DB ground truth for "has this country been processed for
+# this snapshot date?" Replaces the in-memory runsByYear tracking and the
+# filesystem-based SnapshotDatesView scanning. See
+# docs/plans/TEMPORAL_SNAPSHOT_REFACTOR.md.
+# ══════════════════════════════════════════════════════════════════════════
+class SnapshotJob(models.Model):
+    """DB-backed record of a (snapshot_date, country_code) processing job.
+
+    The ``unique_together`` constraint enforces "once processed, can't
+    re-run" at the DB level. The frontend queries this model (via the
+    ``/api/snapshot-jobs/`` endpoints) to populate the year selector with
+    per-year status badges instead of relying on the in-memory
+    ``runsByYear`` Set that was lost on page refresh.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        RUNNING = 'running', 'Running'
+        COMPLETED = 'completed', 'Completed'
+        FAILED = 'failed', 'Failed'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    snapshot_date = models.CharField(
+        max_length=10, db_index=True,
+        help_text="Snapshot date in YYYY_MM_DD format (e.g., '2025_12_31').",
+    )
+    country_code = models.CharField(
+        max_length=3, db_index=True,
+        help_text="ISO 3166-1 alpha-2 country code (e.g., 'JM').",
+    )
+    country_name = models.CharField(max_length=100)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING,
+    )
+
+    # Link to Celery + pipeline tracking
+    pipeline_run = models.ForeignKey(
+        PipelineRun, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='snapshot_jobs',
+    )
+    celery_task_id = models.CharField(max_length=255, null=True, blank=True)
+
+    # Results summary (populated on Step 6 completion)
+    total_entities = models.BigIntegerField(default=0)
+    total_aligned = models.BigIntegerField(default=0)
+    total_spatial_links = models.BigIntegerField(default=0)
+    error_message = models.TextField(null=True, blank=True)
+
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'snapshot_jobs'
+        unique_together = [('snapshot_date', 'country_code')]
+        indexes = [
+            models.Index(fields=['snapshot_date', 'status']),
+            models.Index(fields=['country_code', 'status']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"SnapshotJob({self.country_code}, {self.snapshot_date}, {self.status})"
+
+    def mark_running(self, pipeline_run=None, celery_task_id=None):
+        """Transition to RUNNING and record the run/task links."""
+        self.status = self.Status.RUNNING
+        self.started_at = timezone.now()
+        if pipeline_run is not None:
+            self.pipeline_run = pipeline_run
+        if celery_task_id is not None:
+            self.celery_task_id = celery_task_id
+        self.save(update_fields=[
+            'status', 'started_at', 'pipeline_run', 'celery_task_id',
+        ])
+
+    def mark_completed(self, total_entities=0, total_aligned=0,
+                       total_spatial_links=0):
+        """Transition to COMPLETED with result counts."""
+        self.status = self.Status.COMPLETED
+        self.completed_at = timezone.now()
+        self.total_entities = total_entities
+        self.total_aligned = total_aligned
+        self.total_spatial_links = total_spatial_links
+        self.error_message = None
+        self.save(update_fields=[
+            'status', 'completed_at', 'total_entities', 'total_aligned',
+            'total_spatial_links', 'error_message',
+        ])
+
+    def mark_failed(self, error_message):
+        """Transition to FAILED with an error message."""
+        self.status = self.Status.FAILED
+        self.completed_at = timezone.now()
+        self.error_message = error_message
+        self.save(update_fields=[
+            'status', 'completed_at', 'error_message',
+        ])

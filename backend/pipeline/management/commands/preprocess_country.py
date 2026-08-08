@@ -1,15 +1,15 @@
 """
-Management command to run the 4-phase temporal pre-processing pipeline
+Management command to run the snapshot pre-processing pipeline
 for a single country.
 
-This wraps ``TemporalOrchestratorService.run_pipeline()`` and is the
+This wraps ``SnapshotExtractionService.extract_country_snapshot()`` and is the
 standalone pre-processing step needed before ``run_pipeline`` can execute.
 
-Phases:
-    1. Extract region PBF from continent PBF via OSM relation ID
-    2. Create single snapshot via time-filter
-    3. Generate .poly boundary file from snapshot + relation ID
-    4. Generate GeoVectors spatial index (pickle)
+Flow (post-refactor — see docs/plans/TEMPORAL_SNAPSHOT_REFACTOR.md):
+    1. Resolve the .poly file (caller-supplied → OsmBoundary → generate).
+    2. ``osmium extract --with-referenced --polygon`` from the planet PBF.
+    3. ``osmium time-filter`` to flatten history to the snapshot date.
+    4. Register a PbfFile row for the snapshot.
 
 Usage:
     python manage.py preprocess_country MC --continent europe
@@ -17,14 +17,6 @@ Usage:
     # With custom snapshot date
     python manage.py preprocess_country MC \
         --continent europe --snapshot-date 2025_12_31
-
-    # Skip phases (e.g., only generate poly)
-    python manage.py preprocess_country MC \
-        --continent europe --phases 3
-
-    # Include GeoVectors pickle generation
-    python manage.py preprocess_country MC \
-        --continent europe --phases 1,2,3,4
 """
 
 import json
@@ -35,7 +27,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
-    help = "Run the 4-phase temporal pre-processing pipeline for a single country"
+    help = "Run the snapshot pre-processing pipeline for a single country"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -50,22 +42,10 @@ class Command(BaseCommand):
             help="Continent slug (e.g., 'europe'). Auto-resolved if omitted.",
         )
         parser.add_argument(
-            "--phases",
-            type=str,
-            default="1,2,3",
-            help="Comma-separated list of phases to run (default: 1,2,3)",
-        )
-        parser.add_argument(
             "--snapshot-date",
             type=str,
             default=None,
             help="Snapshot date in YYYY_MM_DD format (default: SINGLE_SNAPSHOT_DATE)",
-        )
-        parser.add_argument(
-            "--source-pbf",
-            type=str,
-            default=None,
-            help="Source PBF path (default: PLANET_OSM_FILE_PATH)",
         )
         parser.add_argument(
             "--wait",
@@ -77,19 +57,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         country = options["country"]
         continent = options.get("continent")
-        phases_str = options.get("phases", "1,2,3")
-        snapshot_date = options.get("snapshot_date")
-        source_pbf = options.get("source_pbf") or settings.PLANET_OSM_FILE_PATH
+        snapshot_date = options.get("snapshot_date") or getattr(
+            settings, "SINGLE_SNAPSHOT_DATE", "2025_12_31"
+        )
         wait = options.get("wait", False)
-
-        # Parse phases
-        try:
-            phases = [int(p.strip()) for p in phases_str.split(",")]
-        except ValueError:
-            raise CommandError(
-                f"Invalid phases format: {phases_str}. "
-                "Use comma-separated numbers."
-            )
 
         # Auto-resolve continent if not provided
         if not continent:
@@ -101,46 +72,51 @@ class Command(BaseCommand):
                 "Provide --continent explicitly (e.g., --continent europe)."
             )
 
-        single_snapshot_mode = True
+        # Resolve ISO + OSM relation ID for the country
+        iso = self._resolve_iso(country)
+        if not iso:
+            raise CommandError(
+                f"Cannot resolve ISO code for '{country}'. "
+                "Ensure the country exists in CountryPipelineProfile or EligibleCountry."
+            )
+
+        osm_relation_id = self._resolve_osm_relation_id(iso)
 
         self.stdout.write(
             self.style.SUCCESS(
                 f'\n{"=" * 60}\n'
-                f"  Temporal Pre-processing Pipeline\n"
-                f"  Country:    {country}\n"
+                f"  Snapshot Pre-processing\n"
+                f"  Country:    {country} (ISO={iso})\n"
                 f"  Continent:  {continent}\n"
-                f"  Phases:     {phases}\n"
-                f"  Snapshot:   {snapshot_date or 'default'}\n"
+                f"  Snapshot:   {snapshot_date}\n"
+                f"  Relation:   {osm_relation_id or 'N/A'}\n"
                 f'{"=" * 60}\n'
             )
         )
 
-        from extraction.services.temporal_orchestrator_service import (
-            TemporalOrchestratorService,
+        from extraction.services.snapshot_extraction_service import (
+            SnapshotExtractionService,
         )
 
-        orchestrator = TemporalOrchestratorService()
-        result = orchestrator.run_pipeline(
+        service = SnapshotExtractionService()
+        result = service.extract_country_snapshot(
+            country_code=iso,
+            country_name=country,
             continent=continent,
-            country=country,
-            source_pbf_path=source_pbf,
-            start_year=2025,
-            end_year=2025,
-            phases=phases,
-            single_snapshot_mode=single_snapshot_mode,
+            snapshot_date=snapshot_date,
+            osm_relation_id=osm_relation_id,
         )
 
         if result.get("success"):
             self.stdout.write(
                 self.style.SUCCESS("\n✓ Pre-processing complete!")
             )
-            for phase_num, phase_result in result.get("phases", {}).items():
-                status = "✓" if phase_result.get("success") else "✗"
-                self.stdout.write(
-                    f"  {status} Phase {phase_num}: "
-                    f"generated={phase_result.get('generated', 0)}, "
-                    f"failed={phase_result.get('failed', 0)}"
-                )
+            self.stdout.write(
+                f"  Snapshot PBF: {result.get('snapshot_pbf_path')}\n"
+                f"  Poly file:    {result.get('poly_file_path')}\n"
+                f"  Entities:     {result.get('entity_count')}\n"
+                f"  Skipped:      {result.get('skipped', False)}"
+            )
         else:
             error = result.get("error", "Unknown error")
             self.stdout.write(
@@ -151,6 +127,41 @@ class Command(BaseCommand):
         if wait:
             self.stdout.write("\nResults:")
             self.stdout.write(json.dumps(result, indent=2, default=str))
+
+    def _resolve_iso(self, country: str) -> str:
+        """Resolve ISO 3166-1 alpha-2 code from CountryPipelineProfile."""
+        try:
+            from orchestration.models import CountryPipelineProfile, EligibleCountry
+            profile = CountryPipelineProfile.objects.filter(
+                iso2__iexact=country,
+            ).first()
+            if not profile:
+                profile = CountryPipelineProfile.objects.filter(
+                    canonical_name__iexact=country,
+                ).first()
+            if profile:
+                return profile.iso2
+            eligible = EligibleCountry.objects.filter(
+                iso_code__iexact=country,
+            ).first()
+            if eligible:
+                return eligible.iso_code
+        except Exception:
+            pass
+        return None
+
+    def _resolve_osm_relation_id(self, iso: str):
+        """Resolve OSM relation ID from CountryPipelineProfile."""
+        try:
+            from orchestration.models import CountryPipelineProfile
+            profile = CountryPipelineProfile.objects.filter(
+                iso2__iexact=iso,
+            ).first()
+            if profile and profile.osm_relation_id:
+                return profile.osm_relation_id
+        except Exception:
+            pass
+        return None
 
     def _resolve_continent(self, country: str) -> str:
         """Resolve continent name from OSMWikiDataHierarchy or country_relations.json."""

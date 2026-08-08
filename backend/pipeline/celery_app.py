@@ -111,6 +111,9 @@ class PipelineTask(_TaskBase):
     def on_failure(self, exc, task_id, args, kwargs, einfo=None):
         """Step-failure: PipelineLogEntry, PipelineRun stage, WS push.
 
+        Also transitions any ``SnapshotJob`` linked to the run to FAILED
+        (TEMPORAL_SNAPSHOT_REFACTOR.md Phase D1 — DB ground truth).
+
         Called by Celery's trace on exception AND by the ``@pipeline_step``
         wrapper directly (direct-call eager path). Idempotent.
         """
@@ -129,6 +132,16 @@ class PipelineTask(_TaskBase):
             message=f"Step {inv['step_index']}: {inv['step_name']} failed: {exc}",
             pct=100,
         )
+        # Mark linked SnapshotJob as FAILED (DB ground truth)
+        if inv.get("run_id"):
+            try:
+                from orchestration.models import PipelineRun, SnapshotJob
+                run = PipelineRun.objects.filter(id=inv["run_id"]).first()
+                if run is not None:
+                    for job in SnapshotJob.objects.filter(pipeline_run=run):
+                        job.mark_failed(str(exc))
+            except Exception:
+                pass
 
     def after_return(self, status, retval, task_id, args, kwargs, einfo=None):
         """Defensive cleanup — pop any leaked ``_invocations`` entry."""
