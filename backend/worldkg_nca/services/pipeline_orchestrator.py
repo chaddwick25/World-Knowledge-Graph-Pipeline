@@ -909,17 +909,17 @@ class WorldKGPipelineService:
 
     def _step5_embed_osm_entities(self, region_pbf):
         self._step_start('embed_osm_entities', 'Ingesting OSM entities + GV-Tags embeddings...')
-        
+
         # Try to use the latest monthly snapshot if available
         latest_monthly = region_pbf.get_latest_monthly_extract()
-        
+
         if latest_monthly:
             pbf_path = latest_monthly.path
             self._log(f'Using latest monthly snapshot: {pbf_path} (timestamp: {latest_monthly.max_timestamp})')
         else:
             pbf_path = region_pbf.path
             self._log(f'No monthly snapshots found, using region PBF: {pbf_path}')
-        
+
         total_entities = 0
         try:
             osmium_bin = getattr(settings, 'OSMIUM_EXECUTABLE', 'osmium')
@@ -934,17 +934,39 @@ class WorldKGPipelineService:
         except Exception as e:
             self._log(f'Could not run osmium fileinfo for pre-scan: {e}. Defaulting to 1000000.')
             total_entities = 1000000  # fallback non-zero
-            
-        call_command(
-            'extract_osm_embeddings',
-            pbf_file=pbf_path,
-            chunk_size=20000,
-            batch_size=5000,
-            workers=4,
-            websocket_group=self.group_name,
-            total_entities=total_entities
+
+        # Drop vector indexes for fast bulk load (no per-row HNSW/GiST/btree
+        # maintenance).  Phase 5 of OSMENTITY_MONOLITH_OPTIMIZATION.md.
+        # Default: True for large countries (>10M entities), False for small.
+        import os as _os
+        _drop_mode = _os.environ.get('DROP_INDEXES_DURING_LOAD', 'auto').lower()
+        drop_indexes = (
+            _drop_mode in ('true', '1', 'yes')
+            or (_drop_mode == 'auto' and total_entities > 10_000_000)
         )
-        
+        if drop_indexes:
+            self._log('Dropping vector indexes for bulk load...')
+            call_command('drop_osmentity_vector_indexes')
+            from django.db import connections
+            with connections['vectors'].cursor() as cursor:
+                cursor.execute("DROP INDEX IF EXISTS osmentity_static_embedding_hnsw_idx;")
+
+        try:
+            call_command(
+                'extract_osm_embeddings',
+                pbf_file=pbf_path,
+                chunk_size=20000,
+                batch_size=5000,
+                workers=4,
+                websocket_group=self.group_name,
+                total_entities=total_entities
+            )
+        finally:
+            if drop_indexes:
+                self._log('Rebuilding vector indexes (parallel)...')
+                call_command('create_static_embedding_hnsw_index', parallel_workers=4)
+                call_command('create_osmentity_vector_indexes')
+
         # Track embedding ingestion as PipelineAsset (database operation)
         self._create_asset(
             asset_type='EMBEDDING',
@@ -954,12 +976,13 @@ class WorldKGPipelineService:
             metadata={
                 'pbf_source': pbf_path,
                 'total_entities': total_entities,
-                'embedding_type': 'gv_tags'
+                'embedding_type': 'gv_tags',
+                'drop_indexes_during_load': drop_indexes,
             }
         )
-        
+
         self._step_done('embed_osm_entities', 'OSM entities ingested into vectors DB')
-        
+
         # Close DB connections to free memory before heavy queries
         from django.db import connections
         for conn in connections.all():
@@ -1082,6 +1105,11 @@ class WorldKGPipelineService:
         entities_with_spatial = OsmEntity.objects.using('vectors').filter(
             geom__isnull=False
         )
+        # Phase 6: scope to country_code to avoid scanning all partitions
+        if self.iso_code:
+            entities_with_spatial = entities_with_spatial.filter(
+                country_code=self.iso_code
+            )
         spatial_count = 0
         for e in entities_with_spatial.iterator(chunk_size=10000):
             tags = e.tags or {}
@@ -1248,12 +1276,18 @@ class WorldKGPipelineService:
 
         for link in rejected_links.iterator(chunk_size=100):
             try:
-                head_entity = OsmEntity.objects.using('vectors').filter(
+                head_qs = OsmEntity.objects.using('vectors').filter(
                     osm_id=link.head_osm_id
-                ).first()
-                tail_entity = OsmEntity.objects.using('vectors').filter(
+                )
+                tail_qs = OsmEntity.objects.using('vectors').filter(
                     osm_id=link.tail_osm_id
-                ).first()
+                )
+                # Phase 6: scope to country_code to pick the correct partition
+                if self.iso_code:
+                    head_qs = head_qs.filter(country_code=self.iso_code)
+                    tail_qs = tail_qs.filter(country_code=self.iso_code)
+                head_entity = head_qs.first()
+                tail_entity = tail_qs.first()
 
                 if not head_entity or not tail_entity:
                     continue

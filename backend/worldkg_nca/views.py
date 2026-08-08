@@ -20,6 +20,7 @@ from semantic_search.services.fasttext_service import FastTextEmbeddingService
 from extraction.services.osm_wikidata_resolver import resolve_country_bbox, get_country_by_name
 from worldkg_nca.services.link_candidate_service import WorldKGLinkCandidateService
 from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
+from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 
 
 @api_view(['GET'])
@@ -126,18 +127,23 @@ def worldkg_enrich_entity(request):
     osm_type = request.data.get('osm_type')
     osm_id = request.data.get('osm_id')
     use_sparql = request.data.get('use_sparql', False)
-    
+    # Phase 6: scope to snapshot partition (falls back to latest for monolith)
+    snapshot_id = request.data.get('snapshot_id') or get_latest_snapshot_id()
+
     if not osm_type or not osm_id:
         return Response(
             {"error": "osm_type and osm_id required"},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+
     try:
-        entity = OsmEntity.objects.using('vectors').get(
+        qs = OsmEntity.objects.using('vectors').filter(
             osm_type=osm_type,
-            osm_id=osm_id
+            osm_id=osm_id,
         )
+        if snapshot_id:
+            qs = qs.filter(snapshot_id=snapshot_id)
+        entity = qs.get()
     except OsmEntity.DoesNotExist:
         return Response(
             {"error": f"Entity {osm_type}/{osm_id} not found"},
@@ -240,17 +246,22 @@ def worldkg_entity_detail(request, osm_type, osm_id):
             "has_nle": bool
         }
     """
+    # Phase 6: scope to snapshot partition (falls back to latest for monolith)
+    snapshot_id = request.query_params.get('snapshot_id') or get_latest_snapshot_id()
     try:
-        entity = OsmEntity.objects.using('vectors').get(
+        qs = OsmEntity.objects.using('vectors').filter(
             osm_type=osm_type,
-            osm_id=osm_id
+            osm_id=osm_id,
         )
+        if snapshot_id:
+            qs = qs.filter(snapshot_id=snapshot_id)
+        entity = qs.get()
     except OsmEntity.DoesNotExist:
         return Response(
             {"error": f"Entity {osm_type}/{osm_id} not found"},
             status=status.HTTP_404_NOT_FOUND
         )
-    
+
     return Response({
         "osm_type": entity.osm_type,
         "osm_id": entity.osm_id,
@@ -1070,6 +1081,8 @@ def worldkg_link_candidates(request):
     osm_id = request.data.get("osm_id")
     country_code = request.data.get("country_code") or request.data.get("country")
     top_k = request.data.get("top_k", 10)
+    # Phase 6: scope to snapshot partition (falls back to latest for monolith)
+    snapshot_id = request.data.get("snapshot_id") or get_latest_snapshot_id()
 
     if not osm_type or osm_id is None:
         return Response({"error": "osm_type and osm_id required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -1080,7 +1093,10 @@ def worldkg_link_candidates(request):
         return Response({"error": "osm_id must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        entity = OsmEntity.objects.using("vectors").get(osm_type=osm_type, osm_id=osm_id_int)
+        qs = OsmEntity.objects.using("vectors").filter(osm_type=osm_type, osm_id=osm_id_int)
+        if snapshot_id:
+            qs = qs.filter(snapshot_id=snapshot_id)
+        entity = qs.get()
     except OsmEntity.DoesNotExist:
         return Response({"error": f"Entity {osm_type}/{osm_id_int} not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1158,6 +1174,8 @@ def worldkg_apply_link(request):
     wikidata_id = request.data.get("wikidata_id")
     label = request.data.get("label")
     confidence = request.data.get("confidence", 1.0)
+    # Phase 6: scope to snapshot partition (falls back to latest for monolith)
+    snapshot_id = request.data.get("snapshot_id") or get_latest_snapshot_id()
 
     if not osm_type or osm_id is None:
         return Response({"error": "osm_type and osm_id required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -1177,7 +1195,10 @@ def worldkg_apply_link(request):
             wikidata_uri = f"https://www.wikidata.org/entity/{wikidata_id}"
 
     try:
-        entity = OsmEntity.objects.using("vectors").get(osm_type=osm_type, osm_id=osm_id_int)
+        qs = OsmEntity.objects.using("vectors").filter(osm_type=osm_type, osm_id=osm_id_int)
+        if snapshot_id:
+            qs = qs.filter(snapshot_id=snapshot_id)
+        entity = qs.get()
     except OsmEntity.DoesNotExist:
         return Response({"error": f"Entity {osm_type}/{osm_id_int} not found"}, status=status.HTTP_404_NOT_FOUND)
 

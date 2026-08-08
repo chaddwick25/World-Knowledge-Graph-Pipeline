@@ -206,7 +206,8 @@ class WorldKGTriplesService:
     def bulk_apply_enrichment(
         self,
         enrichments: Dict[int, Dict],
-        batch_size: int = 1000
+        batch_size: int = 1000,
+        snapshot_id: Optional[str] = None
     ) -> Dict:
         """
         Apply parsed TTL enrichments to OsmEntity records in the database.
@@ -214,6 +215,8 @@ class WorldKGTriplesService:
         Args:
             enrichments: Dict from parse_ttl_to_enrichment()
             batch_size:  DB update batch size
+            snapshot_id: Optional Phase 6 partition key to scope the query
+                         (prevents cross-snapshot enrichment bleed).
 
         Returns:
             Stats dict with 'updated', 'not_found' counts
@@ -226,11 +229,15 @@ class WorldKGTriplesService:
 
         for offset in range(0, len(osm_ids), batch_size):
             batch_ids = osm_ids[offset:offset + batch_size]
+            qs = OsmEntity.objects.using('vectors').filter(
+                osm_id__in=batch_ids, osm_type='node'
+            )
+            # Phase 6: scope to snapshot partition when provided
+            if snapshot_id:
+                qs = qs.filter(snapshot_id=snapshot_id)
             entities = {
                 e.osm_id: e
-                for e in OsmEntity.objects.using('vectors').filter(
-                    osm_id__in=batch_ids, osm_type='node'
-                )
+                for e in qs
             }
 
             to_update = []

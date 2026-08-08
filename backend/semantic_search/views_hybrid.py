@@ -15,6 +15,7 @@ from rest_framework import status
 from django.db.models import FloatField
 from django.db.models.expressions import RawSQL
 from worldkg_nca.models import OsmEntity
+from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 from semantic_search.services.fasttext_service import FastTextEmbeddingService
 from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 import logging
@@ -43,6 +44,8 @@ class SemanticSearchGVTagsView(APIView):
         wkg_class = request.data.get('wkg_class')
         top_k = request.data.get('top_k', 10)
         filters = request.data.get('filters', {})
+        # Phase 6: scope to snapshot partition (falls back to latest for monolith)
+        snapshot_id = request.data.get('snapshot_id') or get_latest_snapshot_id()
         
         if not query_tags and wkg_class:
             ontology = get_worldkg_ontology_service()
@@ -79,7 +82,10 @@ class SemanticSearchGVTagsView(APIView):
             results = OsmEntity.objects.using('vectors').filter(
                 gv_tags_embedding__isnull=False
             )
-            
+            # Phase 6: scope to snapshot partition
+            if snapshot_id:
+                results = results.filter(snapshot_id=snapshot_id)
+
             # Apply filters
             if filters:
                 results = results.filter(**filters)
@@ -157,6 +163,8 @@ class SpatialSearchGVNLEView(APIView):
         reference_osm_id = request.data.get('reference_osm_id')
         top_k = request.data.get('top_k', 10)
         filters = request.data.get('filters', {})
+        # Phase 6: scope to snapshot partition (falls back to latest for monolith)
+        snapshot_id = request.data.get('snapshot_id') or get_latest_snapshot_id()
         
         if not reference_osm_id:
             return Response(
@@ -168,7 +176,10 @@ class SpatialSearchGVNLEView(APIView):
         
         try:
             # Get reference entity (using filter().first() to avoid crash on duplicates)
-            reference = OsmEntity.objects.using('vectors').filter(osm_id=reference_osm_id).first()
+            ref_qs = OsmEntity.objects.using('vectors').filter(osm_id=reference_osm_id)
+            if snapshot_id:
+                ref_qs = ref_qs.filter(snapshot_id=snapshot_id)
+            reference = ref_qs.first()
             
             if not reference:
                 return Response(
@@ -194,6 +205,9 @@ class SpatialSearchGVNLEView(APIView):
             ).exclude(
                 osm_id=reference_osm_id  # Exclude self
             )
+            # Phase 6: scope to snapshot partition
+            if snapshot_id:
+                results = results.filter(snapshot_id=snapshot_id)
             
             # Apply filters
             if filters:
@@ -275,6 +289,8 @@ class HybridSearchView(APIView):
         beta = request.data.get('beta', 0.3)
         top_k = request.data.get('top_k', 10)
         filters = request.data.get('filters', {})
+        # Phase 6: scope to snapshot partition (falls back to latest for monolith)
+        snapshot_id = request.data.get('snapshot_id') or get_latest_snapshot_id()
         
         # Fallback for semantic query
         if not query_tags and wkg_class:
@@ -315,9 +331,12 @@ class HybridSearchView(APIView):
             # Get spatial query embedding
             if 'osm_id' in reference_location:
                 # Use filter + first() instead of get() to handle multiple osm_id matches
-                reference = OsmEntity.objects.using('vectors').filter(
+                ref_qs = OsmEntity.objects.using('vectors').filter(
                     osm_id=reference_location['osm_id']
-                ).first()
+                )
+                if snapshot_id:
+                    ref_qs = ref_qs.filter(snapshot_id=snapshot_id)
+                reference = ref_qs.first()
                 
                 if not reference:
                     return Response(
@@ -347,6 +366,9 @@ class HybridSearchView(APIView):
                 gv_tags_embedding__isnull=False,
                 gv_nle_embedding__isnull=False
             )
+            # Phase 6: scope to snapshot partition
+            if snapshot_id:
+                results = results.filter(snapshot_id=snapshot_id)
             
             # Apply WorldKG class filtering if specified
             wkg_class = request.data.get('wkg_class')

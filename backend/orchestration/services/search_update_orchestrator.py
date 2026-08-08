@@ -572,9 +572,14 @@ class SearchUpdateOrchestrator:
             }
 
         # ── Collect previous snapshot's osm_ids for soft-delete tracking ──
-        prev_ids = set(
-            OsmEntity.objects.using('vectors').values_list('osm_id', flat=True)
-        )
+        # Phase 6: scope to country_code to avoid soft-deleting entities from
+        # other countries.  (The monolith has no snapshot_id partition key yet,
+        # so we filter by country_code once backfilled, else scan all.)
+        country_code = config.get('country_code')
+        prev_qs = OsmEntity.objects.using('vectors')
+        if country_code:
+            prev_qs = prev_qs.filter(country_code=country_code)
+        prev_ids = set(prev_qs.values_list('osm_id', flat=True))
 
         gv_tags_version = '1.0'
         inductive_count = sum(
@@ -590,6 +595,7 @@ class SearchUpdateOrchestrator:
             chunk = entities[i:i + BATCH]
             a, m = self._upsert_chunk_via_copy(
                 chunk, snapshot_id, gv_tags_version,
+                country_code=country_code,
             )
             added += a
             modified += m
@@ -598,9 +604,13 @@ class SearchUpdateOrchestrator:
         # ── Soft-delete: entities present before but absent now ───────────
         deleted_ids = prev_ids - current_ids
         if deleted_ids:
-            OsmEntity.objects.using('vectors').filter(
+            softdel_qs = OsmEntity.objects.using('vectors').filter(
                 osm_id__in=deleted_ids
-            ).update(gv_nle_trained=False, gv_nle_version=None)
+            )
+            # Phase 6: scope to country_code to avoid cross-snapshot bleed
+            if country_code:
+                softdel_qs = softdel_qs.filter(country_code=country_code)
+            softdel_qs.update(gv_nle_trained=False, gv_nle_version=None)
         deleted = len(deleted_ids)
 
         diff = SnapshotDiff.objects.create(
@@ -625,7 +635,8 @@ class SearchUpdateOrchestrator:
             'entities_deleted': deleted, 'gv_nle_inductive_count': inductive_count,
         }
 
-    def _upsert_chunk_via_copy(self, chunk, snapshot_id, gv_tags_version):
+    def _upsert_chunk_via_copy(self, chunk, snapshot_id, gv_tags_version,
+                               country_code=None):
         """COPY a chunk into a temp table, then INSERT ... ON CONFLICT.
 
         Returns ``(added, modified)`` counts, classified atomically by
@@ -671,11 +682,15 @@ class SearchUpdateOrchestrator:
             ts = entity.get('timestamp')
             ts_str = ts.isoformat() if hasattr(ts, 'isoformat') else (str(ts) if ts else "\\N")
 
+            # Phase 6 partition keys (country_code for geographic scoping)
+            cc_str = country_code if country_code else "\\N"
+
             writer.writerow([
                 osm_type, osm_id, tags_json, geom_wkt,
                 gv_tags_str, gv_nle_str, gv_tags_version,
                 gv_nle_trained, version_str, ts_str,
                 str(snapshot_id),
+                cc_str,
             ])
 
         csv_buffer.seek(0)
@@ -695,7 +710,8 @@ class SearchUpdateOrchestrator:
                         gv_nle_trained BOOLEAN,
                         version INT,
                         timestamp TIMESTAMPTZ,
-                        source_snapshot_id UUID
+                        source_snapshot_id UUID,
+                        country_code VARCHAR(3)
                     );
                 """)
                 cursor.execute(f"CREATE INDEX ON {temp_table} (osm_type, osm_id);")
@@ -704,21 +720,28 @@ class SearchUpdateOrchestrator:
                 psycopg_cursor.copy_expert(f"""
                     COPY {temp_table} (osm_type, osm_id, tags, geom,
                         gv_tags_embedding, gv_nle_embedding, gv_tags_version,
-                        gv_nle_trained, version, timestamp, source_snapshot_id)
+                        gv_nle_trained, version, timestamp, source_snapshot_id,
+                        country_code)
                     FROM STDIN WITH (FORMAT csv, DELIMITER '\\t', NULL '\\N')
                 """, csv_buffer)
 
                 # INSERT ... ON CONFLICT DO UPDATE, classifying insert vs
                 # update atomically via xmax (0 = inserted, >0 = updated).
+                # Phase 6: include country_code in INSERT.  The ON CONFLICT
+                # target stays (osm_type, osm_id, gv_tags_version) on the
+                # monolith; after cutover it is widened to include the
+                # partition keys — see PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md.
                 cursor.execute(f"""
                     INSERT INTO semantic_search_osmentity
                         (osm_type, osm_id, tags, geom,
                          gv_tags_embedding, gv_nle_embedding, gv_tags_version,
                          gv_nle_trained, version, timestamp, source_snapshot_id,
+                         country_code,
                          created_at, updated_at)
                     SELECT osm_type, osm_id, tags, geom,
                            gv_tags_embedding, gv_nle_embedding, gv_tags_version,
                            gv_nle_trained, version, timestamp, source_snapshot_id,
+                           country_code,
                            NOW(), NOW()
                     FROM {temp_table}
                     ON CONFLICT (osm_type, osm_id, gv_tags_version) DO UPDATE SET
@@ -730,6 +753,7 @@ class SearchUpdateOrchestrator:
                         version = EXCLUDED.version,
                         timestamp = EXCLUDED.timestamp,
                         source_snapshot_id = EXCLUDED.source_snapshot_id,
+                        country_code = COALESCE(EXCLUDED.country_code, semantic_search_osmentity.country_code),
                         updated_at = NOW()
                     RETURNING
                         (CASE WHEN xmax = 0 THEN 'inserted' ELSE 'updated' END) AS op;
@@ -758,6 +782,9 @@ class SearchUpdateOrchestrator:
         if inserts:
             with transaction.atomic(using='vectors'):
                 OsmEntity = inserts[0].__class__
+                # Phase 6: snapshot_id/country_code are nullable model fields;
+                # they default to NULL here.  The deprecated path does not
+                # populate partition keys — use _upsert_chunk_via_copy instead.
                 OsmEntity.objects.using('vectors').bulk_create(
                     inserts, batch_size=500, ignore_conflicts=True
                 )

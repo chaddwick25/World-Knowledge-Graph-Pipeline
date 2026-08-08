@@ -12,11 +12,16 @@ class VectorStorageService:
     """
     Handles batching and upserting vectors into the OsmEntity model.
     """
-    def __init__(self, batch_size=20000, model_type='tags', version=None):
+    def __init__(self, batch_size=20000, model_type='tags', version=None,
+                 snapshot_id=None, country_code=None):
         self.batch_size = batch_size
         self.model_type = model_type # 'tags' or 'nle'
         self.version = version or '1.0'
         self.buffer = []
+        # Phase 6 partition keys — propagated into every upserted row.
+        # Nullable on the monolith; required after cutover.
+        self.snapshot_id = snapshot_id
+        self.country_code = country_code
 
     def add(self, raw_data, vector):
         """
@@ -106,7 +111,11 @@ class VectorStorageService:
                     vec_str = "\\N"
                     
                 gv_nle_trained = 't' if item.get('gv_nle_trained') else 'f'
-                
+
+                # Phase 6 partition keys (NULL on monolith until backfilled)
+                snap_id = self.snapshot_id if self.snapshot_id else "\\N"
+                cc = self.country_code if self.country_code else "\\N"
+
                 writer.writerow([
                     item['osm_type'],
                     item['osm_id'],
@@ -114,7 +123,9 @@ class VectorStorageService:
                     geom_wkt,
                     vec_str,
                     self.version,
-                    gv_nle_trained
+                    gv_nle_trained,
+                    snap_id,
+                    cc
                 ])
                 
             csv_buffer.seek(0)
@@ -130,28 +141,45 @@ class VectorStorageService:
                         geom GEOMETRY(Point, 4326),
                         embedding VECTOR,
                         gv_tags_version VARCHAR(50),
-                        gv_nle_trained BOOLEAN
+                        gv_nle_trained BOOLEAN,
+                        snapshot_id VARCHAR(20),
+                        country_code VARCHAR(3)
                     );
                 """)
-                
+
                 # Use psycopg2 cursor for copy_expert
                 cursor.execute(f"CREATE INDEX ON {temp_table} (osm_type, osm_id);")
                 psycopg_cursor = cursor.cursor if hasattr(cursor, 'cursor') else cursor.connection.cursor()
                 psycopg_cursor.copy_expert(f"""
-                    COPY {temp_table} (osm_type, osm_id, tags, geom, embedding, gv_tags_version, gv_nle_trained)
+                    COPY {temp_table} (osm_type, osm_id, tags, geom, embedding, gv_tags_version, gv_nle_trained, snapshot_id, country_code)
                     FROM STDIN WITH (FORMAT csv, DELIMITER '\t', NULL '\\N')
                 """, csv_buffer)
-                
-                # INSERT ... SELECT ... ON CONFLICT
+
+                # Phase 6: include partition keys in INSERT.
+                # The ON CONFLICT target stays (osm_type, osm_id, gv_tags_version)
+                # on the monolith (old constraint).  After cutover the conflict
+                # target is widened to include snapshot_id, country_code — see
+                # PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md Step 4.
                 cursor.execute(f"""
-                    INSERT INTO semantic_search_osmentity (osm_type, osm_id, tags, geom, {col_name}, gv_tags_version, gv_nle_trained, created_at, updated_at)
-                    SELECT osm_type, osm_id, tags, geom, embedding, gv_tags_version, gv_nle_trained, NOW(), NOW()
+                    INSERT INTO semantic_search_osmentity (
+                        osm_type, osm_id, tags, geom, {col_name},
+                        gv_tags_version, gv_nle_trained,
+                        snapshot_id, country_code,
+                        created_at, updated_at
+                    )
+                    SELECT
+                        osm_type, osm_id, tags, geom, embedding,
+                        gv_tags_version, gv_nle_trained,
+                        snapshot_id, country_code,
+                        NOW(), NOW()
                     FROM {temp_table}
                     ON CONFLICT (osm_type, osm_id, gv_tags_version) DO UPDATE SET
                         tags = EXCLUDED.tags,
                         geom = COALESCE(EXCLUDED.geom, semantic_search_osmentity.geom),
                         {col_name} = EXCLUDED.{col_name},
                         gv_nle_trained = EXCLUDED.gv_nle_trained,
+                        snapshot_id = COALESCE(EXCLUDED.snapshot_id, semantic_search_osmentity.snapshot_id),
+                        country_code = COALESCE(EXCLUDED.country_code, semantic_search_osmentity.country_code),
                         updated_at = NOW();
                 """)
                 

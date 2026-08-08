@@ -38,10 +38,16 @@ logger = logging.getLogger(__name__)
 # ── Helpers ───────────────────────────────────────────────────────────
 
 def _build_slug_to_iso() -> Dict[str, str]:
-    """Build a dict: lowercase slug → ISO code from country_relations.json.
+    """Build a dict: lowercase slug/name → ISO code.
 
-    Resolves QID keys to real ISO 3166-1 alpha-2 codes when possible
-    by cross-referencing CountryPipelineProfile.iso2 via OSMWikiDataHierarchy.
+    Combines two sources:
+      1. ``country_relations.json`` (via ``get_country_relations_dict``) —
+         resolves QID keys to ISO codes via ``CountryPipelineProfile``.
+      2. ``CountryPipelineProfile`` directly — maps ``canonical_slug`` and
+         ``canonical_slug`` with underscores to ``iso2``.  This catches
+         countries like Israel/Senegal whose ``country_relations.json`` entry
+         uses a composite QID (e.g. Q219060 for "Israel and Palestine") that
+         doesn't match the profile's wikidata_id (Q801 for Israel proper).
     """
     lookup = {}
     relations = get_country_relations_dict()
@@ -87,6 +93,7 @@ def _build_slug_to_iso() -> Dict[str, str]:
         )
         return resolved
 
+    # 1. country_relations.json
     for iso_key, data in relations.items():
         slug = (data.get('slug') or '').lower()
         if slug:
@@ -94,6 +101,21 @@ def _build_slug_to_iso() -> Dict[str, str]:
         name = (data.get('name') or '').lower().replace(' ', '_')
         if name:
             lookup[name] = _resolve_iso(iso_key, data)
+
+    # 2. CountryPipelineProfile direct mapping (catches composite-QID countries)
+    try:
+        from orchestration.models import CountryPipelineProfile
+        for profile in CountryPipelineProfile.objects.filter(
+            iso2__isnull=False
+        ).exclude(iso2=''):
+            iso2 = profile.iso2.upper()
+            slug = (profile.canonical_slug or '').lower()
+            if slug:
+                # Add both hyphenated and underscored variants
+                lookup.setdefault(slug, iso2)
+                lookup.setdefault(slug.replace('-', '_'), iso2)
+    except Exception:
+        logger.warning("Could not build direct slug→ISO mapping from CountryPipelineProfile", exc_info=True)
 
     return lookup
 
@@ -348,7 +370,16 @@ class Command(BaseCommand):
                 geojson_geom = _clip_to_land(geojson_geom, land_polygon)
 
             bbox = _compute_bbox_from_geometry(geojson_geom)
-            iso_code = slug_to_iso.get(country.name.lower())
+            # TODO: resolve this in the prebuild steps 
+            # Try multiple name variants — RegionHierarchy.name uses underscores
+            # (e.g. "bosnia_herzegovina") but country_relations slugs use hyphens
+            # (e.g. "bosnia-herzegovina").  Also try spaces for safety.
+            name_lower = country.name.lower()
+            iso_code = (
+                slug_to_iso.get(name_lower)
+                or slug_to_iso.get(name_lower.replace('_', '-'))
+                or slug_to_iso.get(name_lower.replace('_', ' '))
+            )
             human_name = country.name.replace('_', ' ').title()
 
             if dry_run:

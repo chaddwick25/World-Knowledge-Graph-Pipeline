@@ -347,13 +347,20 @@ def resolve_country_bbox(
     try:
         from extraction.models import OsmBoundary
 
-        # Multiple lookup strategies
+        # Multiple lookup strategies.
+        # ⚠️  Do NOT use name__icontains with a 2-letter ISO code — it matches
+        # substrings in unrelated country names (e.g. "IL" → "Brazil",
+        # "CD" → "Heard Mcdonald", "SN" → "Bosnia Herzegovina").  Only use
+        # name lookups when the input is a full country name (len > 3).
         ob = None
-        strategies = [
-            ("iso_code__iexact", code),
-            ("name__iexact", iso_code),       # e.g. "Australia"
-            ("name__icontains", iso_code),     # partial name match
-        ]
+        strategies = [("iso_code__iexact", code)]
+        if len(code) > 3:
+            # Input looks like a country name, not an ISO code — safe to
+            # do exact and contains name lookups.
+            strategies.extend([
+                ("name__iexact", iso_code),        # e.g. "Australia"
+                ("name__iexact", iso_code.replace("_", " ")),
+            ])
         for lookup, val in strategies:
             ob = OsmBoundary.objects.filter(**{lookup: val}).first()
             if ob and ob.bbox:

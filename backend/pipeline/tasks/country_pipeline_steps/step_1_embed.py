@@ -7,6 +7,7 @@ Preprocessing + GV-Tags + provisional GV-NLE + entropy gate + subgraph fan-out.
 from __future__ import annotations
 
 import dataclasses
+import os
 from pathlib import Path
 import logging
 
@@ -25,6 +26,30 @@ from pipeline.tasks.helper import (
 )
 
 logger = logging.getLogger("pipeline")
+
+# Countries with >10M OSM entities where drop-indexes-during-load gives 3-5x
+# faster upserts.  See docs/plans/OSMENTITY_MONOLITH_OPTIMIZATION.md Phase 5.
+_LARGE_COUNTRIES = frozenset({
+    "AU", "CA", "US", "BR", "IN", "CN", "RU", "ID", "MX", "JP",
+    "DE", "FR", "ES", "IT", "PL", "TR", "AR", "CO", "ZA", "GB",
+})
+
+
+def _should_drop_indexes_during_load(iso: str) -> bool:
+    """Decide whether to drop/rebuild vector indexes during the bulk load.
+
+    Controlled by the ``DROP_INDEXES_DURING_LOAD`` env var:
+      - ``auto`` (default): True for known large countries (>10M entities)
+      - ``true`` / ``1``:   Always drop/rebuild
+      - ``false`` / ``0``:  Never drop/rebuild
+    """
+    mode = os.environ.get("DROP_INDEXES_DURING_LOAD", "auto").lower()
+    if mode in ("true", "1", "yes"):
+        return True
+    if mode in ("false", "0", "no"):
+        return False
+    # auto
+    return iso.upper() in _LARGE_COUNTRIES
 
 
 @pipeline_task(
@@ -82,7 +107,18 @@ def step_1_embed_osm_entities(self, env: CountryEnvelope) -> CountryEnvelope:
     preprocess_snapshot(env, logger=logger)
 
     from extraction.services.embedding_service import EmbeddingService
-    result = EmbeddingService(Path(settings.EMBEDDINGS_ROOT)).run(env)
+    drop_indexes = _should_drop_indexes_during_load(env.iso)
+    if drop_indexes:
+        _log(
+            logger,
+            "info",
+            "Drop-indexes-during-load enabled for bulk upsert",
+            country=env.iso,
+            pipeline_run_id=env.pipeline_run_id,
+        )
+    result = EmbeddingService(Path(settings.EMBEDDINGS_ROOT)).run(
+        env, drop_indexes_during_load=drop_indexes,
+    )
 
     _log(
         logger,

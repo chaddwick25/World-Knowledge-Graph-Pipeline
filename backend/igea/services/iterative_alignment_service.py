@@ -537,17 +537,24 @@ class IterativeEntityAlignmentService:
     # Write-back
     # ------------------------------------------------------------------
 
-    def _write_accepted_pairs(self, accepted: List[Tuple[int, str]]) -> int:
+    def _write_accepted_pairs(self, accepted: List[Tuple[int, str]],
+                              country_code: Optional[str] = None) -> int:
         """
         Write accepted (osm_id, wikidata_uri) pairs back to OsmEntity.
 
         Sets wikidata_uri and wkg_enriched_at on the matched entities.
+
+        Phase 6: scopes the update to ``country_code`` when provided, to
+        prevent IGEA alignment from bleeding across snapshots/countries.
         """
         from worldkg_nca.models import OsmEntity
         now = datetime.now(timezone.utc)
         updated = 0
         for osm_id, wikidata_uri in accepted:
-            count = OsmEntity.objects.using('vectors').filter(osm_id=osm_id).update(
+            qs = OsmEntity.objects.using('vectors').filter(osm_id=osm_id)
+            if country_code:
+                qs = qs.filter(country_code=country_code)
+            count = qs.update(
                 wikidata_uri=wikidata_uri,
                 wkg_enriched_at=now,
             )
@@ -711,7 +718,7 @@ class IterativeEntityAlignmentService:
             deduped = list(seen_osm.values())
 
             # Write to DB
-            written = self._write_accepted_pairs(deduped)
+            written = self._write_accepted_pairs(deduped, country_code=country_code)
             per_iter_counts.append(written)
             logger.info(f"IGEA iteration {iteration}: accepted {written} new links")
 

@@ -17,7 +17,7 @@ import axios from 'axios'
 const PLANET_STEPS = [
   { name: 'planet_init',              label: 'Initialize Planet',               pct: 100 },
   { name: 'continent_init',           label: 'Extract Continent PBFs',          pct: 100 },
-  { name: 'continent_snapshots',      label: 'Historical Continent Snapshots',  pct: 100 },
+  // LEGACY: continent_snapshots removed from backend pipeline — to be removed
   { name: 'prebuild_structure',       label: 'Pre-build Country Structure',     pct: 100 },
   { name: 'prebuild_country_paths',   label: 'Resolve Country Paths',           pct: 100 },
   { name: 'prebuild_scan_embeddings',    label: 'Scan Embeddings (Eligibility)',  pct: 100 },
@@ -136,50 +136,50 @@ export function usePlanetInit() {
   }
 
   // ── Auto-trigger continent snapshots ──────────────────
-  // TODO: refactor this and  use proper state management
-  async function triggerContinentSnapshots() {
-    const csStep = steps.value.find((s) => s.name === 'continent_snapshots')
-    if (!csStep) return
-
-    csStep.status = 'in_progress'
-    csStep.message = 'Extracting continent snapshots…'
-    csStep.pct = 50
-    logs.value.push({
-      time: new Date().toLocaleTimeString(),
-      message: '🔄 Extracting historical continent snapshots...',
-    })
-    try {
-      const { data } = await axios.post('/planet/extract-continent-snapshots/', { force: false })
-
-      if (data.status === 'completed' || data.status === 'skipped') {
-        csStep.status = 'completed'
-        csStep.message = data.message || 'Continent snapshots complete'
-        csStep.pct = 100
-        logs.value.push({
-          time: new Date().toLocaleTimeString(),
-          message: `✅ Continent snapshots: ${data.message || 'done'}`,
-        })
-      } else {
-        csStep.status = 'failed'
-        csStep.message = data.message || 'Extraction failed'
-        isFailed.value = true
-        errorMessage.value = data.message || 'Continent snapshot extraction failed'
-        logs.value.push({
-          time: new Date().toLocaleTimeString(),
-          message: `❌ Continent snapshots failed: ${data.message || ''}`,
-        })
-      }
-    } catch (err) {
-      csStep.status = 'failed'
-      csStep.message = err.message || 'Failed'
-      isFailed.value = true
-      errorMessage.value = err.response?.data?.message || err.message || 'Failed to extract continent snapshots'
-      logs.value.push({
-        time: new Date().toLocaleTimeString(),
-        message: `❌ Continent snapshots error: ${errorMessage.value}`,
-      })
-    }
-  }
+  // LEGACY: continent_snapshots step removed from backend pipeline — to be removed
+  // async function triggerContinentSnapshots() {
+  //   const csStep = steps.value.find((s) => s.name === 'continent_snapshots')
+  //   if (!csStep) return
+  //
+  //   csStep.status = 'in_progress'
+  //   csStep.message = 'Extracting continent snapshots…'
+  //   csStep.pct = 50
+  //   logs.value.push({
+  //     time: new Date().toLocaleTimeString(),
+  //     message: '🔄 Extracting historical continent snapshots...',
+  //   })
+  //   try {
+  //     const { data } = await axios.post('/planet/extract-continent-snapshots/', { force: false })
+  //
+  //     if (data.status === 'completed' || data.status === 'skipped') {
+  //       csStep.status = 'completed'
+  //       csStep.message = data.message || 'Continent snapshots complete'
+  //       csStep.pct = 100
+  //       logs.value.push({
+  //         time: new Date().toLocaleTimeString(),
+  //         message: `✅ Continent snapshots: ${data.message || 'done'}`,
+  //       })
+  //     } else {
+  //       csStep.status = 'failed'
+  //       csStep.message = data.message || 'Extraction failed'
+  //       isFailed.value = true
+  //       errorMessage.value = data.message || 'Continent snapshot extraction failed'
+  //       logs.value.push({
+  //         time: new Date().toLocaleTimeString(),
+  //         message: `❌ Continent snapshots failed: ${data.message || ''}`,
+  //       })
+  //     }
+  //   } catch (err) {
+  //     csStep.status = 'failed'
+  //     csStep.message = err.message || 'Failed'
+  //     isFailed.value = true
+  //     errorMessage.value = err.response?.data?.message || err.message || 'Failed to extract continent snapshots'
+  //     logs.value.push({
+  //       time: new Date().toLocaleTimeString(),
+  //       message: `❌ Continent snapshots error: ${errorMessage.value}`,
+  //     })
+  //   }
+  // }
 
   function connectWebSocket(sessionId) {
     // TODO: remove this conditional
@@ -289,22 +289,15 @@ export function usePlanetInit() {
     }
 
     // When continent_init completes, auto-trigger continent snapshots
-    // TODO: update the validation - makes the 
-    if (msg.name === 'continent_init' && msg.status === 'completed') {
-      triggerContinentSnapshots()
-    }
+    // LEGACY: continent_snapshots removed from backend pipeline — to be removed
+    // if (msg.name === 'continent_init' && msg.status === 'completed') {
+    //   triggerContinentSnapshots()
+    // }
   }
 
   async function applyComplete(msg) {
     if (msg.status === 'completed') {
-      // Wait for continent snapshots to finish if still running
-      const csStep = steps.value.find((s) => s.name === 'continent_snapshots')
-      if (csStep && (csStep.status === 'in_progress' || csStep.status === 'pending')) {
-        await new Promise((r) => setTimeout(r, 2000))
-        if (csStep.status === 'in_progress' || csStep.status === 'pending') {
-          return  // Still going — let snapshot call complete on its own
-        }
-      }
+      // LEGACY: continent_snapshots wait removed — step no longer in pipeline
 
       isComplete.value = true
       fetchSummary()
@@ -437,7 +430,7 @@ export function usePlanetInit() {
     badgeLabel,
     badgeVariant,
     handleInitialize,
-    triggerContinentSnapshots,
+    // triggerContinentSnapshots,  // LEGACY: removed
     connectWebSocket,
     handleWsMessage,
     fetchSummary,

@@ -79,7 +79,6 @@ class OsmEntity(models.Model):
         max_length=200,
         null=True,
         blank=True,
-        db_index=True,
         help_text="WorldKG ontological class using wkgs: namespace (e.g., 'wkgs:Cafe', 'wkgs:Hospital'). "
                   "Corresponds to rdf:type assertion in WorldKG RDF triples."
     )
@@ -95,7 +94,6 @@ class OsmEntity(models.Model):
         max_length=200,
         null=True,
         blank=True,
-        db_index=True,
         help_text="Wikidata equivalent class URI via NCA alignment (owl:equivalentClass on the class, "
                   "not owl:sameAs on the instance). E.g., 'http://www.wikidata.org/entity/Q11707'."
     )
@@ -179,13 +177,33 @@ class OsmEntity(models.Model):
     source_snapshot_id = models.UUIDField(
         null=True,
         blank=True,
-        db_index=True,
         help_text="UUID of source TemporalSnapshot (cross-database reference)"
     )
-    
+    # ── Phase 6 partition keys (temporal + geographic) ──────────────────
+    # These are nullable on the monolith and populated via backfill.
+    # After cutover they become NOT NULL partition keys on the
+    # partitioned table (embeddings_partitioned).
+    # NOTE: source_snapshot_id (UUID FK) ≠ snapshot_id (VARCHAR partition key).
+    #   source_snapshot_id = UUID of TemporalSnapshot row (default DB)
+    #   snapshot_id         = human-readable 'YYYY_MM_DD' partition key
+    snapshot_id = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        help_text="Temporal partition key (YYYY_MM_DD, e.g. '2025_12_31'). "
+                  "Derived from source_snapshot_id → TemporalSnapshot.timestamp."
+    )
+    country_code = models.CharField(
+        max_length=3,
+        null=True,
+        blank=True,
+        help_text="ISO 3166-1 alpha-2 country code (geographic partition key). "
+                  "Populated via spatial join: geom → country bbox."
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = 'semantic_search_osmentity'
         unique_together = [['osm_type', 'osm_id', 'gv_tags_version']]
@@ -197,6 +215,10 @@ class OsmEntity(models.Model):
             models.Index(fields=['wikidata_uri']),
             models.Index(fields=['wkg_depth']),
             models.Index(fields=['wkg_type_key', 'wkg_type_value']),
+            # Phase 6 partition-key indexes (added for snapshot/country scoping)
+            models.Index(fields=['snapshot_id']),
+            models.Index(fields=['country_code']),
+            models.Index(fields=['snapshot_id', 'country_code']),
         ]
         ordering = ['osm_type', 'osm_id']
         verbose_name = 'OSM Entity'

@@ -6,6 +6,7 @@ from django.core.paginator import Paginator
 from worldkg_nca.models import OsmEntity
 from worldkg_nca.services.enrichment_service import get_worldkg_enrichment_service
 from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
+from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 from api.models import TemporalSnapshot, WorldKGClassDrift, WorldKGClassFingerprint
 from semantic_search.services.worldkg_drift_service import get_worldkg_drift_service
 
@@ -114,18 +115,23 @@ def worldkg_enrich_entity(request):
     osm_type = request.data.get('osm_type')
     osm_id = request.data.get('osm_id')
     use_sparql = request.data.get('use_sparql', False)
-    
+    # Phase 6: scope to snapshot partition (falls back to latest for monolith)
+    snapshot_id = request.data.get('snapshot_id') or get_latest_snapshot_id()
+
     if not osm_type or not osm_id:
         return Response(
             {"error": "osm_type and osm_id required"},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+
     try:
-        entity = OsmEntity.objects.using('vectors').get(
+        qs = OsmEntity.objects.using('vectors').filter(
             osm_type=osm_type,
-            osm_id=osm_id
+            osm_id=osm_id,
         )
+        if snapshot_id:
+            qs = qs.filter(snapshot_id=snapshot_id)
+        entity = qs.get()
     except OsmEntity.DoesNotExist:
         return Response(
             {"error": f"Entity {osm_type}/{osm_id} not found"},
