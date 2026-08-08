@@ -135,8 +135,18 @@ export const usePipelineStore = defineStore('pipeline', {
      * Tracks which snapshot years have been completed for a country.
      * Keyed by country name, value is a Set of year strings (e.g., "2024").
      * { [countryName]: Set<string> }
+     *
+     * NOTE: Now backed by SnapshotJob DB rows via fetchSnapshotJobs().
+     * The in-memory Set is a cache populated from the DB; clearing it
+     * requires a re-fetch (or a resetYearsForCountry() call).
      */
     runsByYear: {},
+
+    /**
+     * Per-country SnapshotJob rows keyed by country name.
+     * { [countryName]: [{ snapshot_date, status, ... }] }
+     */
+    snapshotJobs: {},
 
     /**
      * Active WebSocket connections keyed by sessionId.
@@ -368,7 +378,7 @@ export const usePipelineStore = defineStore('pipeline', {
      * Start the WorldKG pipeline for a country.
      * Returns the sessionId string on success.
      */
-    async startPipeline(countryName, snapshotDate = null) {
+    async startPipeline(countryName, snapshotDate = null, opts = {}) {
       // Fetch step definitions from app-state before starting
       let pipelineSteps = null
       try {
@@ -401,6 +411,9 @@ export const usePipelineStore = defineStore('pipeline', {
         if (snapshotDate) {
           payload.snapshot_date = snapshotDate
         }
+        if (opts.force) {
+          payload.force = true
+        }
         const { data } = await axios.post('/worldkg-pipeline-v2/start/', payload)
         const sessionId = data.pipeline_run_id
         this.runs[countryName].sessionId = sessionId
@@ -409,9 +422,17 @@ export const usePipelineStore = defineStore('pipeline', {
         this.connectWebSocket(sessionId, countryName)
         return sessionId
       } catch (err) {
-        const msg = err.response?.data?.error || err.message || 'Failed to start pipeline'
-        this.runs[countryName].status = 'failed'
-        this.runs[countryName].error = msg
+        // 409 = currently running (force=true didn't apply or race) — surface
+        // the backend's structured error so the UI can show a precise message.
+        if (err.response?.status === 409) {
+          const reason = err.response?.data?.error || 'Already processed'
+          this.runs[countryName].status = 'skipped'
+          this.runs[countryName].error = reason
+        } else {
+          const msg = err.response?.data?.error || err.message || 'Failed to start pipeline'
+          this.runs[countryName].status = 'failed'
+          this.runs[countryName].error = msg
+        }
         throw err
       }
     },
@@ -480,6 +501,131 @@ export const usePipelineStore = defineStore('pipeline', {
       this.runsByYear[countryName] = new Set()
       // Also clear the run itself
       this.clearRun(countryName)
+    },
+
+    /**
+     * Fetch SnapshotJob rows for a country from the DB and refresh the
+     * in-memory runsByYear cache. Replaces the lost-on-refresh state with
+     * DB ground truth (TEMPORAL_SNAPSHOT_REFACTOR.md Phase F).
+     *
+     * Returns the array of job rows.
+     */
+    async fetchSnapshotJobs(countryName, countryCode) {
+      if (!countryCode) return []
+      try {
+        const { data } = await axios.get(`/snapshot-jobs/${encodeURIComponent(countryCode)}/`)
+        const jobs = data.jobs || []
+        this.snapshotJobs[countryName] = jobs
+        // Rebuild runsByYear cache: a year is "used" if any job for that
+        // snapshot_date is COMPLETED or RUNNING.
+        const used = new Set()
+        for (const j of jobs) {
+          if (j.status === 'completed' || j.status === 'running') {
+            const year = String(j.snapshot_date).split('_')[0]
+            if (year) used.add(year)
+          }
+        }
+        this.runsByYear[countryName] = used
+        return jobs
+      } catch (err) {
+        console.error(`[pipelineStore] fetchSnapshotJobs error for ${countryCode}:`, err)
+        return []
+      }
+    },
+
+    /**
+     * Reset the year cache for a country (after a SnapshotJob deletion
+     * on the backend, or to force a re-fetch on next render).
+     */
+    resetYearsForCountry(countryName) {
+      this.runsByYear[countryName] = new Set()
+      this.snapshotJobs[countryName] = []
+    },
+
+    /**
+     * Fetch durable results for a completed SnapshotJob from the DB
+     * (via django_celery_results TaskResult rows) and populate the
+     * store's run state so PipelineProgressPanelV3 can render them
+     * without an active WebSocket connection.
+     *
+     * Calls: GET /api/snapshot-jobs/{country_code}/{snapshot_date}/results/
+     *
+     * Returns the results object, or null on error.
+     */
+    async fetchSnapshotJobResults(countryName, countryCode, snapshotDate) {
+      if (!countryCode || !snapshotDate) return null
+      try {
+        const { data } = await axios.get(
+          `/snapshot-jobs/${encodeURIComponent(countryCode)}/${encodeURIComponent(snapshotDate)}/results/`
+        )
+
+        // Build step list from task_results
+        const taskResults = data.task_results || []
+        const steps = taskResults.map((t) => {
+          const stepName = (t.task_name || '').replace(/^step_\d+_/, '')
+          const status = t.status === 'SUCCESS' ? 'completed'
+            : t.status === 'FAILURE' ? 'failed'
+            : t.status === 'REVOKED' ? 'skipped'
+            : 'pending'
+          // Try to extract a meaningful message from the result JSON
+          let message = ''
+          try {
+            const parsed = typeof t.result === 'string' ? JSON.parse(t.result) : t.result
+            if (parsed) {
+              if (parsed.igea_accepted !== undefined) {
+                message = `IGEA accepted: ${parsed.igea_accepted}`
+              } else if (parsed.subgraph) {
+                message = `Subgraph: ${parsed.subgraph}`
+              } else if (parsed.snapshot_pbf_path) {
+                message = 'Snapshot extracted'
+              } else if (t.task_name?.includes('step_6')) {
+                message = 'Country marked search-ready'
+              }
+            }
+          } catch { /* result may not be JSON */ }
+
+          return {
+            name: stepName,
+            label: stepLabel(stepName),
+            status,
+            message,
+            pct: status === 'completed' ? 100 : 0,
+            dateDone: t.date_done || null,
+            durationMs: t.date_done && t.date_created
+              ? new Date(t.date_done) - new Date(t.date_created)
+              : null,
+          }
+        })
+
+        // Populate the run state from DB results
+        const isComplete = data.status === 'completed'
+        const isFailed = data.status === 'failed'
+        this.runs[countryName] = {
+          sessionId: data.pipeline_run_id || null,
+          status: isComplete ? 'completed' : isFailed ? 'failed' : 'idle',
+          steps,
+          error: data.error_message || null,
+          startedAt: data.started_at || null,
+          completedAt: data.completed_at || null,
+          logs: [],
+          pipelineType: 'worldkg',
+          phases: null,
+          snapshotDate: snapshotDate,
+          // DB-backed marker so the panel knows this is durable data
+          durable: true,
+          // Summary counts for the header
+          summary: {
+            totalEntities: data.total_entities || 0,
+            totalAligned: data.total_aligned || 0,
+            totalSpatialLinks: data.total_spatial_links || 0,
+          },
+        }
+
+        return data
+      } catch (err) {
+        console.error(`[pipelineStore] fetchSnapshotJobResults error for ${countryCode}/${snapshotDate}:`, err)
+        return null
+      }
     },
 
     // ──────────────────────────────────────────────────────────

@@ -7,6 +7,10 @@
  *
  * Props:
  *   countryName  - Required. Country to show metrics for.
+ *   snapshotDate - Optional. Snapshot date (e.g. "2025_12_31"). The metrics
+ *                  panel reads from the pipelineStore run state, which is
+ *                  already scoped to the selected snapshot date by
+ *                  fetchSnapshotJobResults() in the store.
  */
 
 import { computed } from 'vue'
@@ -18,6 +22,10 @@ export default {
     countryName: {
       type: String,
       required: true,
+    },
+    snapshotDate: {
+      type: String,
+      default: null,
     },
   },
   setup(props) {
@@ -76,6 +84,7 @@ export default {
       formatDuration,
       statusIcon,
       statusClass,
+      snapshotDate: props.snapshotDate,
     }
   },
 }
