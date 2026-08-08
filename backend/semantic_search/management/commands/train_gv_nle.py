@@ -378,7 +378,18 @@ class Command(BaseCommand):
         else:
             queryset = OsmEntity.objects.using('vectors').filter(
                 geom__isnull=False
-            ).order_by('osm_id').distinct('osm_id')  ***REMOVED*** Remove 10x duplicates
+            )
+            ***REMOVED*** Phase 6: scope to country_code / snapshot_id to avoid scanning
+            ***REMOVED*** all partitions after cutover.  Falls back to full scan on the
+            ***REMOVED*** monolith when neither is provided (backward compatible).
+            if country:
+                queryset = queryset.filter(country_code=country)
+            if source_snapshot_id:
+                from worldkg_nca.snapshot_utils import snapshot_id_from_uuid
+                snap_key = snapshot_id_from_uuid(source_snapshot_id)
+                if snap_key:
+                    queryset = queryset.filter(snapshot_id=snap_key)
+            queryset = queryset.order_by('osm_id').distinct('osm_id')  ***REMOVED*** Remove 10x duplicates
 
         if region and not buffer_wkt:
             ***REMOVED*** Legacy text label (non-spatial) — kept for backward compatibility

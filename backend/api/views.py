@@ -428,6 +428,7 @@ class RegionMapDataView(APIView):
                 countries.append({
                     'id': str(region.id),
                     'name': boundary.name,
+                    'iso_code': boundary.iso_code or '',
                     'continent': continent.name,
                     'continent_id': str(continent.id),
                     'geometry': boundary.geometry,
