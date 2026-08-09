@@ -18,6 +18,10 @@ from worldkg_nca.models import OsmEntity
 from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 from semantic_search.services.fasttext_service import FastTextEmbeddingService
 from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
+from semantic_search.utils.subdivision_resolver import (
+    resolve_subdivision_polygon,
+    resolve_subdivision_country_code,
+)
 import logging
 import time
 import numpy as np
@@ -46,7 +50,8 @@ class SemanticSearchGVTagsView(APIView):
         filters = request.data.get('filters', {})
         # Phase 6: scope to snapshot partition (falls back to latest for monolith)
         snapshot_id = request.data.get('snapshot_id') or get_latest_snapshot_id()
-        
+        subdivision_qid = request.data.get('subdivision_qid')
+
         if not query_tags and wkg_class:
             ontology = get_worldkg_ontology_service()
             key = ontology.get_canonical_osm_key(wkg_class)
@@ -85,6 +90,18 @@ class SemanticSearchGVTagsView(APIView):
             # Phase 6: scope to snapshot partition
             if snapshot_id:
                 results = results.filter(snapshot_id=snapshot_id)
+
+            # Subdivision spatial filter (geom__within bbox from SubgraphProfile)
+            if subdivision_qid:
+                sub_polygon = resolve_subdivision_polygon(subdivision_qid)
+                if sub_polygon:
+                    results = results.filter(geom__within=sub_polygon)
+                else:
+                    return Response(
+                        {'error': f'Could not resolve subdivision_qid={subdivision_qid}. '
+                                  'Ensure SubgraphProfile is populated with bbox for this QID.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
             # Apply filters
             if filters:
@@ -165,7 +182,8 @@ class SpatialSearchGVNLEView(APIView):
         filters = request.data.get('filters', {})
         # Phase 6: scope to snapshot partition (falls back to latest for monolith)
         snapshot_id = request.data.get('snapshot_id') or get_latest_snapshot_id()
-        
+        subdivision_qid = request.data.get('subdivision_qid')
+
         if not reference_osm_id:
             return Response(
                 {'error': 'reference_osm_id required'},
@@ -208,7 +226,19 @@ class SpatialSearchGVNLEView(APIView):
             # Phase 6: scope to snapshot partition
             if snapshot_id:
                 results = results.filter(snapshot_id=snapshot_id)
-            
+
+            # Subdivision spatial filter (geom__within bbox from SubgraphProfile)
+            if subdivision_qid:
+                sub_polygon = resolve_subdivision_polygon(subdivision_qid)
+                if sub_polygon:
+                    results = results.filter(geom__within=sub_polygon)
+                else:
+                    return Response(
+                        {'error': f'Could not resolve subdivision_qid={subdivision_qid}. '
+                                  'Ensure SubgraphProfile is populated with bbox for this QID.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
             # Apply filters
             if filters:
                 results = results.filter(**filters)
@@ -291,6 +321,7 @@ class HybridSearchView(APIView):
         filters = request.data.get('filters', {})
         # Phase 6: scope to snapshot partition (falls back to latest for monolith)
         snapshot_id = request.data.get('snapshot_id') or get_latest_snapshot_id()
+        subdivision_qid = request.data.get('subdivision_qid')
         
         # Fallback for semantic query
         if not query_tags and wkg_class:
@@ -369,6 +400,18 @@ class HybridSearchView(APIView):
             # Phase 6: scope to snapshot partition
             if snapshot_id:
                 results = results.filter(snapshot_id=snapshot_id)
+
+            # Subdivision spatial filter (geom__within bbox from SubgraphProfile)
+            if subdivision_qid:
+                sub_polygon = resolve_subdivision_polygon(subdivision_qid)
+                if sub_polygon:
+                    results = results.filter(geom__within=sub_polygon)
+                else:
+                    return Response(
+                        {'error': f'Could not resolve subdivision_qid={subdivision_qid}. '
+                                  'Ensure SubgraphProfile is populated with bbox for this QID.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
             
             # Apply WorldKG class filtering if specified
             wkg_class = request.data.get('wkg_class')

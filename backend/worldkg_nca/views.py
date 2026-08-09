@@ -519,6 +519,8 @@ def worldkg_semantic_triplet_search(request):
     use_learned_weights = request.data.get("use_learned_weights", False)
     # snapshot_date filters OsmEntity by snapshot_id (CharField, e.g. "2025_12_31")
     snapshot_date = request.data.get("snapshot_date")
+    # Optional: filter within a subdivision (province/state/municipality) by Wikidata QID
+    subdivision_qid = request.data.get("subdivision_qid")
 
     # Auto-infer rdf_type from query_tags if not provided
     if not rdf_type and query_tags:
@@ -568,9 +570,9 @@ def worldkg_semantic_triplet_search(request):
     except (TypeError, ValueError):
         top_k = 20
 
-    if not country_code:
+    if not country_code and not subdivision_qid:
         return Response(
-            {"error": "country_code required"},
+            {"error": "country_code or subdivision_qid required"},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -599,64 +601,84 @@ def worldkg_semantic_triplet_search(request):
     # "ireland-and-northern-ireland" or "Ireland_and_northern_ireland".
     from extraction.services.country_override_service import get_country_override_record
     from extraction.models import OsmBoundary
-
-    # Prefer OsmBoundary bbox (same as enrichment service).
-    # Be robust to slug-style identifiers like "ireland_and_northern_ireland".
-    human_name = (
-        str(country_code).replace("_", " ").replace("-", " ").strip()
-        if country_code
-        else ""
+    from semantic_search.utils.subdivision_resolver import (
+        resolve_subdivision_bbox as _resolve_subdivision_bbox,
+        resolve_subdivision_country_code,
     )
-    boundary_qs = OsmBoundary.objects.filter(admin_level=2)
-    if human_name:
-        boundary = (
-            boundary_qs.filter(
-                Q(name__icontains=country_code)
-                | Q(name_en__icontains=country_code)
-                | Q(name__icontains=human_name)
-                | Q(name_en__icontains=human_name)
-            )
-            .first()
-        )
-    else:
-        boundary = boundary_qs.filter(name__icontains=country_code).first()
-    if boundary and boundary.bbox:
-        bbox = tuple(boundary.bbox)
-    else:
-        # Fallback to ISO/QID and override-aware resolution.
-        # First, try robust ISO resolution via the (deprecated) pipeline service
-        # helper, which already understands slugs and Wikidata IDs.
-        iso_code = None
-        resolved_iso = None
-        try:
-            resolved_iso = WorldKGPipelineService._resolve_iso_code(country_code)
-        except Exception:
-            resolved_iso = None
 
-        if resolved_iso:
-            iso_code = resolved_iso
-        else:
-            # Fallback to country override service when the caller passes an
-            # ISO/QID directly.
-            override_record = get_country_override_record(country_code)
-            if override_record:
-                # Use override to get the canonical ISO code if available
-                iso_code = override_record.get("iso_code") or country_code.upper()
-            else:
-                # Try direct ISO/QID resolution
-                iso_code = country_code.upper()
-
-        bbox = resolve_country_bbox(iso_code, None)
+    # If subdivision_qid is provided, use the subdivision bbox directly and
+    # infer the country_code if not explicitly given.
+    if subdivision_qid:
+        bbox = _resolve_subdivision_bbox(subdivision_qid)
         if not bbox:
-            # Fallback to name-based lookup via OSMWikiDataHierarchy
-            country_meta = get_country_by_name(country_code)
-            if country_meta:
-                iso = (
-                    country_meta.get("wikidata_id")
-                    or (country_meta.get("wkg_uri", "") or "").rsplit("/", 1)[-1]
+            return Response(
+                {"error": f"Could not resolve subdivision_qid={subdivision_qid}. "
+                          "Ensure SubgraphProfile is populated with bbox for this QID."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Infer country_code from the subdivision if not provided
+        if not country_code:
+            inferred_iso = resolve_subdivision_country_code(subdivision_qid)
+            if inferred_iso:
+                country_code = inferred_iso
+    else:
+        # Prefer OsmBoundary bbox (same as enrichment service).
+        # Be robust to slug-style identifiers like "ireland_and_northern_ireland".
+        human_name = (
+            str(country_code).replace("_", " ").replace("-", " ").strip()
+            if country_code
+            else ""
+        )
+        boundary_qs = OsmBoundary.objects.filter(admin_level=2)
+        if human_name:
+            boundary = (
+                boundary_qs.filter(
+                    Q(name__icontains=country_code)
+                    | Q(name_en__icontains=country_code)
+                    | Q(name__icontains=human_name)
+                    | Q(name_en__icontains=human_name)
                 )
-                if iso:
-                    bbox = resolve_country_bbox(iso, None)
+                .first()
+            )
+        else:
+            boundary = boundary_qs.filter(name__icontains=country_code).first()
+        if boundary and boundary.bbox:
+            bbox = tuple(boundary.bbox)
+        else:
+            # Fallback to ISO/QID and override-aware resolution.
+            # First, try robust ISO resolution via the (deprecated) pipeline service
+            # helper, which already understands slugs and Wikidata IDs.
+            iso_code = None
+            resolved_iso = None
+            try:
+                resolved_iso = WorldKGPipelineService._resolve_iso_code(country_code)
+            except Exception:
+                resolved_iso = None
+
+            if resolved_iso:
+                iso_code = resolved_iso
+            else:
+                # Fallback to country override service when the caller passes an
+                # ISO/QID directly.
+                override_record = get_country_override_record(country_code)
+                if override_record:
+                    # Use override to get the canonical ISO code if available
+                    iso_code = override_record.get("iso_code") or country_code.upper()
+                else:
+                    # Try direct ISO/QID resolution
+                    iso_code = country_code.upper()
+
+            bbox = resolve_country_bbox(iso_code, None)
+            if not bbox:
+                # Fallback to name-based lookup via OSMWikiDataHierarchy
+                country_meta = get_country_by_name(country_code)
+                if country_meta:
+                    iso = (
+                        country_meta.get("wikidata_id")
+                        or (country_meta.get("wkg_uri", "") or "").rsplit("/", 1)[-1]
+                    )
+                    if iso:
+                        bbox = resolve_country_bbox(iso, None)
 
     if not bbox:
         return Response(
@@ -1236,3 +1258,84 @@ def worldkg_apply_link(request):
             "wikidata_id": qid,
         }
     )
+
+
+@api_view(['GET'])
+def worldkg_subdivisions(request):
+    """List available subdivisions (provinces/states/municipalities) for a country.
+
+    GET /api/nca/subdivisions/?country_code=NI
+
+    Returns subdivisions from ``SubgraphProfile`` that have a Wikidata QID and
+    bbox populated, so the frontend can present a subdivision picker and pass
+    ``subdivision_qid`` to the search endpoints.
+
+    Query params:
+        country_code: ISO-2 code (e.g. "NI") or country name.  Required.
+
+    Response:
+        {
+            "country_code": "NI",
+            "count": 15,
+            "subdivisions": [
+                {
+                    "wikidata_id": "Q260009",
+                    "name": "Managua",
+                    "slug": "managua",
+                    "admin_level": null,
+                    "osm_relation_id": 2194897,
+                    "bbox": [-86.95, 11.98, -86.16, 12.62]
+                },
+                ...
+            ]
+        }
+    """
+    from orchestration.models import SubgraphProfile, CountryPipelineProfile
+
+    country_code = request.query_params.get('country_code')
+    if not country_code:
+        return Response(
+            {"error": "country_code query parameter required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Resolve to CountryPipelineProfile
+    profile = (
+        CountryPipelineProfile.objects.filter(iso2__iexact=country_code).first()
+        or CountryPipelineProfile.objects.filter(
+            canonical_name__icontains=country_code.replace('_', ' ').replace('-', ' ')
+        ).first()
+    )
+    if not profile:
+        return Response(
+            {"error": f"CountryPipelineProfile not found for {country_code}"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    subdivisions = []
+    qs = SubgraphProfile.objects.filter(
+        country_profile=profile,
+        wikidata_id__isnull=False,
+    ).exclude(wikidata_id='').order_by('name')
+
+    for sg in qs:
+        has_bbox = all(v is not None for v in (
+            sg.bbox_min_lon, sg.bbox_min_lat, sg.bbox_max_lon, sg.bbox_max_lat,
+        ))
+        subdivisions.append({
+            "wikidata_id": sg.wikidata_id,
+            "name": sg.name,
+            "slug": sg.slug,
+            "admin_level": sg.admin_level,
+            "osm_relation_id": sg.osm_relation_id,
+            "bbox": (
+                [sg.bbox_min_lon, sg.bbox_min_lat, sg.bbox_max_lon, sg.bbox_max_lat]
+                if has_bbox else None
+            ),
+        })
+
+    return Response({
+        "country_code": profile.iso2 or country_code,
+        "count": len(subdivisions),
+        "subdivisions": subdivisions,
+    })

@@ -82,6 +82,7 @@ class OsmRelationHierarchyService:
                         {
                             "osm_relation_id": child["relation_id"],
                             "name": child["label"],
+                            "wikidata_qid": child.get("wikidata_qid"),
                             "admin_level": None,
                             "children": [],
                         }
@@ -148,9 +149,15 @@ ORDER BY ?childLabel
                 rel_id = int(rel_raw)
             except (TypeError, ValueError):
                 continue
+            # Extract the Wikidata QID from the ?child URI
+            # (e.g., "http://www.wikidata.org/entity/Q260009" → "Q260009")
+            child_uri = row.get("child", {}).get("value", "")
+            child_qid = child_uri.rsplit("/", 1)[-1] if child_uri else None
+
             children.append({
                 "relation_id": rel_id,
                 "label": label,
+                "wikidata_qid": child_qid,
             })
 
         logger.info(

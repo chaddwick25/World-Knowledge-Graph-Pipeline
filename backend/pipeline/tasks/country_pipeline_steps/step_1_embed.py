@@ -39,7 +39,9 @@ def _should_drop_indexes_during_load(iso: str) -> bool:
     """Decide whether to drop/rebuild vector indexes during the bulk load.
 
     Controlled by the ``DROP_INDEXES_DURING_LOAD`` env var:
-      - ``auto`` (default): True for known large countries (>10M entities)
+      - ``auto`` (default): True when using the partitioned table (HNSW
+        maintenance per row is expensive even for small countries like CV).
+        Falls back to the large-country list for the monolith.
       - ``true`` / ``1``:   Always drop/rebuild
       - ``false`` / ``0``:  Never drop/rebuild
     """
@@ -48,7 +50,12 @@ def _should_drop_indexes_during_load(iso: str) -> bool:
         return True
     if mode in ("false", "0", "no"):
         return False
-    # auto
+    # auto: on the partitioned table, HNSW indexes on leaf partitions make
+    # per-row upserts O(m * ef_construction) — always drop + rebuild.
+    from django.conf import settings
+    use_partitioned = getattr(settings, "WORLDKG_USE_PARTITIONED_TABLE", False)
+    if use_partitioned:
+        return True
     return iso.upper() in _LARGE_COUNTRIES
 
 

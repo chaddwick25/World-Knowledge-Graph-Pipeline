@@ -427,17 +427,36 @@ def sync_subgraph_profiles(
         sg_pbf = sg.get("pbf_path", "")
         sg_poly = sg.get("poly_path", "")
         sg_pickle = sg.get("pickle_path", "")
+        sg_qid = sg.get("wikidata_qid") or None
+        sg_relation_id = sg.get("relation_id")
+        sg_bbox = sg.get("bbox")  # [minLon, minLat, maxLon, maxLat] or None
+
+        defaults = {
+            "name": sg_name,
+            "has_subgraph_pbf": bool(sg_pbf),
+            "subgraph_pbf_path": sg_pbf or None,
+            "subgraph_poly_path": sg_poly or None,
+            "subgraph_pickle_path": sg_pickle or None,
+        }
+
+        # Persist Wikidata QID and OSM relation ID for subdivision queries
+        if sg_qid:
+            defaults["wikidata_id"] = sg_qid
+            defaults["wikidata_uri"] = f"http://www.wikidata.org/entity/{sg_qid}"
+        if sg_relation_id:
+            defaults["osm_relation_id"] = sg_relation_id
+
+        # Persist bbox for spatial filtering by subdivision
+        if sg_bbox and len(sg_bbox) == 4:
+            defaults["bbox_min_lon"] = sg_bbox[0]
+            defaults["bbox_min_lat"] = sg_bbox[1]
+            defaults["bbox_max_lon"] = sg_bbox[2]
+            defaults["bbox_max_lat"] = sg_bbox[3]
 
         SubgraphProfile.objects.update_or_create(
             country_profile=profile,
             slug=sg_slug,
-            defaults={
-                "name": sg_name,
-                "has_subgraph_pbf": bool(sg_pbf),
-                "subgraph_pbf_path": sg_pbf or None,
-                "subgraph_poly_path": sg_poly or None,
-                "subgraph_pickle_path": sg_pickle or None,
-            },
+            defaults=defaults,
         )
 
     _log(

@@ -621,6 +621,46 @@ class CountryEnvelope:
                 iso, exc,
             )
 
+        # Enrich filesystem-discovered subgraphs with QID / bbox / relation_id
+        # from SubgraphProfile DB records (populated by the pipeline's
+        # sync_subgraph_profiles helper).
+        if has_subgraphs and subgraphs:
+            import dataclasses as _dc
+            sg_by_slug = {sg.slug: sg for sg in subgraphs}
+            db_profiles = SubgraphProfile.objects.filter(
+                country_profile=profile,
+            ).values(
+                "slug", "wikidata_id", "osm_relation_id", "admin_level",
+                "bbox_min_lon", "bbox_min_lat", "bbox_max_lon", "bbox_max_lat",
+            )
+            enriched_count = 0
+            for db_sg in db_profiles:
+                sg = sg_by_slug.get(db_sg["slug"])
+                if not sg:
+                    continue
+                # Build replacement dict — only fill in missing fields
+                repl = {}
+                if db_sg["wikidata_id"] and not sg.wikidata_qid:
+                    repl["wikidata_qid"] = db_sg["wikidata_id"]
+                    enriched_count += 1
+                if db_sg["osm_relation_id"] and not sg.osm_relation_id:
+                    repl["osm_relation_id"] = db_sg["osm_relation_id"]
+                if db_sg["admin_level"] is not None and sg.admin_level is None:
+                    repl["admin_level"] = db_sg["admin_level"]
+                if db_sg["bbox_min_lon"] is not None and sg.bbox_min_lon is None:
+                    repl["bbox_min_lon"] = db_sg["bbox_min_lon"]
+                    repl["bbox_min_lat"] = db_sg["bbox_min_lat"]
+                    repl["bbox_max_lon"] = db_sg["bbox_max_lon"]
+                    repl["bbox_max_lat"] = db_sg["bbox_max_lat"]
+                if repl:
+                    sg_by_slug[db_sg["slug"]] = _dc.replace(sg, **repl)
+            subgraphs = list(sg_by_slug.values())
+            if enriched_count:
+                logger.info(
+                    "Enriched %d/%d subgraphs with Wikidata QIDs from DB for %s",
+                    enriched_count, len(subgraphs), iso,
+                )
+
         # DB fallback
         if not has_subgraphs:
             subgraph_profiles = SubgraphProfile.objects.filter(

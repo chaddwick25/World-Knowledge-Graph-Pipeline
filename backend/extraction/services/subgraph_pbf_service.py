@@ -195,19 +195,22 @@ class SubgraphPbfService:
         for child in children:
             subgraph_name = child.get('name')
             relation_id = child.get('osm_relation_id')
+            wikidata_qid = child.get('wikidata_qid')
+            subgraph_slug = normalize_country_slug(subgraph_name) if subgraph_name else ''
 
             if not subgraph_name or not relation_id:
                 logger.warning(f"Skipping subgraph with missing name or relation_id: {child}")
                 skipped += 1
                 results.append({
                     'name': subgraph_name,
+                    'slug': subgraph_slug,
                     'success': False,
                     'skipped': True,
-                    'error': 'Missing name or relation_id'
+                    'error': 'Missing name or relation_id',
+                    'wikidata_qid': wikidata_qid,
                 })
                 continue
 
-            subgraph_slug = normalize_country_slug(subgraph_name)
             output_pbf = regional_path_service.get_subgraph_pbf_path(
                 continent, country, subgraph_slug, snapshot_date
             )
@@ -218,13 +221,24 @@ class SubgraphPbfService:
             # Skip if already exists (unless overwrite is True)
             if not overwrite and output_pbf.exists() and output_poly.exists():
                 logger.info(f"Skipping {subgraph_name} - files already exist")
+                # Still compute bbox for skipped subgraphs so SubgraphProfile
+                # can be populated with spatial metadata.
+                bbox = None
+                try:
+                    bbox = parse_poly_bbox(str(output_poly))
+                except Exception:
+                    bbox = None
                 skipped += 1
                 results.append({
                     'name': subgraph_name,
+                    'slug': subgraph_slug,
                     'success': True,
                     'skipped': True,
                     'pbf_path': str(output_pbf),
                     'poly_path': str(output_poly),
+                    'relation_id': relation_id,
+                    'wikidata_qid': wikidata_qid,
+                    'bbox': bbox,
                 })
                 continue
 
@@ -237,9 +251,11 @@ class SubgraphPbfService:
                 failed += 1
                 results.append({
                     'name': subgraph_name,
+                    'slug': subgraph_slug,
                     'success': False,
                     'error': 'PBF extraction failed',
                     'relation_id': relation_id,
+                    'wikidata_qid': wikidata_qid,
                 })
                 continue
 
@@ -257,10 +273,12 @@ class SubgraphPbfService:
                 generated += 1
                 results.append({
                     'name': subgraph_name,
+                    'slug': subgraph_slug,
                     'success': True,
                     'pbf_path': str(output_pbf),
                     'poly_path': str(output_poly),
                     'relation_id': relation_id,
+                    'wikidata_qid': wikidata_qid,
                     'bbox': bbox,
                 })
                 logger.info(f"Generated subgraph {subgraph_name}: PBF + poly")
@@ -268,9 +286,11 @@ class SubgraphPbfService:
                 failed += 1
                 results.append({
                     'name': subgraph_name,
+                    'slug': subgraph_slug,
                     'success': False,
                     'error': 'Poly generation failed',
                     'relation_id': relation_id,
+                    'wikidata_qid': wikidata_qid,
                     'pbf_path': str(output_pbf),
                 })
 

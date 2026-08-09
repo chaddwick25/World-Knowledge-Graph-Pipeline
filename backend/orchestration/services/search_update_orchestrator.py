@@ -778,13 +778,43 @@ class SearchUpdateOrchestrator:
                 use_partitioned = getattr(
                     dj_settings, 'WORLDKG_USE_PARTITIONED_TABLE', False
                 )
+
+                # Runtime check: even if the setting says "use partitioned",
+                # the table may still be the monolith on a fresh DB (before
+                # create_country_partitions has run).  Check the actual table
+                # state to choose the correct conflict target.
+                if use_partitioned:
+                    cursor.execute("""
+                        SELECT EXISTS (
+                            SELECT 1 FROM pg_partitioned_table pt
+                            JOIN pg_class c ON c.oid = pt.partrelid
+                            WHERE c.relname = 'semantic_search_osmentity'
+                        );
+                    """)
+                    is_partitioned = cursor.fetchone()[0]
+                else:
+                    is_partitioned = False
+
                 conflict_target = (
                     "(osm_type, osm_id, gv_tags_version, snapshot_id, country_code)"
-                    if use_partitioned
+                    if is_partitioned
                     else "(osm_type, osm_id, gv_tags_version)"
                 )
+
+                # Phase 6: INSERT directly into the leaf partition when it
+                # exists, bypassing partition routing overhead.
+                target_table = "semantic_search_osmentity"
+                if is_partitioned and partition_snapshot_id and country_code:
+                    leaf_name = f"embeddings_{partition_snapshot_id}_{country_code.lower()}"
+                    cursor.execute(
+                        "SELECT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = %s)",
+                        [leaf_name],
+                    )
+                    if cursor.fetchone()[0]:
+                        target_table = leaf_name
+
                 cursor.execute(f"""
-                    INSERT INTO semantic_search_osmentity
+                    INSERT INTO {target_table}
                         (osm_type, osm_id, tags, geom,
                          gv_tags_embedding, gv_nle_embedding, gv_tags_version,
                          gv_nle_trained, version, timestamp, source_snapshot_id,
@@ -798,15 +828,15 @@ class SearchUpdateOrchestrator:
                     FROM {temp_table}
                     ON CONFLICT {conflict_target} DO UPDATE SET
                         tags = EXCLUDED.tags,
-                        geom = COALESCE(EXCLUDED.geom, semantic_search_osmentity.geom),
-                        gv_tags_embedding = COALESCE(EXCLUDED.gv_tags_embedding, semantic_search_osmentity.gv_tags_embedding),
-                        gv_nle_embedding = COALESCE(EXCLUDED.gv_nle_embedding, semantic_search_osmentity.gv_nle_embedding),
+                        geom = COALESCE(EXCLUDED.geom, {target_table}.geom),
+                        gv_tags_embedding = COALESCE(EXCLUDED.gv_tags_embedding, {target_table}.gv_tags_embedding),
+                        gv_nle_embedding = COALESCE(EXCLUDED.gv_nle_embedding, {target_table}.gv_nle_embedding),
                         gv_nle_trained = EXCLUDED.gv_nle_trained,
                         version = EXCLUDED.version,
                         timestamp = EXCLUDED.timestamp,
                         source_snapshot_id = EXCLUDED.source_snapshot_id,
-                        country_code = COALESCE(EXCLUDED.country_code, semantic_search_osmentity.country_code),
-                        snapshot_id = COALESCE(EXCLUDED.snapshot_id, semantic_search_osmentity.snapshot_id),
+                        country_code = COALESCE(EXCLUDED.country_code, {target_table}.country_code),
+                        snapshot_id = COALESCE(EXCLUDED.snapshot_id, {target_table}.snapshot_id),
                         updated_at = NOW()
                     RETURNING
                         (CASE WHEN xmax = 0 THEN 'inserted' ELSE 'updated' END) AS op;

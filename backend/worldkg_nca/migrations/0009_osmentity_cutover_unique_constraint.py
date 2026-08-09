@@ -40,6 +40,17 @@ def _is_partitioned(cursor, table_name):
     return cursor.fetchone()[0]
 
 
+def _table_exists(cursor, table_name):
+    """Check if a table exists in the public schema."""
+    cursor.execute("""
+        SELECT EXISTS (
+            SELECT 1 FROM pg_tables
+            WHERE schemaname = 'public' AND tablename = %s
+        );
+    """, [table_name])
+    return cursor.fetchone()[0]
+
+
 def forward(apps, schema_editor):
     """Apply constraint changes only if the table is partitioned (post-cutover).
 
@@ -59,12 +70,16 @@ def forward(apps, schema_editor):
             # Pre-cutover: the table is the monolith.  Do NOT touch the
             # constraints — the monolith has nullable partition keys.
             # Also ensure the partitioned table's unique index exists
-            # (in case a previous incorrect run dropped it).
-            cursor.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_partitioned_entity_unique
-                ON embeddings_partitioned
-                (osm_type, osm_id, gv_tags_version, snapshot_id, country_code);
-            """)
+            # (in case a previous incorrect run dropped it), but only if
+            # the partitioned table itself exists (it's created by the
+            # create_country_partitions management command, not a migration,
+            # so it may not exist yet on a fresh database).
+            if _table_exists(cursor, 'embeddings_partitioned'):
+                cursor.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_partitioned_entity_unique
+                    ON embeddings_partitioned
+                    (osm_type, osm_id, gv_tags_version, snapshot_id, country_code);
+                """)
             print("  0009: semantic_search_osmentity is not partitioned — "
                   "cutover has not happened. DB operations skipped.")
             return
@@ -137,12 +152,14 @@ def reverse(apps, schema_editor):
                     semantic_search_osmentity_osm_type_osm_id_gv_tags_versi_0c6b1e14_uniq;
             """)
             # 2. Re-create the partitioned table's unique index (was dropped
-            #    by the incorrect forward run).
-            cursor.execute("""
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_partitioned_entity_unique
-                ON embeddings_partitioned
-                (osm_type, osm_id, gv_tags_version, snapshot_id, country_code);
-            """)
+            #    by the incorrect forward run), but only if the partitioned
+            #    table exists (it's created by a management command).
+            if _table_exists(cursor, 'embeddings_partitioned'):
+                cursor.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_partitioned_entity_unique
+                    ON embeddings_partitioned
+                    (osm_type, osm_id, gv_tags_version, snapshot_id, country_code);
+                """)
             # 3. The 3-column constraint should still exist on the monolith
             #    (it was never dropped because the constraint name didn't
             #    match).  Ensure it exists — drop first (IF EXISTS) then add
