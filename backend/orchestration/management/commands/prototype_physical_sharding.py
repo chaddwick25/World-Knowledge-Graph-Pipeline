@@ -46,6 +46,7 @@ COUNTRY_BBOXES = {
     "CV": (-25.4, 14.5, -22.4, 17.4),   # Cape Verde — 38K
     "IS": (-25.0, 63.0, -13.0, 67.0),   # Iceland — 184K
     "JM": (-79.0, 17.5, -76.0, 18.7),   # Jamaica — 30K
+    "PL": (14.1, 49.0, 24.2, 54.8),     # Poland — 444K
 }
 
 ROOT_TABLE = "embeddings_partitioned"

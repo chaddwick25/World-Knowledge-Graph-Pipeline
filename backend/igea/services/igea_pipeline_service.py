@@ -89,6 +89,7 @@ class IgeaPipelineService:
 
         stats = igea.run(
             country_code=cfg.iso,
+            snapshot_id=cfg.snapshot_date,
             polygon_wkt=polygon_wkt,
         )
 

@@ -299,18 +299,26 @@ class SpatialLinkPredictionService:
         logger.info(f"SpatialLinkPredictionService: pool={len(self._pool)} candidates")
         return len(self._pool)
 
-    def load_candidate_pool_from_db(self, limit: int = 200_000, polygon_wkt: Optional[str] = None, country: Optional[str] = None) -> int:
+    def load_candidate_pool_from_db(self, limit: int = 200_000, polygon_wkt: Optional[str] = None,
+                                    country: Optional[str] = None,
+                                    snapshot_id: Optional[str] = None) -> int:
         """Load geographic entities from pgvector DB as candidate pool.
-        
+
         Args:
             limit: Max number of candidates to load
             polygon_wkt: Optional WKT polygon to spatially filter candidates
             country: Optional country name or ISO code to filter by tags
+            snapshot_id: Phase 6 VARCHAR partition key (YYYY_MM_DD) for
+                         partition pruning on the partitioned table.
         """
         from worldkg_nca.models import OsmEntity
         from django.contrib.gis.geos import GEOSGeometry
-        
+
         qs = OsmEntity.objects.using('vectors').filter(geom__isnull=False)
+
+        # Phase 6: partition key filter for pruning
+        if snapshot_id:
+            qs = qs.filter(snapshot_id=snapshot_id)
         
         # If polygon provided, filter candidates to within the polygon
         if polygon_wkt:

@@ -587,6 +587,25 @@ class SearchUpdateOrchestrator:
         )
 
         # ── Batched COPY + ON CONFLICT upsert ─────────────────────────────
+        # Phase 6: resolve the VARCHAR partition key (YYYY_MM_DD) for the
+        # upsert.  After the cutover this is NOT NULL on the partitioned
+        # table.  We derive it from the SnapshotJob if available, else from
+        # the latest backfilled snapshot_id.
+        partition_snapshot_id = None
+        if country_code:
+            from orchestration.models import SnapshotJob
+            job = (
+                SnapshotJob.objects
+                .filter(country_code=country_code)
+                .order_by('-snapshot_date')
+                .first()
+            )
+            if job and job.snapshot_date:
+                partition_snapshot_id = job.snapshot_date
+        if not partition_snapshot_id:
+            from worldkg_nca.snapshot_utils import get_latest_snapshot_id
+            partition_snapshot_id = get_latest_snapshot_id()
+
         BATCH = 5000
         added = modified = 0
         current_ids = set()
@@ -596,6 +615,7 @@ class SearchUpdateOrchestrator:
             a, m = self._upsert_chunk_via_copy(
                 chunk, snapshot_id, gv_tags_version,
                 country_code=country_code,
+                partition_snapshot_id=partition_snapshot_id,
             )
             added += a
             modified += m
@@ -607,9 +627,15 @@ class SearchUpdateOrchestrator:
             softdel_qs = OsmEntity.objects.using('vectors').filter(
                 osm_id__in=deleted_ids
             )
-            # Phase 6: scope to country_code to avoid cross-snapshot bleed
+            # Phase 6: scope to country_code + snapshot_id to avoid
+            # cross-snapshot bleed.  On the monolith (snapshot_id nullable)
+            # the snapshot_id filter is a no-op when partition_snapshot_id
+            # is None.  After cutover it's required to avoid touching rows
+            # in other partitions.
             if country_code:
                 softdel_qs = softdel_qs.filter(country_code=country_code)
+            if partition_snapshot_id:
+                softdel_qs = softdel_qs.filter(snapshot_id=partition_snapshot_id)
             softdel_qs.update(gv_nle_trained=False, gv_nle_version=None)
         deleted = len(deleted_ids)
 
@@ -636,13 +662,22 @@ class SearchUpdateOrchestrator:
         }
 
     def _upsert_chunk_via_copy(self, chunk, snapshot_id, gv_tags_version,
-                               country_code=None):
+                               country_code=None, partition_snapshot_id=None):
         """COPY a chunk into a temp table, then INSERT ... ON CONFLICT.
 
         Returns ``(added, modified)`` counts, classified atomically by
         Postgres via the ``xmax`` sentinel (``xmax = 0`` → inserted).
         This is the parallel-safe equivalent of the old per-entity
         ``get()`` / ``DoesNotExist`` branch.
+
+        Args:
+            chunk: List of entity dicts to upsert.
+            snapshot_id: UUID for ``source_snapshot_id`` (cross-DB ref).
+            gv_tags_version: GV-Tags model version string.
+            country_code: ISO 3166-1 alpha-2 country code (partition key).
+            partition_snapshot_id: VARCHAR ``YYYY_MM_DD`` partition key.
+                Required after the Phase 6 cutover (NOT NULL on the
+                partitioned table).  NULL on the monolith is fine.
         """
         from django.db import connections
         import io
@@ -682,8 +717,12 @@ class SearchUpdateOrchestrator:
             ts = entity.get('timestamp')
             ts_str = ts.isoformat() if hasattr(ts, 'isoformat') else (str(ts) if ts else "\\N")
 
-            # Phase 6 partition keys (country_code for geographic scoping)
+            # Phase 6 partition keys (country_code for geographic scoping,
+            # snapshot_id for temporal partitioning).  snapshot_id here is
+            # the VARCHAR 'YYYY_MM_DD' partition key, NOT the UUID
+            # source_snapshot_id (which is written separately above).
             cc_str = country_code if country_code else "\\N"
+            snap_str = partition_snapshot_id if partition_snapshot_id else "\\N"
 
             writer.writerow([
                 osm_type, osm_id, tags_json, geom_wkt,
@@ -691,6 +730,7 @@ class SearchUpdateOrchestrator:
                 gv_nle_trained, version_str, ts_str,
                 str(snapshot_id),
                 cc_str,
+                snap_str,
             ])
 
         csv_buffer.seek(0)
@@ -711,7 +751,8 @@ class SearchUpdateOrchestrator:
                         version INT,
                         timestamp TIMESTAMPTZ,
                         source_snapshot_id UUID,
-                        country_code VARCHAR(3)
+                        country_code VARCHAR(3),
+                        snapshot_id VARCHAR(20)
                     );
                 """)
                 cursor.execute(f"CREATE INDEX ON {temp_table} (osm_type, osm_id);")
@@ -721,30 +762,41 @@ class SearchUpdateOrchestrator:
                     COPY {temp_table} (osm_type, osm_id, tags, geom,
                         gv_tags_embedding, gv_nle_embedding, gv_tags_version,
                         gv_nle_trained, version, timestamp, source_snapshot_id,
-                        country_code)
+                        country_code, snapshot_id)
                     FROM STDIN WITH (FORMAT csv, DELIMITER '\\t', NULL '\\N')
                 """, csv_buffer)
 
                 # INSERT ... ON CONFLICT DO UPDATE, classifying insert vs
                 # update atomically via xmax (0 = inserted, >0 = updated).
                 # Phase 6: include country_code in INSERT.  The ON CONFLICT
-                # target stays (osm_type, osm_id, gv_tags_version) on the
-                # monolith; after cutover it is widened to include the
-                # partition keys — see PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md.
+                # target depends on whether the cutover has happened.
+                # On the monolith (WORLDKG_USE_PARTITIONED_TABLE=False) the
+                # old 3-column constraint is used.  After cutover the target
+                # is widened to include the partition keys — see
+                # PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md Step 4.
+                from django.conf import settings as dj_settings
+                use_partitioned = getattr(
+                    dj_settings, 'WORLDKG_USE_PARTITIONED_TABLE', False
+                )
+                conflict_target = (
+                    "(osm_type, osm_id, gv_tags_version, snapshot_id, country_code)"
+                    if use_partitioned
+                    else "(osm_type, osm_id, gv_tags_version)"
+                )
                 cursor.execute(f"""
                     INSERT INTO semantic_search_osmentity
                         (osm_type, osm_id, tags, geom,
                          gv_tags_embedding, gv_nle_embedding, gv_tags_version,
                          gv_nle_trained, version, timestamp, source_snapshot_id,
-                         country_code,
+                         country_code, snapshot_id,
                          created_at, updated_at)
                     SELECT osm_type, osm_id, tags, geom,
                            gv_tags_embedding, gv_nle_embedding, gv_tags_version,
                            gv_nle_trained, version, timestamp, source_snapshot_id,
-                           country_code,
+                           country_code, snapshot_id,
                            NOW(), NOW()
                     FROM {temp_table}
-                    ON CONFLICT (osm_type, osm_id, gv_tags_version) DO UPDATE SET
+                    ON CONFLICT {conflict_target} DO UPDATE SET
                         tags = EXCLUDED.tags,
                         geom = COALESCE(EXCLUDED.geom, semantic_search_osmentity.geom),
                         gv_tags_embedding = COALESCE(EXCLUDED.gv_tags_embedding, semantic_search_osmentity.gv_tags_embedding),
@@ -754,6 +806,7 @@ class SearchUpdateOrchestrator:
                         timestamp = EXCLUDED.timestamp,
                         source_snapshot_id = EXCLUDED.source_snapshot_id,
                         country_code = COALESCE(EXCLUDED.country_code, semantic_search_osmentity.country_code),
+                        snapshot_id = COALESCE(EXCLUDED.snapshot_id, semantic_search_osmentity.snapshot_id),
                         updated_at = NOW()
                     RETURNING
                         (CASE WHEN xmax = 0 THEN 'inserted' ELSE 'updated' END) AS op;

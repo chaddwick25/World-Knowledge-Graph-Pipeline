@@ -206,7 +206,12 @@ class OsmEntity(models.Model):
 
     class Meta:
         db_table = 'semantic_search_osmentity'
-        unique_together = [['osm_type', 'osm_id', 'gv_tags_version']]
+        # Phase 6 cutover: widened to include partition keys (snapshot_id,
+        # country_code).  The monolith's old constraint was
+        # (osm_type, osm_id, gv_tags_version).  Migration 0009 applies this
+        # change — it must only be run AFTER the table rename cutover (see
+        # PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md Step 4).
+        unique_together = [['osm_type', 'osm_id', 'gv_tags_version', 'snapshot_id', 'country_code']]
         indexes = [
             models.Index(fields=['osm_type', 'osm_id']),
             models.Index(fields=['created_at']),

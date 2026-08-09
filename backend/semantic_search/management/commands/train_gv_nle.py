@@ -198,6 +198,12 @@ class Command(BaseCommand):
             help='UUID of source TemporalSnapshot to link entities to',
         )
         parser.add_argument(
+            '--snapshot-date',
+            type=str,
+            default=None,
+            help='Phase 6 partition key (YYYY_MM_DD) for partition pruning',
+        )
+        parser.add_argument(
             '--country',
             type=str,
             default=None,
@@ -259,6 +265,7 @@ class Command(BaseCommand):
         save_model = options['save_model']
         batch_size = options['batch_size']
         source_snapshot_id = options.get('source_snapshot')
+        snapshot_date = options.get('snapshot_date')
         country    = options.get('country')
         poly_file  = options.get('poly_file')
         buffer_deg = options.get('buffer_deg', 0.45)
@@ -384,7 +391,9 @@ class Command(BaseCommand):
             # monolith when neither is provided (backward compatible).
             if country:
                 queryset = queryset.filter(country_code=country)
-            if source_snapshot_id:
+            if snapshot_date:
+                queryset = queryset.filter(snapshot_id=snapshot_date)
+            elif source_snapshot_id:
                 from worldkg_nca.snapshot_utils import snapshot_id_from_uuid
                 snap_key = snapshot_id_from_uuid(source_snapshot_id)
                 if snap_key:
@@ -669,6 +678,20 @@ class Command(BaseCommand):
                     buffer.close()
                     self.stdout.write(f"  Staged {staged_count}/{write_back_total}...")
 
+                # Phase 6: scope the UPDATE by partition keys (snapshot_id,
+                # country_code) to prevent cross-partition writes on the
+                # partitioned table.  Without these filters the UPDATE would
+                # hit every partition that contains a matching osm_id,
+                # silently overwriting NLE embeddings in other snapshots.
+                partition_where = "entity.osm_id = updates.osm_id"
+                params = []
+                if snapshot_date:
+                    partition_where += " AND entity.snapshot_id = %s"
+                    params.append(snapshot_date)
+                if country:
+                    partition_where += " AND entity.country_code = %s"
+                    params.append(country.upper())
+
                 if source_snapshot_id:
                     cursor.execute(f"""
                         UPDATE {table_name} AS entity
@@ -678,8 +701,8 @@ class Command(BaseCommand):
                             gv_nle_trained = updates.gv_nle_trained,
                             source_snapshot_id = updates.source_snapshot_id
                         FROM {temp_table} AS updates
-                        WHERE entity.osm_id = updates.osm_id
-                    """)
+                        WHERE {partition_where}
+                    """, params)
                 else:
                     cursor.execute(f"""
                         UPDATE {table_name} AS entity
@@ -688,8 +711,8 @@ class Command(BaseCommand):
                             gv_nle_version = updates.gv_nle_version,
                             gv_nle_trained = updates.gv_nle_trained
                         FROM {temp_table} AS updates
-                        WHERE entity.osm_id = updates.osm_id
-                    """)
+                        WHERE {partition_where}
+                    """, params)
 
                 updated_count = cursor.rowcount
 

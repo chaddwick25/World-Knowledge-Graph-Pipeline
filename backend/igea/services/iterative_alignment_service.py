@@ -191,16 +191,26 @@ class IterativeEntityAlignmentService:
             logger.error(f"IGEA: failed to load candidates from {json_path}: {e}")
             return 0
 
-    def load_wikidata_candidates_from_db(self, limit: int = 100_000) -> int:
+    def load_wikidata_candidates_from_db(self, limit: int = 100_000,
+                                         snapshot_id: Optional[str] = None,
+                                         country_code: Optional[str] = None) -> int:
         """
         Load Wikidata candidates from existing OsmEntity records that carry
         a wikidata_uri (i.e., already-confirmed links used as seed for the pool).
+
+        Phase 6: filter by ``snapshot_id`` and ``country_code`` partition keys
+        to enable partition pruning on the partitioned table.
         """
         from worldkg_nca.models import OsmEntity
         qs = OsmEntity.objects.using('vectors').filter(
             wikidata_uri__isnull=False,
             geom__isnull=False,
-        )[:limit]
+        )
+        if snapshot_id:
+            qs = qs.filter(snapshot_id=snapshot_id)
+        if country_code:
+            qs = qs.filter(country_code=country_code)
+        qs = qs[:limit]
 
         candidates = []
         for e in qs.iterator(chunk_size=10_000):
@@ -377,13 +387,17 @@ class IterativeEntityAlignmentService:
     # Blocking (IGEA Section 3.2)
     # ------------------------------------------------------------------
 
-    def _get_seed_alignment(self, country_code: Optional[str] = None, polygon_wkt: Optional[str] = None) -> Dict[int, str]:
+    def _get_seed_alignment(self, country_code: Optional[str] = None,
+                            polygon_wkt: Optional[str] = None,
+                            snapshot_id: Optional[str] = None) -> Dict[int, str]:
         """
         Collect seed alignment from OsmEntity records that have a wikidata= tag.
 
         Args:
             country_code: Optional ISO country code to filter seed entities.
             polygon_wkt: Optional WKT POLYGON string for spatial filtering.
+            snapshot_id: Optional VARCHAR partition key (YYYY_MM_DD) for
+                         partition pruning on the partitioned table.
 
         Returns:
             Dict mapping osm_id → wikidata_uri for seed entities.
@@ -394,13 +408,19 @@ class IterativeEntityAlignmentService:
             geom__isnull=False,
         ).exclude(tags__wikidata__isnull=True)
 
+        # Phase 6: partition key filters for pruning
+        if snapshot_id:
+            qs = qs.filter(snapshot_id=snapshot_id)
+        if country_code:
+            qs = qs.filter(country_code=country_code)
+
         # Apply polygon filter if provided (more accurate than country tag)
         if polygon_wkt:
             from django.contrib.gis.geos import GEOSGeometry
             poly = GEOSGeometry(polygon_wkt, srid=4326)
             qs = qs.filter(geom__within=poly)
 
-        # Apply country filter if provided (uses addr:country tag)
+        # Apply country tag filter if provided (legacy addr:country approach)
         country_filter_needed = False
         if country_code:
             qs = qs.filter(tags__has_key='addr:country')
@@ -538,14 +558,16 @@ class IterativeEntityAlignmentService:
     # ------------------------------------------------------------------
 
     def _write_accepted_pairs(self, accepted: List[Tuple[int, str]],
-                              country_code: Optional[str] = None) -> int:
+                              country_code: Optional[str] = None,
+                              snapshot_id: Optional[str] = None) -> int:
         """
         Write accepted (osm_id, wikidata_uri) pairs back to OsmEntity.
 
         Sets wikidata_uri and wkg_enriched_at on the matched entities.
 
-        Phase 6: scopes the update to ``country_code`` when provided, to
-        prevent IGEA alignment from bleeding across snapshots/countries.
+        Phase 6: scopes the update to ``country_code`` and ``snapshot_id``
+        when provided, to prevent IGEA alignment from bleeding across
+        snapshots/countries on the partitioned table.
         """
         from worldkg_nca.models import OsmEntity
         now = datetime.now(timezone.utc)
@@ -554,6 +576,8 @@ class IterativeEntityAlignmentService:
             qs = OsmEntity.objects.using('vectors').filter(osm_id=osm_id)
             if country_code:
                 qs = qs.filter(country_code=country_code)
+            if snapshot_id:
+                qs = qs.filter(snapshot_id=snapshot_id)
             count = qs.update(
                 wikidata_uri=wikidata_uri,
                 wkg_enriched_at=now,
@@ -603,11 +627,23 @@ class IterativeEntityAlignmentService:
         """
         from worldkg_nca.models import OsmEntity
 
-        # Filter to most recent snapshot to avoid loading all temporal versions
+        # Phase 6: filter by partition keys (snapshot_id + country_code) to
+        # enable partition pruning on the partitioned table.  The old
+        # hardcoded `gv_tags_version__startswith='2025_12_31'` is replaced
+        # by the snapshot_id partition key.  If snapshot_id is not provided,
+        # fall back to the old behaviour for backward compatibility.
         qs = OsmEntity.objects.using('vectors').filter(
             geom__isnull=False,
-            gv_tags_version__startswith='2025_12_31'  # Matches 2025_12_31 and provincial variants
         )
+        if snapshot_id:
+            qs = qs.filter(snapshot_id=snapshot_id)
+        else:
+            # Backward-compatible fallback: filter by gv_tags_version prefix
+            qs = qs.filter(gv_tags_version__startswith='2025_12_31')
+
+        # Phase 6: add country_code partition key filter for pruning
+        if country_code:
+            qs = qs.filter(country_code=country_code)
 
         country_filter_needed = False
 
@@ -665,7 +701,9 @@ class IterativeEntityAlignmentService:
         )
 
         # Seed alignment (filtered by polygon or country if provided)
-        seed_map = self._get_seed_alignment(country_code, polygon_wkt)      # osm_id → wikidata_uri
+        seed_map = self._get_seed_alignment(
+            country_code, polygon_wkt, snapshot_id=snapshot_id,
+        )      # osm_id → wikidata_uri
         seed_ids: Set[int] = set(seed_map.keys())
 
         # Run NCA to learn tag→class mappings from seed entities
@@ -718,7 +756,9 @@ class IterativeEntityAlignmentService:
             deduped = list(seen_osm.values())
 
             # Write to DB
-            written = self._write_accepted_pairs(deduped, country_code=country_code)
+            written = self._write_accepted_pairs(
+                deduped, country_code=country_code, snapshot_id=snapshot_id,
+            )
             per_iter_counts.append(written)
             logger.info(f"IGEA iteration {iteration}: accepted {written} new links")
 

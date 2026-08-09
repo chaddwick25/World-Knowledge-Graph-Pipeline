@@ -72,6 +72,12 @@ class Command(BaseCommand):
             help='Only predict for entities from this TemporalSnapshot UUID',
         )
         parser.add_argument(
+            '--snapshot-date',
+            type=str,
+            default=None,
+            help='Phase 6 partition key (YYYY_MM_DD) for partition pruning',
+        )
+        parser.add_argument(
             '--country',
             type=str,
             default=None,
@@ -122,6 +128,7 @@ class Command(BaseCommand):
         top_k = options['top_k']
         limit = options['limit']
         snapshot_id = options.get('snapshot_id')
+        snapshot_date = options.get('snapshot_date')
         country = options.get('country')
         poly_file = options.get('poly_file')
         max_heads = options['max_heads']
@@ -206,7 +213,10 @@ class Command(BaseCommand):
 
         # Load candidate pool (scoped by polygon or country if provided)
         self.stdout.write("[1/3] Loading candidate entity pool from DB...")
-        pool_size = service.load_candidate_pool_from_db(limit=limit, polygon_wkt=polygon_wkt, country=country)
+        pool_size = service.load_candidate_pool_from_db(
+            limit=limit, polygon_wkt=polygon_wkt, country=country,
+            snapshot_id=snapshot_date,
+        )
         self.stdout.write(self.style.SUCCESS(f"  ✓ Pool: {pool_size:,} candidates"))
 
         if _push_ws:
@@ -248,7 +258,10 @@ class Command(BaseCommand):
             .filter(geom__isnull=False)
         )
 
-        if snapshot_id:
+        # Phase 6: use VARCHAR snapshot_id partition key for pruning
+        if snapshot_date:
+            qs = qs.filter(snapshot_id=snapshot_date)
+        elif snapshot_id:
             qs = qs.filter(source_snapshot_id=snapshot_id)
 
         # Apply polygon filter if provided
