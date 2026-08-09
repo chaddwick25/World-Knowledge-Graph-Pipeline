@@ -313,6 +313,15 @@ WORLDKG_SNAPSHOT_END_YEAR = int(os.getenv('WORLDKG_SNAPSHOT_END_YEAR', '2025'))
 SNAPSHOT_START_YEAR = WORLDKG_SNAPSHOT_START_YEAR
 SNAPSHOT_END_YEAR = WORLDKG_SNAPSHOT_END_YEAR
 
+***REMOVED*** Phase 6 cutover flag — set to True AFTER the table rename cutover (Step 4
+***REMOVED*** of PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md).  When True, write paths use the
+***REMOVED*** widened ON CONFLICT target (osm_type, osm_id, gv_tags_version, snapshot_id,
+***REMOVED*** country_code) that matches the partitioned table's unique constraint.
+***REMOVED*** When False (default, monolith), the old 3-column target is used.
+WORLDKG_USE_PARTITIONED_TABLE = os.getenv('WORLDKG_USE_PARTITIONED_TABLE', '').lower() in (
+    '1', 'true', 'yes', 'on',
+)
+
 
 ***REMOVED*** Database
 ***REMOVED*** https://docs.djangoproject.com/en/4.2/ref/settings/***REMOVED***databases

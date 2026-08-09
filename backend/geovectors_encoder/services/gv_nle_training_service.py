@@ -62,6 +62,7 @@ class GvNleTrainingService:
             gpu_device=cfg.deepwalk_gpu_device,
             buffer_deg=cfg.deepwalk_buffer_deg,
             batch_size=10000,
+            snapshot_date=cfg.snapshot_date,
         )
 
         return {"status": "trained", "region": cfg.slug}
@@ -98,6 +99,8 @@ class GvNleTrainingService:
             gpu_device=cfg.deepwalk_gpu_device,
             buffer_deg=cfg.deepwalk_buffer_deg,
             batch_size=10000,
+            snapshot_date=cfg.snapshot_date,
+            country=cfg.iso,
         )
 
         return {"subgraph": subgraph.name, "status": "trained"}

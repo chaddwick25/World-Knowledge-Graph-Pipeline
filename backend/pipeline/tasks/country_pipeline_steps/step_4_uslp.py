@@ -60,6 +60,7 @@ def step_4_predict_spatial_links(self, env: CountryEnvelope) -> CountryEnvelope:
         limit=env.uslp_limit, threshold=env.uslp_threshold,
         top_k=env.uslp_top_k, gpu=env.uslp_use_gpu,
         gpu_device=env.uslp_gpu_device,
+        snapshot_date=env.snapshot_date,
     )
 
     _log(
@@ -122,6 +123,7 @@ def _run_subgraph_uslp(
         top_k=env.uslp_top_k,
         gpu=env.uslp_use_gpu,
         gpu_device=env.uslp_gpu_device,
+        snapshot_date=env.snapshot_date,
     )
 
     return {"subgraph": sg.name, "status": "completed", "poly_file": poly_file}

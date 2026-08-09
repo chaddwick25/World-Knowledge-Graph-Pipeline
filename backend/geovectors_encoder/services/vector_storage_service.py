@@ -156,10 +156,20 @@ class VectorStorageService:
                 """, csv_buffer)
 
                 ***REMOVED*** Phase 6: include partition keys in INSERT.
-                ***REMOVED*** The ON CONFLICT target stays (osm_type, osm_id, gv_tags_version)
-                ***REMOVED*** on the monolith (old constraint).  After cutover the conflict
-                ***REMOVED*** target is widened to include snapshot_id, country_code — see
-                ***REMOVED*** PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md Step 4.
+                ***REMOVED*** The ON CONFLICT target depends on whether the cutover has
+                ***REMOVED*** happened.  On the monolith (WORLDKG_USE_PARTITIONED_TABLE=False)
+                ***REMOVED*** the old 3-column constraint is used.  After cutover the
+                ***REMOVED*** conflict target is widened to include snapshot_id, country_code
+                ***REMOVED*** — see PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md Step 4.
+                from django.conf import settings
+                use_partitioned = getattr(
+                    settings, 'WORLDKG_USE_PARTITIONED_TABLE', False
+                )
+                conflict_target = (
+                    "(osm_type, osm_id, gv_tags_version, snapshot_id, country_code)"
+                    if use_partitioned
+                    else "(osm_type, osm_id, gv_tags_version)"
+                )
                 cursor.execute(f"""
                     INSERT INTO semantic_search_osmentity (
                         osm_type, osm_id, tags, geom, {col_name},
@@ -173,7 +183,7 @@ class VectorStorageService:
                         snapshot_id, country_code,
                         NOW(), NOW()
                     FROM {temp_table}
-                    ON CONFLICT (osm_type, osm_id, gv_tags_version) DO UPDATE SET
+                    ON CONFLICT {conflict_target} DO UPDATE SET
                         tags = EXCLUDED.tags,
                         geom = COALESCE(EXCLUDED.geom, semantic_search_osmentity.geom),
                         {col_name} = EXCLUDED.{col_name},
