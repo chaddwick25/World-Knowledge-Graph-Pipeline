@@ -201,6 +201,7 @@ CELERY_ACCEPT_CONTENT = ["json"]
 
 
 
+
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:8080',
     'http://127.0.0.1:8080',
@@ -312,16 +313,6 @@ WORLDKG_SNAPSHOT_END_YEAR = int(os.getenv('WORLDKG_SNAPSHOT_END_YEAR', '2025'))
 # (TEMPORAL_SNAPSHOT_REFACTOR.md Phase C). Fall back to the WORLDKG_* names.
 SNAPSHOT_START_YEAR = WORLDKG_SNAPSHOT_START_YEAR
 SNAPSHOT_END_YEAR = WORLDKG_SNAPSHOT_END_YEAR
-
-# Phase 6 cutover flag — set to True AFTER the table rename cutover (Step 4
-# of PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md).  When True, write paths use the
-# widened ON CONFLICT target (osm_type, osm_id, gv_tags_version, snapshot_id,
-# country_code) that matches the partitioned table's unique constraint.
-# When False (default, monolith), the old 3-column target is used.
-WORLDKG_USE_PARTITIONED_TABLE = os.getenv('WORLDKG_USE_PARTITIONED_TABLE', '').lower() in (
-    '1', 'true', 'yes', 'on',
-)
-
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases

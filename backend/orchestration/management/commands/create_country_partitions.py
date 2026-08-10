@@ -1,25 +1,26 @@
 """Create country leaf partitions + materialized views for all completed SnapshotJobs.
 
-Implements Steps 1-2 of ``docs/plans/PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md``.
+Implements Steps 1-2 of ``docs/plans/PHASE6_COMPLETION_PLAN.md``.
 
-This command extends the single-country ``prototype_physical_sharding`` prototype
-to **all** countries with COMPLETED ``SnapshotJob`` records.  For each
-``(snapshot_date, country_code)`` pair it:
+This command creates the partitioned table hierarchy for ``semantic_search_osmentity``
+(the Django OsmEntity model's table).  For each ``(snapshot_date, country_code)``
+pair it:
 
-  1. Creates the root partitioned table (``embeddings_partitioned``) if needed
+  1. Ensures the root partitioned table (``semantic_search_osmentity``) exists
   2. Creates the snapshot sub-partition (``embeddings_{snapshot}``)
   3. Creates the country leaf partition (``embeddings_{snapshot}_{cc_lower}``)
-  4. Migrates data from the monolith (spatial filter by country bbox)
-  5. Builds a HNSW index on ``static_embedding`` on the leaf
+  4. Migrates data from the monolith (if any) via spatial filter by country bbox
+  5. Builds a HNSW index on ``gv_tags_embedding`` on the leaf
   6. Creates a materialized view (``mv_embeddings_{snapshot}_{cc_lower}``)
   7. Records completion in ``PartitionRegistry``
 
-**This is non-destructive** — the monolith (``semantic_search_osmentity``) stays
-in place.  The partitioned table grows alongside it until the cutover (Step 4).
+**Fresh DB approach:** Django's migration creates ``semantic_search_osmentity``
+as a regular (non-partitioned) table.  On first run, this command detects the
+empty non-partitioned table, drops it, and recreates as a partitioned table.
+All ORM queries work against the partitioned table transparently.
 
 Bboxes are resolved from the DB (``CountryPipelineProfile.country_relations_payload``
-or ``OsmBoundary``) — not from a hardcoded dict.  This covers all 191 countries,
-not just the 4-5 in the prototype's ``COUNTRY_BBOXES``.
+or ``OsmBoundary``) — not from a hardcoded dict.  This covers all 191 countries.
 
 Usage::
 
@@ -29,14 +30,11 @@ Usage::
     # Specific country + snapshot
     python manage.py create_country_partitions --country CU --snapshot 2025_12_31
 
-    # All countries for a specific snapshot
-    python manage.py create_country_partitions --snapshot 2025_12_31
-
     # Structure only (no data migration, no HNSW, no MV)
     python manage.py create_country_partitions --skip-data
 
-    # Skip HNSW + MV (just partitions + data)
-    python manage.py create_country_partitions --skip-hnsw --skip-mv
+    # MV only — create/refresh materialized view for a country (used by step_6)
+    python manage.py create_country_partitions --country CU --mv-only
 
     # Dry run — report what would happen
     python manage.py create_country_partitions --dry-run
@@ -60,12 +58,13 @@ from orchestration.models import PartitionRegistry, SnapshotJob
 
 logger = logging.getLogger(__name__)
 
-ROOT_TABLE = "embeddings_partitioned"
+# The root partitioned table IS the Django model's table.
+# Django's migration creates it as a regular table; _ensure_root_table()
+# converts it to a partitioned table on first run.
+ROOT_TABLE = "semantic_search_osmentity"
 SNAPSHOT_TABLE = "embeddings_{snapshot}"          # e.g. embeddings_2025_12_31
 LEAF_TABLE = "embeddings_{snapshot}_{cc_lower}"   # e.g. embeddings_2025_12_31_cu
 MV_TABLE = "mv_embeddings_{snapshot}_{cc_lower}"  # e.g. mv_embeddings_2025_12_31_cu
-
-MONOLITH_TABLE = "semantic_search_osmentity"
 
 
 class Command(BaseCommand):
@@ -119,6 +118,12 @@ class Command(BaseCommand):
             help="Re-process even if PartitionRegistry says the partition is "
                  "complete.  Re-migrates data (ON CONFLICT upsert).",
         )
+        parser.add_argument(
+            "--mv-only", action="store_true",
+            help="Only create/refresh the materialized view for the given "
+                 "country/snapshot.  Skip partition creation + data migration. "
+                 "Used by step_6 after GV-NLE training is complete.",
+        )
 
     # ── Main ─────────────────────────────────────────────────────────────
 
@@ -133,6 +138,7 @@ class Command(BaseCommand):
         m = options["hnsw_m"]
         ef_construction = options["hnsw_ef_construction"]
         force = options["force"]
+        mv_only = options["mv_only"]
 
         if cleanup:
             if not country:
@@ -141,6 +147,28 @@ class Command(BaseCommand):
                 ))
                 return
             self._cleanup(snapshot or "2025_12_31", country)
+            return
+
+        if mv_only:
+            if not country:
+                self.stdout.write(self.style.ERROR(
+                    "--mv-only requires --country."
+                ))
+                return
+            snap = snapshot or "2025_12_31"
+            cc_lower = country.lower()
+            leaf_table = LEAF_TABLE.format(snapshot=snap, cc_lower=cc_lower)
+            mv_table = MV_TABLE.format(snapshot=snap, cc_lower=cc_lower)
+            self.stdout.write(self.style.MIGRATE_HEADING(
+                f"  [{snap}/{country}] MV-only: {mv_table}"
+            ))
+            if not dry_run:
+                with connections["vectors"].cursor() as cursor:
+                    self._create_mview(cursor, leaf_table, mv_table, country, snap,
+                                       skip_hnsw)
+            self.stdout.write(self.style.SUCCESS(
+                f"  [{snap}/{country}] MV created/refreshed."
+            ))
             return
 
         # Build the list of (snapshot, country) pairs to process
@@ -320,12 +348,47 @@ class Command(BaseCommand):
     # ── Root table ───────────────────────────────────────────────────────
 
     def _ensure_root_table(self, cursor):
-        """Create the root partitioned table if it doesn't exist.
+        """Ensure the root partitioned table exists.
 
-        Idempotent — uses ``CREATE TABLE IF NOT EXISTS``.  The root is
-        partitioned by ``LIST(snapshot_id)`` with a composite PK that
-        includes the partition key (Postgres requirement).
+        On a fresh DB, Django's migration creates ``semantic_search_osmentity``
+        as a regular (non-partitioned) table.  This method detects that state,
+        verifies the table is empty, drops it, and recreates as a partitioned
+        table.  If the table already exists as partitioned, this is a no-op.
+
+        The root is partitioned by ``LIST(snapshot_id)`` with a composite PK
+        that includes the partition key (Postgres requirement).
         """
+        # Check if the table exists and whether it's already partitioned
+        cursor.execute("""
+            SELECT c.relname, p.partrelid IS NOT NULL as is_partitioned
+            FROM pg_class c
+            LEFT JOIN pg_partitioned_table p ON c.oid = p.partrelid
+            WHERE c.relname = %s AND c.relkind = 'r';
+        """, [ROOT_TABLE])
+        row = cursor.fetchone()
+
+        if row and row[1]:
+            # Already partitioned — nothing to do
+            return
+
+        if row and not row[1]:
+            # Table exists but is NOT partitioned — check if empty
+            cursor.execute(f"SELECT count(*) FROM {ROOT_TABLE};")
+            count = cursor.fetchone()[0]
+            if count > 0:
+                raise RuntimeError(
+                    f"{ROOT_TABLE} exists as a non-partitioned table with "
+                    f"{count} rows.  Cannot convert to partitioned table. "
+                    f"Back up data, drop the table, and re-run."
+                )
+            # Empty monolith — safe to drop and recreate as partitioned
+            self.stdout.write(
+                f"  [root] {ROOT_TABLE} exists as non-partitioned (empty) — "
+                f"converting to partitioned table."
+            )
+            cursor.execute(f"DROP TABLE {ROOT_TABLE} CASCADE;")
+
+        # Create the root partitioned table
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {ROOT_TABLE} (
                 id BIGINT NOT NULL,
@@ -356,6 +419,16 @@ class Command(BaseCommand):
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (id, snapshot_id, country_code)
             ) PARTITION BY LIST (snapshot_id);
+        """)
+        # Create a sequence for the id column (BigAutoField replacement).
+        # Partitioned tables can't use SERIAL directly, so we create an
+        # explicit sequence and set it as the default.
+        cursor.execute(f"""
+            CREATE SEQUENCE IF NOT EXISTS {ROOT_TABLE}_id_seq;
+        """)
+        cursor.execute(f"""
+            ALTER SEQUENCE {ROOT_TABLE}_id_seq OWNED BY {ROOT_TABLE}.id;
+            ALTER TABLE {ROOT_TABLE} ALTER COLUMN id SET DEFAULT nextval('{ROOT_TABLE}_id_seq');
         """)
         # Unique index matching the partitioned table's constraint.
         cursor.execute(f"""
@@ -459,41 +532,40 @@ class Command(BaseCommand):
     # ── Step 2: Migrate data ─────────────────────────────────────────────
 
     def _migrate_data(self, cursor, country, bbox, snapshot, leaf_table, force):
-        """Bulk INSERT ... SELECT from monolith into the leaf.
+        """Bulk INSERT ... SELECT from the root table into the leaf.
+
+        On a fresh DB with the partitioned table, data is upserted directly
+        into leaves by the pipeline — this method is only needed when
+        migrating data from a previous non-partitioned monolith that was
+        converted to the partitioned root.
 
         Uses ``ON CONFLICT`` for idempotency (re-runnable).  Filters by
-        ``snapshot_id`` AND ``country_code`` (the partition keys), which
-        are already backfilled in the monolith.  The ``bbox`` parameter is
-        kept for the dry-run report and as a fallback if partition keys
-        are not populated.
+        ``snapshot_id`` AND ``country_code`` (the partition keys).
         """
-        # Check if partition keys are populated in the monolith
+        # Check if there's data in the root table for this snapshot/country
+        # that hasn't been routed to a leaf yet (shouldn't happen with
+        # partition routing, but handle it for safety)
         cursor.execute(f"""
-            SELECT count(*) FROM {MONOLITH_TABLE}
+            SELECT count(*) FROM ONLY {ROOT_TABLE}
             WHERE snapshot_id = '{snapshot}' AND country_code = '{country}';
         """)
         key_count = cursor.fetchone()[0]
 
         if key_count > 0:
-            # Partition keys are populated — filter by them (exact match
-            # to the leaf's partition bound).
             where_clause = (
                 f"WHERE e.snapshot_id = '{snapshot}' "
                 f"AND e.country_code = '{country}'"
             )
             self.stdout.write(f"    [data] filtering by partition keys (snapshot_id + country_code)")
         else:
-            # Fallback: spatial bbox filter (for pre-backfill monoliths)
-            lon_min, lat_min, lon_max, lat_max = bbox
-            where_clause = (
-                f"WHERE e.geom IS NOT NULL "
-                f"AND e.geom && ST_MakeEnvelope("
-                f"{lon_min}, {lat_min}, {lon_max}, {lat_max}, 4326)"
-            )
-            self.stdout.write(f"    [data] filtering by bbox (partition keys not populated)")
+            self.stdout.write(self.style.WARNING(
+                f"    [data] no un-partitioned data found — leaf will be "
+                f"populated by pipeline upserts."
+            ))
+            return
 
         # Count source entities
-        cursor.execute(f"SELECT count(*) FROM {MONOLITH_TABLE} e {where_clause};")
+        cursor.execute(f"SELECT count(*) FROM ONLY {ROOT_TABLE} e {where_clause};")
         count = cursor.fetchone()[0]
         self.stdout.write(f"    [data] source entities: {count}")
         if count == 0:
@@ -501,14 +573,6 @@ class Command(BaseCommand):
                 f"    [data] no entities to migrate — empty leaf."
             ))
             return
-
-        # Bulk INSERT ... SELECT with ON CONFLICT upsert.
-        # When filtering by partition keys, use the monolith's existing
-        # snapshot_id/country_code values (don't override with literals).
-        if key_count > 0:
-            select_keys = "e.snapshot_id, e.country_code"
-        else:
-            select_keys = f"'{snapshot}', '{country}'"
 
         cursor.execute(f"""
             INSERT INTO {leaf_table} (
@@ -522,7 +586,7 @@ class Command(BaseCommand):
                 source_snapshot_id, created_at, updated_at
             )
             SELECT
-                e.id, {select_keys}, NULL,
+                e.id, e.snapshot_id, e.country_code, NULL,
                 e.osm_type, e.osm_id, e.tags,
                 e.gv_tags_embedding, e.gv_nle_embedding, e.static_embedding,
                 e.wkg_class, e.wkg_superclasses, e.wikidata_uri, e.wkg_depth,
@@ -530,7 +594,7 @@ class Command(BaseCommand):
                 e.geom, e.version, e.timestamp,
                 e.gv_tags_version, e.gv_nle_version, e.gv_nle_trained,
                 e.source_snapshot_id, e.created_at, e.updated_at
-            FROM {MONOLITH_TABLE} e
+            FROM ONLY {ROOT_TABLE} e
             {where_clause}
             ON CONFLICT (osm_type, osm_id, gv_tags_version, snapshot_id, country_code)
             DO UPDATE SET
@@ -661,25 +725,16 @@ class Command(BaseCommand):
         self.stdout.write(f"    [dry-run] leaf={leaf_table}")
         if not skip_data:
             with connections["vectors"].cursor() as cursor:
-                # Check partition keys first, fall back to bbox
+                # Check for un-partitioned data in the root table
                 cursor.execute(f"""
-                    SELECT count(*) FROM {MONOLITH_TABLE}
+                    SELECT count(*) FROM ONLY {ROOT_TABLE}
                     WHERE snapshot_id = '{snapshot}' AND country_code = '{country}';
                 """)
                 count = cursor.fetchone()[0]
                 if count > 0:
                     self.stdout.write(f"    [dry-run] entities to migrate (by partition keys): {count}")
                 else:
-                    lon_min, lat_min, lon_max, lat_max = bbox
-                    cursor.execute(f"""
-                        SELECT count(*) FROM {MONOLITH_TABLE}
-                        WHERE geom IS NOT NULL
-                          AND geom && ST_MakeEnvelope(
-                              {lon_min}, {lat_min}, {lon_max}, {lat_max}, 4326
-                          );
-                    """)
-                    count = cursor.fetchone()[0]
-                    self.stdout.write(f"    [dry-run] entities to migrate (by bbox): {count}")
+                    self.stdout.write(f"    [dry-run] no un-partitioned data — leaf populated by pipeline upserts")
         if not skip_hnsw:
             self.stdout.write(f"    [dry-run] would build HNSW on gv_tags_embedding for {leaf_table}")
         if not skip_mv:

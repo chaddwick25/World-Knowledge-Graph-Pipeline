@@ -219,30 +219,38 @@ class RegionalPathService:
             country_data: Country metadata dict from get_country_by_name
 
         Returns:
-            The first slug that corresponds to an existing directory.
+            The first slug that corresponds to an existing directory with subgraphs.
         """
+        # NOTE: We check for the subgraphs/ subdirectory WITHOUT creating it,
+        # because get_country_dir() has a side effect of mkdir(parents=True,
+        # exist_ok=True). Using get_country_dir() here would create the
+        # primary_slug directory, making the .exists() check always True and
+        # preventing fallback to the correct directory (e.g., 'ireland' vs
+        # 'ireland_and_northern_ireland').
+        cont_slug = normalize_continent_slug(continent) or continent
+
+        def _subgraphs_dir_exists(slug: str) -> bool:
+            """Check if subgraphs/ dir exists and is non-empty for this slug."""
+            sg_dir = self.base_dir / cont_slug / slug / 'subgraphs'
+            return sg_dir.exists() and any(sg_dir.iterdir())
+
         # Try primary slug first
-        primary_dir = self.get_country_dir(continent, primary_slug)
-        if primary_dir.exists():
+        if _subgraphs_dir_exists(primary_slug):
             return primary_slug
 
         # Fallback 1: Try simple country name (e.g., 'ireland' instead of 'ireland-and-northern-ireland')
         simple_slug = country_name.lower().replace(' ', '_').replace('-', '_')
-        if simple_slug != primary_slug:
-            simple_dir = self.get_country_dir(continent, simple_slug)
-            if simple_dir.exists():
-                logger.info(f"Using alternate slug '{simple_slug}' for {country_name}")
-                return simple_slug
+        if simple_slug != primary_slug and _subgraphs_dir_exists(simple_slug):
+            logger.info(f"Using alternate slug '{simple_slug}' for {country_name}")
+            return simple_slug
 
         # Fallback 2: Try ISO code if available
         iso_code = country_data.get('iso2') or country_data.get('wikidata_id')
         if iso_code:
             iso_slug = iso_code.lower()
-            if iso_slug != primary_slug and iso_slug != simple_slug:
-                iso_dir = self.get_country_dir(continent, iso_slug)
-                if iso_dir.exists():
-                    logger.info(f"Using ISO code slug '{iso_slug}' for {country_name}")
-                    return iso_slug
+            if iso_slug != primary_slug and iso_slug != simple_slug and _subgraphs_dir_exists(iso_slug):
+                logger.info(f"Using ISO code slug '{iso_slug}' for {country_name}")
+                return iso_slug
 
         # Return primary slug if no fallback found (will be handled by caller)
         return primary_slug

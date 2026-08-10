@@ -10,6 +10,7 @@ from .step_0_base import (  # noqa: F401
     step_0f_prebuild_wikidata_ids,
     step_0l_enrich_worldkg_classes,
     step_0m_generate_osm_boundaries,
+    step_0n_backfill_partition_keys,
 )
 from .step_0h_prebuild_embeddings import (  # noqa: F401
     step_0h_scan_embeddings,

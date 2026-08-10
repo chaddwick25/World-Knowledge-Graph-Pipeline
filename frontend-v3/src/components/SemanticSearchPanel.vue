@@ -17,9 +17,11 @@
  */
 
 import axios from 'axios'
+import SubdivisionSelector from './SubdivisionSelector.vue'
 
 export default {
   name: 'SemanticSearchPanel',
+  components: { SubdivisionSelector },
   props: {
     countryName: {
       type: String,
@@ -47,6 +49,7 @@ export default {
       error: null,
       results: [],
       searched: false,
+      subdivisionQid: null,
       classOptions: [
         { value: 'wkgs:Cafe', text: 'Cafe' },
         { value: 'wkgs:Restaurant', text: 'Restaurant' },
@@ -101,6 +104,7 @@ export default {
       this.useLearnedWeights = false
       this.useAnn = false
       this.encoder = 'fasttext'
+      this.subdivisionQid = null
     },
 
     async performSearch() {
@@ -139,6 +143,7 @@ export default {
         if (this.lat) payload.lat = parseFloat(this.lat)
         if (this.lon) payload.lon = parseFloat(this.lon)
         if (this.rdfType) payload.rdf_type = this.rdfType
+        if (this.subdivisionQid) payload.subdivision_qid = this.subdivisionQid
 
         if (this.snapshotDate) {
           payload.snapshot_date = this.snapshotDate
@@ -191,6 +196,12 @@ export default {
           </button>
         </div>
       </div>
+
+      <!-- Subdivision selector -->
+      <SubdivisionSelector
+        :country-name="countryName"
+        @subdivision-selected="subdivisionQid = $event"
+      />
 
       <!-- Tags input -->
       <div v-if="isTagsMode" class="search-form__row">

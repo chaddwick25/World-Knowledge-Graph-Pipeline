@@ -595,20 +595,14 @@ class AugmentedDataService:
     def _snapshot_filter(snapshot_date: Optional[str]):
         """Build a Q filter for SpatialTripletScore.snapshot_id.
 
-        SpatialTripletScore.snapshot_id is a UUIDField that references a
-        TemporalSnapshot. Currently all rows have snapshot_id=NULL (the
-        pipeline doesn't set it), so we return a no-op filter that matches
-        both NULL and non-NULL values when no snapshot_date is provided.
-
-        When snapshot_date IS provided, we can't directly filter by it
-        (the column is a UUID, not a date string), so we return a no-op
-        for now. Once the pipeline populates snapshot_id, this method
-        should resolve the date string to the corresponding UUID.
+        SpatialTripletScore.snapshot_id is a CharField (YYYY_MM_DD) that
+        matches OsmEntity.snapshot_id.  When snapshot_date is provided,
+        filter by it directly.  When not provided, return a no-op.
         """
         from django.db.models import Q
 
-        # No-op for now — SpatialTripletScore.snapshot_id is NULL for all rows.
-        # Returning Q() matches everything.
+        if snapshot_date:
+            return Q(snapshot_id=snapshot_date)
         return Q()
 
     @staticmethod

@@ -109,7 +109,11 @@ def step_5_train_gv_nle(self, env: CountryEnvelope) -> CountryEnvelope:
 def _train_subgraph_gv_nle(
     self, subgraph_dict: dict, parent_config: dict
 ) -> dict:
-    """Train GV-NLE for a single subgraph."""
+    """Train GV-NLE for a single subgraph.
+
+    Uses a file-based lock (fcntl) to serialize GPU access across prefork
+    workers.  Only one subgraph trains on the GPU at a time; others wait.
+    """
     sg = SubgraphConfig.from_dict(subgraph_dict)
     env = CountryEnvelope.from_dict(parent_config)
 
@@ -122,7 +126,17 @@ def _train_subgraph_gv_nle(
         pipeline_run_id=env.pipeline_run_id,
     )
 
-    from geovectors_encoder.services.gv_nle_training_service import (
-        GvNleTrainingService,
-    )
-    return GvNleTrainingService().run_subgraph(sg, env)
+    import os
+    import fcntl
+
+    lock_path = "/tmp/gpu_training.lock"
+    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)  # blocks until lock acquired
+        from geovectors_encoder.services.gv_nle_training_service import (
+            GvNleTrainingService,
+        )
+        return GvNleTrainingService().run_subgraph(sg, env)
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)

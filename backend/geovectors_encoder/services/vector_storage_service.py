@@ -179,31 +179,17 @@ class VectorStorageService:
                 """, csv_buffer)
 
                 # Phase 6: include partition keys in INSERT.
-                # The ON CONFLICT target depends on whether the cutover has
-                # happened.  On the monolith (WORLDKG_USE_PARTITIONED_TABLE=False)
-                # the old 3-column constraint is used.  After cutover the
-                # conflict target is widened to include snapshot_id, country_code
-                # — see PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md Step 4.
-                from django.conf import settings
-                use_partitioned = getattr(
-                    settings, 'WORLDKG_USE_PARTITIONED_TABLE', False
-                )
-
-                # Runtime check: even if the setting says "use partitioned",
-                # the table may still be the monolith on a fresh DB (before
-                # create_country_partitions has run).  Check the actual table
-                # state to choose the correct conflict target.
-                if use_partitioned:
-                    cursor.execute("""
-                        SELECT EXISTS (
-                            SELECT 1 FROM pg_partitioned_table pt
-                            JOIN pg_class c ON c.oid = pt.partrelid
-                            WHERE c.relname = 'semantic_search_osmentity'
-                        );
-                    """)
-                    is_partitioned = cursor.fetchone()[0]
-                else:
-                    is_partitioned = False
+                # The ON CONFLICT target depends on whether the table is
+                # partitioned.  The runtime pg_partitioned_table check is
+                # the sole source of truth — no setting needed.
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM pg_partitioned_table pt
+                        JOIN pg_class c ON c.oid = pt.partrelid
+                        WHERE c.relname = 'semantic_search_osmentity'
+                    );
+                """)
+                is_partitioned = cursor.fetchone()[0]
 
                 conflict_target = (
                     "(osm_type, osm_id, gv_tags_version, snapshot_id, country_code)"

@@ -181,13 +181,21 @@ class PipelineLogger:
         """Write a PipelineLogEntry row + emit to Python logging."""
         # 1. DB write (structured, queryable, shard-ready)
         try:
-            from orchestration.models import PipelineLogEntry
+            from orchestration.models import PipelineLogEntry, PipelineRun
+            # Only set the run FK if the PipelineRun actually exists.
+            # When running steps directly (e.g., via manage.py shell without
+            # a PipelineRun record), the FK would violate the constraint.
+            run_fk = None
+            if self.pipeline_run_id:
+                run_fk = PipelineRun.objects.filter(
+                    id=self.pipeline_run_id
+                ).values_list("id", flat=True).first()
             PipelineLogEntry.objects.create(
                 # FK (column run_id) — enables CASCADE delete + related_name
-                # queries (run.log_entries). Set from the denormalized id so
-                # the FK stays consistent without an extra lookup.
-                run_id=self.pipeline_run_id,
+                # queries (run.log_entries). Only set when the run exists.
+                run_id=run_fk,
                 # Denormalized UUID — enables shard routing without a JOIN.
+                # Kept even when the run doesn't exist, for traceability.
                 pipeline_run_id=self.pipeline_run_id,
                 country_code=self.country_code or None,
                 continent=self.continent or None,

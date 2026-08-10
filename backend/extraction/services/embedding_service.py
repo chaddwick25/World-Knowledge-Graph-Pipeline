@@ -30,7 +30,11 @@ class EmbeddingService:
     def __init__(self, embeddings_root: Path) -> None:
         self.embeddings_root = Path(embeddings_root)
 
-    def run(self, cfg: "CountryEnvelope", drop_indexes_during_load: bool = False) -> Dict:
+    def run(self, cfg: "CountryEnvelope", drop_indexes_during_load: bool = False,
+            pbf_path_override: str = None,
+            skip_index_drop: bool = False,
+            skip_index_rebuild: bool = False,
+            skip_post_process: bool = False) -> Dict:
         """Run the embedding pipeline for a country.
 
         Args:
@@ -40,6 +44,15 @@ class EmbeddingService:
                 HNSW) before the bulk upsert and rebuild them in parallel
                 after.  Gives 3-5x faster upserts for large countries
                 (Phase 5 of OSMENTITY_MONOLITH_OPTIMIZATION.md).
+            pbf_path_override: If set, read from this PBF instead of
+                ``cfg.snapshot_pbf_path``.  Used by parallel subgraph upsert
+                tasks to read per-subgraph PBFs.
+            skip_index_drop: If True, skip dropping indexes (coordinated by
+                the caller for parallel subgraph upserts).
+            skip_index_rebuild: If True, skip rebuilding indexes (coordinated
+                by the caller for parallel subgraph upserts).
+            skip_post_process: If True, skip WorldKG enrichment + entropy
+                computation (done by the caller after all subgraphs complete).
 
         Returns:
             ``{"entropy": float, "has_nle": bool, "entity_count": int}``.
@@ -55,6 +68,8 @@ class EmbeddingService:
         from geovectors_encoder.core.models.nle import NLEModel
         from geovectors_encoder.core.db import DjangoPostgresDB
         from geovectors_encoder.core.util import read_from_snapshot
+
+        pbf_path = pbf_path_override or cfg.snapshot_pbf_path
 
         ft_model = FastTextModel()
         tags_storage = VectorStorageService(
@@ -77,12 +92,13 @@ class EmbeddingService:
             writer = DBOnlyWriter(ft_model, tags_storage)
             nle_storage = None
 
-        if drop_indexes_during_load:
+        should_drop = drop_indexes_during_load and not skip_index_drop
+        if should_drop:
             self._drop_vector_indexes()
 
         try:
             n_data, w_data, r_data = read_from_snapshot(
-                cfg.snapshot_pbf_path, writer=writer, max_runs=2,
+                pbf_path, writer=writer, max_runs=2,
             )
             for record in itertools.chain(w_data, r_data):
                 writer.add_line(record)
@@ -96,15 +112,23 @@ class EmbeddingService:
                 except Exception:
                     pass
         finally:
-            if drop_indexes_during_load:
+            if should_drop and not skip_index_rebuild:
                 self._rebuild_vector_indexes()
+
+        entity_count = len(n_data) + len(w_data) + len(r_data)
+
+        if skip_post_process:
+            return {
+                "entropy": 0.0,
+                "has_nle": cfg.has_pretrained_nle,
+                "entity_count": entity_count,
+            }
 
         # Enrich WorldKG classes + compute entropy (v2 helpers)
         from pipeline.tasks.helper import enrich_worldkg_classes, compute_entropy
         enrich_worldkg_classes(cfg, logger=logger)
         entropy = compute_entropy(cfg, logger=logger)
 
-        entity_count = len(n_data) + len(w_data) + len(r_data)
         return {
             "entropy": entropy,
             "has_nle": cfg.has_pretrained_nle,

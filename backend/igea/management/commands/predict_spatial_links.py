@@ -410,7 +410,11 @@ class Command(BaseCommand):
                     pct=90)
 
         if not dry_run:
-            n_saved = service.persist_links(links, snapshot_id=snapshot_id, country_name=country)
+            # Use snapshot_date (YYYY_MM_DD) as the snapshot_id for
+            # partition-scoped spatial link queries.  Falls back to the
+            # legacy UUID snapshot_id if snapshot_date is not provided.
+            persist_snapshot_id = snapshot_date or snapshot_id
+            n_saved = service.persist_links(links, snapshot_id=persist_snapshot_id, country_name=country)
             self.stdout.write(self.style.SUCCESS(
                 f"\n✓ Persisted {n_saved:,} SpatialLink records"
             ))

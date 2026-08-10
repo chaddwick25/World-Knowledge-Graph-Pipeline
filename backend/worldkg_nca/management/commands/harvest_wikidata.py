@@ -236,10 +236,11 @@ class Command(BaseCommand):
 
             # Optional phase-2 P31 enrichment
             if options.get("enrich_classes") and candidates:
-                n_batches = (len(candidates) + 499) // 500
+                batch_size = 100  # must match enrich_wkg_class default
+                n_batches = (len(candidates) + batch_size - 1) // batch_size
                 self.stdout.write(
                     f"[1b/2] Enriching wkg_class via P31/P279* lookups "
-                    f"({n_batches} batches of 500, ~{n_batches}s)..."
+                    f"({n_batches} batches of {batch_size}, ~{n_batches}s)..."
                 )
                 service.enrich_wkg_class(candidates)
                 mapped = sum(1 for c in candidates if c.get("wkg_class"))

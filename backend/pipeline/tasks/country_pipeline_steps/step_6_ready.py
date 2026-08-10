@@ -60,6 +60,34 @@ def step_6_mark_search_ready(self, env: CountryEnvelope) -> CountryEnvelope:
                 pipeline_run_id=env.pipeline_run_id,
             )
 
+    # Create/refresh the materialized view for this country's leaf partition.
+    # The MV is created after Step 5 (GV-NLE training) so all embeddings are
+    # finalized.  The MV has its own HNSW index for fast ANN queries.
+    from django.core.management import call_command
+    try:
+        call_command(
+            "create_country_partitions",
+            country=env.iso,
+            snapshot=env.snapshot_date,
+            mv_only=True,
+        )
+        _log(
+            logger,
+            "info",
+            "Materialized view created/refreshed",
+            country=env.iso,
+            pipeline_run_id=env.pipeline_run_id,
+        )
+    except Exception as exc:
+        _log(
+            logger,
+            "warning",
+            "MV creation failed — search may be slower",
+            country=env.iso,
+            error=str(exc),
+            pipeline_run_id=env.pipeline_run_id,
+        )
+
     from orchestration.services.search_ready_service import SearchReadyService
     SearchReadyService().run(env)
 

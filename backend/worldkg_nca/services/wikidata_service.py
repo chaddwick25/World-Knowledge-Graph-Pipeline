@@ -40,7 +40,71 @@ WIKIDATA_SPARQL_ENDPOINT = "https://query.wikidata.org/sparql"
 WIKIDATA_USER_AGENT = "EDAVectorSearchToolkit/1.0 (WorldKG-IGEA; contact via GitHub)"
 BBOX_PAGE_SIZE = 2_000
 REQUEST_DELAY_S = 1.1  # Wikidata rate limit: ~1 req/s for anonymous clients
-SPARQL_TIMEOUT_S = 120  # wikibase:box queries on large bboxes can take 60-90s
+SPARQL_TIMEOUT_S = 30  # wikibase:box queries on large bboxes can take 60-90s
+SPARQL_MAX_RETRIES = 0  # disabled — retries take too long; fail fast
+SPARQL_BACKOFF_BASE_S = 2  # base delay: 5s, 10s, 20s
+
+
+def _sparql_request_with_retry(
+    query: str,
+    use_post: bool = True,
+    max_retries: int = SPARQL_MAX_RETRIES,
+    backoff_base: float = SPARQL_BACKOFF_BASE_S,
+) -> Optional[dict]:
+    """Execute a SPARQL request with retry+backoff for transient errors.
+
+    Retries on 429 (Too Many Requests), 502 (Bad Gateway), 503 (Service
+    Unavailable), and Timeout. Returns the JSON response dict, or None
+    if all retries are exhausted.
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            if use_post:
+                response = requests.post(
+                    WIKIDATA_SPARQL_ENDPOINT,
+                    data={"query": query, "format": "json"},
+                    headers={
+                        "User-Agent": WIKIDATA_USER_AGENT,
+                        "Accept": "application/sparql-results+json",
+                    },
+                    timeout=SPARQL_TIMEOUT_S,
+                )
+            else:
+                response = requests.get(
+                    WIKIDATA_SPARQL_ENDPOINT,
+                    params={"query": query, "format": "json"},
+                    headers={"User-Agent": WIKIDATA_USER_AGENT},
+                    timeout=SPARQL_TIMEOUT_S,
+                )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as exc:
+            status_code = exc.response.status_code if exc.response is not None else 0
+            if status_code in (429, 502, 503) and attempt < max_retries:
+                delay = backoff_base * (2 ** attempt)
+                logger.warning(
+                    f"SPARQL request got {status_code}, retrying in {delay}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(delay)
+                continue
+            logger.error(f"SPARQL request failed (HTTP {status_code}): {exc}")
+            return None
+        except requests.exceptions.Timeout:
+            if attempt < max_retries:
+                delay = backoff_base * (2 ** attempt)
+                logger.warning(
+                    f"SPARQL request timed out, retrying in {delay}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(delay)
+                continue
+            logger.error(f"SPARQL request timed out after {max_retries} retries")
+            return None
+        except requests.exceptions.RequestException as exc:
+            logger.error(f"SPARQL request failed: {exc}")
+            return None
+    return None
 
 # ISO 3166-1 alpha-2 → (min_lon, min_lat, max_lon, max_lat) bounding boxes.
 # Used as fallback when no PolygonFile DB record is available.
@@ -287,23 +351,15 @@ LIMIT {page_size}
 OFFSET {offset}
 """
         try:
-            response = requests.get(
-                WIKIDATA_SPARQL_ENDPOINT,
-                params={"query": query, "format": "json"},
-                headers={"User-Agent": WIKIDATA_USER_AGENT},
-                timeout=SPARQL_TIMEOUT_S,
-            )
-            response.raise_for_status()
-            return response.json().get("results", {}).get("bindings", [])
-        except requests.exceptions.Timeout:
-            logger.warning(
-                f"WikidataCandidate: SPARQL timeout at offset={offset} "
-                f"(bbox=[{min_lon},{min_lat},{max_lon},{max_lat}]). "
-                f"The wikibase:box query timed out after {SPARQL_TIMEOUT_S}s — "
-                f"split bbox into smaller sub-regions or reduce --limit."
-            )
-            return []
-        except requests.exceptions.RequestException as exc:
+            data = _sparql_request_with_retry(query, use_post=False)
+            if data is None:
+                logger.warning(
+                    f"WikidataCandidate: SPARQL request failed at offset={offset} "
+                    f"(bbox=[{min_lon},{min_lat},{max_lon},{max_lat}]) after retries."
+                )
+                return []
+            return data.get("results", {}).get("bindings", [])
+        except Exception as exc:
             logger.error(f"WikidataCandidate: SPARQL request error: {exc}")
             return []
 
@@ -397,6 +453,7 @@ OFFSET {offset}
         uris = list(uri_to_cands.keys())
         total_enriched = 0
         total_rows_returned = 0
+        failed_batches = 0
 
         for i in range(0, len(uris), batch_size):
             batch_uris = uris[i : i + batch_size]
@@ -420,34 +477,38 @@ SELECT ?entity ?typeUri WHERE {{
 }}
 """
             try:
-                response = requests.get(
-                    WIKIDATA_SPARQL_ENDPOINT,
-                    params={"query": query, "format": "json"},
-                    headers={"User-Agent": WIKIDATA_USER_AGENT},
-                    timeout=SPARQL_TIMEOUT_S,
-                )
-                response.raise_for_status()
-                rows = response.json().get("results", {}).get("bindings", [])
-                total_rows_returned += len(rows)
-                for row in rows:
-                    entity_uri = row.get("entity", {}).get("value", "")
-                    type_uri   = row.get("typeUri", {}).get("value", "")
-                    wkg_class  = self._wikidata_to_wkg.get(type_uri)
-                    if wkg_class and entity_uri in uri_to_cands:
-                        for c in uri_to_cands[entity_uri]:
-                            if c["wkg_class"] is None:  # keep first mapping found
-                                c["wkg_class"] = wkg_class
-                                total_enriched += 1
+                data = _sparql_request_with_retry(query, use_post=True)
+                if data is None:
+                    failed_batches += 1
+                    logger.warning(
+                        f"enrich_wkg_class batch {i // batch_size}: "
+                        f"failed after {SPARQL_MAX_RETRIES} retries"
+                    )
+                else:
+                    rows = data.get("results", {}).get("bindings", [])
+                    total_rows_returned += len(rows)
+                    for row in rows:
+                        entity_uri = row.get("entity", {}).get("value", "")
+                        type_uri   = row.get("typeUri", {}).get("value", "")
+                        wkg_class  = self._wikidata_to_wkg.get(type_uri)
+                        if wkg_class and entity_uri in uri_to_cands:
+                            for c in uri_to_cands[entity_uri]:
+                                if c["wkg_class"] is None:  # keep first mapping found
+                                    c["wkg_class"] = wkg_class
+                                    total_enriched += 1
             except Exception as exc:
+                failed_batches += 1
                 logger.warning(
                     f"enrich_wkg_class batch {i // batch_size}: {exc}"
                 )
 
             time.sleep(self.request_delay)
 
+        total_batches = (len(uris) + batch_size - 1) // batch_size if uris else 0
         logger.info(
             f"enrich_wkg_class: {total_enriched}/{len(candidates)} candidates mapped "
-            f"({total_rows_returned} P31/P279* rows returned from Wikidata)"
+            f"({total_rows_returned} P31/P279* rows returned from Wikidata, "
+            f"{failed_batches}/{total_batches} batches failed)"
         )
         return candidates
 

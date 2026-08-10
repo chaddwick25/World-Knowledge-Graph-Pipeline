@@ -14,7 +14,8 @@ The artifacts produced will be consumed by agents for geospatial reasoning ([pap
 | **Wikidata Alignment** | Connects OSM entities to Wikidata entries via the WorldKG ontology and alignment models |
 | **Spatial Link Prediction** | Ground-truth style triplets for spatial relationships between entities |
 | **WorldKG Enrichment** | Enriches OSM entities with Wikidata metadata and ontology classes |
-| **Semantic Search** | Natural-language queries over enriched OSM entities |
+| **Semantic Search** | Natural-language queries over enriched OSM entities, with optional subdivision filtering by Wikidata QID |
+| **Subdivision Search** | Filter search results by administrative subdivision (city/department/state) using Wikidata QIDs resolved via `SubgraphProfile` bbox records |
 
 ## Pipeline Types
 
@@ -49,11 +50,14 @@ Both are driven by Celery:
 
 - Ontology-driven class assignment with hierarchical superclass inference.
 - Assigns WorldKG ontology classes to OSM entities from Step 1 — useful for NLP tasks.
+- Two modes: local prediction (default, O(1) tag→class lookup via Redis ontology cache) or SPARQL endpoint (online, per-entity `rdf:type` queries).
+- Wikidata candidate harvest (Step 2) uses batched SPARQL with retry+backoff (5s/10s/20s) on 429/502/503/Timeout — prevents data loss when Wikidata throttles requests. Batch size 100 QIDs per POST request to avoid URL length limits.
 
 ### 3. Wikidata Alignment
 
 - IGEA entity alignment connects OSM entities to Wikidata knowledge graph entries.
 - Iterative alignment with cross-attention links OSM entities to Wikidata using semantic + geo-spatial features.
+- Gated on Step 2 enrichment: if IGEA accepts 0 links (e.g., due to failed Wikidata harvest), USLP is skipped entirely.
 
 ### 4. Spatial Link Prediction
 
@@ -154,6 +158,7 @@ choices can be traced back to the relevant chapter.
     -> pgvector uses L2/cosine distance for ANN search over GV-Tags (300D) and GV-NLE (100D) embeddings.
     -> HNSW indexes on `static_embedding` and `gv_tags_embedding` columns enable sub-10ms similarity queries.
     -> The partitioning scheme (per-country leaf partitions) keeps each HNSW index right-sized for the target machine's RAM.
+    -> During bulk upserts, HNSW indexes on leaf partitions are dropped and recreated after loading (14x speedup: 5.5s → 0.4s per 20K batch).
 
   Covariance Matrix & OSM Data Analysis `[COHEN:Ch7]`
     -> The covariance matrix of embedding dimensions reveals correlations in the noisy, heterogeneous OSM tag space.
