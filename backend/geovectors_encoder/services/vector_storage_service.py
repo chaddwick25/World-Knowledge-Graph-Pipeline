@@ -179,31 +179,17 @@ class VectorStorageService:
                 """, csv_buffer)
 
                 ***REMOVED*** Phase 6: include partition keys in INSERT.
-                ***REMOVED*** The ON CONFLICT target depends on whether the cutover has
-                ***REMOVED*** happened.  On the monolith (WORLDKG_USE_PARTITIONED_TABLE=False)
-                ***REMOVED*** the old 3-column constraint is used.  After cutover the
-                ***REMOVED*** conflict target is widened to include snapshot_id, country_code
-                ***REMOVED*** — see PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md Step 4.
-                from django.conf import settings
-                use_partitioned = getattr(
-                    settings, 'WORLDKG_USE_PARTITIONED_TABLE', False
-                )
-
-                ***REMOVED*** Runtime check: even if the setting says "use partitioned",
-                ***REMOVED*** the table may still be the monolith on a fresh DB (before
-                ***REMOVED*** create_country_partitions has run).  Check the actual table
-                ***REMOVED*** state to choose the correct conflict target.
-                if use_partitioned:
-                    cursor.execute("""
-                        SELECT EXISTS (
-                            SELECT 1 FROM pg_partitioned_table pt
-                            JOIN pg_class c ON c.oid = pt.partrelid
-                            WHERE c.relname = 'semantic_search_osmentity'
-                        );
-                    """)
-                    is_partitioned = cursor.fetchone()[0]
-                else:
-                    is_partitioned = False
+                ***REMOVED*** The ON CONFLICT target depends on whether the table is
+                ***REMOVED*** partitioned.  The runtime pg_partitioned_table check is
+                ***REMOVED*** the sole source of truth — no setting needed.
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM pg_partitioned_table pt
+                        JOIN pg_class c ON c.oid = pt.partrelid
+                        WHERE c.relname = 'semantic_search_osmentity'
+                    );
+                """)
+                is_partitioned = cursor.fetchone()[0]
 
                 conflict_target = (
                     "(osm_type, osm_id, gv_tags_version, snapshot_id, country_code)"

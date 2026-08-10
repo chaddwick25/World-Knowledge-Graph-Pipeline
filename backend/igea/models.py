@@ -118,11 +118,13 @@ class SpatialTripletScore(models.Model):
     geohash_precision = models.IntegerField(
         help_text="Geohash precision used for geo_score"
     )
-    snapshot_id = models.UUIDField(
+    snapshot_id = models.CharField(
+        max_length=20,
         null=True,
         blank=True,
         db_index=True,
-        help_text="TemporalSnapshot UUID that these links were generated from"
+        help_text="Snapshot date (YYYY_MM_DD) these links were generated from. "
+                  "Matches OsmEntity.snapshot_id for partition-scoped queries."
     )
     country_name = models.CharField(
         max_length=100,
@@ -203,11 +205,13 @@ class SpatialTripletScoreRejected(models.Model):
     geohash_precision = models.IntegerField(
         help_text="Geohash precision used for geo_score"
     )
-    snapshot_id = models.UUIDField(
+    snapshot_id = models.CharField(
+        max_length=20,
         null=True,
         blank=True,
         db_index=True,
-        help_text="TemporalSnapshot UUID that these links were generated from"
+        help_text="Snapshot date (YYYY_MM_DD) these links were generated from. "
+                  "Matches OsmEntity.snapshot_id for partition-scoped queries."
     )
     country_name = models.CharField(
         max_length=100,

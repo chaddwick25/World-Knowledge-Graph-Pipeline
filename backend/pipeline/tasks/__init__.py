@@ -20,6 +20,7 @@ from pipeline.tasks.planet_initialization_pipeline_steps import (  ***REMOVED***
     step_0k_rescan_embeddings,
     step_0l_enrich_worldkg_classes,
     step_0m_generate_osm_boundaries,
+    step_0n_backfill_partition_keys,
     _finalize_planet_init_chain,
 )
 
@@ -29,6 +30,8 @@ from pipeline.tasks.planet_initialization_pipeline_steps import (  ***REMOVED***
 from pipeline.tasks.country_pipeline_steps.step_1_embed import (  ***REMOVED*** noqa: F401
     step_1_embed_osm_entities,
     _embed_subgraph,
+    _embed_subgraph_upsert,
+    _finalize_subgraph_upserts,
 )
 from pipeline.tasks.country_pipeline_steps.step_2_harvest import (  ***REMOVED*** noqa: F401
     step_2_harvest_wikidata,

@@ -769,31 +769,17 @@ class SearchUpdateOrchestrator:
                 ***REMOVED*** INSERT ... ON CONFLICT DO UPDATE, classifying insert vs
                 ***REMOVED*** update atomically via xmax (0 = inserted, >0 = updated).
                 ***REMOVED*** Phase 6: include country_code in INSERT.  The ON CONFLICT
-                ***REMOVED*** target depends on whether the cutover has happened.
-                ***REMOVED*** On the monolith (WORLDKG_USE_PARTITIONED_TABLE=False) the
-                ***REMOVED*** old 3-column constraint is used.  After cutover the target
-                ***REMOVED*** is widened to include the partition keys — see
-                ***REMOVED*** PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md Step 4.
-                from django.conf import settings as dj_settings
-                use_partitioned = getattr(
-                    dj_settings, 'WORLDKG_USE_PARTITIONED_TABLE', False
-                )
-
-                ***REMOVED*** Runtime check: even if the setting says "use partitioned",
-                ***REMOVED*** the table may still be the monolith on a fresh DB (before
-                ***REMOVED*** create_country_partitions has run).  Check the actual table
-                ***REMOVED*** state to choose the correct conflict target.
-                if use_partitioned:
-                    cursor.execute("""
-                        SELECT EXISTS (
-                            SELECT 1 FROM pg_partitioned_table pt
-                            JOIN pg_class c ON c.oid = pt.partrelid
-                            WHERE c.relname = 'semantic_search_osmentity'
-                        );
-                    """)
-                    is_partitioned = cursor.fetchone()[0]
-                else:
-                    is_partitioned = False
+                ***REMOVED*** target depends on whether the table is partitioned.
+                ***REMOVED*** The runtime pg_partitioned_table check is the sole source
+                ***REMOVED*** of truth — no setting needed.
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM pg_partitioned_table pt
+                        JOIN pg_class c ON c.oid = pt.partrelid
+                        WHERE c.relname = 'semantic_search_osmentity'
+                    );
+                """)
+                is_partitioned = cursor.fetchone()[0]
 
                 conflict_target = (
                     "(osm_type, osm_id, gv_tags_version, snapshot_id, country_code)"

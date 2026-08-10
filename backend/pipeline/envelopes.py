@@ -632,6 +632,7 @@ class CountryEnvelope:
             ).values(
                 "slug", "wikidata_id", "osm_relation_id", "admin_level",
                 "bbox_min_lon", "bbox_min_lat", "bbox_max_lon", "bbox_max_lat",
+                "subgraph_pbf_path", "subgraph_poly_path", "subgraph_pickle_path",
             )
             enriched_count = 0
             for db_sg in db_profiles:
@@ -652,6 +653,12 @@ class CountryEnvelope:
                     repl["bbox_min_lat"] = db_sg["bbox_min_lat"]
                     repl["bbox_max_lon"] = db_sg["bbox_max_lon"]
                     repl["bbox_max_lat"] = db_sg["bbox_max_lat"]
+                if db_sg["subgraph_pbf_path"] and not sg.pbf_path:
+                    repl["pbf_path"] = db_sg["subgraph_pbf_path"]
+                if db_sg["subgraph_poly_path"] and not sg.poly_path:
+                    repl["poly_path"] = db_sg["subgraph_poly_path"]
+                if db_sg["subgraph_pickle_path"] and not sg.pickle_path:
+                    repl["pickle_path"] = db_sg["subgraph_pickle_path"]
                 if repl:
                     sg_by_slug[db_sg["slug"]] = _dc.replace(sg, **repl)
             subgraphs = list(sg_by_slug.values())
