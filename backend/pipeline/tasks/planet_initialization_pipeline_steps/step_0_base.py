@@ -114,9 +114,50 @@ def step_0b_initialize_continent(self, env: PlanetEnvelope) -> PlanetEnvelope:
 def step_0c_prebuild_structure(self, env: PlanetEnvelope) -> PlanetEnvelope:
     """Step 0.6: Pre-build CountryPipelineProfile from country_relations.json.
 
-    Runs the ``prebuild_worldkg_structure`` management command to create
-    CountryPipelineProfile and SubgraphProfile skeleton records.
+    Re-syncs country_relations.json (now that RegionHierarchy is populated
+    by step 0b), re-imports into OSMWikiDataHierarchy (step 0.0 ran the
+    import when the JSON was still empty), then runs
+    ``prebuild_worldkg_structure`` to create CountryPipelineProfile and
+    SubgraphProfile skeleton records.
     """
+    # 1. Re-sync country relations — step 0.0 ran the sync before step 0b
+    #    populated RegionHierarchy, so country_relations.json was empty.
+    from extraction.services.country_relation_resolver import (
+        country_relation_resolver,
+    )
+    merged = country_relation_resolver.sync(force_refresh=False)
+    _log(
+        logger,
+        "info",
+        "Re-synced country_relations.json before prebuild",
+        regions=len(merged),
+        pipeline_run_id=env.pipeline_run_id,
+    )
+
+    # 2. Re-import into OSMWikiDataHierarchy — step 0.0's
+    #    initialize_osm_wikidata_alignment() ran when the JSON was empty,
+    #    so OSMWikiDataHierarchy has 0 country entries.
+    call_command("import_country_relations")
+    _log(
+        logger,
+        "info",
+        "Re-imported country relations into OSMWikiDataHierarchy",
+        pipeline_run_id=env.pipeline_run_id,
+    )
+
+    # 3. Re-sync GeoVectors metadata — step 0.0's sync_geovectors_metadata
+    #    ran when country_relations.json was empty, so no TSV paths were
+    #    mapped.  Now that the JSON has 206 entries, re-scan the embeddings
+    #    directory and populate geovectors_location_tsv / geovectors_tags_tsv.
+    call_command("sync_geovectors_metadata", save=True)
+    _log(
+        logger,
+        "info",
+        "Re-synced GeoVectors metadata (TSV paths)",
+        pipeline_run_id=env.pipeline_run_id,
+    )
+
+    # 4. Pre-build CountryPipelineProfile + SubgraphProfile skeletons
     call_command("prebuild_worldkg_structure")
     return env
 

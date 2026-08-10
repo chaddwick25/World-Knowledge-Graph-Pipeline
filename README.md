@@ -51,7 +51,7 @@ Both are driven by Celery:
 - Ontology-driven class assignment with hierarchical superclass inference.
 - Assigns WorldKG ontology classes to OSM entities from Step 1 — useful for NLP tasks.
 - Two modes: local prediction (default, O(1) tag→class lookup via Redis ontology cache) or SPARQL endpoint (online, per-entity `rdf:type` queries).
-- Wikidata candidate harvest (Step 2) uses batched SPARQL with retry+backoff (5s/10s/20s) on 429/502/503/Timeout — prevents data loss when Wikidata throttles requests. Batch size 100 QIDs per POST request to avoid URL length limits.
+- Wikidata candidate harvest (Step 2) uses batched SPARQL with retry+backoff on 429/502/503/Timeout. Retries enabled (`SPARQL_MAX_RETRIES = 1`, 5s base backoff). Failed batches are logged and skipped; partial enrichment is preferred over blocking. Batch size 100 QIDs per POST request to avoid URL length limits.
 
 ### 3. Wikidata Alignment
 
@@ -81,6 +81,11 @@ docker compose -f docker-compose.yml -f compose.override.yml up -d postgres-defa
 
 # Start backend API + Celery worker
 docker compose -f docker-compose.yml -f compose.override.yml up -d backend worker
+
+# Worker configuration:
+#   --pool=prefork --concurrency=4  (4 CPU workers for parallel upserts/IGEA/USLP)
+#   GPU tasks (GV-NLE training) serialize via fcntl.flock — no CUDA OOM
+#   RUN_MIGRATIONS env var: backend runs migrations, worker waits for them
 
 # Start frontend
 cd frontend-v3
@@ -115,7 +120,10 @@ choices can be traced back to the relevant chapter.
 
   Batch and parallel processing `[DMLS:Ch3]`
     -> Work is batched per country and per subgraph.
-    -> Celery runs many tasks in parallel, especially for large countries, to speed up processing.
+    -> Celery prefork pool (4 workers) parallelizes CPU-bound tasks: subgraph NLE pickle generation, IGEA, USLP.
+    -> GPU-bound tasks (GV-NLE training, Step 5) serialize via fcntl.flock to prevent CUDA OOM on single-GPU machines.
+    -> Migration race prevention: `RUN_MIGRATIONS` env var in `docker-entrypoint.sh` — backend runs migrations, worker waits.
+    -> Per-country leaf partitions with right-sized HNSW indexes keep query latency low.
 
   Structured logging and observability `[DMLS:Ch8]`
     -> Each Celery task logs inputs, outputs, and timing.
@@ -170,10 +178,10 @@ choices can be traced back to the relevant chapter.
     -> SVD underpins the dimensionality reduction used when comparing baseline vs. current snapshot embeddings.
     -> Planned: agentic tool calls will use eigendecomposition to select the most informative embedding dimensions for query-time reasoning.
 
-  Database Sharding as a Linear Algebra Problem
-    -> Partitioning the OsmEntity monolith by `country_code` is equivalent to block-diagonalizing the entity-entity similarity matrix.
+  Database Partitioning as a Linear Algebra Problem
+    -> Partitioning `semantic_search_osmentity` by `country_code` is equivalent to block-diagonalizing the entity-entity similarity matrix.
     -> Each leaf partition's HNSW index operates on a sub-matrix, reducing both memory footprint and query latency.
-    -> The `backfill_partition_keys` command assigns each entity to its block via spatial bbox intersection.
+    -> The partitioned table (`PARTITION BY LIST (snapshot_id)` → `LIST (country_code)`) is created automatically by the pipeline — no manual cutover needed on fresh DBs.
 
 ---
 
@@ -190,9 +198,9 @@ choices can be traced back to the relevant chapter.
     -> t-SNE global projections provide qualitative macroscopic cluster inspection.
 
   Data validation across pipeline stages `[STATS:Ch2]`
-    -> Entity count parity checks between monolith and partitioned tables (Phase 6 verification).
     -> Row count assertions after each bulk upsert (e.g., 20K entities per batch in `vector_storage_service`).
-    -> NULL `country_code` detection after backfill — unmatched rows go to default partition ('XX').
+    -> Partition pruning verification — queries with `snapshot_id` + `country_code` hit only the target leaf partition.
+    -> `verify_partition_parity` command checks row count consistency across the partition hierarchy.
 
 ---
 
@@ -219,7 +227,7 @@ choices can be traced back to the relevant chapter.
     -> Pre‑compute configs and primitives - WorldKG primitives (see `docs/Schematics/WorkKG_Primities.md`) are generated once and reused.
     -> Multi‑core processing with Osmium - Osmium‑tool is used to parallelize low‑level extraction work.
     -> Batch processing - Vector generation and spatial link prediction are run in batches rather than one entity at a time.
-    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel.
+    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel. Step 1 dispatches a chord of per-subgraph upsert tasks; Step 5 trains GV-NLE per subgraph (serialized via GPU lock).
 
 Next Steps:
 1. Make the project public

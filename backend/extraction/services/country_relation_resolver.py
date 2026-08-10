@@ -11,15 +11,13 @@ logger = logging.getLogger(__name__)
 
 # ── Continent slug redirects ─────────────────────────────────────────
 # Geofabrik parent slugs use hyphens (e.g. 'australia-oceania') but
-# RegionHierarchy continent names use underscores (e.g. 'oceania').
-# This map redirects known Geofabrik continent paths to their canonical
-# RegionHierarchy names.
-CONTINENT_REDIRECTS = {
-    'australia_oceania': 'oceania',
-    'central_america': 'central-america',
-    'north_america': 'north-america',
-    'south_america': 'south-america',
-}
+# RegionHierarchy continent names use underscores (e.g. 'australia_oceania').
+# The continent map keys are built with r.name.lower().replace('-', '_'),
+# and the base_continent lookup also does replace('-', '_'), so the
+# only redirect needed is Geofabrik's 'australia-oceania' → 'australia_oceania'
+# (which the replace already handles).  No redirects needed — the
+# normalization is done by replace('-', '_') on both sides.
+CONTINENT_REDIRECTS = {}
 
 class CountryRelationResolver:
     """

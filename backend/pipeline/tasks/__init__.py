@@ -30,8 +30,6 @@ from pipeline.tasks.planet_initialization_pipeline_steps import (  # noqa: F401
 from pipeline.tasks.country_pipeline_steps.step_1_embed import (  # noqa: F401
     step_1_embed_osm_entities,
     _embed_subgraph,
-    _embed_subgraph_upsert,
-    _finalize_subgraph_upserts,
 )
 from pipeline.tasks.country_pipeline_steps.step_2_harvest import (  # noqa: F401
     step_2_harvest_wikidata,

@@ -41,7 +41,7 @@ WIKIDATA_USER_AGENT = "EDAVectorSearchToolkit/1.0 (WorldKG-IGEA; contact via Git
 BBOX_PAGE_SIZE = 2_000
 REQUEST_DELAY_S = 1.1  # Wikidata rate limit: ~1 req/s for anonymous clients
 SPARQL_TIMEOUT_S = 30  # wikibase:box queries on large bboxes can take 60-90s
-SPARQL_MAX_RETRIES = 0  # disabled — retries take too long; fail fast
+SPARQL_MAX_RETRIES = 1  # retry on 429/502/503 with exponential backoff
 SPARQL_BACKOFF_BASE_S = 2  # base delay: 5s, 10s, 20s
 
 

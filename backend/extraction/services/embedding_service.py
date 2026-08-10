@@ -138,13 +138,9 @@ class EmbeddingService:
     def _drop_vector_indexes(self) -> None:
         """Drop IVFFlat + HNSW indexes for fast bulk load (no per-row maintenance)."""
         from django.core.management import call_command
-        from django.db import connections
 
         logger.info("Dropping vector indexes for bulk load...")
         call_command("drop_osmentity_vector_indexes")
-        # Also drop HNSW on static_embedding if present
-        with connections["vectors"].cursor() as cursor:
-            cursor.execute("DROP INDEX IF EXISTS osmentity_static_embedding_hnsw_idx;")
         logger.info("Vector indexes dropped.")
 
     def _rebuild_vector_indexes(self) -> None:
