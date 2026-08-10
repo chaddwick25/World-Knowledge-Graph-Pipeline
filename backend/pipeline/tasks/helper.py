@@ -364,7 +364,7 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
                 country_name=cfg.name,
                 overwrite=False,
             )
-            if subgraph_result.get("generated", 0) > 0 or subgraph_result.get("failed", 0) > 0:
+            if subgraph_result.get("total", 0) > 0:
                 sync_subgraph_profiles(
                     iso=cfg.iso,
                     continent=cfg.continent,
