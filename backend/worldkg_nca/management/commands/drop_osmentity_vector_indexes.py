@@ -3,19 +3,13 @@ from django.db import connections
 
 
 class Command(BaseCommand):
-    help = "Drop pgvector indexes (IVFFlat + HNSW) on semantic_search_osmentity and its partitions."
+    help = "Drop HNSW indexes on semantic_search_osmentity and its partitions."
 
     def handle(self, *args, **options):
-        self.stdout.write(self.style.WARNING("Dropping pgvector indexes on semantic_search_osmentity (vectors DB)..."))
+        self.stdout.write(self.style.WARNING("Dropping HNSW indexes on semantic_search_osmentity (vectors DB)..."))
 
         with connections['vectors'].cursor() as cursor:
-            # Drop legacy IVFFlat indexes on the parent (monolith era)
-            cursor.execute("DROP INDEX IF EXISTS osmentity_gv_tags_ivfflat_idx;")
-            cursor.execute("DROP INDEX IF EXISTS osmentity_gv_nle_ivfflat_idx;")
-            # Legacy monolith static_embedding HNSW index
-            cursor.execute("DROP INDEX IF EXISTS osmentity_static_embedding_hnsw_idx;")
-
-            # Phase 6: Drop HNSW indexes on the partitioned table hierarchy.
+            # Drop HNSW indexes on the partitioned table hierarchy.
             #
             # For partitioned indexes, PostgreSQL requires dropping the PARENT
             # first.  Dropping a parent partitioned index automatically drops
@@ -96,5 +90,5 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"Dropped {total} index(es) "
             f"({len(root_indexes)} root + {len(snapshot_indexes)} snapshot + {len(leaf_indexes)} leaf HNSW) "
-            f"+ legacy IVFFlat/static indexes."
+            f"+ legacy indexes."
         ))

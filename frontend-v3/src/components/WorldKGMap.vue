@@ -8,6 +8,9 @@
  * Props:
  *   selectedIds  - Array of currently selected country UUIDs
  *   searchResults - Array of spatial search results (for marker overlay)
+ *   augmentedLinks - { accepted: [...], rejected: [...] } link geometries
+ *   showAcceptedLinks - Boolean, render accepted link markers/lines
+ *   showRejectedLinks - Boolean, render rejected link markers/lines
  *
  * Events:
  *   countries-loaded  - { countries[] } after fetch
@@ -20,9 +23,32 @@ import axios from 'axios'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
+// ── Relation type color map ──────────────────────────────────────────────
+// Harmonious palette (Tailwind 400-500 range) that complements the app's
+// dark theme (#0f172a backgrounds, #6366f1 indigo accent).
+// Accepted links use solid lines at full opacity; rejected links use
+// dashed lines at reduced opacity — both in the relation's color.
+const RELATION_COLORS = {
+  addrCity:        '#8b5cf6',  // violet-500
+  addrPlace:       '#10b981',  // emerald-500
+  addrNeighbour:   '#06b6d4',  // cyan-500
+  addrSuburb:      '#84cc16',  // lime-500
+  addrDistrict:    '#3b82f6',  // blue-500
+  addrState:       '#ef4444',  // red-500
+  addrProvince:    '#ec4899',  // pink-500
+  addrHamlet:      '#f59e0b',  // amber-500
+}
+const DEFAULT_RELATION_COLOR = '#6b7280'  // gray-500 for unknown relations
+
+function getRelationColor(relation) {
+  return RELATION_COLORS[relation] || DEFAULT_RELATION_COLOR
+}
+
 let mapInstance = null
 let geoJsonLayer = null
 let searchMarkersLayer = null
+let augmentedAcceptedLayer = null
+let augmentedRejectedLayer = null
 let countryLookup = {}
 let layerLookup = {}
 
@@ -37,12 +63,57 @@ export default {
       type: Array,
       default: () => [],
     },
+    augmentedLinks: {
+      type: Object,
+      default: null,
+    },
+    showAcceptedLinks: {
+      type: Boolean,
+      default: false,
+    },
+    showRejectedLinks: {
+      type: Boolean,
+      default: false,
+    },
+    visibleRelations: {
+      type: Array,
+      default: null,
+    },
   },
   emits: ['countries-loaded', 'country-toggled', 'country-center', 'error'],
   data() {
     return {
       isLoading: true,
     }
+  },
+  computed: {
+    // Relations currently visible on the map — drives the legend.
+    // Ordered by the RELATION_COLORS key sequence (same as the panel).
+    activeRelationLegend() {
+      if (!this.augmentedLinks) return []
+      const visibleSet = this.visibleRelations ? new Set(this.visibleRelations) : null
+      const seen = new Set()
+      const collect = (links) => {
+        if (!links) return
+        for (const link of links) {
+          if (visibleSet && !visibleSet.has(link.relation)) continue
+          seen.add(link.relation)
+        }
+      }
+      if (this.showAcceptedLinks) collect(this.augmentedLinks.accepted)
+      if (this.showRejectedLinks) collect(this.augmentedLinks.rejected)
+
+      // Order by RELATION_COLORS key sequence; unknown relations last
+      const order = Object.keys(RELATION_COLORS)
+      return order
+        .filter((r) => seen.has(r))
+        .map((r) => ({ relation: r, color: getRelationColor(r) }))
+        .concat(
+          [...seen]
+            .filter((r) => !order.includes(r))
+            .map((r) => ({ relation: r, color: getRelationColor(r) }))
+        )
+    },
   },
   mounted() {
     this.initMap()
@@ -52,6 +123,9 @@ export default {
     if (mapInstance) {
       mapInstance.remove()
       mapInstance = null
+      searchMarkersLayer = null
+      augmentedAcceptedLayer = null
+      augmentedRejectedLayer = null
     }
   },
   watch: {
@@ -66,6 +140,21 @@ export default {
         this.renderSearchResults()
       },
       deep: true,
+    },
+    augmentedLinks: {
+      handler() {
+        this.renderAugmentedLinks()
+      },
+      deep: true,
+    },
+    showAcceptedLinks() {
+      this.renderAugmentedLinks()
+    },
+    showRejectedLinks() {
+      this.renderAugmentedLinks()
+    },
+    visibleRelations() {
+      this.renderAugmentedLinks()
     },
   },
   methods: {
@@ -89,7 +178,7 @@ export default {
         center: [20, 0],
         zoom: 2.5,
         minZoom: 2,
-        maxZoom: 6,
+        maxZoom: 18,
         zoomControl: true,
         attributionControl: false,
         worldCopyJump: false,
@@ -110,6 +199,8 @@ export default {
         .addTo(mapInstance)
 
       searchMarkersLayer = L.layerGroup().addTo(mapInstance)
+      augmentedAcceptedLayer = L.layerGroup().addTo(mapInstance)
+      augmentedRejectedLayer = L.layerGroup().addTo(mapInstance)
     },
 
     renderCountries(countries) {
@@ -234,13 +325,139 @@ export default {
       }
     },
 
+    renderAugmentedLinks() {
+      if (!mapInstance) return
+      if (augmentedAcceptedLayer) augmentedAcceptedLayer.clearLayers()
+      if (augmentedRejectedLayer) augmentedRejectedLayer.clearLayers()
+
+      if (!this.augmentedLinks) return
+
+      const bounds = []
+      const visibleSet = this.visibleRelations ? new Set(this.visibleRelations) : null
+      const isVisible = (relation) => !visibleSet || visibleSet.has(relation)
+
+      // Render accepted links — solid lines, filled markers, relation color
+      if (this.showAcceptedLinks && this.augmentedLinks.accepted?.length) {
+        this.augmentedLinks.accepted.forEach((link) => {
+          if (!isVisible(link.relation)) return
+          const hLat = link.head?.lat
+          const hLon = link.head?.lon
+          const tLat = link.tail?.lat
+          const tLon = link.tail?.lon
+          if (hLat == null || hLon == null || tLat == null || tLon == null) return
+
+          const color = getRelationColor(link.relation)
+
+          // Solid line connecting head → tail
+          const line = L.polyline(
+            [[hLat, hLon], [tLat, tLon]],
+            {
+              color: color,
+              weight: 1.5,
+              opacity: 0.6,
+            }
+          )
+          line.bindPopup(
+            `<strong>Accepted Link</strong><br>` +
+            `Relation: ${link.relation}<br>` +
+            `Score: ${(link.normalized_score * 100).toFixed(1)}%<br>` +
+            `Head: ${link.head.osm_type}/${link.head.osm_id}<br>` +
+            `Tail: ${link.tail.osm_type}/${link.tail.osm_id}`
+          )
+          line.addTo(augmentedAcceptedLayer)
+
+          // Head marker — filled
+          const headMarker = L.circleMarker([hLat, hLon], {
+            radius: 4,
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.85,
+            weight: 1.5,
+          })
+          headMarker.addTo(augmentedAcceptedLayer)
+          bounds.push([hLat, hLon])
+
+          // Tail marker — filled (lighter)
+          const tailMarker = L.circleMarker([tLat, tLon], {
+            radius: 4,
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.5,
+            weight: 1.5,
+          })
+          tailMarker.addTo(augmentedAcceptedLayer)
+          bounds.push([tLat, tLon])
+        })
+      }
+
+      // Render rejected links — dashed lines, hollow markers, relation color
+      if (this.showRejectedLinks && this.augmentedLinks.rejected?.length) {
+        this.augmentedLinks.rejected.forEach((link) => {
+          if (!isVisible(link.relation)) return
+          const hLat = link.head?.lat
+          const hLon = link.head?.lon
+          const tLat = link.tail?.lat
+          const tLon = link.tail?.lon
+          if (hLat == null || hLon == null || tLat == null || tLon == null) return
+
+          const color = getRelationColor(link.relation)
+
+          // Dashed line connecting head → tail
+          const line = L.polyline(
+            [[hLat, hLon], [tLat, tLon]],
+            {
+              color: color,
+              weight: 1.5,
+              opacity: 0.4,
+              dashArray: '4 3',
+            }
+          )
+          line.bindPopup(
+            `<strong>Rejected Link</strong><br>` +
+            `Relation: ${link.relation}<br>` +
+            `Score: ${(link.normalized_score * 100).toFixed(1)}%<br>` +
+            `Head: ${link.head.osm_type}/${link.head.osm_id}<br>` +
+            `Tail: ${link.tail.osm_type}/${link.tail.osm_id}`
+          )
+          line.addTo(augmentedRejectedLayer)
+
+          // Head marker — hollow (outlined only)
+          const headMarker = L.circleMarker([hLat, hLon], {
+            radius: 4,
+            color: color,
+            fillColor: 'transparent',
+            fillOpacity: 0,
+            weight: 1.5,
+          })
+          headMarker.addTo(augmentedRejectedLayer)
+          bounds.push([hLat, hLon])
+
+          // Tail marker — hollow
+          const tailMarker = L.circleMarker([tLat, tLon], {
+            radius: 4,
+            color: color,
+            fillColor: 'transparent',
+            fillOpacity: 0,
+            weight: 1.5,
+          })
+          tailMarker.addTo(augmentedRejectedLayer)
+          bounds.push([tLat, tLon])
+        })
+      }
+
+      // Fit bounds to augmented links if we're showing them and no search results
+      if (bounds.length && (!this.searchResults || !this.searchResults.length)) {
+        mapInstance.fitBounds(bounds, { padding: [80, 80] })
+      }
+    },
+
     handleClick(countryId) {
       this.$emit('country-toggled', { countryId })
       const layer = layerLookup[countryId]
       if (layer && mapInstance) {
         mapInstance.flyToBounds(layer.getBounds(), {
           padding: [100, 100],
-          maxZoom: 5,
+          maxZoom: 14,
           duration: 0.8,
         })
       }
@@ -281,6 +498,30 @@ export default {
     <div v-if="isLoading" class="map-wrapper__overlay">
       <div class="map-wrapper__spinner"></div>
       <p>Loading countries...</p>
+    </div>
+
+    <!-- Relation legend (only when augmented links are visible) -->
+    <div v-if="activeRelationLegend.length" class="map-legend">
+      <div class="map-legend__title">Link Types</div>
+      <div class="map-legend__items">
+        <div
+          v-for="item in activeRelationLegend"
+          :key="item.relation"
+          class="map-legend__item"
+        >
+          <span
+            class="map-legend__dot"
+            :style="{ background: item.color }"
+          ></span>
+          <span class="map-legend__label">{{ item.relation }}</span>
+        </div>
+      </div>
+      <div class="map-legend__hint">
+        <span class="map-legend__line map-legend__line--solid"></span>
+        accepted
+        <span class="map-legend__line map-legend__line--dashed"></span>
+        rejected
+      </div>
     </div>
   </div>
 </template>
@@ -328,6 +569,80 @@ export default {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ── Relation legend ── */
+.map-legend {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  backdrop-filter: blur(8px);
+  max-width: 200px;
+}
+
+.map-legend__title {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.35rem;
+}
+
+.map-legend__items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.4rem;
+}
+
+.map-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.map-legend__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.map-legend__label {
+  font-size: 0.68rem;
+  color: #d1d5db;
+}
+
+.map-legend__hint {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.6rem;
+  color: #6b7280;
+  border-top: 1px solid #1f2937;
+  padding-top: 0.3rem;
+}
+
+.map-legend__line {
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  margin: 0 0.15rem;
+}
+
+.map-legend__line--solid {
+  background: #6b7280;
+}
+
+.map-legend__line--dashed {
+  border-top: 2px dashed #6b7280;
+  height: 0;
 }
 </style>
 

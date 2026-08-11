@@ -20,7 +20,6 @@ from pipeline.tasks.planet_initialization_pipeline_steps import (  # noqa: F401
     step_0k_rescan_embeddings,
     step_0l_enrich_worldkg_classes,
     step_0m_generate_osm_boundaries,
-    step_0n_backfill_partition_keys,
     _finalize_planet_init_chain,
 )
 

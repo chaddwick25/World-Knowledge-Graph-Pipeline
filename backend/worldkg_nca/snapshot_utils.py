@@ -26,7 +26,6 @@ from uuid import UUID
 logger = logging.getLogger(__name__)
 
 # Default snapshot_id used when no TemporalSnapshot can be resolved.
-# This matches the prototype partition key (see prototype_physical_sharding).
 DEFAULT_SNAPSHOT_ID = "2025_12_31"
 
 

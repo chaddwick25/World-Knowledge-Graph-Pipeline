@@ -77,6 +77,12 @@ export default {
       activeTab: 'query',
       searchResults: [],
 
+      // ── Augmented links map overlay ──
+      augmentedLinks: null,
+      showAcceptedLinks: false,
+      showRejectedLinks: false,
+      visibleRelations: null,
+
       // ── Country search ──
       countrySearchQuery: '',
 
@@ -188,6 +194,10 @@ export default {
         this.pipelineDoneStatus = null
         this.isPipelineRunning = false
         this.searchResults = []
+        this.augmentedLinks = null
+        this.showAcceptedLinks = false
+        this.showRejectedLinks = false
+        this.visibleRelations = null
         this.errorMessage = ''
       },
       deep: true,
@@ -425,10 +435,23 @@ export default {
     },
     // ── Semantic search ──
     switchTab(tab) {
+      // Clear augmented links from map when leaving the Augmented tab
+      if (this.activeTab === 'augmented' && tab !== 'augmented') {
+        this.augmentedLinks = null
+        this.showAcceptedLinks = false
+        this.showRejectedLinks = false
+        this.visibleRelations = null
+      }
       this.activeTab = tab
     },
     onSearchResults(results) {
       this.searchResults = results
+    },
+    onLinksToggle({ links, showAccepted, showRejected, visibleRelations }) {
+      this.augmentedLinks = links
+      this.showAcceptedLinks = showAccepted
+      this.showRejectedLinks = showRejected
+      this.visibleRelations = visibleRelations
     },
   },
 }
@@ -483,6 +506,10 @@ export default {
           <WorldKGMap
             :selected-ids="selectedCountryIds"
             :search-results="searchResults"
+            :augmented-links="augmentedLinks"
+            :show-accepted-links="showAcceptedLinks"
+            :show-rejected-links="showRejectedLinks"
+            :visible-relations="visibleRelations"
             @countries-loaded="onCountriesLoaded"
             @country-toggled="onCountryToggled"
           />
@@ -675,6 +702,7 @@ export default {
               v-else-if="activeTab === 'augmented'"
               :country-name="singleCountry.name"
               :snapshot-date="selectedSnapshotDate"
+              @links-toggle="onLinksToggle"
             />
 
             <!-- Spatial Layers tab -->

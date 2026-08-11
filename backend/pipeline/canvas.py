@@ -162,7 +162,6 @@ def _get_step_tasks():
         step_0f_prebuild_wikidata_ids,
         step_0l_enrich_worldkg_classes,
         step_0m_generate_osm_boundaries,
-        step_0n_backfill_partition_keys,
         step_0h_scan_embeddings,
         step_0h_copy_gb_to_uk,
         step_0i_prebuild_split_embeddings,
@@ -190,7 +189,6 @@ def _get_step_tasks():
         0.96: step_0f_prebuild_wikidata_ids,
         0.97: step_0l_enrich_worldkg_classes,       # Load WorldKG ontology TTL into Redis
         0.98: step_0m_generate_osm_boundaries,      # Generate OSM boundary data
-        0.99: step_0n_backfill_partition_keys,      # Backfill snapshot_id + country_code
         1: step_1_embed_osm_entities,
         2: step_2_harvest_wikidata,
         3: step_3_run_igea,
@@ -329,7 +327,6 @@ def run_planet_initialization(
     canvas_tasks.append(steps[0.96].s())  # prebuild_wikidata_ids
     canvas_tasks.append(steps[0.97].s())  # enrich_worldkg_classes — Load WorldKG ontology TTL into Redis
     canvas_tasks.append(steps[0.98].s())  # generate_osm_boundaries — Generate OSM boundary data
-    canvas_tasks.append(steps[0.99].s())  # backfill_partition_keys — Populate snapshot_id + country_code
 
     # Add a final callback that marks the PipelineRun as COMPLETED
     # and sends a pipeline_complete WebSocket message

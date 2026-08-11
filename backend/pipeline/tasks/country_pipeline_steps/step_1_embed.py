@@ -27,41 +27,13 @@ from pipeline.tasks.helper import (
 
 logger = logging.getLogger("pipeline")
 
-# Countries with >10M OSM entities where drop-indexes-during-load gives 3-5x
-# faster upserts.  See docs/plans/OSMENTITY_MONOLITH_OPTIMIZATION.md Phase 5.
-_LARGE_COUNTRIES = frozenset({
-    "AU", "CA", "US", "BR", "IN", "CN", "RU", "ID", "MX", "JP",
-    "DE", "FR", "ES", "IT", "PL", "TR", "AR", "CO", "ZA", "GB",
-})
-
-
-def _is_partitioned() -> bool:
-    """Runtime check: is semantic_search_osmentity a partitioned table?
-
-    This is the sole source of truth — no setting flag needed.
-    """
-    from django.db import connections
-    try:
-        with connections["vectors"].cursor() as cursor:
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_partitioned_table pt
-                    JOIN pg_class c ON c.oid = pt.partrelid
-                    WHERE c.relname = 'semantic_search_osmentity'
-                );
-            """)
-            return cursor.fetchone()[0]
-    except Exception:
-        return False
-
 
 def _should_drop_indexes_during_load(iso: str) -> bool:
     """Decide whether to drop/rebuild vector indexes during the bulk load.
 
     Controlled by the ``DROP_INDEXES_DURING_LOAD`` env var:
-      - ``auto`` (default): True when the table is partitioned (HNSW
-        maintenance per row is expensive even for small countries like CV).
-        Falls back to the large-country list for the monolith.
+      - ``auto`` (default): True — HNSW maintenance per row is
+        O(m * ef_construction), always drop + rebuild on partitioned tables.
       - ``true`` / ``1``:   Always drop/rebuild
       - ``false`` / ``0``:  Never drop/rebuild
     """
@@ -70,11 +42,7 @@ def _should_drop_indexes_during_load(iso: str) -> bool:
         return True
     if mode in ("false", "0", "no"):
         return False
-    # auto: on the partitioned table, HNSW indexes on leaf partitions make
-    # per-row upserts O(m * ef_construction) — always drop + rebuild.
-    if _is_partitioned():
-        return True
-    return iso.upper() in _LARGE_COUNTRIES
+    return True
 
 
 @pipeline_task(

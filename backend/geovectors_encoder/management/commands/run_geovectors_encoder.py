@@ -32,8 +32,7 @@ class Command(BaseCommand):
         if drop_indexes:
             self.stdout.write(
                 self.style.WARNING(
-                    'Dropping osmentity vector indexes before encoding (osmentity_gv_tags_ivfflat_idx, '
-                    'osmentity_gv_nle_ivfflat_idx)...'
+                    'Dropping osmentity vector indexes before encoding...'
                 )
             )
             call_command('drop_osmentity_vector_indexes')
@@ -45,8 +44,7 @@ class Command(BaseCommand):
             if drop_indexes:
                 self.stdout.write(
                     self.style.WARNING(
-                        'Recreating osmentity vector indexes after encoding '
-                        '(osmentity_gv_tags_ivfflat_idx, osmentity_gv_nle_ivfflat_idx)...'
+                        'Recreating osmentity vector indexes after encoding...'
                     )
                 )
                 call_command('create_osmentity_vector_indexes')

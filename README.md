@@ -21,7 +21,7 @@ The artifacts produced will be consumed by agents for geospatial reasoning ([pap
 
 Both are driven by Celery:
 
-1. **Planet Initialization Pipeline** — Runs once to initialize configs and primitives. See [Planet Initialization Pipeline](docs/Schematics/Planet_Initialization_Pipeline.md) and [WorldKG Primitives](docs/Schematics/WorkKG_Primities.md).
+1. **Planet Initialization Pipeline** — Runs once to initialize configs and primitives. See [Planet Initialization Architecture](docs/Schematics/Planet_Initialization_Architecture.md) and [WorldKG Primitives](docs/Schematics/WorkKG_Primities.md).
 2. **Country Pipeline** — Produces the artifacts above for a specific country (or synthetic territory).
 
 ## Country Pipeline Stages
@@ -200,7 +200,6 @@ choices can be traced back to the relevant chapter.
   Data validation across pipeline stages `[STATS:Ch2]`
     -> Row count assertions after each bulk upsert (e.g., 20K entities per batch in `vector_storage_service`).
     -> Partition pruning verification — queries with `snapshot_id` + `country_code` hit only the target leaf partition.
-    -> `verify_partition_parity` command checks row count consistency across the partition hierarchy.
 
 ---
 

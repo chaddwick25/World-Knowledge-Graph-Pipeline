@@ -137,4 +137,5 @@ urlpatterns = [
     # Augmented Data (Spatial Link Predictions + Augmentation Estimates)
     path('data/augmented-summary/<str:country_name>/', views_augmented_data.AugmentedDataSummaryView.as_view(), name='augmented_data_summary'),
     path('data/augmented-detail/<str:country_name>/', views_augmented_data.AugmentedDataDetailView.as_view(), name='augmented_data_detail'),
+    path('data/augmented-links-geom/<str:country_name>/', views_augmented_data.AugmentedLinksGeomView.as_view(), name='augmented_links_geom'),
 ]

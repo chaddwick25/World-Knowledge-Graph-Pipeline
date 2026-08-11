@@ -225,3 +225,211 @@ class AugmentedDataDetailView(APIView):
                 {'error': str(exc)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class AugmentedLinksGeomView(APIView):
+    """
+    GET /api/data/augmented-links-geom/{country_name}/
+
+    Returns accepted and rejected spatial link predictions with resolved
+    head/tail coordinates for map visualization. Links are sampled
+    proportionally per relation type (by count) so the map reflects the
+    true distribution, then ordered by normalized_score within each
+    relation. Total per set capped at ?limit= (default 500).
+
+    Response:
+        {
+            "accepted": [
+                {
+                    "head": {"lat": float, "lon": float, "osm_type": str, "osm_id": int},
+                    "tail": {"lat": float, "lon": float, "osm_type": str, "osm_id": int},
+                    "relation": str,
+                    "normalized_score": float,
+                },
+                ...
+            ],
+            "rejected": [ ... same structure ... ],
+            "total_accepted": int,
+            "total_rejected": int,
+            "returned_accepted": int,
+            "returned_rejected": int,
+        }
+
+    Query params:
+        snapshot_date - Optional snapshot date string (e.g. "2025_12_31").
+        limit         - Max links per set (default 500, max 2000).
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, country_name: str):
+        country_name = country_name.strip()
+        if not country_name:
+            return Response(
+                {'error': 'country_name is required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        snapshot_date = request.query_params.get('snapshot_date')
+
+        try:
+            limit = min(int(request.query_params.get('limit', 500)), 2000)
+        except (ValueError, TypeError):
+            limit = 500
+
+        try:
+            from django.db.models import Q
+            from igea.models import SpatialTripletScore, SpatialTripletScoreRejected
+            from api.services.augmented_data_service import AugmentedDataService
+            from worldkg_nca.models import OsmEntity
+
+            service = AugmentedDataService()
+            iso = service._resolve_iso(country_name)
+
+            country_filter = service._country_filter(country_name, iso)
+            snapshot_filter = service._snapshot_filter(snapshot_date)
+
+            def _sample_proportional(model, base_filter, total_limit):
+                """Sample links proportionally per relation type.
+
+                Instead of taking the top-N by score globally (which
+                over-represents relation types with higher scores), this
+                allocates the limit proportionally across relation types
+                by their count, then takes the top-scored links within
+                each relation's allocation.
+                """
+                from django.db.models import Count
+
+                base_qs = model.objects.filter(base_filter)
+
+                # Count per relation
+                rel_counts = (
+                    base_qs.values('relation')
+                    .annotate(c=Count('id'))
+                    .order_by('-c')
+                )
+                total = sum(r['c'] for r in rel_counts)
+                if total == 0:
+                    return []
+
+                # Allocate limit proportionally, minimum 1 per relation
+                links = []
+                for rc in rel_counts:
+                    alloc = max(1, round((rc['c'] / total) * total_limit))
+                    alloc = min(alloc, rc['c'])  # can't take more than exist
+                    rel_links = (
+                        base_qs.filter(relation=rc['relation'])
+                        .order_by('-normalized_score')[:alloc]
+                    )
+                    links.extend(rel_links)
+
+                # If proportional allocation underfills (rounding), top up
+                # from the highest-scoring remaining links
+                if len(links) < total_limit:
+                    already_ids = {l.id for l in links}
+                    extra = (
+                        base_qs.exclude(id__in=already_ids)
+                        .order_by('-normalized_score')[:total_limit - len(links)]
+                    )
+                    links.extend(extra)
+
+                return links
+
+            accepted_list = _sample_proportional(
+                SpatialTripletScore,
+                country_filter & Q(predicted=True) & snapshot_filter,
+                limit,
+            )
+            rejected_list = _sample_proportional(
+                SpatialTripletScoreRejected,
+                country_filter & snapshot_filter,
+                limit,
+            )
+
+            total_accepted = SpatialTripletScore.objects.filter(
+                country_filter & Q(predicted=True) & snapshot_filter
+            ).count()
+            total_rejected = SpatialTripletScoreRejected.objects.filter(
+                country_filter & snapshot_filter
+            ).count()
+
+            # Batch-resolve OsmEntity geometries for head and tail entities
+            def _resolve_geoms(links):
+                """Resolve (osm_type, osm_id) → (lat, lon) via OsmEntity.geom."""
+                ids = set()
+                for link in links:
+                    ids.add((link.head_osm_type, link.head_osm_id))
+                    ids.add((link.tail_osm_type, link.tail_osm_id))
+                if not ids:
+                    return {}
+
+                # Build a Q filter for all referenced entities
+                # Use OR of (osm_type=X, osm_id=Y) pairs
+                q_filter = Q()
+                for osm_type, osm_id in ids:
+                    q_filter |= Q(osm_type=osm_type, osm_id=osm_id)
+
+                geom_map = {}
+                for entity in OsmEntity.objects.filter(q_filter).only(
+                    'osm_type', 'osm_id', 'geom'
+                ):
+                    if entity.geom:
+                        geom_map[(entity.osm_type, entity.osm_id)] = {
+                            'lat': entity.geom.y,
+                            'lon': entity.geom.x,
+                        }
+                return geom_map
+
+            accepted_geom_map = _resolve_geoms(accepted_list)
+            rejected_geom_map = _resolve_geoms(rejected_list)
+
+            def _serialize_links(links, geom_map):
+                result = []
+                for link in links:
+                    head_key = (link.head_osm_type, link.head_osm_id)
+                    tail_key = (link.tail_osm_type, link.tail_osm_id)
+                    head_geom = geom_map.get(head_key)
+                    tail_geom = geom_map.get(tail_key)
+                    # Skip links where either endpoint has no geometry
+                    if not head_geom or not tail_geom:
+                        continue
+                    result.append({
+                        'head': {
+                            'lat': head_geom['lat'],
+                            'lon': head_geom['lon'],
+                            'osm_type': link.head_osm_type,
+                            'osm_id': link.head_osm_id,
+                        },
+                        'tail': {
+                            'lat': tail_geom['lat'],
+                            'lon': tail_geom['lon'],
+                            'osm_type': link.tail_osm_type,
+                            'osm_id': link.tail_osm_id,
+                        },
+                        'relation': link.relation,
+                        'normalized_score': round(link.normalized_score, 4),
+                    })
+                return result
+
+            accepted_serialized = _serialize_links(accepted_list, accepted_geom_map)
+            rejected_serialized = _serialize_links(rejected_list, rejected_geom_map)
+
+            return Response({
+                'country_name': country_name,
+                'iso': iso,
+                'accepted': accepted_serialized,
+                'rejected': rejected_serialized,
+                'total_accepted': total_accepted,
+                'total_rejected': total_rejected,
+                'returned_accepted': len(accepted_serialized),
+                'returned_rejected': len(rejected_serialized),
+            })
+
+        except Exception as exc:
+            logger.error(
+                f"AugmentedLinksGeomView error for {country_name}: {exc}",
+                exc_info=True,
+            )
+            return Response(
+                {'error': str(exc)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

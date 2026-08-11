@@ -1,6 +1,23 @@
 <script>
 import axios from 'axios'
 
+// ── Relation type color map (must match WorldKGMap.vue) ──────────────────
+const RELATION_COLORS = {
+  addrCity:        '#8b5cf6',  // violet-500
+  addrPlace:       '#10b981',  // emerald-500
+  addrNeighbour:   '#06b6d4',  // cyan-500
+  addrSuburb:      '#84cc16',  // lime-500
+  addrDistrict:    '#3b82f6',  // blue-500
+  addrState:       '#ef4444',  // red-500
+  addrProvince:    '#ec4899',  // pink-500
+  addrHamlet:      '#f59e0b',  // amber-500
+}
+const DEFAULT_RELATION_COLOR = '#6b7280'
+
+function getRelationColor(relation) {
+  return RELATION_COLORS[relation] || DEFAULT_RELATION_COLOR
+}
+
 export default {
   name: 'AugmentedDataPanel',
   props: {
@@ -13,53 +30,68 @@ export default {
       default: null,
     },
   },
+  emits: ['links-toggle'],
   data() {
     return {
       summary: null,
-      detail: null,
       loading: false,
-      loadingDetail: false,
       error: null,
-      activeView: 'summary', // 'summary' | 'detail'
-      detailPage: 1,
-      detailPageSize: 20,
-      detailTotalAccepted: 0,
-      detailTotalRejected: 0,
+      // Map visualization toggle state
+      showAcceptedLinks: false,
+      showRejectedLinks: false,
+      // Per-relation visibility (null = all visible; a Set = only those in the set)
+      visibleRelations: null,
+      // Active subgraph (slug) — highlighted border
+      activeSubgraph: null,
+      // Link geometries for map rendering
+      linkGeom: null,
+      loadingLinks: false,
     }
   },
   computed: {
-    maxRelationCount() {
-      if (!this.summary?.relation_distribution?.length) return 1
-      return this.summary.relation_distribution[0].count
+    // Relations ordered by the RELATION_COLORS key sequence (the default
+    // distribution order), not by count. Unknown relations go last.
+    sortedRelations() {
+      if (!this.summary?.relation_distribution?.length) return []
+      const order = Object.keys(RELATION_COLORS)
+      return [...this.summary.relation_distribution].sort((a, b) => {
+        const ia = order.indexOf(a.relation)
+        const ib = order.indexOf(b.relation)
+        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+      })
     },
-    maxSubgraphCount() {
-      if (!this.summary?.subgraph_groups?.length) return 1
-      return Math.max(...this.summary.subgraph_groups.map((sg) => sg.accepted_count + sg.rejected_count))
+    maxRelationCount() {
+      if (!this.sortedRelations.length) return 1
+      return this.sortedRelations[0].count
     },
     acceptedRate() {
       if (!this.summary) return 0
       return (this.summary.acceptance_rate * 100).toFixed(1)
     },
-    displayedDetailLinks() {
-      if (!this.detail) return []
-      const start = (this.detailPage - 1) * this.detailPageSize
-      const end = start + this.detailPageSize
-      return [...(this.detail.accepted_links || []), ...(this.detail.rejected_links || [])].slice(start, end)
-    },
   },
   watch: {
     countryName() {
       this.fetchSummary()
+      this.fetchLinkGeom()
+      // Reset toggles on country change
+      this.showAcceptedLinks = false
+      this.showRejectedLinks = false
+      this.visibleRelations = null
     },
     snapshotDate() {
       this.fetchSummary()
-      if (this.activeView === 'detail') this.fetchDetail(this.detailPage)
+      this.fetchLinkGeom()
     },
   },
   mounted() {
     if (this.countryName) {
       this.fetchSummary()
+      this.fetchLinkGeom()
     }
+  },
+  beforeUnmount() {
+    // Clear map links when leaving the Augmented tab
+    this.$emit('links-toggle', { links: null, showAccepted: false, showRejected: false, visibleRelations: null })
   },
   methods: {
     async fetchSummary() {
@@ -80,52 +112,75 @@ export default {
         this.loading = false
       }
     },
-    async fetchDetail(page = 1) {
+    async fetchLinkGeom() {
       if (!this.countryName) return
-      this.loadingDetail = true
-      this.detailPage = page
+      this.loadingLinks = true
       try {
         const encoded = encodeURIComponent(this.countryName)
-        const params = { page: page, page_size: this.detailPageSize }
+        const params = { limit: 500 }
         if (this.snapshotDate) params.snapshot_date = this.snapshotDate
-        const { data } = await axios.get(`/data/augmented-detail/${encoded}/`, {
-          params,
-        })
-        this.detail = data
-        this.detailTotalAccepted = data.total_accepted || 0
-        this.detailTotalRejected = data.total_rejected || 0
+        const { data } = await axios.get(`/data/augmented-links-geom/${encoded}/`, { params })
+        this.linkGeom = data
+        // Re-emit with updated link data
+        this.emitToggle()
       } catch (e) {
-        console.error('Error fetching augmented detail:', e)
+        console.error('Error fetching augmented link geometries:', e)
+        this.linkGeom = null
       } finally {
-        this.loadingDetail = false
+        this.loadingLinks = false
       }
     },
-    switchView(view) {
-      this.activeView = view
-      if (view === 'detail' && !this.detail) {
-        this.fetchDetail()
+    toggleAccepted() {
+      this.showAcceptedLinks = !this.showAcceptedLinks
+      this.emitToggle()
+    },
+    toggleRejected() {
+      this.showRejectedLinks = !this.showRejectedLinks
+      this.emitToggle()
+    },
+    toggleRelation(relation) {
+      // null = all visible. On first toggle of any relation, initialize
+      // the set with all relations visible, then toggle the clicked one.
+      if (this.visibleRelations === null) {
+        const all = new Set()
+        if (this.summary?.relation_distribution) {
+          for (const rel of this.summary.relation_distribution) {
+            all.add(rel.relation)
+          }
+        }
+        this.visibleRelations = all
       }
+      if (this.visibleRelations.has(relation)) {
+        this.visibleRelations.delete(relation)
+      } else {
+        this.visibleRelations.add(relation)
+      }
+      // Trigger reactivity — Set mutations don't trigger Vue 3 reactivity
+      this.visibleRelations = new Set(this.visibleRelations)
+      this.emitToggle()
+    },
+    isRelationVisible(relation) {
+      if (this.visibleRelations === null) return true
+      return this.visibleRelations.has(relation)
+    },
+    emitToggle() {
+      this.$emit('links-toggle', {
+        links: this.linkGeom,
+        showAccepted: this.showAcceptedLinks,
+        showRejected: this.showRejectedLinks,
+        visibleRelations: this.visibleRelations ? Array.from(this.visibleRelations) : null,
+      })
     },
     scoreBarWidth(count) {
       if (!this.summary?.score_distribution?.counts) return '0%'
       const max = Math.max(...this.summary.score_distribution.counts, 1)
       return `${(count / max) * 100}%`
     },
-    subgraphBarWidth(sg) {
-      const total = sg.accepted_count + sg.rejected_count
-      return `${(total / this.maxSubgraphCount) * 100}%`
+    relationColor(relation) {
+      return getRelationColor(relation)
     },
-    acceptedSubgraphWidth(sg) {
-      const total = sg.accepted_count + sg.rejected_count
-      if (total === 0) return '0%'
-      return `${(sg.accepted_count / total) * 100}%`
-    },
-    prevPage() {
-      if (this.detailPage > 1) this.fetchDetail(this.detailPage - 1)
-    },
-    nextPage() {
-      const total = this.detailTotalAccepted + this.detailTotalRejected
-      if (this.detailPage * this.detailPageSize < total) this.fetchDetail(this.detailPage + 1)
+    toggleSubgraph(slug) {
+      this.activeSubgraph = this.activeSubgraph === slug ? null : slug
     },
   },
 }
@@ -149,22 +204,43 @@ export default {
 
     <!-- Summary content -->
     <div v-else class="augmented__content">
-      <!-- Tab switcher -->
-      <div class="augmented__tabs">
+      <!-- Map visualization toggle buttons -->
+      <div class="augmented__map-toggles">
         <button
-          class="augmented__tab"
-          :class="{ 'augmented__tab--active': activeView === 'summary' }"
-          @click="switchView('summary')"
-        >Summary</button>
+          class="augmented__map-btn"
+          :class="{ 'augmented__map-btn--active-accepted': showAcceptedLinks }"
+          :disabled="loadingLinks || !linkGeom?.accepted?.length"
+          @click="toggleAccepted"
+        >
+          <span class="augmented__map-btn-dot augmented__map-btn-dot--accepted"></span>
+          Accepted
+          <small v-if="linkGeom" class="augmented__map-btn-count">
+            {{ linkGeom.returned_accepted }}/{{ linkGeom.total_accepted }}
+          </small>
+        </button>
         <button
-          class="augmented__tab"
-          :class="{ 'augmented__tab--active': activeView === 'detail' }"
-          @click="switchView('detail')"
-        >Detail</button>
+          class="augmented__map-btn"
+          :class="{ 'augmented__map-btn--active-rejected': showRejectedLinks }"
+          :disabled="loadingLinks || !linkGeom?.rejected?.length"
+          @click="toggleRejected"
+        >
+          <span class="augmented__map-btn-dot augmented__map-btn-dot--rejected"></span>
+          Rejected
+          <small v-if="linkGeom" class="augmented__map-btn-count">
+            {{ linkGeom.returned_rejected }}/{{ linkGeom.total_rejected }}
+          </small>
+        </button>
       </div>
+      <p v-if="loadingLinks" class="augmented__hint augmented__hint--small">
+        Loading link geometries…
+      </p>
+      <p v-else-if="showAcceptedLinks || showRejectedLinks" class="augmented__hint augmented__hint--small">
+        {{ showAcceptedLinks ? 'Accepted' : '' }}{{ showAcceptedLinks && showRejectedLinks ? ' & ' : '' }}{{ showRejectedLinks ? 'Rejected' : '' }}
+        links shown on map{{ (showAcceptedLinks && linkGeom?.returned_accepted < linkGeom?.total_accepted) || (showRejectedLinks && linkGeom?.returned_rejected < linkGeom?.total_rejected) ? ' (top 500 by score)' : '' }}
+      </p>
 
-      <!-- ── Summary View ── -->
-      <div v-if="activeView === 'summary'" class="augmented__body">
+      <!-- ── Summary statistics (always visible) ── -->
+      <div class="augmented__body">
         <!-- Top-level metrics -->
         <div class="augmented__metrics">
           <div class="metric">
@@ -234,12 +310,20 @@ export default {
           <h4 class="augmented__section-title">Top Relations</h4>
           <div class="relations">
             <div
-              v-for="(rel, idx) in summary.relation_distribution.slice(0, 8)"
+              v-for="(rel, idx) in sortedRelations"
               :key="idx"
               class="relations__row"
+              :class="{ 'relations__row--off': !isRelationVisible(rel.relation) }"
+              @click="toggleRelation(rel.relation)"
             >
               <div class="relations__header">
-                <span class="relations__name">{{ rel.relation }}</span>
+                <span class="relations__name">
+                  <span
+                    class="relations__dot"
+                    :style="{ background: relationColor(rel.relation) }"
+                  ></span>
+                  {{ rel.relation }}
+                </span>
                 <span class="relations__meta">
                   {{ rel.count.toLocaleString() }} ·
                   {{ (rel.acceptance_rate * 100).toFixed(0) }}%
@@ -247,45 +331,41 @@ export default {
               </div>
               <div class="relations__bar-track">
                 <div
-                  class="relations__bar relations__bar--accepted"
-                  :style="{ width: `${(rel.accepted / rel.count) * 100}%` }"
+                  class="relations__bar"
+                  :style="{
+                    width: `${(rel.accepted / rel.count) * 100}%`,
+                    background: relationColor(rel.relation),
+                  }"
                 />
               </div>
             </div>
           </div>
+          <p class="augmented__hint augmented__hint--small">
+            Click a relation to toggle it on the map
+          </p>
         </div>
 
         <!-- Subgraph groups -->
         <div v-if="summary.subgraph_groups?.length" class="augmented__section">
           <h4 class="augmented__section-title">Per Subgraph</h4>
           <div class="subgraphs">
-            <div
+            <button
               v-for="(sg, idx) in summary.subgraph_groups"
               :key="idx"
               class="subgraphs__card"
+              :class="{ 'subgraphs__card--active': activeSubgraph === sg.subgraph_slug }"
+              @click="toggleSubgraph(sg.subgraph_slug)"
             >
-              <div class="subgraphs__header">
-                <span class="subgraphs__name">{{ sg.subgraph_name }}</span>
-              </div>
-              <div class="subgraphs__stats">
+              <span class="subgraphs__name">{{ sg.subgraph_name }}</span>
+              <span class="subgraphs__stats">
                 <span class="subgraphs__stat subgraphs__stat--success">
                   {{ sg.accepted_count.toLocaleString() }} accepted
                 </span>
                 <span class="subgraphs__stat subgraphs__stat--danger">
                   {{ sg.rejected_count.toLocaleString() }} rejected
                 </span>
-              </div>
-              <div class="relations__bar-track subgraphs__bar-track">
-                <div
-                  v-if="sg.accepted_count + sg.rejected_count > 0"
-                  class="relations__bar relations__bar--accepted"
-                  :style="{ width: acceptedSubgraphWidth(sg) }"
-                />
-              </div>
-              <div v-if="sg.avg_confidence" class="subgraphs__confidence">
-                Avg confidence: {{ (sg.avg_confidence * 100).toFixed(1) }}%
-              </div>
-            </div>
+              </span>
+            </button>
           </div>
         </div>
 
@@ -331,72 +411,6 @@ export default {
           </div>
         </div>
       </div>
-
-      <!-- ── Detail View ── -->
-      <div v-else class="augmented__body">
-        <!-- Loading -->
-        <div v-if="loadingDetail" class="augmented__center">
-          <div class="spinner"></div>
-          <p class="augmented__hint">Loading detail…</p>
-        </div>
-
-        <div v-else-if="detail" class="augmented__detail">
-          <div class="augmented__metrics">
-            <div class="metric">
-              <div class="metric__value metric__value--accent">{{ detail.total_accepted.toLocaleString() }}</div>
-              <div class="metric__label">Accepted</div>
-            </div>
-            <div class="metric">
-              <div class="metric__value metric__value--danger">{{ detail.total_rejected.toLocaleString() }}</div>
-              <div class="metric__label">Rejected</div>
-            </div>
-          </div>
-
-          <!-- Accepted links -->
-          <div class="augmented__section">
-            <h4 class="augmented__section-title">Accepted Links (page {{ detailPage }})</h4>
-            <div v-if="detail.accepted_links?.length" class="detail-list">
-              <div
-                v-for="link in detail.accepted_links"
-                :key="link.id"
-                class="detail-row"
-              >
-                <div class="detail-row__header">
-                  <span class="detail-row__relation">{{ link.relation }}</span>
-                  <span class="detail-row__score">score: {{ (link.normalized_score * 100).toFixed(1) }}%</span>
-                  <span class="detail-row__type detail-row__type--{{ link.dominant_type }}">{{ link.dominant_type }}</span>
-                </div>
-                <div class="detail-row__ids">
-                  <code>{{ link.head_osm_type }}/{{ link.head_osm_id }}</code>
-                  <span class="detail-row__arrow">→</span>
-                  <code>{{ link.tail_osm_type }}/{{ link.tail_osm_id }}</code>
-                </div>
-                <div class="detail-row__scores">
-                  <span>geo: {{ link.geo_score.toFixed(3) }}</span>
-                  <span>name: {{ link.name_score.toFixed(3) }}</span>
-                  <span>class: {{ link.topo_score.toFixed(3) }}</span>
-                </div>
-              </div>
-            </div>
-            <p v-else class="augmented__hint">No accepted links on this page.</p>
-          </div>
-
-          <!-- Pagination -->
-          <div class="augmented__pagination">
-            <button
-              class="augmented__page-btn"
-              :disabled="detailPage <= 1"
-              @click="prevPage"
-            >← Prev</button>
-            <span class="augmented__page-info">Page {{ detailPage }}</span>
-            <button
-              class="augmented__page-btn"
-              :disabled="detailPage * detailPageSize >= (detail.total_accepted + detail.total_rejected)"
-              @click="nextPage"
-            >Next →</button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -424,6 +438,12 @@ export default {
   text-align: center;
 }
 
+.augmented__hint--small {
+  font-size: 0.68rem;
+  text-align: left;
+  padding: 0 0.2rem;
+}
+
 .augmented__error {
   margin: 0;
   font-size: 0.78rem;
@@ -433,34 +453,70 @@ export default {
   border-radius: 0.4rem;
 }
 
-.augmented__tabs {
+/* ── Map toggle buttons ── */
+.augmented__map-toggles {
   display: flex;
-  gap: 0.2rem;
-  background: rgba(15, 23, 42, 0.6);
-  border-radius: 0.4rem;
-  padding: 0.15rem;
+  gap: 0.4rem;
 }
 
-.augmented__tab {
+.augmented__map-btn {
   flex: 1;
-  padding: 0.25rem 0.3rem;
-  border: none;
-  border-radius: 0.3rem;
-  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #1f2937;
+  border-radius: 0.4rem;
+  background: #020617;
   color: #9ca3af;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.15s;
 }
 
-.augmented__tab:hover {
-  background: rgba(75, 85, 99, 0.3);
+.augmented__map-btn:hover:not(:disabled) {
+  border-color: #374151;
+  color: #d1d5db;
 }
 
-.augmented__tab--active {
-  background: #1f2937;
-  color: #e5e7eb;
-  font-weight: 600;
+.augmented__map-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.augmented__map-btn--active-accepted {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.12);
+  color: #86efac;
+}
+
+.augmented__map-btn--active-rejected {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+}
+
+.augmented__map-btn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.augmented__map-btn-dot--accepted {
+  background: #22c55e;
+}
+
+.augmented__map-btn-dot--rejected {
+  background: #ef4444;
+}
+
+.augmented__map-btn-count {
+  margin-left: auto;
+  font-size: 0.62rem;
+  color: #6b7280;
+  font-weight: 400;
 }
 
 .augmented__body {
@@ -584,6 +640,22 @@ export default {
 
 .relations__row {
   margin-bottom: 0.4rem;
+  padding: 0.2rem 0.3rem;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.relations__row:hover {
+  background: rgba(55, 65, 81, 0.3);
+}
+
+.relations__row--off {
+  opacity: 0.35;
+}
+
+.relations__row--off .relations__dot {
+  filter: grayscale(1);
 }
 
 .relations__header {
@@ -597,6 +669,16 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.relations__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .relations__meta {
@@ -617,10 +699,6 @@ export default {
   border-radius: 999px;
 }
 
-.relations__bar--accepted {
-  background: #22c55e;
-}
-
 /* Subgraphs */
 
 .subgraphs {
@@ -630,23 +708,48 @@ export default {
 }
 
 .subgraphs__card {
-  padding: 0.35rem 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0.5rem 0.4rem 0.55rem;
   border-radius: 0.4rem;
   background: rgba(15, 23, 42, 0.5);
   border: 1px solid #1f2937;
+  cursor: pointer;
+  transition: all 0.15s;
+  font: inherit;
+  text-align: left;
+  position: relative;
 }
 
-.subgraphs__header {
+.subgraphs__card:hover {
+  border-color: #374151;
+  background: rgba(31, 41, 55, 0.6);
+}
+
+.subgraphs__card--active {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.2);
+  box-shadow: inset 3px 0 0 #6366f1, 0 0 10px rgba(99, 102, 241, 0.35);
+}
+
+.subgraphs__card--active .subgraphs__name {
+  color: #c7d2fe;
+}
+
+.subgraphs__name {
   font-size: 0.75rem;
   font-weight: 600;
-  margin-bottom: 0.15rem;
+  color: #e5e7eb;
 }
 
 .subgraphs__stats {
   display: flex;
   gap: 0.5rem;
   font-size: 0.68rem;
-  margin-bottom: 0.2rem;
+  flex-shrink: 0;
 }
 
 .subgraphs__stat--success {
@@ -655,15 +758,6 @@ export default {
 
 .subgraphs__stat--danger {
   color: #ef4444;
-}
-
-.subgraphs__bar-track {
-  margin-bottom: 0.15rem;
-}
-
-.subgraphs__confidence {
-  font-size: 0.65rem;
-  color: #9ca3af;
 }
 
 /* Augmentation */
@@ -683,102 +777,6 @@ export default {
 
 .augment-relations .relations__row {
   margin-bottom: 0.2rem;
-}
-
-/* Detail */
-
-.detail-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.detail-row {
-  padding: 0.3rem 0.4rem;
-  border-radius: 0.35rem;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid #1f2937;
-}
-
-.detail-row__header {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.72rem;
-}
-
-.detail-row__relation {
-  font-weight: 600;
-  color: #e5e7eb;
-}
-
-.detail-row__score {
-  color: #60a5fa;
-}
-
-.detail-row__type {
-  padding: 0.05rem 0.3rem;
-  border-radius: 3px;
-  font-size: 0.6rem;
-  background: rgba(99, 102, 241, 0.15);
-  color: #818cf8;
-}
-
-.detail-row__ids {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  margin-top: 0.1rem;
-  font-size: 0.68rem;
-}
-
-.detail-row__ids code {
-  color: #9ca3af;
-  background: rgba(75, 85, 99, 0.2);
-  padding: 0.05rem 0.3rem;
-  border-radius: 3px;
-}
-
-.detail-row__arrow {
-  color: #6b7280;
-}
-
-.detail-row__scores {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.1rem;
-  font-size: 0.62rem;
-  color: #6b7280;
-}
-
-.augmented__pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 0.3rem;
-}
-
-.augmented__page-btn {
-  padding: 0.2rem 0.5rem;
-  border: 1px solid #374151;
-  border-radius: 0.35rem;
-  background: #020617;
-  color: #e5e7eb;
-  font-size: 0.7rem;
-  cursor: pointer;
-}
-
-.augmented__page-btn[disabled] {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.augmented__page-info {
-  font-size: 0.7rem;
-  color: #9ca3af;
 }
 
 /* Spinner */

@@ -242,23 +242,3 @@ def step_0m_generate_osm_boundaries(self, env: PlanetEnvelope) -> PlanetEnvelope
     """
     call_command("generate_osm_boundaries")
     return env
-
-
-@pipeline_task(
-    bind=True, base=PipelineTask,
-    name="step_0n_backfill_partition_keys",
-    max_retries=1, default_retry_delay=60,
-)
-@pipeline_step("backfill_partition_keys", PlanetEnvelope, 0.98)
-def step_0n_backfill_partition_keys(self, env: PlanetEnvelope) -> PlanetEnvelope:
-    """Step 0.98: Backfill snapshot_id + country_code on OsmEntity.
-
-    Runs after OSM boundaries are generated (step_0m) so that bbox data
-    is available for the spatial join.  Idempotent — only updates NULL rows.
-
-    On a fresh DB this is a no-op (no rows to backfill).  On a DB with
-    existing monolith data, it populates the partition keys needed for
-    ``create_country_partitions`` to route rows into the correct leaf.
-    """
-    call_command("backfill_partition_keys", force_country_code=True)
-    return env

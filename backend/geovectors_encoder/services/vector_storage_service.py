@@ -178,30 +178,16 @@ class VectorStorageService:
                     FROM STDIN WITH (FORMAT csv, DELIMITER '\t', NULL '\\N')
                 """, csv_buffer)
 
-                # Phase 6: include partition keys in INSERT.
-                # The ON CONFLICT target depends on whether the table is
-                # partitioned.  The runtime pg_partitioned_table check is
-                # the sole source of truth — no setting needed.
-                cursor.execute("""
-                    SELECT EXISTS (
-                        SELECT 1 FROM pg_partitioned_table pt
-                        JOIN pg_class c ON c.oid = pt.partrelid
-                        WHERE c.relname = 'semantic_search_osmentity'
-                    );
-                """)
-                is_partitioned = cursor.fetchone()[0]
-
+                # The ON CONFLICT target uses the 5-column unique constraint
+                # on the partitioned table.
                 conflict_target = (
                     "(osm_type, osm_id, gv_tags_version, snapshot_id, country_code)"
-                    if is_partitioned
-                    else "(osm_type, osm_id, gv_tags_version)"
                 )
 
-                # Phase 6: INSERT directly into the leaf partition when it
-                # exists.  This bypasses partition routing overhead, restoring
-                # monolith-level upsert performance (~3-5s per 20K batch).
+                # INSERT directly into the leaf partition when it exists.
+                # This bypasses partition routing overhead (~3-5s per 20K batch).
                 target_table = "semantic_search_osmentity"
-                if is_partitioned and self.snapshot_id and self.country_code:
+                if self.snapshot_id and self.country_code:
                     leaf = _resolve_leaf_partition(cursor, self.snapshot_id, self.country_code)
                     if leaf:
                         target_table = leaf
