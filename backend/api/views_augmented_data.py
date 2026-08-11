@@ -122,7 +122,6 @@ class AugmentedDataDetailView(APIView):
             from django.db.models import Q
             from igea.models import SpatialTripletScore, SpatialTripletScoreRejected
             from api.services.augmented_data_service import AugmentedDataService
-            from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
 
             service = AugmentedDataService()
             iso = service._resolve_iso(country_name)

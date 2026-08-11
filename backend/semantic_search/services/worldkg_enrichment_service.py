@@ -359,7 +359,7 @@ class WorldKGEnrichmentService:
                 )
         elif region:
             ***REMOVED*** resolve_country_bbox now pre-resolves QIDs, country names, and
-            ***REMOVED*** synthetic ISOs to real ISO codes via _resolve_iso_code_from_qid_or_name().
+            ***REMOVED*** synthetic ISOs to real ISO codes via resolve_iso_code().
             bbox = resolve_country_bbox(region, None)
 
             if bbox:
@@ -505,7 +505,7 @@ class WorldKGEnrichmentService:
             ***REMOVED*** Mirror the region to bbox resolution used in batch_enrich_region
             ***REMOVED*** so that per-country distributions align with enrichment scope.
             ***REMOVED*** resolve_country_bbox now pre-resolves QIDs, country names, and
-            ***REMOVED*** synthetic ISOs to real ISO codes via _resolve_iso_code_from_qid_or_name().
+            ***REMOVED*** synthetic ISOs to real ISO codes via resolve_iso_code().
             bbox = resolve_country_bbox(region, None)
 
             if bbox:
