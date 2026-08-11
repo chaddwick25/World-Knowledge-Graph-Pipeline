@@ -34,6 +34,51 @@ def normalize_continent_slug(name) -> str:
         return ""
     return name.lower().replace(' ', '_').replace('-', '_')
 
+
+def find_polygon_file(country_name: str) -> Optional[str]:
+    """
+    Find a polygon (.poly) file for a country by searching the polygon files
+    directory with multiple naming patterns, then falling back to the
+    PolygonFile DB model.
+
+    Consolidates the duplicate ``_find_polygon_file`` methods that previously
+    lived in ``api/country_search_views.py`` and ``api/preprocessing_views.py``.
+
+    Args:
+        country_name: Country name (e.g., "Belize")
+
+    Returns:
+        Path to the polygon file as a string, or None if not found.
+    """
+    import glob
+
+    polygon_base = getattr(settings, 'POLYGON_FILES_DIR', 'data/osm_polygon_files')
+
+    patterns = [
+        f"{polygon_base}/**/{country_name.lower()}.poly",
+        f"{polygon_base}/**/{normalize_country_slug(country_name)}.poly",
+        f"{polygon_base}/**/{country_name.lower().replace(' ', '-')}.poly",
+    ]
+
+    for pattern in patterns:
+        matches = glob.glob(pattern, recursive=True)
+        if matches:
+            return matches[0]
+
+    # Try PolygonFile model
+    try:
+        from extraction.models import PolygonFile
+        poly_file = PolygonFile.objects.filter(
+            path__icontains=country_name.lower()
+        ).first()
+        if poly_file:
+            return poly_file.path
+    except Exception as e:
+        logger.warning(f"PolygonFile lookup failed for {country_name}: {e}")
+
+    return None
+
+
 class RegionalPathService:
     """
     Service for managing regional PBF file paths.

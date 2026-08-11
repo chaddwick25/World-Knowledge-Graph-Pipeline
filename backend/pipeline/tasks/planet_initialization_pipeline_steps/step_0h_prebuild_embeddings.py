@@ -28,8 +28,6 @@ from pipeline.celery_app import (
     PipelineTask,
 )
 
-# TODO: replace the hard-coded paths with some type of object that has the relavant configs
-# Maybe use some type of dataclass facade to create the structure of the object reference
 logger = logging.getLogger("pipeline")
 
 @pipeline_task(
@@ -103,7 +101,7 @@ def step_0i_prebuild_split_embeddings(self, env: PlanetEnvelope) -> PlanetEnvelo
     for 50-100x I/O speedup, then cleans up after completion.
     """
     from extraction.services.embedding_split_service import EmbeddingSplitService
-    continents_root = Path(getattr(settings, 'CONTINENTS_ROOT', '/app/data/OSM-PBF-FILES/osm_wikidata_extractions/continents'))
+    continents_root = Path(settings.CONTINENTS_ROOT) if settings.CONTINENTS_ROOT else Path(Path(settings.BASE_DATA_DIR) / 'OSM-PBF-FILES' / 'osm_wikidata_extractions' / 'continents') if settings.BASE_DATA_DIR else Path('/app/data/OSM-PBF-FILES/osm_wikidata_extractions/continents')
     summary = EmbeddingSplitService(
         embeddings_root=Path(settings.EMBEDDINGS_ROOT),
         continents_root=continents_root,

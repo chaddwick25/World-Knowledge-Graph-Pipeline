@@ -43,9 +43,9 @@ class WorldKGOntologyService:
     
     def __init__(self):
         self.redis_client = redis.Redis(
-            host=getattr(settings, 'REDIS_HOST', 'localhost'),
-            port=getattr(settings, 'REDIS_PORT', 6379),
-            db=getattr(settings, 'WORLDKG_REDIS_DB', 2),
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=settings.WORLDKG_REDIS_DB,
             decode_responses=True
         )
         self._cache_prefix = "worldkg"

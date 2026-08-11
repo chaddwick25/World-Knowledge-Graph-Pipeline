@@ -30,7 +30,7 @@ class GraphAssetService:
     """
     
     def __init__(self):
-        self.base_dir = Path(getattr(settings, 'GRAPH_ASSETS_DIR', '/data/graph-assets'))
+        self.base_dir = Path(getattr(settings, 'GRAPH_ASSETS_DIR', str(Path(settings.BASE_DATA_DIR) / 'graph-assets') if settings.BASE_DATA_DIR else '/data/graph-assets'))
         self.base_dir.mkdir(parents=True, exist_ok=True)
     
     def generate_graph_assets_from_monthly(self, monthly_pbf_id: str, country_name: str) -> dict:

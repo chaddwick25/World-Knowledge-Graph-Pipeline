@@ -455,6 +455,7 @@ class PlanetInitializeView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        from django.conf import settings
         from pipeline.canvas import run_planet_initialization
 
         planet_pbf_path = request.data.get(
@@ -472,7 +473,7 @@ class PlanetInitializeView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        ws_url = f'ws://localhost:8000/ws/pipeline/{run_id}/'
+        ws_url = f'ws://{settings.WS_HOST}:{settings.WS_PORT}/ws/pipeline/{run_id}/'
 
         return Response({
             'pipeline_run_id': run_id,
@@ -571,31 +572,33 @@ class WorldKGPipelineV2StartView(APIView):
             settings, 'SINGLE_SNAPSHOT_DATE', '2025_12_31'
         )
 
-        # ── SnapshotJob gate ───────────────────────────────────────────
-        existing = SnapshotJob.objects.filter(
-            snapshot_date=snapshot_date, country_code__iexact=iso,
-        ).first()
-        if existing:
-            if existing.status == SnapshotJob.Status.RUNNING and not force:
-                return Response(
-                    {
-                        'error': 'Currently running',
-                        'snapshot_date': snapshot_date,
-                        'country_code': iso,
-                        'snapshot_job_id': str(existing.id),
-                    },
-                    status=status.HTTP_409_CONFLICT,
-                )
-            # COMPLETED with force=True → delete + re-run
-            # FAILED / stale PENDING → always allow re-run
-            existing.delete()
+        # ── SnapshotJob gate (atomic — prevents concurrent start races) ──
+        from django.db import transaction
+        with transaction.atomic():
+            existing = SnapshotJob.objects.select_for_update().filter(
+                snapshot_date=snapshot_date, country_code__iexact=iso,
+            ).first()
+            if existing:
+                if existing.status == SnapshotJob.Status.RUNNING and not force:
+                    return Response(
+                        {
+                            'error': 'Currently running',
+                            'snapshot_date': snapshot_date,
+                            'country_code': iso,
+                            'snapshot_job_id': str(existing.id),
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                # COMPLETED with force=True → delete + re-run
+                # FAILED / stale PENDING → always allow re-run
+                existing.delete()
 
-        job = SnapshotJob.objects.create(
-            snapshot_date=snapshot_date,
-            country_code=iso,
-            country_name=country_name,
-            status=SnapshotJob.Status.PENDING,
-        )
+            job = SnapshotJob.objects.create(
+                snapshot_date=snapshot_date,
+                country_code=iso,
+                country_name=country_name,
+                status=SnapshotJob.Status.PENDING,
+            )
 
         try:
             run_id = run_worldkg_pipeline(
@@ -627,7 +630,7 @@ class WorldKGPipelineV2StartView(APIView):
             'pipeline_run', 'status', 'started_at', 'celery_task_id',
         ])
 
-        ws_url = f'ws://localhost:8000/ws/pipeline/{run_id}/'
+        ws_url = f'ws://{settings.WS_HOST}:{settings.WS_PORT}/ws/pipeline/{run_id}/'
 
         return Response({
             'pipeline_run_id': run_id,

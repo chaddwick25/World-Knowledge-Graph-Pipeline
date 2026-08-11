@@ -583,8 +583,8 @@ def run_pbf_extraction_with_relation(source_pbf_path: str, relation_id: int, out
         if 'config_file' in locals() and os.path.exists(config_file.name):
             try:
                 os.unlink(config_file.name)
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Config file cleanup failed: {e}")
 
 
 def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, output_pbf_path: str, used_cores: set, job_id: str = None) -> dict:
@@ -762,8 +762,8 @@ def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, o
         try:
             if 'best_source' in locals():
                 cache_coordinator.concurrent_access.release_read_access(locals()['best_source'], job_id)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Cache read-access release failed: {e}")
         
         print(f"[Core {cpu_core_id}] Error during extraction: {e}")
         return metrics

@@ -1,10 +1,12 @@
 from django.db import models
 import uuid
 import os
+import logging
 from pathlib import Path
 from datetime import datetime
 from django.utils import timezone
 from django.contrib.postgres.fields import ArrayField
+logger = logging.getLogger(__name__)
 
 
 class PbfFile(models.Model):
@@ -168,8 +170,8 @@ class PbfFile(models.Model):
             metrics = self.osmiumdatasetmetrics_set.first()
             if metrics and metrics.temporal_coverage_end:
                 return metrics.temporal_coverage_end
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to get temporal coverage from metrics: {e}")
         
         if hasattr(settings, 'DEFAULT_TEMPORAL_RANGE_END'):
             return settings.DEFAULT_TEMPORAL_RANGE_END
@@ -743,12 +745,12 @@ class OSMWikiDataHierarchy(models.Model):
                             "base_dir": base_dir,
                             # TODO: move the polyfiles to the ssd drive(remember to test this E2E)
                             "directories": {
-                                "planet_pbf": "OSM-PBF-FILES/planet/",
-                                "osm_wikidata_extractions": "OSM-PBF-FILES/osm_wikidata_extractions/",
-                                "polyfiles": "data/osm_polygon_files/",
-                                "embeddings": "embeddings/",
+                                "planet_pbf": str(Path(settings.PLANET_OSM_FILE_PATH).parent) if settings.PLANET_OSM_FILE_PATH else "OSM-PBF-FILES/planet/",
+                                "osm_wikidata_extractions": str(settings.OSM_WIKIDATA_EXTRACTIONS_DIR) if settings.OSM_WIKIDATA_EXTRACTIONS_DIR else "OSM-PBF-FILES/osm_wikidata_extractions/",
+                                "polyfiles": str(settings.POLYGON_FILES_DIR) if settings.POLYGON_FILES_DIR else "data/osm_polygon_files/",
+                                "embeddings": str(settings.EMBEDDINGS_ROOT) if settings.EMBEDDINGS_ROOT else "embeddings/",
                                 "pickles": "pickles/",
-                                "logs": f"{project_root}/logs/"
+                                "logs": str(settings.LOGS_DIR) if settings.LOGS_DIR else f"{project_root}/logs/"
                             }
                         },
                         "parameters": {

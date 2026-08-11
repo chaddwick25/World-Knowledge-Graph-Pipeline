@@ -128,8 +128,9 @@ def _train_subgraph_gv_nle(
 
     import os
     import fcntl
+    import tempfile
 
-    lock_path = "/tmp/gpu_training.lock"
+    lock_path = os.path.join(tempfile.gettempdir(), "gpu_training.lock")
     lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)  # blocks until lock acquired

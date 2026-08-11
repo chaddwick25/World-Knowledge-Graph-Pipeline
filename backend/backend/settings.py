@@ -87,6 +87,10 @@ REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
 WORLDKG_REDIS_DB = int(os.getenv('WORLDKG_REDIS_DB', '2'))
 
+# WebSocket host/port for pipeline progress URLs (returned to frontend)
+WS_HOST = os.getenv('WS_HOST', 'localhost')
+WS_PORT = os.getenv('WS_PORT', '8000')
+
 # Single Snapshot Configuration for Temporal Pipeline
 # Used by Vue-triggered preprocessing to generate only one snapshot per country
 SINGLE_SNAPSHOT_DATE = os.getenv(

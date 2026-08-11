@@ -40,40 +40,14 @@ from api.models import (
 from extraction.services.extraction_service import run_pbf_extraction
 from extraction.services.graph_asset_service import GraphAssetService
 
-import glob
-from pathlib import Path
-from django.conf import settings
-import uuid
 
 logger = logging.getLogger(__name__)
 
 
 def _resolve_iso_from_country_name(country_name: str) -> str:
-    """
-    Resolve ISO code from country name using OSMWikiDataHierarchy.
-
-    Args:
-        country_name: Country name (e.g., "Ireland")
-
-    Returns:
-        ISO code (e.g., "IE") or None if not found
-    """
-    relations = get_country_relations_dict()
-    if not relations:
-        return None
-
-    search_term = normalize_country_slug(country_name)
-
-    for key, data in relations.items():
-        slug = normalize_country_slug(data.get('slug', ''))
-        name = normalize_country_slug(data.get('name', ''))
-
-        if slug == search_term or name == search_term or search_term in slug or slug in search_term:
-            # Prefer explicit iso_code field (ISO2/ISO3) when available; fall back to the dict key.
-            iso_code = (data.get('iso_code') or key or '').upper()
-            return iso_code or None
-
-    return None
+    """Resolve ISO code from country name (delegates to osm_wikidata_resolver)."""
+    from extraction.services.osm_wikidata_resolver import resolve_iso_from_country_name
+    return resolve_iso_from_country_name(country_name)
 
 
 class CountrySearchUpdateView(APIView):
@@ -367,8 +341,8 @@ class CountrySearchUpdateView(APIView):
                     if region_hierarchy and hasattr(region_hierarchy, 'corresponding_pbf'):
                         region_pbf = region_hierarchy.corresponding_pbf
                         logger.info(f"Found PBF via RegionHierarchy: {region_pbf.id}")
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"RegionHierarchy lookup failed for {country_name}: {e}")
             
             if region_pbf:
                 logger.info(f"Region extract created successfully: {region_pbf.path}")
@@ -381,33 +355,9 @@ class CountrySearchUpdateView(APIView):
             raise
     
     def _find_polygon_file(self, country_name):
-        """Find polygon file for country"""
-        # Search in polygon files directory
-        polygon_base = getattr(settings, 'POLYGON_FILES_DIR', 'data/osm_polygon_files')
-        
-        # Try different patterns
-        patterns = [
-            f"{polygon_base}/**/{country_name.lower()}.poly",
-            f"{polygon_base}/**/{normalize_country_slug(country_name)}.poly",
-            f"{polygon_base}/**/{country_name.lower().replace(' ', '-')}.poly",
-        ]
-        
-        for pattern in patterns:
-            matches = glob.glob(pattern, recursive=True)
-            if matches:
-                return matches[0]
-        
-        # Try PolygonFile model
-        try:
-            poly_file = PolygonFile.objects.filter(
-                path__icontains=country_name.lower()
-            ).first()
-            if poly_file:
-                return poly_file.path
-        except:
-            pass
-        
-        return None
+        """Find polygon file for country (delegates to regional_path_service)."""
+        from extraction.services.regional_path_service import find_polygon_file
+        return find_polygon_file(country_name)
     
     def _find_continent_for_country(self, country_name):
         """Find the appropriate continent PBF for a country by searching the hierarchy"""

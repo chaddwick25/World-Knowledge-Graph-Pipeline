@@ -278,8 +278,8 @@ class PBFCacheManager:
         try:
             self.save_cache_metadata()
             self.cleanup_memory_maps()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"PbfCacheManager cleanup failed: {e}")
 
 
 class ConcurrentPBFAccess:
