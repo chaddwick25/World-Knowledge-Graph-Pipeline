@@ -922,3 +922,37 @@ def get_country_by_name(country_name: str) -> Optional[dict]:
     except Exception as exc:
         logger.error(f"Failed to get country by name {country_name}: {exc}")
         return None
+
+
+def resolve_iso_from_country_name(country_name: str) -> Optional[str]:
+    """
+    Resolve an ISO code from a country name by matching against the
+    country_relations dict (slug / name fuzzy match).
+
+    This consolidates the duplicate ``_resolve_iso_from_country_name``
+    helpers that previously lived in ``api/country_search_views.py`` and
+    ``api/preprocessing_views.py``.
+
+    Args:
+        country_name: Country name (e.g., "Ireland")
+
+    Returns:
+        ISO code (e.g., "IE") or None if not found.
+    """
+    from extraction.services.regional_path_service import normalize_country_slug
+
+    relations = get_country_relations_dict()
+    if not relations:
+        return None
+
+    search_term = normalize_country_slug(country_name)
+
+    for key, data in relations.items():
+        slug = normalize_country_slug(data.get('slug', ''))
+        name = normalize_country_slug(data.get('name', ''))
+
+        if slug == search_term or name == search_term or search_term in slug or slug in search_term:
+            iso_code = (data.get('iso_code') or key or '').upper()
+            return iso_code or None
+
+    return None

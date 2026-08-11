@@ -142,8 +142,8 @@ class PbfTemporalAnalyzer:
                 try:
                     timestamp = datetime.fromisoformat(info['timestamp'].replace('Z', '+00:00'))
                     temporal_info['file_timestamp'] = timestamp
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Failed to parse timestamp from info: {e}")
             
             return temporal_info
             
@@ -200,8 +200,8 @@ class PbfTemporalAnalyzer:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode == 0:
                 return result.stdout.strip().split('\n')[0]
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to get osmium version: {e}")
         return 'unknown'
     
     def analyze_all_pbf_files(self, force_refresh: bool = False, pbf_type_filter: str = None):

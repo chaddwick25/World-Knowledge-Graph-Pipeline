@@ -9,7 +9,7 @@ aggregates results.
 from __future__ import annotations
 import logging
 from pathlib import Path
-from pipeline.tasks.helper import _log, _push_update
+from pipeline.tasks.helper import _log
 from pipeline.config import SubgraphConfig
 from pipeline.envelopes import CountryEnvelope
 from pipeline.task_decorator import pipeline_step
