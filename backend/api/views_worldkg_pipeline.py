@@ -15,60 +15,21 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 
-# NOTE: WorldKGPipelineService imported lazily — it triggers heavy Django app resolution.
+from extraction.services.osm_wikidata_resolver import resolve_iso_code
 from orchestration.models import ProcessingSession, Task, PipelineRun
 
 logger = logging.getLogger(__name__)
 
 
 class WorldKGPipelineStartView(APIView):
+    """DEPRECATED: Use WorldKGPipelineV2StartView (POST /api/worldkg-pipeline-v2/start/) instead."""
     permission_classes = [AllowAny]
 
     def post(self, request):
-        country_name = request.data.get('country_name', '').strip()
-        pbf_path = request.data.get('pbf_path', '')
-        skip_preflight = request.data.get('skip_preflight', False)
-
-        if not country_name:
-            return Response(
-                {'error': 'country_name is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        session = ProcessingSession.objects.create(
-            session_name=f'WorldKG Pipeline: {country_name}',
-            session_type='WORLDKG_PIPELINE',
-            status='IN_PROGRESS',
-            configuration={
-                'country_name': country_name,
-                'pbf_path': pbf_path,
-                'skip_preflight': skip_preflight,
-            }
+        return Response(
+            {'error': 'This endpoint is deprecated. Use POST /api/worldkg-pipeline-v2/start/ instead.'},
+            status=status.HTTP_410_GONE,
         )
-
-        Task.objects.create(
-            task_type=Task.TaskType.WORLDKG_PIPELINE,
-            processing_session=session,
-            status=Task.TaskStatus.IN_PROGRESS,
-            parameters={'country_name': country_name, 'pbf_path': pbf_path, 'skip_preflight': skip_preflight},
-        )
-
-        from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
-        svc = WorldKGPipelineService(
-            session_id=str(session.id),
-            country_name=country_name,
-            pbf_path=pbf_path or None,
-            skip_preflight=skip_preflight,
-        )
-        svc.run_in_background()
-
-        ws_url = f'ws://localhost:8000/ws/pipeline/{session.id}/'
-        return Response({
-            'session_id': str(session.id),
-            'ws_url': ws_url,
-            'country_name': country_name,
-            'status': 'started',
-        }, status=status.HTTP_202_ACCEPTED)
 
 
 class WorldKGPipelineStatusView(APIView):
@@ -124,9 +85,8 @@ class WorldKGPipelineSummaryView(APIView):
         snapshot_id = request.query_params.get('snapshot_id')
 
         # Build query - always filter by country_name (also try ISO code)
-        from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
         from django.db.models import Q
-        iso_code = WorldKGPipelineService._resolve_iso_code(country_name)
+        iso_code = resolve_iso_code(country_name)
         country_filter = Q(country_name__iexact=country_name)
         if iso_code and iso_code.upper() != country_name.upper():
             country_filter |= Q(country_name__iexact=iso_code)
@@ -288,9 +248,8 @@ class WorldKGPipelineRejectedSummaryView(APIView):
         snapshot_id = request.query_params.get('snapshot_id')
 
         # Build query - always filter by country_name (also try ISO code)
-        from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
         from django.db.models import Q
-        iso_code = WorldKGPipelineService._resolve_iso_code(country_name)
+        iso_code = resolve_iso_code(country_name)
         country_filter = Q(country_name__iexact=country_name)
         if iso_code and iso_code.upper() != country_name.upper():
             country_filter |= Q(country_name__iexact=iso_code)
@@ -371,8 +330,7 @@ class ValidationCostEstimateView(APIView):
         api_key_configured = bool(getattr(settings, 'GOOGLE_API_KEY', None))
 
         # Resolve country name to ISO code for DB query (DB stores ISO code)
-        from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
-        iso_code = WorldKGPipelineService._resolve_iso_code(country_name)
+        iso_code = resolve_iso_code(country_name)
         from django.db.models import Q
         country_filter = Q(country_name__iexact=country_name)
         if iso_code and iso_code.upper() != country_name.upper():
@@ -564,7 +522,6 @@ class WorldKGPipelineV2StartView(APIView):
 
     def post(self, request):
         from pipeline.canvas import run_worldkg_pipeline
-        from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
         from orchestration.models import (
             CountryPipelineProfile, EligibleCountry, SnapshotJob, PipelineRun,
         )
@@ -579,15 +536,15 @@ class WorldKGPipelineV2StartView(APIView):
             )
 
         # Resolve ISO code for the country.
-        # Order: CountryPipelineProfile → _resolve_iso_code → EligibleCountry
+        # Order: CountryPipelineProfile → resolve_iso_code → EligibleCountry
         profile = CountryPipelineProfile.objects.filter(
             canonical_name__iexact=country_name
         ).first()
         iso = profile.iso2 if profile else None
 
         if not iso:
-            # Try the legacy resolver (now also checks non-sovereign synthetic ISOs)
-            iso = WorldKGPipelineService._resolve_iso_code(country_name)
+            # Try the resolver (also checks non-sovereign synthetic ISOs)
+            iso = resolve_iso_code(country_name)
 
         if not iso:
             # Fallback: check EligibleCountry (covers split territories like Wales,

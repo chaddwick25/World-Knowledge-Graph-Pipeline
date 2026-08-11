@@ -336,7 +336,7 @@ class WorldKGEnrichmentService:
         elif region:
             # Fallback to ISO code / region name resolution
             # resolve_country_bbox now pre-resolves QIDs, country names, and
-            # synthetic ISOs to real ISO codes via _resolve_iso_code_from_qid_or_name().
+            # synthetic ISOs to real ISO codes via resolve_iso_code().
             bbox = resolve_country_bbox(region, None)
 
             if bbox:
@@ -462,7 +462,7 @@ class WorldKGEnrichmentService:
             bbox: Optional[Tuple[float, float, float, float]] = None
 
             # resolve_country_bbox now pre-resolves QIDs, country names, and
-            # synthetic ISOs to real ISO codes via _resolve_iso_code_from_qid_or_name().
+            # synthetic ISOs to real ISO codes via resolve_iso_code().
             bbox = resolve_country_bbox(region, None)
 
             if bbox:

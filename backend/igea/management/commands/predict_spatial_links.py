@@ -346,10 +346,10 @@ class Command(BaseCommand):
         head_entities = []
 
         # Pre-resolve country/ISO once instead of per-row to avoid redundant work
-        from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
+        from extraction.services.osm_wikidata_resolver import resolve_iso_code
         country_upper = country.upper() if country else None
         iso_code_for_tags = (
-            WorldKGPipelineService._resolve_iso_code(country).upper()
+            resolve_iso_code(country).upper()
             if country
             else None
         )

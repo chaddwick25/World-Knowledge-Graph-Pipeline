@@ -192,8 +192,8 @@ def expand_bbox_to_min_span(
 # Country bbox resolution (DB-only, no fallbacks)
 # ----------------------------------------------------------------------
 
-def _resolve_iso_code_from_qid_or_name(input_code: str) -> Optional[str]:
-    """Pre-resolve a QID or country name to a real ISO 3166-1 alpha-2 code.
+def resolve_iso_code(input_code: str) -> str:
+    """Resolve a QID or country name to a real ISO 3166-1 alpha-2 code.
 
     Handles three input forms:
       - QID (e.g. 'Q27')          -> looks up OSMWikiDataHierarchy.wikidata_id
@@ -205,9 +205,11 @@ def _resolve_iso_code_from_qid_or_name(input_code: str) -> Optional[str]:
       1. OSMWikiDataHierarchy + CountryPipelineProfile.iso2
       2. Non-sovereign synthetic registry (for territories like Wales/Scotland)
       3. get_country_relations_dict() cross-reference
+
+    Returns '' (empty string) if unresolvable, never None.
     """
     if not input_code:
-        return None
+        return ''
 
     code = input_code.strip().upper()
 
@@ -290,7 +292,7 @@ def _resolve_iso_code_from_qid_or_name(input_code: str) -> Optional[str]:
     except Exception:
         pass
 
-    return None
+    return ''
 
 
 def resolve_country_bbox(
@@ -300,7 +302,7 @@ def resolve_country_bbox(
     """Resolve a country to (min_lon, min_lat, max_lon, max_lat) from DB ground truth (cached).
 
     Resolution order:
-      0. Pre-resolve: QID / country name to real ISO code (see _resolve_iso_code_from_qid_or_name)
+      0. Pre-resolve: QID / country name to real ISO code (see resolve_iso_code)
       1. Explicit poly_file_path (.poly file)
       2. extraction.OsmBoundary DB record (by iso_code)
       3. CountryPipelineProfile.country_relations_payload.bbox (authoritative from country_relations.json)
@@ -331,7 +333,7 @@ def resolve_country_bbox(
 
     # -- Step 0: Pre-resolve QID / country name to a real ISO code ----------
     code = iso_code.strip().upper()
-    resolved_iso = _resolve_iso_code_from_qid_or_name(iso_code)
+    resolved_iso = resolve_iso_code(iso_code)
     if resolved_iso:
         code = resolved_iso
         logger.info(

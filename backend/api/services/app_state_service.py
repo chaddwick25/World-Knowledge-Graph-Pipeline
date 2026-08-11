@@ -357,5 +357,5 @@ class AppStateService:
         if profile and profile.iso2:
             return profile.iso2
 
-        from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
-        return WorldKGPipelineService._resolve_iso_code(country_name)
+        from extraction.services.osm_wikidata_resolver import resolve_iso_code
+        return resolve_iso_code(country_name)

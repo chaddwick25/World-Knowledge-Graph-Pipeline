@@ -19,7 +19,7 @@ from api.models import TemporalSnapshot, WorldKGClassDrift, WorldKGClassFingerpr
 from semantic_search.services.fasttext_service import FastTextEmbeddingService
 from extraction.services.osm_wikidata_resolver import resolve_country_bbox, get_country_by_name
 from worldkg_nca.services.link_candidate_service import WorldKGLinkCandidateService
-from worldkg_nca.services.pipeline_orchestrator import WorldKGPipelineService
+from extraction.services.osm_wikidata_resolver import resolve_iso_code
 from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 
 
@@ -651,7 +651,7 @@ def worldkg_semantic_triplet_search(request):
             iso_code = None
             resolved_iso = None
             try:
-                resolved_iso = WorldKGPipelineService._resolve_iso_code(country_code)
+                resolved_iso = resolve_iso_code(country_code)
             except Exception:
                 resolved_iso = None
 

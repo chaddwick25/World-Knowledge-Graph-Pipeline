@@ -19,7 +19,6 @@ from worldkg_nca.services.wikidata_service import (
     parse_poly_bbox,
     parse_poly_to_wkt,
     bbox_to_wkt,
-    ISO_BBOX_FALLBACK,
 )
 from extraction.services.regional_path_service import regional_path_service
 from extraction.services.osm_wikidata_resolver import get_country_relations_dict, populate_bbox_for_profile
@@ -320,20 +319,13 @@ class Command(BaseCommand):
                             f'GV-NLE: populate_bbox_for_profile failed for {code}: {exc}'
                         ))
 
-                # 2. Fallback to legacy ISO_BBOX_FALLBACK if canonical bbox missing
-                if not bbox:
-                    bbox = ISO_BBOX_FALLBACK.get(code)
-                    if bbox:
-                        self.stdout.write(self.style.WARNING(
-                            f'GV-NLE: Falling back to ISO_BBOX_FALLBACK for {code}: {bbox}'
-                        ))
-
+                # 2. No canonical bbox in DB — load all entities (no geo-filter)
                 if bbox:
                     strict_wkt = bbox_to_wkt(*bbox)
                 else:
                     self.stdout.write(self.style.WARNING(
-                        f'Country code "{country}" has no canonical bbox in CountryPipelineProfile '
-                        f'or ISO_BBOX_FALLBACK. Loading all entities (no geo-filter applied). '
+                        f'Country code "{country}" has no canonical bbox in CountryPipelineProfile. '
+                        f'Loading all entities (no geo-filter applied). '
                         f'Provide --poly-file for accurate filtering or run prebuild_worldkg_structure.'
                     ))
 

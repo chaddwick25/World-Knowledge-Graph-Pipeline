@@ -1,6 +1,5 @@
 """
 Wikidata Candidate Ingestion Service
-
 Harvests geographic entity candidates from the Wikidata SPARQL endpoint
 (https://query.wikidata.org/sparql) and converts them into the dict format
 expected by IterativeEntityAlignmentService.load_wikidata_candidates().
@@ -33,8 +32,6 @@ import requests
 from django.db import models
 
 from extraction.services import osm_wikidata_resolver
-from orchestration.models import CountryPipelineProfile
-
 logger = logging.getLogger(__name__)
 WIKIDATA_SPARQL_ENDPOINT = "https://query.wikidata.org/sparql"
 WIKIDATA_USER_AGENT = "EDAVectorSearchToolkit/1.0 (WorldKG-IGEA; contact via GitHub)"
@@ -105,60 +102,6 @@ def _sparql_request_with_retry(
             logger.error(f"SPARQL request failed: {exc}")
             return None
     return None
-
-# ISO 3166-1 alpha-2 → (min_lon, min_lat, max_lon, max_lat) bounding boxes.
-# Used as fallback when no PolygonFile DB record is available.
-# Coordinates cover the widest extent of each country including overseas territories
-# where applicable.  For production use, prefer .poly files for exact boundaries.
-# TODO: look into if we are using the hardcoded values
-ISO_BBOX_FALLBACK: Dict[str, Tuple[float, float, float, float]] = {
-    "DE": (5.87,  47.27, 15.04, 55.06),
-    "GB": (-8.62, 49.90,  1.77, 60.84),
-    "IE": (-10.5, 51.42, -5.30, 55.38),  # Ireland
-    "FR": (-4.59, 42.33,  8.23, 51.09),
-    "IT": (6.63,  36.65, 18.52, 47.09),
-    "US": (-124.85, 24.39, -66.89, 49.38),
-    "CA": (-141.0,  41.68, -52.62, 83.11),
-    "AU": (112.91, -43.74, 153.64, -10.41),
-    "NL": (3.36,  50.75,  7.23, 53.55),
-    "BE": (2.54,  49.50,  6.40, 51.50),
-    "AT": (9.53,  46.37, 17.16, 49.01),
-    "CH": (5.96,  45.82, 10.49, 47.81),
-    "MC": (7.40,  43.72,  7.44, 43.75),  # Monaco
-    "LU": (5.74,  49.44,  6.53, 50.18),  # Luxembourg
-    "ES": (-9.30, 35.95,  4.33, 43.79),
-    "PL": (14.12, 49.00, 24.15, 54.84),
-    "SE": (11.12, 55.34, 24.16, 69.06),
-    "NO": (4.99,  57.96, 31.29, 71.18),
-    "JP": (122.93, 24.25, 145.82, 45.52),
-    "CN": (73.56,  18.16, 134.77, 53.56),
-    "BR": (-73.98, -33.74, -28.85, 5.27),
-    "ZA": (16.45, -34.83, 32.89, -22.13),
-    "MZ": (30.20, -26.90, 40.80, -10.40),  # Mozambique
-    "NG": (2.69, 4.27,  14.68, 13.89),
-    "TZ": (29.34, -11.75, 40.44,  -0.99),
-    "BA": (15.73, 42.56, 19.62, 45.27),  # Bosnia and Herzegovina
-    # Caribbean / Central America
-    "JM": (-78.37, 17.70, -76.18, 18.53),
-    "CR": (-85.95, 8.03,  -82.56, 11.22),
-    "GT": (-92.24, 13.74, -88.22, 17.82),
-    "HN": (-89.36, 13.00, -83.15, 16.51),
-    "SV": (-90.13, 13.15, -87.69, 14.45),
-    "NI": (-87.69, 10.71, -82.60, 15.02),
-    "PA": (-83.05,  7.20, -77.16,  9.65),
-    "BZ": (-89.23, 15.89, -87.49, 18.49),
-    "CU": (-84.95, 19.83, -74.13, 23.27),
-    "HT": (-74.48, 18.03, -71.62, 20.09),
-    "DO": (-72.01, 17.47, -68.32, 19.93),
-    "PR": (-67.27, 17.88, -65.22, 18.52),
-    "TT": (-61.92, 10.03, -60.52, 10.90),
-    "MX": (-118.45, 14.53, -86.70, 32.72),
-    "KY": (-81.5, 19.2, -79.8, 19.8),
-    "TC": (-72.70, 20.93, -70.84, 22.18),
-    "VG": (-64.88, 18.32, -64.28, 18.78),
-    "VI": (-65.05, 17.65, -64.55, 18.45),
-    "BS": (-78.98, 20.59, -70.88, 27.04),  # Bahamas
-}
 
 
 class WikidataCandidateService:
@@ -279,7 +222,6 @@ class WikidataCandidateService:
         Bounding box resolution order:
           1. poly_file_path  → parse .poly file for exact bbox
           2. extraction.PolygonFile DB record (if Django ORM is available)
-          3. ISO_BBOX_FALLBACK lookup table
 
         Args:
             country_code:    ISO 3166-1 alpha-2 (e.g. 'DE', 'GB', 'NG').
@@ -295,8 +237,7 @@ class WikidataCandidateService:
         if bbox is None:
             logger.error(
                 f"WikidataCandidate: cannot resolve bbox for country '{country_code}'. "
-                f"Known ISO codes: {sorted(ISO_BBOX_FALLBACK.keys())}. "
-                f"Provide --poly-file or extend ISO_BBOX_FALLBACK."
+                f"Provide --poly-file"
             )
             return []
 
@@ -716,22 +657,3 @@ def _parse_wkt_point(wkt: str) -> Tuple[Optional[float], Optional[float]]:
         return lat, lon
     except ValueError:
         return None, None
-
-# TODO: look into this, it may be legacy code
-def _iso_to_name_hint(code: str) -> str:
-    """Map ISO 3166-1 alpha-2 code to a PolygonFile region_name fragment."""
-    hints = {
-        "DE": "germany",       "GB": "great-britain",  "FR": "france",
-        "IT": "italy",         "US": "united-states",  "CA": "canada",
-        "AU": "australia",     "NL": "netherlands",    "BE": "belgium",
-        "AT": "austria",       "CH": "switzerland",    "LU": "luxembourg",
-        "ES": "spain",
-        "PL": "poland",        "SE": "sweden",         "NO": "norway",
-        "JP": "japan",         "CN": "china",          "BR": "brazil",
-        "ZA": "south-africa",  "NG": "nigeria",        "TZ": "tanzania",
-        "JM": "jamaica",       "CR": "costa-rica",     "GT": "guatemala",
-        "HN": "honduras",      "SV": "el-salvador",    "NI": "nicaragua",
-        "PA": "panama",        "BZ": "belize",         "CU": "cuba",
-        "HT": "haiti",         "DO": "dominican-republic", "MX": "mexico",
-    }
-    return hints.get(code, code.lower())

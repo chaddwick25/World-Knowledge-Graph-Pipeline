@@ -40,13 +40,13 @@ class TestResolveIsoCodeFastPath:
     already being ISO codes rather than trying DB / slug lookups.
     """
 
-    # Patch the imports used inside _resolve_iso_code so we never hit the DB.
+    # Patch the imports used inside resolve_iso_code so we never hit the DB.
     # We still need to import the actual function.
     @pytest.fixture(autouse=True)
     def _patch_db(self):
         with patch.dict("sys.modules", {
-            "worldkg_nca.services.pipeline_orchestrator.OSMWikiDataHierarchy": MagicMock(),
-            "worldkg_nca.services.pipeline_orchestrator.CountryPipelineProfile": MagicMock(),
+            "extraction.services.osm_wikidata_resolver.OSMWikiDataHierarchy": MagicMock(),
+            "extraction.services.osm_wikidata_resolver.CountryPipelineProfile": MagicMock(),
         }):
             yield
 
@@ -363,33 +363,7 @@ class TestCountryEnvelopeSlugNormalization:
 
 
 # =============================================================================
-# 4. ISO_BBOX_FALLBACK  — all keys should use underscores
-# =============================================================================
-
-
-class TestIsoBboxFallbackConsistency:
-    """
-    ISO_BBOX_FALLBACK dict (used elsewhere) should use underscore keys
-    to be consistent with the normalised convention.
-    """
-
-    @pytest.mark.unit
-    def test_iso_bbox_fallback_no_hyphens(self):
-        """Ensure all keys in ISO_BBOX_FALLBACK use underscores."""
-        # We simulate the expected shape
-        fallback = {
-            "CV": (-25.6, 14.6, -22.4, 17.4),
-            "BZ": (-89.2, 15.9, -87.5, 18.5),
-            "JM": (-78.4, 17.7, -76.2, 18.6),
-        }
-        for key in fallback:
-            assert len(key) == 2 and key.isalpha(), (
-                f"ISO_BBOX_FALLBACK key {key!r} is not a 2-letter ISO code"
-            )
-
-
-# =============================================================================
-# 5. Regression: No "Could not resolve ISO code for: CV" warnings
+# 4. Regression: No "Could not resolve ISO code for: CV" warnings
 # =============================================================================
 
 
