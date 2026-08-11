@@ -768,29 +768,16 @@ class SearchUpdateOrchestrator:
 
                 ***REMOVED*** INSERT ... ON CONFLICT DO UPDATE, classifying insert vs
                 ***REMOVED*** update atomically via xmax (0 = inserted, >0 = updated).
-                ***REMOVED*** Phase 6: include country_code in INSERT.  The ON CONFLICT
-                ***REMOVED*** target depends on whether the table is partitioned.
-                ***REMOVED*** The runtime pg_partitioned_table check is the sole source
-                ***REMOVED*** of truth — no setting needed.
-                cursor.execute("""
-                    SELECT EXISTS (
-                        SELECT 1 FROM pg_partitioned_table pt
-                        JOIN pg_class c ON c.oid = pt.partrelid
-                        WHERE c.relname = 'semantic_search_osmentity'
-                    );
-                """)
-                is_partitioned = cursor.fetchone()[0]
-
+                ***REMOVED*** The ON CONFLICT target uses the 5-column unique constraint
+                ***REMOVED*** on the partitioned table.
                 conflict_target = (
                     "(osm_type, osm_id, gv_tags_version, snapshot_id, country_code)"
-                    if is_partitioned
-                    else "(osm_type, osm_id, gv_tags_version)"
                 )
 
-                ***REMOVED*** Phase 6: INSERT directly into the leaf partition when it
-                ***REMOVED*** exists, bypassing partition routing overhead.
+                ***REMOVED*** INSERT directly into the leaf partition when it exists,
+                ***REMOVED*** bypassing partition routing overhead.
                 target_table = "semantic_search_osmentity"
-                if is_partitioned and partition_snapshot_id and country_code:
+                if partition_snapshot_id and country_code:
                     leaf_name = f"embeddings_{partition_snapshot_id}_{country_code.lower()}"
                     cursor.execute(
                         "SELECT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = %s)",
@@ -836,38 +823,6 @@ class SearchUpdateOrchestrator:
                 raise
             finally:
                 cursor.execute(f"DROP TABLE IF EXISTS {temp_table};")
-
-    def _flush_entity_batch(self, batch):
-        """Bulk-write a mixed insert/update batch to pgvector DB.
-
-        Deprecated — retained for backward compatibility with any callers
-        that still build ``('insert'|'update', entity)`` tuples. New code
-        should use ``_upsert_chunk_via_copy`` (the ON CONFLICT path), which
-        is parallel-safe and avoids the read-modify-write race.
-        """
-        inserts = [e for op, e in batch if op == 'insert']
-        updates = [e for op, e in batch if op == 'update']
-
-        if inserts:
-            with transaction.atomic(using='vectors'):
-                OsmEntity = inserts[0].__class__
-                ***REMOVED*** Phase 6: snapshot_id/country_code are nullable model fields;
-                ***REMOVED*** they default to NULL here.  The deprecated path does not
-                ***REMOVED*** populate partition keys — use _upsert_chunk_via_copy instead.
-                OsmEntity.objects.using('vectors').bulk_create(
-                    inserts, batch_size=500, ignore_conflicts=True
-                )
-
-        if updates:
-            fields = [
-                'tags', 'geom', 'version', 'timestamp',
-                'gv_tags_embedding', 'gv_nle_embedding',
-                'gv_nle_trained', 'source_snapshot_id',
-            ]
-            with transaction.atomic(using='vectors'):
-                updates[0].__class__.objects.using('vectors').bulk_update(
-                    updates, fields, batch_size=500
-                )
 
     ***REMOVED*** ------------------------------------------------------------------
     ***REMOVED*** Step 7: USLP spatial link prediction + IGEA entity alignment

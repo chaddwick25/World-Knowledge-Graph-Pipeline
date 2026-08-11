@@ -40,7 +40,7 @@ class EmbeddingService:
         Args:
             cfg: CountryEnvelope with snapshot_pbf_path, pickle_path,
                  has_pretrained_nle, iso, snapshot_date, etc.
-            drop_indexes_during_load: If True, drop vector indexes (IVFFlat +
+            drop_indexes_during_load: If True, drop HNSW vector indexes
                 HNSW) before the bulk upsert and rebuild them in parallel
                 after.  Gives 3-5x faster upserts for large countries
                 (Phase 5 of OSMENTITY_MONOLITH_OPTIMIZATION.md).
@@ -136,7 +136,7 @@ class EmbeddingService:
         }
 
     def _drop_vector_indexes(self) -> None:
-        """Drop IVFFlat + HNSW indexes for fast bulk load (no per-row maintenance)."""
+        """Drop HNSW indexes for fast bulk load (no per-row maintenance)."""
         from django.core.management import call_command
 
         logger.info("Dropping vector indexes for bulk load...")
@@ -144,7 +144,7 @@ class EmbeddingService:
         logger.info("Vector indexes dropped.")
 
     def _rebuild_vector_indexes(self) -> None:
-        """Rebuild IVFFlat + HNSW indexes in parallel after bulk load."""
+        """Rebuild HNSW indexes in parallel after bulk load."""
         from django.core.management import call_command
 
         logger.info("Rebuilding vector indexes (parallel)...")
