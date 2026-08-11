@@ -161,6 +161,14 @@ WORLDKG_ONTOLOGY_PATH = os.getenv('WORLDKG_ONTOLOGY_PATH', _default_worldkg_onto
 _default_continents_root = os.path.join(BASE_DATA_DIR, 'osm_wikidata_extractions/continents') if BASE_DATA_DIR else None
 CONTINENTS_ROOT = os.getenv('CONTINENTS_ROOT', _default_continents_root)
 
+# Pipeline logs directory (categorized run logs: gv-nle, pipeline, tests, uslp)
+_default_logs_dir = os.path.join(BASE_DATA_DIR, 'logs') if BASE_DATA_DIR else None
+LOGS_DIR = os.getenv('LOGS_DIR', _default_logs_dir)
+
+# Wikidata candidate cache directory (JSON caches per country)
+_default_wikidata_cache_dir = os.path.join(BASE_DATA_DIR, 'data/wikidata_cache') if BASE_DATA_DIR else None
+WIKIDATA_CACHE_DIR = os.getenv('WIKIDATA_CACHE_DIR', _default_wikidata_cache_dir)
+
 # Hot storage path (SSD/NVME working files)
 HOT_STORAGE_PATH = os.getenv('HOT_STORAGE_PATH', BASE_DATA_DIR)
 

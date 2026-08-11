@@ -5,7 +5,8 @@ from django.conf import settings
 from pipeline.envelopes import PlanetEnvelope
 from pipeline.task_decorator import pipeline_step
 from django.core.management import call_command
-from pipeline.tasks.helper import _log, _push_update, create_planet_run_record
+# TODO: importing a private function: UGH!
+from pipeline.tasks.helper import _log, create_planet_run_record
 from pipeline.celery_app import (
     pipeline_task,
     PipelineTask,
@@ -24,8 +25,6 @@ def step_0_initialize_planet(self, env: PlanetEnvelope) -> PlanetEnvelope:
     from extraction.services.planet_initialization_service import (
         PlanetInitializationService,
     )
-    # TODO: Update the code to use the path for the poly files
-    # TODO: remove the embeddings directory (I dont thinks its used )
     policy = {
         "stages": {
             "planet_initialization": {
@@ -37,12 +36,12 @@ def step_0_initialize_planet(self, env: PlanetEnvelope) -> PlanetEnvelope:
                 "file_structure": {
                     "base_dir": str(Path(settings.BASE_DATA_DIR)),
                     "directories": {
-                        "osm_pbf": "OSM-PBF-FILES",
-                        "osm_wikidata": "OSM-PBF-FILES/osm_wikidata_extractions",
-                        "polygons": "data/osm_polygon_files",
-                        "logs": "logs",
-                        "embeddings": "data/embeddings",
-                        "wikidata": "data/wikidata_cache",
+                        "osm_pbf": str(Path(settings.BASE_DATA_DIR) / "OSM-PBF-FILES"),
+                        "osm_wikidata": str(settings.OSM_WIKIDATA_EXTRACTIONS_DIR),
+                        "polygons": str(settings.POLYGON_FILES_DIR),
+                        "logs": str(settings.LOGS_DIR),
+                        "embeddings": str(settings.EMBEDDINGS_ROOT),
+                        "wikidata": str(settings.WIKIDATA_CACHE_DIR),
                     },
                 },
                 "planetary_metrics": {"enabled": True},

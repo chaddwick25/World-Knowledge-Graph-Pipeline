@@ -15,7 +15,7 @@ from extraction.models import ProjectionWeightAsset
 from worldkg_nca.services.enrichment_service import get_worldkg_enrichment_service
 from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 from semantic_search.services.worldkg_drift_service import get_worldkg_drift_service
-from api.models import TemporalSnapshot, WorldKGClassDrift, WorldKGClassFingerprint
+from api.models import TemporalSnapshot, WorldKGClassDrift
 from semantic_search.services.fasttext_service import FastTextEmbeddingService
 from extraction.services.osm_wikidata_resolver import resolve_country_bbox, get_country_by_name
 from worldkg_nca.services.link_candidate_service import WorldKGLinkCandidateService

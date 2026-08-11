@@ -26,11 +26,7 @@ class Command(BaseCommand):
             time.sleep(5) # Poll every 5 seconds
 
     def _get_wikidata_cache_path(self, country_name: str) -> str:
-        """Return a stable cache path for Wikidata candidates for a country.
-
-        Mirrors WorldKGPipelineService._get_cache_path so harvest + IGEA can share
-        the same JSON cache conventions.
-        """
+        """Return a stable cache path for Wikidata candidates for a country."""
         cache_dir = Path(settings.BASE_DIR).parent / 'data' / 'wikidata_cache'
         cache_dir.mkdir(parents=True, exist_ok=True)
         country_slug = (country_name or '').lower().strip().replace(' ', '_').replace('-', '_')
