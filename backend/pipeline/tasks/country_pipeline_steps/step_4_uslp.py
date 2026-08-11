@@ -86,6 +86,20 @@ def _run_subgraph_uslp(
     sg = SubgraphConfig.from_dict(subgraph_dict)
     env = CountryEnvelope.from_dict(parent_config)
 
+    igea_stats = env.igea_stats or {}
+    total_accepted = igea_stats.get('total_accepted', 0)
+
+    if total_accepted == 0:
+        _log(
+            logger,
+            "info",
+            "Skipping subgraph USLP (IGEA accepted 0 links)",
+            subgraph=sg.name,
+            country=env.iso,
+            pipeline_run_id=env.pipeline_run_id,
+        )
+        return {"subgraph": sg.name, "status": "skipped", "poly_file": None}
+
     _log(
         logger,
         "info",
