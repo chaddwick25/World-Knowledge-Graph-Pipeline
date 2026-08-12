@@ -76,6 +76,19 @@ class FastTextEmbeddingService:
             synthesized_vector = synthesized_vector / norm
 
         return synthesized_vector
+    # TODO: Remember to replace this with the Concepts to Functional Role implementation
+    # Common English stop words that add noise to FastText bag-of-words
+    # embeddings of natural-language queries.  These tokens have FastText
+    # vectors but carry no OSM-semantic signal (e.g. "find cafes in belize"
+    # should embed "cafes", not "find" + "in" + "belize").
+    _STOP_WORDS = frozenset({
+        "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
+        "of", "with", "by", "from", "is", "are", "was", "were", "be", "been",
+        "find", "show", "get", "list", "search", "me", "all", "some", "many",
+        "near", "around", "area", "areas", "place", "places", "where",
+        "what", "which", "that", "this", "there", "here", "it", "they",
+        "i", "you", "we", "he", "she", "my", "your", "our",
+    })
 
     @classmethod
     def calculate_text_embedding(cls, text: str) -> np.ndarray:
@@ -83,7 +96,8 @@ class FastTextEmbeddingService:
 
         This treats the query as a bag-of-words and averages FastText word
         vectors, then L2-normalizes the result to stay compatible with the
-        300D GeoVectors space.
+        300D GeoVectors space.  Stop words are filtered to avoid diluting
+        the signal with tokens that carry no OSM-semantic meaning.
 
         Args:
             text: Natural language query string.
@@ -96,8 +110,11 @@ class FastTextEmbeddingService:
         if not text:
             return np.zeros(300, dtype=np.float32)
 
-        # Simple word-character tokenization
-        tokens = [t for t in re.findall(r"\w+", text.lower()) if t]
+        # Simple word-character tokenization, then stop-word removal
+        tokens = [
+            t for t in re.findall(r"\w+", text.lower())
+            if t and t not in cls._STOP_WORDS
+        ]
         if not tokens:
             return np.zeros(300, dtype=np.float32)
 

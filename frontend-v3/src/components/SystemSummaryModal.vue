@@ -7,7 +7,7 @@ export default {
   props: {
     open: { type: Boolean, default: false },
   },
-  emits: ['close', 'continue'],
+  emits: ['close'],
   setup(props, { emit }) {
     const data = ref(null)
     const loading = ref(false)
@@ -95,9 +95,6 @@ export default {
         <header class="summary-modal__header">
           <h2 class="summary-modal__title">System Summary</h2>
           <div class="summary-modal__header-right">
-            <button class="summary-modal__continue-btn" @click="$emit('continue')">
-              Continue
-            </button>
             <button class="summary-modal__close-btn" @click="$emit('close')">&times;</button>
           </div>
         </header>
@@ -400,21 +397,7 @@ export default {
   gap: 0.5rem;
 }
 
-.summary-modal__continue-btn {
-  padding: 0.4rem 1rem;
-  border-radius: 0.5rem;
-  border: 1px solid #4f46e5;
-  background: #111827;
-  color: #e5e7eb;
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s;
-}
 
-.summary-modal__continue-btn:hover {
-  background: #1f2937;
-}
 
 .summary-modal__close-btn {
   border: none;

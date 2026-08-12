@@ -10,7 +10,6 @@ Additional dispatch-level exceptions for concurrency control:
 - PipelineAlreadyRunning → duplicate run rejection
 """
 
-# TODO: Refactor this entire file to use a more structured approach
 class SkipPipeline(Exception):
     """Raise to skip the remaining pipeline steps without marking as failure.
 

@@ -672,7 +672,7 @@ export default {
               class="sidebar__tab"
               :class="{ 'sidebar__tab--active': activeTab === 'augmented' }"
               @click="switchTab('augmented')"
-            >Augmented</button>
+            >USLP </button>
             <button
               class="sidebar__tab"
               :class="{ 'sidebar__tab--active': activeTab === 'spatial' }"

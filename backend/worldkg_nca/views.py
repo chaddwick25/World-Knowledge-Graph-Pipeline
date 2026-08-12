@@ -513,8 +513,11 @@ def worldkg_semantic_triplet_search(request):
     rdf_type = request.data.get("rdf_type")
     top_k = request.data.get("top_k", 20)
     exact_tag_match = request.data.get("exact_tag_match", False)
-    # TODO: Look into this MATH
-    name_distance_threshold = request.data.get("name_distance_threshold", 0.95)
+    # Cosine distance threshold for semantic filtering (0 = identical, 2 = opposite).
+    # 0.75 keeps entities with cosine_similarity >= 0.25 — a reasonable cutoff for
+    # L2-normalized FastText tag embeddings.  The old default of 0.95 was effectively
+    # no filter (similarity >= 0.05), which let class_score dominate ranking.
+    name_distance_threshold = request.data.get("name_distance_threshold", 0.75)
     use_ann = request.data.get("use_ann", False)
     use_learned_weights = request.data.get("use_learned_weights", False)
     # snapshot_date filters OsmEntity by snapshot_id (CharField, e.g. "2025_12_31")
@@ -868,16 +871,26 @@ def worldkg_semantic_triplet_search(request):
 
     # Triple-Space Search Path (current implementation)
     # Support both structured tag queries and natural language queries.
-    if natural_query:
+    # When query_tags were extracted from a natural query (lines 549-562), use
+    # the clean tag-based embedding — the raw text embedding dilutes the signal
+    # with stop words and country names (e.g. "find cafes in belize" embeds
+    # "find", "in", "belize" as noise). Fall back to text embedding only when
+    # no tags were extracted.
+    if natural_query and not query_tags:
         query_embedding = FastTextEmbeddingService.calculate_text_embedding(natural_query)
     else:
         tag_counts = FastTextEmbeddingService.build_tag_counts_from_osm_tags(query_tags)
         query_embedding = FastTextEmbeddingService.calculate_embedding(tag_counts)
     query_list = query_embedding.tolist()
 
+    # Use exact cosine distance (not HNSW approximation).  The + 0 makes the
+    # expression non-indexable, preventing PostgreSQL from using the HNSW
+    # index on gv_tags_embedding — which returns approximate results that
+    # miss relevant entities (e.g. cafe query returns highway=service at
+    # dist=0.62 instead of actual cafes at dist=0.16).
     qs = qs.annotate(
         name_distance=RawSQL(
-            "gv_tags_embedding <=> %s::vector",
+            "(gv_tags_embedding <=> %s::vector) + 0",
             (query_list,),
             output_field=FloatField(),
         )

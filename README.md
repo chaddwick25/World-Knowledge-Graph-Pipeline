@@ -51,17 +51,20 @@ Both are driven by Celery:
 - Ontology-driven class assignment with hierarchical superclass inference.
 - Assigns WorldKG ontology classes to OSM entities from Step 1 — useful for NLP tasks.
 - Two modes: local prediction (default, O(1) tag→class lookup via Redis ontology cache) or SPARQL endpoint (online, per-entity `rdf:type` queries).
-- Wikidata candidate harvest (Step 2) uses batched SPARQL with retry+backoff on 429/502/503/Timeout. Retries enabled (`SPARQL_MAX_RETRIES = 1`, 5s base backoff). Failed batches are logged and skipped; partial enrichment is preferred over blocking. Batch size 100 QIDs per POST request to avoid URL length limits.
+- Wikidata candidate harvest (Step 2) uses batched SPARQL with retry+backoff on 429/502/503/Timeout via `SPARQLRetryMixin` (`semantic_search.utils.sparql_mixin`). Retries enabled (`SPARQL_MAX_RETRIES = 1`, 5s base backoff). Failed batches are logged and skipped; partial enrichment is preferred over blocking. Batch size 100 QIDs per POST request to avoid URL length limits.
+- Two services share the mixin: `semantic_search.services.WikidataCandidateService` (10s timeout) and `worldkg_nca.services.WikidataCandidateService` (30s timeout).
 
 ### 3. Wikidata Alignment
 
 - IGEA entity alignment connects OSM entities to Wikidata knowledge graph entries.
 - Iterative alignment with cross-attention links OSM entities to Wikidata using semantic + geo-spatial features.
-- Gated on Step 2 enrichment: if IGEA accepts 0 links (e.g., due to failed Wikidata harvest), USLP is skipped entirely.
+- USLP (Step 4) runs independently — no longer gated on IGEA acceptance count.
 
 ### 4. Spatial Link Prediction
 
 - USLP discovers relationships between entities using tri-space scoring (geo + name + class).
+- Dashboard queries filter by `country_name`, `snapshot_id`, `predicted=True` — optimized by composite index `igea_triplet_csp_idx` on `SpatialTripletScore` (applied to `vectors` DB via `VectorDBRouter`).
+- Aggregation uses Django `aggregate()` + `Case/When` for geo/name/class dominance, histogram buckets, and avg confidence in a single SQL round-trip.
 - Augmented data sources include Google Places API and `toronto-data` (Django app in backend), or any appropriate open-source data.
 
 ### 5. Learned Layer
