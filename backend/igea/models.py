@@ -146,6 +146,19 @@ class SpatialTripletScore(models.Model):
             models.Index(fields=['predicted']),
             models.Index(fields=['snapshot_id']),
             models.Index(fields=['country_name']),
+            ***REMOVED*** Phase 3 of USLP data flow: Composite index for dashboard queries
+            ***REMOVED*** +--------+---------------------------------------------------------------+----------------------------------------------------------+
+            ***REMOVED*** | Phase  | What happens                                                  | Where                                                    |
+            ***REMOVED*** +========+===============================================================+==========================================================+
+            ***REMOVED*** | 3      | Composite index on (country_name, snapshot_id, predicted)    | Migration igea.0003_spatialtripletscore_igea_triplet_csp |
+            ***REMOVED*** |        | enables Index Only Scan for dashboard WHERE clause           | _idx on vectors DB                                       |
+            ***REMOVED*** +--------+---------------------------------------------------------------+----------------------------------------------------------+
+            ***REMOVED*** Used by AugmentedDataService.get_summary() filter():
+            ***REMOVED***   filter(country_name=..., snapshot_id=..., predicted=True)
+            models.Index(
+                fields=['country_name', 'snapshot_id', 'predicted'],
+                name='igea_triplet_csp_idx'
+            ),
         ]
         ordering = ['-normalized_score']
     

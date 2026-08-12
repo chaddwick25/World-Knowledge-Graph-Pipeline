@@ -35,6 +35,32 @@ summation heuristic mathematically mapped through PGvector and dynamic Geohash a
 Reference: https://github.com/gkmn21/SSLPandUSLP
 """
 
+"""
+USLP Data Flow — 5 phases, one source of truth per phase:
+
++--------+---------------------------------------------------------------+----------------------------------------------------------+
+| Phase  | What happens                                                  | Where                                                    |
++========+===============================================================+==========================================================+
+| 1      | Compute geo_score, name_score, topo_score, normalized_score  | SpatialLinkPredictionService.predict_links_batch()       |
+|        | per candidate link (CPU/GPU)                                  | (CPU) / GpuUslpService / TorchUslpService (GPU)          |
++--------+---------------------------------------------------------------+----------------------------------------------------------+
+| 2      | Persist individual rows with all 4 scores via                | persist_links() → SpatialTripletScore                    |
+|        | chunked bulk_create (5k rows/chunk) on 'vectors' DB          | (igea.models) routed by VectorDBRouter                   |
++--------+---------------------------------------------------------------+----------------------------------------------------------+
+| 3      | Composite index on (country_name, snapshot_id, predicted)    | Migration igea.0003_spatialtripletscore_igea_triplet_csp |
+|        | enables Index Only Scan for dashboard WHERE clause           | _idx on vectors DB                                       |
++--------+---------------------------------------------------------------+----------------------------------------------------------+
+| 4      | Dashboard query filters rows:                                | AugmentedDataService.get_summary()                       |
+|        | filter(country_name=..., snapshot_id=..., predicted=True)    | → filter() uses igea_triplet_csp_idx                     |
++--------+---------------------------------------------------------------+----------------------------------------------------------+
+| 5      | Single aggregate() with Case/When reads score columns        | _aggregate_accepted_metrics()                            |
+|        | for geo/name/class dominance, histogram, avg confidence      | runs on filtered ~20k rows (Seq Scan over score cols)    |
++--------+---------------------------------------------------------------+----------------------------------------------------------+
+
+The index (phase 3) speeds up phase 4 only. The math (phases 1, 5)
+is identical regardless of the index.
+"""
+
 import logging
 import numpy as np
 import geohash2
@@ -744,6 +770,14 @@ class SpatialLinkPredictionService:
         Persist predicted spatial links as SpatialTripletScore model records.
 
         Links are split into accepted (>= threshold) and rejected (< threshold) tables.
+
+        Phase 2 of USLP data flow:
+        +--------+---------------------------------------------------------------+----------------------------------------------------------+
+        | Phase  | What happens                                                  | Where                                                    |
+        +========+===============================================================+==========================================================+
+        | 2      | Persist individual rows with all 4 scores via                | persist_links() → SpatialTripletScore                    |
+        |        | chunked bulk_create (5k rows/chunk) on 'vectors' DB          | (igea.models) routed by VectorDBRouter                   |
+        +--------+---------------------------------------------------------------+----------------------------------------------------------+
 
         Args:
             links:        output of predict_links_batch
