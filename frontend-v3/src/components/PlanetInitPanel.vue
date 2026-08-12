@@ -46,17 +46,12 @@ export default {
       init.showSummaryModal.value = true
     }
 
-    function onContinueClicked() {
-      init.showSummaryModal.value = false
-    }
-
     // Cleanup is handled by the composable singleton
 
     return {
       init,
       iconClass,
       handleContinue,
-      onContinueClicked,
     }
   },
 }
@@ -146,7 +141,6 @@ export default {
     <SystemSummaryModal
       :open="init.showSummaryModal.value"
       @close="init.showSummaryModal.value = false"
-      @continue="onContinueClicked"
     />
   </section>
 </template>

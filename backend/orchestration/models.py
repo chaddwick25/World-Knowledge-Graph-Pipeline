@@ -1155,7 +1155,6 @@ class SubgraphProfile(models.Model):
 ***REMOVED*** EligibleCountry (Init Pipeline eligibility & readiness)
 ***REMOVED*** ══════════════════════════════════════════════════════════════════════════
 
-***REMOVED*** TODO: I feel like this could be a computed property
 class EligibleCountry(models.Model):
     """Tracks which countries are eligible for the pipeline per snapshot.
 

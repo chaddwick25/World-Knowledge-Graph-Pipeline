@@ -107,10 +107,13 @@ class SemanticSearchGVTagsView(APIView):
             if filters:
                 results = results.filter(**filters)
             
-            ***REMOVED*** Annotate with distance and order
+            ***REMOVED*** Annotate with distance and order.
+            ***REMOVED*** The + 0 prevents PostgreSQL from using the HNSW index on
+            ***REMOVED*** gv_tags_embedding, which returns approximate results that miss
+            ***REMOVED*** relevant entities.  This path needs exact cosine distance.
             results = results.annotate(
                 distance=RawSQL(
-                    "gv_tags_embedding <=> %s::vector",
+                    "(gv_tags_embedding <=> %s::vector) + 0",
                     (query_list,),
                     output_field=FloatField()
                 )

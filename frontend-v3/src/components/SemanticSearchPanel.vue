@@ -205,7 +205,7 @@ export default {
 
       <!-- Tags input -->
       <div v-if="isTagsMode" class="search-form__row">
-        <label class="search-form__label">Query tags (JSON)</label>
+        <label class="search-form__label">OSM Tag</label>
         <textarea
           v-model="queryTagsInput"
           class="search-form__textarea"
