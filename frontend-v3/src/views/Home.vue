@@ -5,11 +5,11 @@
       <div class="home__header-row">
         <div class="home__brand">
           <h1 class="home__title"> 
-            <span class="app-shell__brand-mark">&#127758;</span> 
-            WorldKG Pipeline
+            <a href="https://www.vgiscience.org/projects/worldkg.html" target="_blank" rel="noopener noreferrer" class="app-shell__brand-mark">&#127758;</a> 
+            World Knowledge Graph Pipeline
           </h1>
           <p class="home__subtitle">
-            Extract, align, and embed geographic knowledge from OpenStreetMap
+          OSM and Wikidata KG that produces semantic tags, location embeddings, geo-spatial links and enriched entity classes
           </p>
         </div>
 
@@ -760,6 +760,15 @@ export default {
   color: #f3f4f6;
   letter-spacing: -0.03em;
   text-align: left;
+}
+
+.home__title .app-shell__brand-mark {
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.home__title .app-shell__brand-mark:hover {
+  opacity: 0.7;
 }
 
 .home__subtitle {

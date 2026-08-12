@@ -109,10 +109,18 @@
             <!-- ── Embeddings Tab ── -->
             <div v-if="activeTab === 'embeddings'" class="summary-panel">
               <div class="summary-section">
-                <h3 class="summary-section__title">
-                  Embeddings by Continent
-                  <span class="summary-section__subtitle">{{ countriesWithEmbeddings }}/{{ totalCountries }} countries available</span>
-                </h3>
+                <h3 class="summary-section__title">Embeddings by Continent</h3>
+                <p class="summary-section__description">
+                  TSV Location
+                  <a href="https://geovectors.l3s.uni-hannover.de/data" target="_blank" rel="noopener noreferrer">Embeddings</a>
+                  are used by the Ball-Tree Algorithm to produce pickles used in the
+                  <a href="https://github.com/NicolasTe/GeoVectors/blob/master/Encoder.py" target="_blank" rel="noopener noreferrer">GeoVectors</a>
+                  encoder to give a fresh projection per country snapshot.
+                </p>
+                <div class="summary-availability-banner">
+                  <span class="summary-availability-banner__count">{{ countriesWithEmbeddings }}/{{ totalCountries }}</span>
+                  <span class="summary-availability-banner__label">countries available</span>
+                </div>
                 <table class="summary-table">
                   <thead>
                     <tr>
@@ -148,7 +156,7 @@
             <!-- ── Storage Tab ── -->
             <div v-if="activeTab === 'storage'" class="summary-panel">
               <div class="summary-section">
-                <h3 class="summary-section__title">Hot Storage (NVME/SSD)</h3>
+                <h3 class="summary-section__title">Hot Storage (NVME/SSD) - Runtime Tasks, Stream Processing Inputs </h3> 
                 <div class="summary-storage">
                   <div class="summary-storage__path">
                     <code>{{ hotStorage.path }}</code>
@@ -161,7 +169,7 @@
                 </div>
               </div>
               <div class="summary-section">
-                <h3 class="summary-section__title">Cold Storage (HDD - Archive)</h3>
+                <h3 class="summary-section__title">Cold Storage (HDD - Archive) - Preprocessing Tasks, Data for Batch Processing.</h3>
                 <div class="summary-storage">
                   <div class="summary-storage__path">
                     <code>{{ coldStorage.path }}</code>
@@ -188,7 +196,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="p in data.paths" :key="p.key">
+                    <tr v-for="p in formattedPaths" :key="p.key">
                       <td class="summary-table__key">
                         <code>{{ p.key }}</code>
                       </td>
@@ -199,7 +207,7 @@
                         ></span>
                       </td>
                       <td class="summary-table__detail">
-                        <span v-if="p.size_mb">{{ p.size_mb }} MB</span>
+                        <span v-if="p.size_display">{{ p.size_display }}</span>
                         <span v-else-if="p.file_count">{{ p.file_count }} files</span>
                         <span v-else-if="p.is_executable">executable</span>
                         <span v-else-if="!p.exists">Not found</span>
@@ -304,6 +312,20 @@ export default {
     },
     coldStorage() {
       return this.data?.storage?.cold || {}
+    },
+    formattedPaths() {
+      if (!this.data?.paths) return []
+      return this.data.paths.map((p) => {
+        const formatted = { ...p }
+        if (p.size_mb != null) {
+          if (p.size_mb >= 1000) {
+            formatted.size_display = `${(p.size_mb / 1024).toFixed(1)} GB`
+          } else {
+            formatted.size_display = `${p.size_mb} MB`
+          }
+        }
+        return formatted
+      })
     },
   },
   watch: {
@@ -532,6 +554,55 @@ export default {
   font-size: 0.72rem;
   font-weight: 400;
   color: #6b7280;
+}
+
+.summary-section__subtitle--accent {
+  color: #4ade80;
+  font-weight: 500;
+}
+
+.summary-section__description {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: #ffffff;
+  line-height: 1.5;
+  margin: 0 0 0.75rem;
+}
+
+.summary-section__description a,
+.summary-section__title a {
+  color: #4ade80;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.summary-section__description a:hover,
+.summary-section__title a:hover {
+  text-decoration: underline;
+}
+
+/* ── Availability Banner ── */
+.summary-availability-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  margin: 0 0 0.75rem;
+  border-top: 2px solid #22c55e;
+  border-bottom: 2px solid #22c55e;
+  background: #1f2937;
+}
+
+.summary-availability-banner__count {
+  color: #22c55e;
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.summary-availability-banner__label {
+  color: #6b7280;
+  font-weight: 400;
+  font-size: 0.72rem;
 }
 
 /* ── Steps ── */
