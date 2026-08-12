@@ -1,3 +1,11 @@
+<template>
+  <div class="app-shell">
+    <main class="app-shell__main">
+      <router-view />
+    </main>
+  </div>
+</template>
+
 <script>
 export default {
   name: 'AppShell',
@@ -13,13 +21,6 @@ export default {
   },
 }
 </script>
-<template>
-  <div class="app-shell">
-    <main class="app-shell__main">
-      <router-view />
-    </main>
-  </div>
-</template>
 
 <style scoped>
 .app-shell {

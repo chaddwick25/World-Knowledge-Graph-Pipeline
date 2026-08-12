@@ -1,3 +1,162 @@
+<template>
+  <div class="search-panel">
+    <form class="search-form" @submit.prevent="performSearch">
+      <!-- Query mode toggle -->
+      <div class="search-form__row">
+        <label class="search-form__label">Query mode</label>
+        <div class="search-form__toggle">
+          <button
+            type="button"
+            class="search-form__toggle-btn"
+            :class="{ 'search-form__toggle-btn--active': isTagsMode }"
+            @click="queryMode = 'tags'"
+          >
+            Structured (JSON)
+          </button>
+          <button
+            type="button"
+            class="search-form__toggle-btn"
+            :class="{ 'search-form__toggle-btn--active': isNaturalMode }"
+            @click="queryMode = 'natural'"
+          >
+            Natural language
+          </button>
+        </div>
+      </div>
+
+      <!-- Subdivision selector -->
+      <SubdivisionSelector
+        :country-name="countryName"
+        @subdivision-selected="subdivisionQid = $event"
+      />
+
+      <!-- Tags input -->
+      <div v-if="isTagsMode" class="search-form__row">
+        <label class="search-form__label">OSM Tag</label>
+        <textarea
+          v-model="queryTagsInput"
+          class="search-form__textarea"
+          rows="2"
+          placeholder='{"amenity": "cafe"}'
+        ></textarea>
+      </div>
+
+      <!-- Natural language input -->
+      <div v-if="isNaturalMode" class="search-form__row">
+        <label class="search-form__label">Natural language query</label>
+        <textarea
+          v-model="naturalQuery"
+          class="search-form__textarea"
+          rows="2"
+          placeholder="Find areas with many cafes and some residential buildings"
+        ></textarea>
+      </div>
+
+      <!-- Filters -->
+      <div class="search-form__filters">
+        <div class="search-form__filter">
+          <label class="search-form__label">Lat</label>
+          <input v-model="lat" type="number" step="any" class="search-form__input" placeholder="Optional" />
+        </div>
+        <div class="search-form__filter">
+          <label class="search-form__label">Lon</label>
+          <input v-model="lon" type="number" step="any" class="search-form__input" placeholder="Optional" />
+        </div>
+        <div class="search-form__filter">
+          <label class="search-form__label">Class</label>
+          <select v-model="rdfType" class="search-form__input">
+            <option :value="null">Any class</option>
+            <option v-for="opt in classOptions" :key="opt.value" :value="opt.value">
+              {{ opt.text }}
+            </option>
+          </select>
+        </div>
+        <div class="search-form__filter">
+          <label class="search-form__label">Top K</label>
+          <input v-model="topK" type="number" min="1" max="100" class="search-form__input" />
+        </div>
+      </div>
+
+      <!-- Options -->
+      <div class="search-form__options">
+        <div class="search-form__filter">
+          <label class="search-form__label">Encoder</label>
+          <select v-model="encoder" class="search-form__input">
+            <option v-for="opt in encoderOptions" :key="opt.value" :value="opt.value">
+              {{ opt.text }}
+            </option>
+          </select>
+        </div>
+        <label class="search-form__checkbox">
+          <input v-model="useLearnedWeights" type="checkbox" />
+          <span>Learned weights</span>
+        </label>
+        <label class="search-form__checkbox">
+          <input v-model="useAnn" type="checkbox" />
+          <span>ANN (400D)</span>
+        </label>
+      </div>
+
+      <button
+        type="submit"
+        class="search-form__submit"
+        :disabled="loading || !isValid"
+      >
+        {{ loading ? 'Searching\u2026' : 'Search' }}
+      </button>
+    </form>
+
+    <!-- Error -->
+    <p v-if="error" class="search-form__error">{{ error }}</p>
+
+    <!-- Results -->
+    <div v-if="results.length > 0" class="search-results">
+      <h4 class="search-results__title">Results ({{ results.length }})</h4>
+      <div class="search-results__scroll">
+        <table class="search-results__table">
+          <thead>
+            <tr>
+              <th>OSM ID</th>
+              <th>Tags</th>
+              <th>Class</th>
+              <th>Coords</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in results" :key="`${item.osm_type}-${item.osm_id}`">
+              <td>
+                <a
+                  :href="`https://www.openstreetmap.org/${item.osm_type}/${item.osm_id}`"
+                  target="_blank"
+                  class="search-results__link"
+                >
+                  {{ item.osm_type }}/{{ item.osm_id }}
+                </a>
+              </td>
+              <td><small>{{ formatTags(item.tags) }}</small></td>
+              <td>{{ item.wkg_class || '\u2014' }}</td>
+              <td>
+                <template v-if="item.geom">
+                  {{ item.geom.lat.toFixed(3) }}, {{ item.geom.lon.toFixed(3) }}
+                </template>
+                <span v-else class="search-results__muted">N/A</span>
+              </td>
+              <td class="search-results__score-cell">
+                <strong>{{ item.scores?.final_score?.toFixed(3) || '\u2014' }}</strong>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div v-else-if="searched" class="search-results__empty">
+      No results found for this query.
+    </div>
+  </div>
+</template>
+
 <script>
 /**
  * SemanticSearchPanel
@@ -170,165 +329,6 @@ export default {
   },
 }
 </script>
-
-<template>
-  <div class="search-panel">
-    <form class="search-form" @submit.prevent="performSearch">
-      <!-- Query mode toggle -->
-      <div class="search-form__row">
-        <label class="search-form__label">Query mode</label>
-        <div class="search-form__toggle">
-          <button
-            type="button"
-            class="search-form__toggle-btn"
-            :class="{ 'search-form__toggle-btn--active': isTagsMode }"
-            @click="queryMode = 'tags'"
-          >
-            Structured (JSON)
-          </button>
-          <button
-            type="button"
-            class="search-form__toggle-btn"
-            :class="{ 'search-form__toggle-btn--active': isNaturalMode }"
-            @click="queryMode = 'natural'"
-          >
-            Natural language
-          </button>
-        </div>
-      </div>
-
-      <!-- Subdivision selector -->
-      <SubdivisionSelector
-        :country-name="countryName"
-        @subdivision-selected="subdivisionQid = $event"
-      />
-
-      <!-- Tags input -->
-      <div v-if="isTagsMode" class="search-form__row">
-        <label class="search-form__label">OSM Tag</label>
-        <textarea
-          v-model="queryTagsInput"
-          class="search-form__textarea"
-          rows="2"
-          placeholder='{"amenity": "cafe"}'
-        ></textarea>
-      </div>
-
-      <!-- Natural language input -->
-      <div v-if="isNaturalMode" class="search-form__row">
-        <label class="search-form__label">Natural language query</label>
-        <textarea
-          v-model="naturalQuery"
-          class="search-form__textarea"
-          rows="2"
-          placeholder="Find areas with many cafes and some residential buildings"
-        ></textarea>
-      </div>
-
-      <!-- Filters -->
-      <div class="search-form__filters">
-        <div class="search-form__filter">
-          <label class="search-form__label">Lat</label>
-          <input v-model="lat" type="number" step="any" class="search-form__input" placeholder="Optional" />
-        </div>
-        <div class="search-form__filter">
-          <label class="search-form__label">Lon</label>
-          <input v-model="lon" type="number" step="any" class="search-form__input" placeholder="Optional" />
-        </div>
-        <div class="search-form__filter">
-          <label class="search-form__label">Class</label>
-          <select v-model="rdfType" class="search-form__input">
-            <option :value="null">Any class</option>
-            <option v-for="opt in classOptions" :key="opt.value" :value="opt.value">
-              {{ opt.text }}
-            </option>
-          </select>
-        </div>
-        <div class="search-form__filter">
-          <label class="search-form__label">Top K</label>
-          <input v-model="topK" type="number" min="1" max="100" class="search-form__input" />
-        </div>
-      </div>
-
-      <!-- Options -->
-      <div class="search-form__options">
-        <div class="search-form__filter">
-          <label class="search-form__label">Encoder</label>
-          <select v-model="encoder" class="search-form__input">
-            <option v-for="opt in encoderOptions" :key="opt.value" :value="opt.value">
-              {{ opt.text }}
-            </option>
-          </select>
-        </div>
-        <label class="search-form__checkbox">
-          <input v-model="useLearnedWeights" type="checkbox" />
-          <span>Learned weights</span>
-        </label>
-        <label class="search-form__checkbox">
-          <input v-model="useAnn" type="checkbox" />
-          <span>ANN (400D)</span>
-        </label>
-      </div>
-
-      <button
-        type="submit"
-        class="search-form__submit"
-        :disabled="loading || !isValid"
-      >
-        {{ loading ? 'Searching\u2026' : 'Search' }}
-      </button>
-    </form>
-
-    <!-- Error -->
-    <p v-if="error" class="search-form__error">{{ error }}</p>
-
-    <!-- Results -->
-    <div v-if="results.length > 0" class="search-results">
-      <h4 class="search-results__title">Results ({{ results.length }})</h4>
-      <div class="search-results__scroll">
-        <table class="search-results__table">
-          <thead>
-            <tr>
-              <th>OSM ID</th>
-              <th>Tags</th>
-              <th>Class</th>
-              <th>Coords</th>
-              <th>Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in results" :key="`${item.osm_type}-${item.osm_id}`">
-              <td>
-                <a
-                  :href="`https://www.openstreetmap.org/${item.osm_type}/${item.osm_id}`"
-                  target="_blank"
-                  class="search-results__link"
-                >
-                  {{ item.osm_type }}/{{ item.osm_id }}
-                </a>
-              </td>
-              <td><small>{{ formatTags(item.tags) }}</small></td>
-              <td>{{ item.wkg_class || '\u2014' }}</td>
-              <td>
-                <template v-if="item.geom">
-                  {{ item.geom.lat.toFixed(3) }}, {{ item.geom.lon.toFixed(3) }}
-                </template>
-                <span v-else class="search-results__muted">N/A</span>
-              </td>
-              <td class="search-results__score-cell">
-                <strong>{{ item.scores?.final_score?.toFixed(3) || '\u2014' }}</strong>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div v-else-if="searched" class="search-results__empty">
-      No results found for this query.
-    </div>
-  </div>
-</template>
 
 <style scoped>
 .search-panel {

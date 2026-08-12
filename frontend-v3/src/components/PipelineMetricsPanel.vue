@@ -1,95 +1,3 @@
-<script>
-/**
- * PipelineMetricsPanel
- *
- * Per-step performance timeline for the latest pipeline run.
- * Reads directly from pipelineStore — reactive updates via WebSocket.
- *
- * Props:
- *   countryName  - Required. Country to show metrics for.
- *   snapshotDate - Optional. Snapshot date (e.g. "2025_12_31"). The metrics
- *                  panel reads from the pipelineStore run state, which is
- *                  already scoped to the selected snapshot date by
- *                  fetchSnapshotJobResults() in the store.
- */
-
-import { computed } from 'vue'
-import { usePipelineStore } from '../stores/pipelineStore'
-
-export default {
-  name: 'PipelineMetricsPanel',
-  props: {
-    countryName: {
-      type: String,
-      required: true,
-    },
-    snapshotDate: {
-      type: String,
-      default: null,
-    },
-  },
-  setup(props) {
-    const store = usePipelineStore()
-
-    const run = computed(() => store.runs[props.countryName] || null)
-    const steps = computed(() => run.value?.steps || [])
-    const status = computed(() => run.value?.status || 'idle')
-    const errorMessage = computed(() => run.value?.error || null)
-
-    const completedSteps = computed(() =>
-      steps.value.filter((s) => s.status === 'completed')
-    )
-
-    const totalDuration = computed(() => {
-      if (!run.value?.startedAt) return null
-      const end = run.value?.completedAt || new Date().toISOString()
-      const ms = new Date(end) - new Date(run.value.startedAt)
-      return formatDuration(ms)
-    })
-
-    function formatDuration(ms) {
-      if (!ms || ms < 0) return '\u2014'
-      const seconds = Math.floor(ms / 1000)
-      if (seconds < 60) return `${seconds}s`
-      const minutes = Math.floor(seconds / 60)
-      const secs = seconds % 60
-      if (minutes < 60) return `${minutes}m ${secs}s`
-      const hours = Math.floor(minutes / 60)
-      const mins = minutes % 60
-      return `${hours}h ${mins}m ${secs}s`
-    }
-
-    function statusIcon(status) {
-      if (status === 'completed') return '\u2713'
-      if (status === 'failed') return '\u2717'
-      if (status === 'skipped') return '\u2014'
-      if (status === 'in_progress') return '\u25B6'
-      return '\u25CB'
-    }
-
-    function statusClass(status) {
-      if (status === 'completed') return 'metric-step--done'
-      if (status === 'failed') return 'metric-step--fail'
-      if (status === 'skipped') return 'metric-step--skip'
-      if (status === 'in_progress') return 'metric-step--active'
-      return ''
-    }
-
-    return {
-      steps,
-      status,
-      errorMessage,
-      completedSteps,
-      totalDuration,
-      formatDuration,
-      statusIcon,
-      statusClass,
-      snapshotDate: props.snapshotDate,
-    }
-  },
-}
-</script>
-
 <template>
   <div class="metrics-panel">
     <!-- Summary -->
@@ -143,6 +51,92 @@ export default {
     <p v-if="errorMessage" class="metrics-error">{{ errorMessage }}</p>
   </div>
 </template>
+
+<script>
+/**
+ * PipelineMetricsPanel
+ *
+ * Per-step performance timeline for the latest pipeline run.
+ * Reads directly from pipelineStore — reactive updates via WebSocket.
+ *
+ * Props:
+ *   countryName  - Required. Country to show metrics for.
+ *   snapshotDate - Optional. Snapshot date (e.g. "2025_12_31"). The metrics
+ *                  panel reads from the pipelineStore run state, which is
+ *                  already scoped to the selected snapshot date by
+ *                  fetchSnapshotJobResults() in the store.
+ */
+
+import { usePipelineStore } from '../stores/pipelineStore'
+
+export default {
+  name: 'PipelineMetricsPanel',
+  props: {
+    countryName: {
+      type: String,
+      required: true,
+    },
+    snapshotDate: {
+      type: String,
+      default: null,
+    },
+  },
+  setup() {
+    const store = usePipelineStore()
+    return { store }
+  },
+  computed: {
+    run() {
+      return this.store.runs[this.countryName] || null
+    },
+    steps() {
+      return this.run?.steps || []
+    },
+    status() {
+      return this.run?.status || 'idle'
+    },
+    errorMessage() {
+      return this.run?.error || null
+    },
+    completedSteps() {
+      return this.steps.filter((s) => s.status === 'completed')
+    },
+    totalDuration() {
+      if (!this.run?.startedAt) return null
+      const end = this.run?.completedAt || new Date().toISOString()
+      const ms = new Date(end) - new Date(this.run.startedAt)
+      return this.formatDuration(ms)
+    },
+  },
+  methods: {
+    formatDuration(ms) {
+      if (!ms || ms < 0) return '\u2014'
+      const seconds = Math.floor(ms / 1000)
+      if (seconds < 60) return `${seconds}s`
+      const minutes = Math.floor(seconds / 60)
+      const secs = seconds % 60
+      if (minutes < 60) return `${minutes}m ${secs}s`
+      const hours = Math.floor(minutes / 60)
+      const mins = minutes % 60
+      return `${hours}h ${mins}m ${secs}s`
+    },
+    statusIcon(status) {
+      if (status === 'completed') return '\u2713'
+      if (status === 'failed') return '\u2717'
+      if (status === 'skipped') return '\u2014'
+      if (status === 'in_progress') return '\u25B6'
+      return '\u25CB'
+    },
+    statusClass(status) {
+      if (status === 'completed') return 'metric-step--done'
+      if (status === 'failed') return 'metric-step--fail'
+      if (status === 'skipped') return 'metric-step--skip'
+      if (status === 'in_progress') return 'metric-step--active'
+      return ''
+    },
+  },
+}
+</script>
 
 <style scoped>
 .metrics-panel {

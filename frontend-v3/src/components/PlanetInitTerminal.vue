@@ -1,59 +1,3 @@
-<script>
-/**
- * PlanetInitTerminal — Live initialization terminal for the map area.
- *
- * Takes its state from the shared usePlanetInit composable.
- * Shows:
- *   - A live log feed (terminal-style)
- *   - A progress bar
- *   - A compact step indicator
- *   - When complete: a "Continue" button to dismiss and reveal the map
- */
-
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
-import { usePlanetInit } from '../composables/usePlanetInit'
-
-export default {
-  name: 'PlanetInitTerminal',
-  emits: ['continue'],
-  setup(props, { emit }) {
-    const init = usePlanetInit()
-    const logContainer = ref(null)
-
-    // Auto-scroll log to bottom when new entries arrive
-    watch(
-      () => init.logs.value.length,
-      async () => {
-        await nextTick()
-        if (logContainer.value) {
-          logContainer.value.scrollTop = logContainer.value.scrollHeight
-        }
-      }
-    )
-
-    // Step icon helper
-    function iconClass(stepStatus) {
-      if (stepStatus === 'completed') return 'step-icon step-icon--success'
-      if (stepStatus === 'in_progress') return 'step-icon step-icon--running'
-      if (stepStatus === 'failed') return 'step-icon step-icon--failed'
-      if (stepStatus === 'skipped') return 'step-icon step-icon--skipped'
-      return 'step-icon step-icon--pending'
-    }
-
-    function handleContinue() {
-      emit('continue')
-    }
-
-    return {
-      init,
-      logContainer,
-      iconClass,
-      handleContinue,
-    }
-  },
-}
-</script>
-
 <template>
   <!-- TODO: wire(hide/show) this to the project states -->
   <div
@@ -243,6 +187,56 @@ export default {
     </template>
   </div>
 </template>
+
+<script>
+/**
+ * PlanetInitTerminal — Live initialization terminal for the map area.
+ *
+ * Takes its state from the shared usePlanetInit composable.
+ * Shows:
+ *   - A live log feed (terminal-style)
+ *   - A progress bar
+ *   - A compact step indicator
+ *   - When complete: a "Continue" button to dismiss and reveal the map
+ */
+
+import { usePlanetInit } from '../composables/usePlanetInit'
+
+export default {
+  name: 'PlanetInitTerminal',
+  emits: ['continue'],
+  setup() {
+    const init = usePlanetInit()
+    return { init }
+  },
+  computed: {
+    logsLength() {
+      return this.init.logs.value.length
+    },
+  },
+  watch: {
+    logsLength() {
+      this.$nextTick(() => {
+        if (this.$refs.logContainer) {
+          this.$refs.logContainer.scrollTop = this.$refs.logContainer.scrollHeight
+        }
+      })
+    },
+  },
+  methods: {
+    iconClass(stepStatus) {
+      if (stepStatus === 'completed') return 'step-icon step-icon--success'
+      if (stepStatus === 'in_progress') return 'step-icon step-icon--running'
+      if (stepStatus === 'failed') return 'step-icon step-icon--failed'
+      if (stepStatus === 'skipped') return 'step-icon step-icon--skipped'
+      return 'step-icon step-icon--pending'
+    },
+    handleContinue() {
+      this.$emit('continue')
+    },
+  },
+}
+</script>
 
 <style scoped>
 /* ── Container ────────────────────────────────── */

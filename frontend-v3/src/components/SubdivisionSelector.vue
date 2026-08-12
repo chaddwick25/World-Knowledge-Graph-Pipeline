@@ -1,3 +1,23 @@
+<template>
+  <div v-if="subdivisions.length > 0" class="subdivision-selector">
+    <label class="subdivision-selector__label">Subdivision</label>
+    <select
+      v-model="selectedQid"
+      class="subdivision-selector__select"
+      @change="onSelect"
+    >
+      <option :value="null">All subdivisions</option>
+      <option
+        v-for="sd in subdivisions"
+        :key="sd.wikidata_id"
+        :value="sd.wikidata_id"
+      >
+        {{ sd.name }}
+      </option>
+    </select>
+  </div>
+</template>
+
 <script>
 /**
  * SubdivisionSelector
@@ -72,26 +92,6 @@ export default {
   },
 }
 </script>
-
-<template>
-  <div v-if="subdivisions.length > 0" class="subdivision-selector">
-    <label class="subdivision-selector__label">Subdivision</label>
-    <select
-      v-model="selectedQid"
-      class="subdivision-selector__select"
-      @change="onSelect"
-    >
-      <option :value="null">All subdivisions</option>
-      <option
-        v-for="sd in subdivisions"
-        :key="sd.wikidata_id"
-        :value="sd.wikidata_id"
-      >
-        {{ sd.name }}
-      </option>
-    </select>
-  </div>
-</template>
 
 <style scoped>
 .subdivision-selector {
