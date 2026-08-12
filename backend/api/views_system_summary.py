@@ -81,14 +81,14 @@ class SystemSummaryView(APIView):
                 "exists": hot_path.exists(),
                 "file_count": hot_info["file_count"],
                 "size_gb": hot_info["size_gb"],
-                "contents": "OSM PBF files, polygon files, models, extractions",
+                "contents": "configs used in the pipeline, models, extractions",
             },
             "cold": {
                 "path": str(cold_path),
                 "exists": cold_path.exists(),
                 "file_count": cold_info["file_count"],
                 "size_gb": cold_info["size_gb"],
-                "contents": "Pre-trained GeoVectors embeddings (TSV + pickle)",
+                "contents": "Pre-trained GeoVectors embeddings (TSV) needed to produce the pickle at runtime, Tensors(pt) used at Runtime,",
             },
         }
 

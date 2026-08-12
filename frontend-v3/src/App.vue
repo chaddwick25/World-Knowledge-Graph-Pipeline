@@ -51,6 +51,12 @@ export default {
 
 .app-shell__brand-mark {
   font-size: 1.1rem;
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.app-shell__brand-mark:hover {
+  opacity: 0.7;
 }
 
 .app-shell__title {
