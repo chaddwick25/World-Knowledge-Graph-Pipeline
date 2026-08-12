@@ -24,99 +24,30 @@ Reference:
     IGEA paper (candidate pool):   https://arxiv.org/pdf/2303.15271.pdf  Algorithm 1
     WorldKG project page:          https://www.vgiscience.org/projects/worldkg.html
 """
-
 import logging
 import time
 from typing import Dict, List, Optional, Tuple
 
-import requests
 from django.db import models
 
 from extraction.services import osm_wikidata_resolver
 from orchestration.models import CountryPipelineProfile
+from semantic_search.utils.sparql_mixin import SPARQLRetryMixin
 
 logger = logging.getLogger(__name__)
 
-WIKIDATA_SPARQL_ENDPOINT = "https://query.wikidata.org/sparql"
-WIKIDATA_USER_AGENT = "EDAVectorSearchToolkit/1.0 (WorldKG-IGEA; contact via GitHub)"
 BBOX_PAGE_SIZE = 2_000
 REQUEST_DELAY_S = 1.1  # Wikidata rate limit: ~1 req/s for anonymous clients
-SPARQL_TIMEOUT_S = 120  # wikibase:box queries on large bboxes can take 60-90s
+SPARQL_TIMEOUT_S = 10  # wikibase:box queries on large bboxes can take 60-90s
 SPARQL_MAX_RETRIES = 1  # retry on 429/502/503 with exponential backoff
-SPARQL_BACKOFF_BASE_S = 5  # base delay: 5s, 10s, 20s
+SPARQL_BACKOFF_BASE_S = 2  # base delay
 
 
-def _sparql_request_with_retry(
-    query: str,
-    use_post: bool = True,
-    max_retries: int = SPARQL_MAX_RETRIES,
-    backoff_base: float = SPARQL_BACKOFF_BASE_S,
-) -> Optional[dict]:
-    """Execute a SPARQL request with retry+backoff for transient errors.
-
-    Retries on 429 (Too Many Requests), 502 (Bad Gateway), 503 (Service
-    Unavailable), and Timeout. Returns the JSON response dict, or None
-    if all retries are exhausted.
-
-    Args:
-        query: SPARQL query string.
-        use_post: If True, use POST (avoids URL length limits for large
-                  VALUES clauses). If False, use GET (for simple queries).
-        max_retries: Maximum number of retry attempts.
-        backoff_base: Base delay in seconds; retries use backoff_base * 2^attempt.
-    """
-    for attempt in range(max_retries + 1):
-        try:
-            if use_post:
-                response = requests.post(
-                    WIKIDATA_SPARQL_ENDPOINT,
-                    data={"query": query, "format": "json"},
-                    headers={
-                        "User-Agent": WIKIDATA_USER_AGENT,
-                        "Accept": "application/sparql-results+json",
-                    },
-                    timeout=SPARQL_TIMEOUT_S,
-                )
-            else:
-                response = requests.get(
-                    WIKIDATA_SPARQL_ENDPOINT,
-                    params={"query": query, "format": "json"},
-                    headers={"User-Agent": WIKIDATA_USER_AGENT},
-                    timeout=SPARQL_TIMEOUT_S,
-                )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.HTTPError as exc:
-            status_code = exc.response.status_code if exc.response is not None else 0
-            # Retry only on transient server errors / rate limiting
-            if status_code in (429, 502, 503) and attempt < max_retries:
-                delay = backoff_base * (2 ** attempt)
-                logger.warning(
-                    f"SPARQL request got {status_code}, retrying in {delay}s "
-                    f"(attempt {attempt + 1}/{max_retries})"
-                )
-                time.sleep(delay)
-                continue
-            logger.error(f"SPARQL request failed (HTTP {status_code}): {exc}")
-            return None
-        except requests.exceptions.Timeout:
-            if attempt < max_retries:
-                delay = backoff_base * (2 ** attempt)
-                logger.warning(
-                    f"SPARQL request timed out, retrying in {delay}s "
-                    f"(attempt {attempt + 1}/{max_retries})"
-                )
-                time.sleep(delay)
-                continue
-            logger.error(f"SPARQL request timed out after {max_retries} retries")
-            return None
-        except requests.exceptions.RequestException as exc:
-            logger.error(f"SPARQL request failed: {exc}")
-            return None
-    return None
-
-
-class WikidataCandidateService:
+class WikidataCandidateService(SPARQLRetryMixin):
+    # Override mixin defaults with local constants
+    sparql_timeout = SPARQL_TIMEOUT_S
+    sparql_max_retries = SPARQL_MAX_RETRIES
+    sparql_backoff_base = SPARQL_BACKOFF_BASE_S
     """
     Harvests Wikidata geographic entity candidates for IGEA alignment.
 
@@ -305,7 +236,7 @@ LIMIT {page_size}
 OFFSET {offset}
 """
         try:
-            data = _sparql_request_with_retry(query, use_post=False)
+            data = self._sparql_request_with_retry(query, use_post=False)
             if data is None:
                 logger.warning(
                     f"WikidataCandidate: SPARQL request failed at offset={offset} "
@@ -433,12 +364,12 @@ SELECT ?entity ?typeUri WHERE {{
 }}
 """
             try:
-                data = _sparql_request_with_retry(query, use_post=True)
+                data = self._sparql_request_with_retry(query, use_post=True)
                 if data is None:
                     failed_batches += 1
                     logger.warning(
                         f"enrich_wkg_class batch {i // batch_size}: "
-                        f"failed after {SPARQL_MAX_RETRIES} retries"
+                        f"failed after retries"
                     )
                 else:
                     rows = data.get("results", {}).get("bindings", [])

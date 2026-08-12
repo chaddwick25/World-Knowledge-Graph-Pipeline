@@ -28,18 +28,6 @@ logger = logging.getLogger("pipeline")
 @pipeline_step("predict_spatial_links", CountryEnvelope, 4.0)
 def step_4_predict_spatial_links(self, env: CountryEnvelope) -> CountryEnvelope:
     """Step 4: USLP spatial link prediction (gating layer)."""
-    igea_stats = env.igea_stats or {}
-    total_accepted = igea_stats.get('total_accepted', 0)
-
-    if total_accepted == 0:
-        _log(
-            logger,
-            "info",
-            "Step 4: Skipping USLP (IGEA accepted 0 links)",
-            country=env.iso,
-            pipeline_run_id=env.pipeline_run_id,
-        )
-        return env
 
     _log(
         logger,
@@ -85,20 +73,6 @@ def _run_subgraph_uslp(
     """Run USLP for a single subgraph (parallel Group subtask for Step 4)."""
     sg = SubgraphConfig.from_dict(subgraph_dict)
     env = CountryEnvelope.from_dict(parent_config)
-
-    igea_stats = env.igea_stats or {}
-    total_accepted = igea_stats.get('total_accepted', 0)
-
-    if total_accepted == 0:
-        _log(
-            logger,
-            "info",
-            "Skipping subgraph USLP (IGEA accepted 0 links)",
-            subgraph=sg.name,
-            country=env.iso,
-            pipeline_run_id=env.pipeline_run_id,
-        )
-        return {"subgraph": sg.name, "status": "skipped", "poly_file": None}
 
     _log(
         logger,

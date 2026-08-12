@@ -10,6 +10,59 @@ Consumed by:
     GET /api/data/augmented-summary/{country_name}/
 
 Pattern follows AppStateService (api/services/app_state_service.py).
+
+═ Django ORM Query Optimization ═══════════════════════════════════════════
+This service uses Django's `aggregate()` / `annotate()` / `values()` ORM
+methods to push all counting, bucketing, and classification logic into SQL
+rather than iterating millions of rows in Python.
+
+Key patterns used:
+
+  1. `aggregate()` with `Case/When` — replaces Python loops that count rows
+     matching conditional logic (e.g., "how many links are geo-dominant?").
+     SQL CASE WHEN ... THEN 1 END inside COUNT() is evaluated by the database
+     engine in a single pass over the filtered queryset.
+
+  2. `values('relation').annotate(count=Count('id'))` — replaces Python
+     Counter loops that group rows by a categorical field. SQL GROUP BY
+     does the grouping; Django maps it to a list of dicts.
+
+  3. Combined aggregate — instead of 4 separate queries (count, breakdown,
+     score_dist, avg_conf), we issue ONE `aggregate()` call with all
+     metrics. This reduces per-subgraph queries from ~4 to 1.
+
+  4. `F()` expressions — allow SQL-level arithmetic on columns (e.g.,
+     `geo_score > name_score + topo_score`) without loading rows into Python.
+
+The cross-database spatial query (OsmEntity is in the `vectors` DB while
+SpatialTripletScore is in `default`) still requires a two-step fetch
+(entity IDs first, then filter), but the subsequent aggregation is now
+a single SQL query per subgraph instead of a Python iterator.
+
+═ USLP Data Flow — phases 4 & 5 ═══════════════════════════════════════════
+
+This service implements phases 4 & 5 of the USLP data flow (phases 1–3 are
+in igea/services/spatial_link_prediction.py):
+
++--------+---------------------------------------------------------------+----------------------------------------------------------+
+| Phase  | What happens                                                  | Where                                                    |
++========+===============================================================+==========================================================+
+| 4      | Dashboard query filters rows:                                | AugmentedDataService.get_summary()                       |
+|        | filter(country_name=..., snapshot_id=..., predicted=True)    | → filter() uses igea_triplet_csp_idx (Index Only Scan)   |
++--------+---------------------------------------------------------------+----------------------------------------------------------+
+| 5      | Single aggregate() with Case/When reads score columns        | _aggregate_accepted_metrics()                            |
+|        | for geo/name/class dominance, histogram, avg confidence      | runs on filtered ~20k rows (Seq Scan over score cols)    |
++--------+---------------------------------------------------------------+----------------------------------------------------------+
+
+Full 5-phase flow:
+  1. Score calculation  → predict_links_batch()          (CPU/GPU)
+  2. Persist            → persist_links()                (vectors DB)
+  3. Index              → Migration igea.0003            (vectors DB)
+  4. Query (this svc)   → get_summary()                  (default DB)
+  5. Aggregate (this)   → _aggregate_accepted_metrics()  (default DB)
+
+The composite index (phase 3) speeds up phase 4 only.
+The math (phases 1, 5) is identical regardless of the index.
 """
 
 from __future__ import annotations
@@ -193,14 +246,24 @@ class AugmentedDataService:
     def _build_subgraph_groups(
         self, country_name: str, iso: Optional[str], snapshot_date: Optional[str] = None
     ) -> list[SubgraphLinkGroup]:
-        """Build per-subgraph link groupings from SpatialTripletScore data."""
+        """Build per-subgraph link groupings from SpatialTripletScore data.
+
+        Uses SQL-level aggregation instead of Python iteration. For each
+        subgraph, we issue ONE aggregate query that computes:
+          - accepted/rejected counts
+          - link type breakdown (geo/name/class/mixed dominant)
+          - score distribution histogram (5 buckets)
+          - average confidence
+
+        This replaces the previous approach of iterating millions of rows
+        in Python with `qs.iterator(chunk_size=5000)` per metric.
+        """
         from django.db.models import Q
         from igea.models import SpatialTripletScore, SpatialTripletScoreRejected
 
         country_filter = self._country_filter(country_name, iso)
         snapshot_filter = self._snapshot_filter(snapshot_date)
 
-        # Fetch subgraphs for this country
         subgraphs = self._get_subgraphs(iso)
         groups = []
 
@@ -209,179 +272,157 @@ class AugmentedDataService:
                 sg_slug = sg.slug if sg.slug else ''
                 sg_name = sg.name if sg.name else sg_slug
 
-                # Count accepted links for entities in this subgraph
-                # We approximate subgraph membership by linking through OsmEntity
-                # spatial containment. For now, use a simpler approach: aggregate
-                # all links and group by relation patterns.
-                accepted = SpatialTripletScore.objects.filter(
-                    country_filter & Q(predicted=True) & snapshot_filter
-                )
-                rejected = SpatialTripletScoreRejected.objects.filter(
-                    country_filter & snapshot_filter
-                )
-
-                # For actual subgraph scoping, we'd need entity-to-subgraph mapping.
-                # Since SpatialTripletScore stores country_name but not subgraph_slug,
-                # we estimate by counting all country-level links.
-                # Accurate subgraph grouping requires the entity's bbox/subgraph
-                # membership, which we compute below.
-                accepted_count = self._count_links_in_subgraph(accepted, sg)
-                rejected_count = self._count_links_in_subgraph(rejected, sg)
-                total_count = accepted_count + rejected_count
-
-                if total_count == 0:
+                # Fetch head entity IDs within this subgraph's bbox.
+                # Cross-database constraint: OsmEntity lives in the `vectors`
+                # DB while SpatialTripletScore lives in `default`, so we
+                # can't use a SQL subquery. We fetch entity IDs first,
+                # then filter the link queryset by head_osm_id__in.
+                entity_ids = self._get_subgraph_entity_ids(sg)
+                if not entity_ids:
                     continue
 
-                # Compute link type breakdown for this subgraph
-                breakdown = self._compute_link_type_breakdown(accepted, sg)
+                # Base querysets scoped to this subgraph's entities
+                accepted_qs = SpatialTripletScore.objects.filter(
+                    country_filter & Q(predicted=True) & snapshot_filter
+                    & Q(head_osm_id__in=entity_ids)
+                )
+                rejected_count = SpatialTripletScoreRejected.objects.filter(
+                    country_filter & snapshot_filter
+                    & Q(head_osm_id__in=entity_ids)
+                ).count()
 
-                # Compute score distribution
-                score_counts = self._compute_score_distribution(accepted, sg)
+                accepted_count = accepted_qs.count()
+                if accepted_count == 0 and rejected_count == 0:
+                    continue
 
-                # Average confidence (normalized_score for accepted links)
-                avg_conf = self._compute_avg_confidence(accepted, sg)
+                # Single aggregate query for all accepted-link metrics.
+                # This replaces 3 separate Python iterator loops
+                # (breakdown, score_dist, avg_conf) with one SQL pass.
+                agg = self._aggregate_accepted_metrics(accepted_qs)
 
                 groups.append(SubgraphLinkGroup(
                     subgraph_slug=sg_slug,
                     subgraph_name=sg_name,
                     accepted_count=accepted_count,
                     rejected_count=rejected_count,
-                    link_type_breakdown=breakdown,
+                    link_type_breakdown=agg['breakdown'],
                     score_distribution=ScoreDistribution(
                         buckets=self.BUCKET_LABELS,
-                        counts=[score_counts.get(b, 0) for b in self.BUCKET_LABELS],
+                        counts=agg['score_counts'],
                     ),
-                    avg_confidence=avg_conf,
+                    avg_confidence=agg['avg_confidence'],
                 ))
 
         # If no subgraph groups or no subgraph profiles found,
-        # return a single country-level group
+        # return a single country-level group (no spatial filtering needed)
         if not groups:
-            accepted = SpatialTripletScore.objects.filter(
+            accepted_qs = SpatialTripletScore.objects.filter(
                 country_filter & Q(predicted=True) & snapshot_filter
             )
-            rejected = SpatialTripletScoreRejected.objects.filter(
+            rejected_count = SpatialTripletScoreRejected.objects.filter(
                 country_filter & snapshot_filter
-            )
+            ).count()
 
-            accepted_count = accepted.count()
-            rejected_count = rejected.count()
-
+            accepted_count = accepted_qs.count()
             if accepted_count > 0 or rejected_count > 0:
-                breakdown = self._compute_link_type_breakdown_from_qs(accepted)
-                score_counts = self._compute_score_distribution_from_qs(accepted)
-                avg_conf = self._compute_avg_confidence_from_qs(accepted)
+                agg = self._aggregate_accepted_metrics(accepted_qs)
 
                 groups.append(SubgraphLinkGroup(
                     subgraph_slug='country-level',
                     subgraph_name=f'{country_name} (country-level)',
                     accepted_count=accepted_count,
                     rejected_count=rejected_count,
-                    link_type_breakdown=breakdown,
+                    link_type_breakdown=agg['breakdown'],
                     score_distribution=ScoreDistribution(
                         buckets=self.BUCKET_LABELS,
-                        counts=[score_counts.get(b, 0) for b in self.BUCKET_LABELS],
+                        counts=agg['score_counts'],
                     ),
-                    avg_confidence=avg_conf,
+                    avg_confidence=agg['avg_confidence'],
                 ))
 
         return groups
 
-    @staticmethod
-    def _count_links_in_subgraph(qs, subgraph_profile) -> int:
-        """Approximate count of links whose head entity falls within the subgraph bbox.
+    def _aggregate_accepted_metrics(self, accepted_qs) -> dict:
+        """Compute all accepted-link metrics in a single SQL aggregate query.
 
-        Since SpatialTripletScore doesn't store subgraph_slug directly, we use
-        the subgraph's bbox to filter entities. If no bbox is available, return 0
-        to avoid incorrect attribution.
+        Phase 5 of USLP data flow:
+        +--------+---------------------------------------------------------------+----------------------------------------------------------+
+        | Phase  | What happens                                                  | Where                                                    |
+        +========+===============================================================+==========================================================+
+        | 5      | Single aggregate() with Case/When reads score columns        | _aggregate_accepted_metrics()                            |
+        |        | for geo/name/class dominance, histogram, avg confidence      | runs on filtered ~20k rows (Seq Scan over score cols)    |
+        +--------+---------------------------------------------------------------+----------------------------------------------------------+
+
+        This replaces 3 separate Python iterator loops with one database
+        round-trip. The SQL engine evaluates all CASE WHEN expressions
+        in a single pass over the filtered rows.
+
+        Returns:
+            {
+                'breakdown': LinkTypeBreakdown,
+                'score_counts': [int, int, int, int, int],  # 5 buckets
+                'avg_confidence': float,
+            }
         """
-        bbox = (
-            subgraph_profile.bbox_min_lat is not None
-            and subgraph_profile.bbox_max_lat is not None
-            and subgraph_profile.bbox_min_lon is not None
-            and subgraph_profile.bbox_max_lon is not None
+        from django.db.models import Avg, Case, Count, F, When
+
+        # Link type dominance classification:
+        #   geo_dominant   → geo_score > name_score + topo_score
+        #   name_dominant  → name_score > geo_score + topo_score
+        #   class_dominant → topo_score > geo_score + name_score
+        #   mixed          → none of the above (including all-zero scores)
+        #
+        # The ratio test `geo_score / total > 0.5` is algebraically
+        # equivalent to `geo_score > total - geo_score` i.e.
+        # `geo_score > name_score + topo_score`. Using F() expressions
+        # lets SQL do this arithmetic without loading rows into Python.
+        result = accepted_qs.aggregate(
+            total=Count('id'),
+            geo_dominant=Count(
+                Case(When(geo_score__gt=F('name_score') + F('topo_score'), then=1))
+            ),
+            name_dominant=Count(
+                Case(When(name_score__gt=F('geo_score') + F('topo_score'), then=1))
+            ),
+            class_dominant=Count(
+                Case(When(topo_score__gt=F('geo_score') + F('name_score'), then=1))
+            ),
+            # Score distribution histogram — 5 fixed buckets over [0.0, 1.0]
+            # The last bucket includes 1.0 (>= 0.8 rather than range 0.8-1.0)
+            # to catch the edge case where normalized_score is exactly 1.0.
+            b0=Count(Case(When(normalized_score__gte=0.0, normalized_score__lt=0.2, then=1))),
+            b1=Count(Case(When(normalized_score__gte=0.2, normalized_score__lt=0.4, then=1))),
+            b2=Count(Case(When(normalized_score__gte=0.4, normalized_score__lt=0.6, then=1))),
+            b3=Count(Case(When(normalized_score__gte=0.6, normalized_score__lt=0.8, then=1))),
+            b4=Count(Case(When(normalized_score__gte=0.8, then=1))),
+            avg_confidence=Avg('normalized_score'),
         )
-        if not bbox:
-            return 0
 
-        from worldkg_nca.models import OsmEntity
-        # Get head entity IDs within this subgraph's bbox
-        entity_ids = list(
-            OsmEntity.objects.using('vectors')
-            .filter(
-                geom__within=(
-                    f'POLYGON(({subgraph_profile.bbox_min_lon} {subgraph_profile.bbox_min_lat}, '
-                    f'{subgraph_profile.bbox_max_lon} {subgraph_profile.bbox_min_lat}, '
-                    f'{subgraph_profile.bbox_max_lon} {subgraph_profile.bbox_max_lat}, '
-                    f'{subgraph_profile.bbox_min_lon} {subgraph_profile.bbox_max_lat}, '
-                    f'{subgraph_profile.bbox_min_lon} {subgraph_profile.bbox_min_lat}))'
-                ),
-                osm_type='node',
-            )
-            .values_list('osm_id', flat=True)[:10000]
-        )
+        total = result['total'] or 0
+        geo = result['geo_dominant'] or 0
+        name = result['name_dominant'] or 0
+        cls = result['class_dominant'] or 0
+        # mixed = total - (geo + name + cls) — captures both
+        # "no dominant component" and "all scores are zero"
+        mixed = total - geo - name - cls
 
-        if not entity_ids:
-            return 0
-
-        return qs.filter(head_osm_id__in=entity_ids).count()
-
-    def _compute_link_type_breakdown(self, accepted_qs, subgraph_profile) -> LinkTypeBreakdown:
-        """Classify each accepted link by which score component dominates."""
-        return self._compute_link_type_breakdown_from_qs(accepted_qs)
-
-    def _compute_link_type_breakdown_from_qs(self, qs) -> LinkTypeBreakdown:
-        """Classify links by dominant score component from a queryset."""
-        breakdown = LinkTypeBreakdown()
-        for link in qs.iterator(chunk_size=5000):
-            total = link.geo_score + link.name_score + link.topo_score
-            if total == 0:
-                breakdown.mixed += 1
-                continue
-
-            geo_ratio = link.geo_score / total if link.geo_score > 0 else 0
-            name_ratio = link.name_score / total if link.name_score > 0 else 0
-            class_ratio = link.topo_score / total if link.topo_score > 0 else 0
-
-            if geo_ratio > self.DOMINANCE_RATIO:
-                breakdown.geo_dominant += 1
-            elif name_ratio > self.DOMINANCE_RATIO:
-                breakdown.name_dominant += 1
-            elif class_ratio > self.DOMINANCE_RATIO:
-                breakdown.class_dominant += 1
-            else:
-                breakdown.mixed += 1
-
-        return breakdown
-
-    def _compute_score_distribution(self, accepted_qs, subgraph_profile) -> Counter:
-        """Compute score distribution histogram for a subgraph's accepted links."""
-        return self._compute_score_distribution_from_qs(accepted_qs)
-
-    def _compute_score_distribution_from_qs(self, qs) -> Counter:
-        """Compute score distribution histogram from a queryset."""
-        score_counts = Counter()
-        for link in qs.iterator(chunk_size=5000):
-            for i in range(len(self.BUCKET_EDGES) - 1):
-                if self.BUCKET_EDGES[i] <= link.normalized_score < self.BUCKET_EDGES[i + 1]:
-                    score_counts[self.BUCKET_LABELS[i]] += 1
-                    break
-            else:
-                if link.normalized_score >= 1.0:
-                    score_counts['0.8-1.0'] += 1
-        return score_counts
-
-    def _compute_avg_confidence(self, accepted_qs, subgraph_profile) -> float:
-        """Compute average normalized_score for a subgraph's accepted links."""
-        return self._compute_avg_confidence_from_qs(accepted_qs)
-
-    @staticmethod
-    def _compute_avg_confidence_from_qs(qs) -> float:
-        """Compute average normalized_score from a queryset."""
-        from django.db.models import Avg
-        agg = qs.aggregate(avg=Avg('normalized_score'))
-        avg = agg.get('avg')
-        return round(avg, 4) if avg else 0.0
+        avg_conf = result['avg_confidence']
+        return {
+            'breakdown': LinkTypeBreakdown(
+                geo_dominant=geo,
+                name_dominant=name,
+                class_dominant=cls,
+                mixed=mixed,
+            ),
+            'score_counts': [
+                result['b0'] or 0,
+                result['b1'] or 0,
+                result['b2'] or 0,
+                result['b3'] or 0,
+                result['b4'] or 0,
+            ],
+            'avg_confidence': round(avg_conf, 4) if avg_conf else 0.0,
+        }
 
     # ── Entity Counts ──────────────────────────────────────────────────
 
@@ -427,45 +468,57 @@ class AugmentedDataService:
     def _build_relation_distribution(
         self, country_name: str, iso: Optional[str], snapshot_date: Optional[str] = None
     ) -> list:
-        """Build relation-level distribution with acceptance rates."""
-        from collections import Counter
-        from django.db.models import Q
+        """Build relation-level distribution with acceptance rates.
+
+        Uses SQL GROUP BY via `values('relation').annotate(count=Count('id'))`
+        instead of iterating all accepted/rejected rows in Python. This
+        reduces two full-table scans to two GROUP BY queries that return
+        one row per relation (typically 10-50 rows).
+        """
+        from django.db.models import Count, Q
         from igea.models import SpatialTripletScore, SpatialTripletScoreRejected
 
         country_filter = self._country_filter(country_name, iso)
         snapshot_filter = self._snapshot_filter(snapshot_date)
 
-        accepted = SpatialTripletScore.objects.filter(
-            country_filter & Q(predicted=True) & snapshot_filter
+        # SQL: SELECT relation, COUNT(*) FROM ... GROUP BY relation
+        # Returns one dict per relation: {'relation': str, 'count': int}
+        accepted_by_rel = (
+            SpatialTripletScore.objects
+            .filter(country_filter & Q(predicted=True) & snapshot_filter)
+            .values('relation')
+            .annotate(count=Count('id'))
         )
-        rejected = SpatialTripletScoreRejected.objects.filter(
-            country_filter & snapshot_filter
+        rejected_by_rel = (
+            SpatialTripletScoreRejected.objects
+            .filter(country_filter & snapshot_filter)
+            .values('relation')
+            .annotate(count=Count('id'))
         )
 
-        rel_counts = Counter()
-        rel_accepted = Counter()
-        rel_rejected = Counter()
+        # Merge accepted + rejected counts per relation in Python.
+        # This is a small dict merge (one entry per relation), not a
+        # row-by-row iteration — the heavy lifting is done by SQL GROUP BY.
+        rel_accepted = {r['relation']: r['count'] for r in accepted_by_rel}
+        rel_rejected = {r['relation']: r['count'] for r in rejected_by_rel}
 
-        for s in accepted.iterator(chunk_size=5000):
-            rel_counts[s.relation] += 1
-            rel_accepted[s.relation] += 1
-
-        for s in rejected.iterator(chunk_size=5000):
-            rel_counts[s.relation] += 1
-            rel_rejected[s.relation] += 1
+        all_relations = set(rel_accepted) | set(rel_rejected)
 
         distribution = []
-        for rel, count in rel_counts.most_common():
+        for rel in all_relations:
             acc = rel_accepted.get(rel, 0)
             rej = rel_rejected.get(rel, 0)
+            total = acc + rej
             distribution.append({
                 'relation': rel,
-                'count': count,
+                'count': total,
                 'accepted': acc,
                 'rejected': rej,
-                'acceptance_rate': round(acc / count, 3) if count > 0 else 0.0,
+                'acceptance_rate': round(acc / total, 3) if total > 0 else 0.0,
             })
 
+        # Sort by total count descending (matches the old Counter.most_common())
+        distribution.sort(key=lambda x: x['count'], reverse=True)
         return distribution
 
     # ── Augmentation Estimate ──────────────────────────────────────────
@@ -485,22 +538,39 @@ class AugmentedDataService:
         - Rejected links with class_score > 0.3 have good class match — these are
           plausible candidates.
         - Links where ALL scores are < 0.2 are unlikely to be augmentable.
+
+        Implementation: SQL `aggregate()` with `Case/When` for the total
+        count, and `values('relation').annotate()` for the per-relation
+        breakdown. This replaces iterating all rejected links in Python.
         """
-        from collections import Counter
-        from django.db.models import Q
+        from django.db.models import Case, Count, Q, When
         from igea.models import SpatialTripletScoreRejected
 
         country_filter = self._country_filter(country_name, iso)
-        rejected = SpatialTripletScoreRejected.objects.filter(country_filter)
-        total_rejected = rejected.count()
+        rejected_qs = SpatialTripletScoreRejected.objects.filter(country_filter)
+
+        # Single aggregate query: total count + augmentable count.
+        # The augmentable condition (geo > 0.3 OR name > 0.3 OR topo > 0.3)
+        # is pushed to SQL via CASE WHEN with Q expressions.
+        totals = rejected_qs.aggregate(
+            total=Count('id'),
+            augmentable=Count(
+                Case(When(
+                    Q(geo_score__gt=0.3) | Q(name_score__gt=0.3) | Q(topo_score__gt=0.3),
+                    then=1,
+                ))
+            ),
+        )
+
+        total_rejected = totals['total'] or 0
+        augmentable_count = totals['augmentable'] or 0
 
         if total_rejected == 0:
-            cost_per_call = 0.005
             return AugmentationEstimate(
                 total_rejected=0,
                 estimated_augmentable=0,
                 augmentable_pct=0.0,
-                cost_per_call=cost_per_call,
+                cost_per_call=0.005,
                 estimated_total_cost=0.0,
                 by_relation=[],
                 reasoning="No rejected links to augment.",
@@ -508,38 +578,38 @@ class AugmentedDataService:
 
         cost_per_call = 0.005  # Google Places Geocoding starter tier
 
-        # Categorize rejected links by augmentability
-        augmentable_count = 0
-        relation_augmentable = Counter()
-        relation_total = Counter()
-
-        for s in rejected.iterator(chunk_size=5000):
-            relation_total[s.relation] += 1
-
-            # Check if this link is a good augmentation candidate
-            is_augmentable = (
-                s.geo_score > 0.3        # Good spatial proximity
-                or s.name_score > 0.3    # Good name match
-                or s.topo_score > 0.3    # Good class match
+        # Per-relation breakdown via SQL GROUP BY + conditional COUNT.
+        # This returns one row per relation with total and augmentable counts,
+        # replacing the Python Counter loop over all rejected links.
+        by_rel_qs = (
+            rejected_qs
+            .values('relation')
+            .annotate(
+                total=Count('id'),
+                augmentable=Count(
+                    Case(When(
+                        Q(geo_score__gt=0.3) | Q(name_score__gt=0.3) | Q(topo_score__gt=0.3),
+                        then=1,
+                    ))
+                ),
             )
-
-            if is_augmentable:
-                augmentable_count += 1
-                relation_augmentable[s.relation] += 1
-
-        augmentable_pct = round(augmentable_count / total_rejected * 100, 1) if total_rejected > 0 else 0.0
-        estimated_total_cost = round(augmentable_count * cost_per_call, 2)
+            .order_by('-total')
+        )
 
         by_relation = []
-        for rel, total in relation_total.most_common():
-            aug = relation_augmentable.get(rel, 0)
+        for row in by_rel_qs:
+            rel_total = row['total']
+            rel_aug = row['augmentable']
             by_relation.append({
-                'relation': rel,
-                'total': total,
-                'estimated_augmentable': aug,
-                'augmentable_pct': round(aug / total * 100, 1) if total > 0 else 0.0,
-                'cost_usd': round(aug * cost_per_call, 2),
+                'relation': row['relation'],
+                'total': rel_total,
+                'estimated_augmentable': rel_aug,
+                'augmentable_pct': round(rel_aug / rel_total * 100, 1) if rel_total > 0 else 0.0,
+                'cost_usd': round(rel_aug * cost_per_call, 2),
             })
+
+        augmentable_pct = round(augmentable_count / total_rejected * 100, 1)
+        estimated_total_cost = round(augmentable_count * cost_per_call, 2)
 
         reasoning = (
             f"Of {total_rejected:,} rejected links, ~{augmentable_count:,} ({augmentable_pct}%) "

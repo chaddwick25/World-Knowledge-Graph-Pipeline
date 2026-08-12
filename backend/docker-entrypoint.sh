@@ -84,8 +84,17 @@ if [ "$RUN_MIGRATIONS" = "false" ]; then
   fi
 else
   echo "Backend container — running migrations..."
-  echo "Running makemigrations..."
-  python manage.py makemigrations
+
+  # makemigrations is opt-in (default: off).  Generating migration files is a
+  # build/CI concern, not a runtime one — running it on every boot adds a full
+  # Django model-introspection pass that stalls startup.  Set RUN_MAKEMIGRATIONS=true
+  # in dev or CI when schema changes need to be detected.
+  if [ "$RUN_MAKEMIGRATIONS" = "true" ]; then
+    echo "Running makemigrations..."
+    python manage.py makemigrations
+  else
+    echo "Skipping makemigrations (set RUN_MAKEMIGRATIONS=true to enable)."
+  fi
 
   echo "Running migrations for default database..."
   python manage.py migrate
