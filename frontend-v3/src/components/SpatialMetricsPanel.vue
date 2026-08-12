@@ -1,166 +1,3 @@
-<script>
-import axios from 'axios'
-
-export default {
-  name: 'SpatialMetricsPanel',
-  props: {
-    countryName: {
-      type: String,
-      required: true,
-    },
-    snapshotDate: {
-      type: String,
-      default: null,
-    },
-  },
-  data() {
-    return {
-      loading: false,
-      error: null,
-      subgraphs: [],
-      isoCode: null,
-      // Toggle view
-      showSubgraphs: true,
-      heatmapMetric: null, // null | 'entity_density' | 'accepted_links' | 'rejected_links' | 'acceptance_rate'
-      // Summary data from augmented endpoint for overlay
-      summary: null,
-      // Augmented data service access
-      selectedSubgraph: null,
-    }
-  },
-  computed: {
-    metricOptions() {
-      return [
-        { value: 'entity_density', label: 'Entity Density' },
-        { value: 'accepted_links', label: 'Accepted Links' },
-        { value: 'rejected_links', label: 'Rejected Links' },
-        { value: 'acceptance_rate', label: 'Acceptance Rate' },
-      ]
-    },
-    formattedMetrics() {
-      if (!this.summary?.subgraph_groups?.length) return []
-      return this.summary.subgraph_groups.map((sg) => {
-        const total = sg.accepted_count + sg.rejected_count
-        return {
-          name: sg.subgraph_name,
-          slug: sg.subgraph_slug,
-          accepted: sg.accepted_count,
-          rejected: sg.rejected_count,
-          total,
-          rate: total > 0 ? ((sg.accepted_count / total) * 100).toFixed(1) : '0.0',
-          avg_conf: sg.avg_confidence ? (sg.avg_confidence * 100).toFixed(1) : '—',
-        }
-      })
-    },
-    coverageSummary() {
-      if (!this.formattedMetrics.length) return null
-      const totalAccepted = this.formattedMetrics.reduce((s, g) => s + g.accepted, 0)
-      const totalRejected = this.formattedMetrics.reduce((s, g) => s + g.rejected, 0)
-      const total = totalAccepted + totalRejected
-      return {
-        subgraphCount: this.formattedMetrics.length,
-        totalAccepted,
-        totalRejected,
-        total,
-        rate: total > 0 ? ((totalAccepted / total) * 100).toFixed(1) : '0.0',
-      }
-    },
-  },
-  watch: {
-    countryName() {
-      this.fetchData()
-    },
-    snapshotDate() {
-      this.fetchData()
-    },
-  },
-  mounted() {
-    if (this.countryName) {
-      this.fetchData()
-    }
-  },
-  methods: {
-    async fetchData() {
-      if (!this.countryName) return
-      this.loading = true
-      this.error = null
-      this.subgraphs = []
-      this.summary = null
-      this.selectedSubgraph = null
-
-      try {
-        // Fetch both subgraph profiles and augmented summary in parallel
-        const encoded = encodeURIComponent(this.countryName)
-        const params = {}
-        if (this.snapshotDate) params.snapshot_date = this.snapshotDate
-
-        // 1. Fetch subgraphs from country-subgraphs endpoint
-        const sgPromise = axios
-          .get(`/country-subgraphs/${encoded}/`, { params })
-          .then((r) => {
-            this.subgraphs = (r.data?.subgraphs || r.data?.results || []).map((sg) => ({
-              slug: sg.slug || sg.subgraph_slug || '',
-              name: sg.name || sg.subgraph_name || sg.slug || '',
-              has_pbf: sg.has_subgraph_pbf ?? sg.has_pbf ?? false,
-              has_poly: sg.has_subgraph_poly ?? sg.has_poly ?? false,
-              has_pickle: sg.has_subgraph_pickle ?? sg.has_pickle ?? false,
-              node_count: sg.node_count ?? 0,
-              way_count: sg.way_count ?? 0,
-              file_size_bytes: sg.file_size_bytes ?? 0,
-              metadata_status: sg.metadata_status || '',
-            }))
-          })
-          .catch(() => {
-            // Subgraph endpoint may not exist — skip gracefully
-            this.subgraphs = []
-          })
-
-        // 2. Fetch augmented summary for link metrics
-        const summaryPromise = axios
-          .get(`/data/augmented-summary/${encoded}/`, { params })
-          .then((r) => {
-            this.summary = r.data
-          })
-          .catch(() => {
-            this.summary = null
-          })
-
-        await Promise.all([sgPromise, summaryPromise])
-      } catch (e) {
-        console.error('Error fetching spatial data:', e)
-        this.error = e.message || 'Failed to load spatial data'
-      } finally {
-        this.loading = false
-      }
-    },
-    selectSubgraph(sg) {
-      this.selectedSubgraph = this.selectedSubgraph?.slug === sg.slug ? null : sg
-    },
-    setHeatmap(metric) {
-      this.heatmapMetric = this.heatmapMetric === metric ? null : metric
-    },
-    subgraphBarColor(sg, metric) {
-      if (!metric || !sg) return '#374151'
-      // Simple color scale: higher = greener, lower = redder
-      const all = this.formattedMetrics
-      const vals = all.map((g) => {
-        if (metric === 'acceptance_rate') return parseFloat(g.rate)
-        if (metric === 'accepted_links') return g.accepted
-        if (metric === 'rejected_links') return g.rejected
-        if (metric === 'entity_density') return g.total
-        return 0
-      })
-      const max = Math.max(...vals, 1)
-      const val = metric === 'acceptance_rate' ? parseFloat(sg.rate) : (sg[metric] || 0)
-      const pct = val / max
-      if (pct > 0.66) return '#22c55e'
-      if (pct > 0.33) return '#eab308'
-      return '#ef4444'
-    },
-  },
-}
-</script>
-
 <template>
   <div class="spatial">
     <!-- Loading -->
@@ -331,6 +168,169 @@ export default {
     </div>
   </div>
 </template>
+
+<script>
+import axios from 'axios'
+
+export default {
+  name: 'SpatialMetricsPanel',
+  props: {
+    countryName: {
+      type: String,
+      required: true,
+    },
+    snapshotDate: {
+      type: String,
+      default: null,
+    },
+  },
+  data() {
+    return {
+      loading: false,
+      error: null,
+      subgraphs: [],
+      isoCode: null,
+      // Toggle view
+      showSubgraphs: true,
+      heatmapMetric: null, // null | 'entity_density' | 'accepted_links' | 'rejected_links' | 'acceptance_rate'
+      // Summary data from augmented endpoint for overlay
+      summary: null,
+      // Augmented data service access
+      selectedSubgraph: null,
+    }
+  },
+  computed: {
+    metricOptions() {
+      return [
+        { value: 'entity_density', label: 'Entity Density' },
+        { value: 'accepted_links', label: 'Accepted Links' },
+        { value: 'rejected_links', label: 'Rejected Links' },
+        { value: 'acceptance_rate', label: 'Acceptance Rate' },
+      ]
+    },
+    formattedMetrics() {
+      if (!this.summary?.subgraph_groups?.length) return []
+      return this.summary.subgraph_groups.map((sg) => {
+        const total = sg.accepted_count + sg.rejected_count
+        return {
+          name: sg.subgraph_name,
+          slug: sg.subgraph_slug,
+          accepted: sg.accepted_count,
+          rejected: sg.rejected_count,
+          total,
+          rate: total > 0 ? ((sg.accepted_count / total) * 100).toFixed(1) : '0.0',
+          avg_conf: sg.avg_confidence ? (sg.avg_confidence * 100).toFixed(1) : '—',
+        }
+      })
+    },
+    coverageSummary() {
+      if (!this.formattedMetrics.length) return null
+      const totalAccepted = this.formattedMetrics.reduce((s, g) => s + g.accepted, 0)
+      const totalRejected = this.formattedMetrics.reduce((s, g) => s + g.rejected, 0)
+      const total = totalAccepted + totalRejected
+      return {
+        subgraphCount: this.formattedMetrics.length,
+        totalAccepted,
+        totalRejected,
+        total,
+        rate: total > 0 ? ((totalAccepted / total) * 100).toFixed(1) : '0.0',
+      }
+    },
+  },
+  watch: {
+    countryName() {
+      this.fetchData()
+    },
+    snapshotDate() {
+      this.fetchData()
+    },
+  },
+  mounted() {
+    if (this.countryName) {
+      this.fetchData()
+    }
+  },
+  methods: {
+    async fetchData() {
+      if (!this.countryName) return
+      this.loading = true
+      this.error = null
+      this.subgraphs = []
+      this.summary = null
+      this.selectedSubgraph = null
+
+      try {
+        // Fetch both subgraph profiles and augmented summary in parallel
+        const encoded = encodeURIComponent(this.countryName)
+        const params = {}
+        if (this.snapshotDate) params.snapshot_date = this.snapshotDate
+
+        // 1. Fetch subgraphs from country-subgraphs endpoint
+        const sgPromise = axios
+          .get(`/country-subgraphs/${encoded}/`, { params })
+          .then((r) => {
+            this.subgraphs = (r.data?.subgraphs || r.data?.results || []).map((sg) => ({
+              slug: sg.slug || sg.subgraph_slug || '',
+              name: sg.name || sg.subgraph_name || sg.slug || '',
+              has_pbf: sg.has_subgraph_pbf ?? sg.has_pbf ?? false,
+              has_poly: sg.has_subgraph_poly ?? sg.has_poly ?? false,
+              has_pickle: sg.has_subgraph_pickle ?? sg.has_pickle ?? false,
+              node_count: sg.node_count ?? 0,
+              way_count: sg.way_count ?? 0,
+              file_size_bytes: sg.file_size_bytes ?? 0,
+              metadata_status: sg.metadata_status || '',
+            }))
+          })
+          .catch(() => {
+            // Subgraph endpoint may not exist — skip gracefully
+            this.subgraphs = []
+          })
+
+        // 2. Fetch augmented summary for link metrics
+        const summaryPromise = axios
+          .get(`/data/augmented-summary/${encoded}/`, { params })
+          .then((r) => {
+            this.summary = r.data
+          })
+          .catch(() => {
+            this.summary = null
+          })
+
+        await Promise.all([sgPromise, summaryPromise])
+      } catch (e) {
+        console.error('Error fetching spatial data:', e)
+        this.error = e.message || 'Failed to load spatial data'
+      } finally {
+        this.loading = false
+      }
+    },
+    selectSubgraph(sg) {
+      this.selectedSubgraph = this.selectedSubgraph?.slug === sg.slug ? null : sg
+    },
+    setHeatmap(metric) {
+      this.heatmapMetric = this.heatmapMetric === metric ? null : metric
+    },
+    subgraphBarColor(sg, metric) {
+      if (!metric || !sg) return '#374151'
+      // Simple color scale: higher = greener, lower = redder
+      const all = this.formattedMetrics
+      const vals = all.map((g) => {
+        if (metric === 'acceptance_rate') return parseFloat(g.rate)
+        if (metric === 'accepted_links') return g.accepted
+        if (metric === 'rejected_links') return g.rejected
+        if (metric === 'entity_density') return g.total
+        return 0
+      })
+      const max = Math.max(...vals, 1)
+      const val = metric === 'acceptance_rate' ? parseFloat(sg.rate) : (sg[metric] || 0)
+      const pct = val / max
+      if (pct > 0.66) return '#22c55e'
+      if (pct > 0.33) return '#eab308'
+      return '#ef4444'
+    },
+  },
+}
+</script>
 
 <style scoped>
 .spatial {

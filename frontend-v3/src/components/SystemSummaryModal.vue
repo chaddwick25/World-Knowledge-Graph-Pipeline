@@ -1,92 +1,3 @@
-<script>
-import { ref, computed, onMounted, watch } from 'vue'
-import axios from 'axios'
-
-export default {
-  name: 'SystemSummaryModal',
-  props: {
-    open: { type: Boolean, default: false },
-  },
-  emits: ['close'],
-  setup(props, { emit }) {
-    const data = ref(null)
-    const loading = ref(false)
-    const error = ref('')
-    const activeTab = ref('overview')
-
-    async function fetchSummary() {
-      loading.value = true
-      error.value = ''
-      try {
-        const { data: d } = await axios.get('/system/summary/')
-        data.value = d
-      } catch (err) {
-        error.value = err.response?.data?.error || err.message || 'Failed to load summary'
-      } finally {
-        loading.value = false
-      }
-    }
-
-    onMounted(() => {
-      if (props.open) fetchSummary()
-    })
-
-    watch(() => props.open, (isOpen) => {
-      if (isOpen && !data.value) fetchSummary()
-    })
-
-    // ── Computed helpers ──
-
-    const planetSizeDisplay = computed(() => {
-      if (!data.value?.planet?.size_gb) return 'N/A'
-      return `${data.value.planet.size_gb} GB`
-    })
-
-    const countriesWithEmbeddings = computed(() => {
-      if (!data.value?.embeddings) return 0
-      return data.value.embeddings.with_embeddings
-    })
-
-    const totalCountries = computed(() => {
-      return data.value?.embeddings?.total_countries || 0
-    })
-
-    const totalPipelines = computed(() => {
-      return data.value?.pipeline_runs?.completed || 0
-    })
-
-    const preprocessingCompleted = computed(() => {
-      if (!data.value?.preprocessing_steps) return 0
-      const steps = Object.values(data.value.preprocessing_steps)
-      return steps.filter((s) => s.status === 'completed').length
-    })
-
-    const preprocessingTotal = computed(() => {
-      return data.value?.preprocessing_steps ? Object.keys(data.value.preprocessing_steps).length : 0
-    })
-
-    const hotStorage = computed(() => data.value?.storage?.hot || {})
-    const coldStorage = computed(() => data.value?.storage?.cold || {})
-
-    return {
-      data,
-      loading,
-      error,
-      activeTab,
-      fetchSummary,
-      planetSizeDisplay,
-      countriesWithEmbeddings,
-      totalCountries,
-      totalPipelines,
-      preprocessingCompleted,
-      preprocessingTotal,
-      hotStorage,
-      coldStorage,
-    }
-  },
-}
-</script>
-
 <template>
   <Teleport to="body">
     <div v-if="open" class="summary-backdrop" @click.self="$emit('close')">
@@ -347,6 +258,78 @@ export default {
     </div>
   </Teleport>
 </template>
+
+<script>
+import axios from 'axios'
+
+export default {
+  name: 'SystemSummaryModal',
+  props: {
+    open: { type: Boolean, default: false },
+  },
+  emits: ['close'],
+  data() {
+    return {
+      data: null,
+      loading: false,
+      error: '',
+      activeTab: 'overview',
+    }
+  },
+  computed: {
+    planetSizeDisplay() {
+      if (!this.data?.planet?.size_gb) return 'N/A'
+      return `${this.data.planet.size_gb} GB`
+    },
+    countriesWithEmbeddings() {
+      if (!this.data?.embeddings) return 0
+      return this.data.embeddings.with_embeddings
+    },
+    totalCountries() {
+      return this.data?.embeddings?.total_countries || 0
+    },
+    totalPipelines() {
+      return this.data?.pipeline_runs?.completed || 0
+    },
+    preprocessingCompleted() {
+      if (!this.data?.preprocessing_steps) return 0
+      const steps = Object.values(this.data.preprocessing_steps)
+      return steps.filter((s) => s.status === 'completed').length
+    },
+    preprocessingTotal() {
+      return this.data?.preprocessing_steps ? Object.keys(this.data.preprocessing_steps).length : 0
+    },
+    hotStorage() {
+      return this.data?.storage?.hot || {}
+    },
+    coldStorage() {
+      return this.data?.storage?.cold || {}
+    },
+  },
+  watch: {
+    open(isOpen) {
+      if (isOpen && !this.data) this.fetchSummary()
+    },
+  },
+  mounted() {
+    if (this.open) this.fetchSummary()
+  },
+  methods: {
+    async fetchSummary() {
+      this.loading = true
+      this.error = ''
+      try {
+        const { data: d } = await axios.get('/system/summary/')
+        this.data = d
+      } catch (err) {
+        this.error = err.response?.data?.error || err.message || 'Failed to load summary'
+      } finally {
+        this.loading = false
+      }
+    },
+  },
+}
+</script>
 
 <style scoped>
 /* ── Backdrop ── */

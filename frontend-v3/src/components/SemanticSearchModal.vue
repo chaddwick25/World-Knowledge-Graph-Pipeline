@@ -1,164 +1,3 @@
-<script>
-/**
- * SemanticSearchModal
- *
- * Modal for querying OSM entities via semantic triplet search.
- * Becomes available once a country's pipeline completes.
- * Supports both structured (JSON tags) and natural language queries.
- */
-
-import axios from 'axios'
-
-export default {
-  name: 'SemanticSearchModal',
-  props: {
-    modelValue: {
-      type: Boolean,
-      default: false,
-    },
-    countryName: {
-      type: String,
-      required: true,
-    },
-  },
-  emits: ['update:modelValue', 'search-results'],
-  data() {
-    return {
-      queryMode: 'tags',
-      queryTagsInput: '{"amenity": "cafe"}',
-      naturalQuery: '',
-      lat: '',
-      lon: '',
-      rdfType: null,
-      topK: 20,
-      useLearnedWeights: false,
-      useAnn: false,
-      loading: false,
-      error: null,
-      results: [],
-      searched: false,
-      classOptions: [
-        { value: 'wkgs:Cafe', text: 'Cafe' },
-        { value: 'wkgs:Restaurant', text: 'Restaurant' },
-        { value: 'wkgs:Hotel', text: 'Hotel' },
-        { value: 'wkgs:Hospital', text: 'Hospital' },
-        { value: 'wkgs:School', text: 'School' },
-        { value: 'wkgs:Shop', text: 'Shop' },
-        { value: 'wkgs:Amenity', text: 'Amenity (general)' },
-      ],
-    }
-  },
-  computed: {
-    open: {
-      get() {
-        return this.modelValue
-      },
-      set(val) {
-        this.$emit('update:modelValue', val)
-      },
-    },
-    isTagsMode() {
-      return this.queryMode === 'tags'
-    },
-    isNaturalMode() {
-      return this.queryMode === 'natural'
-    },
-    isValid() {
-      if (this.isTagsMode) {
-        try {
-          JSON.parse(this.queryTagsInput)
-          return true
-        } catch {
-          return false
-        }
-      }
-      return this.naturalQuery.trim().length > 0
-    },
-  },
-  watch: {
-    modelValue(val) {
-      if (val) this.reset()
-    },
-  },
-  methods: {
-    reset() {
-      this.queryMode = 'tags'
-      this.queryTagsInput = '{"amenity": "cafe"}'
-      this.naturalQuery = ''
-      this.lat = ''
-      this.lon = ''
-      this.rdfType = null
-      this.topK = 20
-      this.loading = false
-      this.error = null
-      this.results = []
-      this.searched = false
-      this.useLearnedWeights = false
-      this.useAnn = false
-    },
-
-    async performSearch() {
-      this.loading = true
-      this.error = null
-      this.results = []
-      this.searched = false
-
-      try {
-        const payload = {
-          country_code: this.countryName,
-          top_k: parseInt(this.topK) || 20,
-          use_learned_weights: this.useLearnedWeights,
-        }
-
-        if (this.useAnn) {
-          payload.use_ann = true
-        }
-
-        if (this.isNaturalMode) {
-          if (!this.naturalQuery.trim()) {
-            throw new Error('Please enter a natural language query')
-          }
-          payload.natural_query = this.naturalQuery.trim()
-        } else {
-          let queryTags = {}
-          try {
-            queryTags = JSON.parse(this.queryTagsInput)
-          } catch {
-            throw new Error('Invalid JSON in query tags')
-          }
-          payload.query_tags = queryTags
-        }
-
-        if (this.lat) payload.lat = parseFloat(this.lat)
-        if (this.lon) payload.lon = parseFloat(this.lon)
-        if (this.rdfType) payload.rdf_type = this.rdfType
-
-        const response = await axios.post('/nca/semantic-triplet-search/', payload)
-        this.results = response.data.results || []
-        this.searched = true
-        this.$emit('search-results', this.results)
-      } catch (err) {
-        console.error('Semantic search failed:', err)
-        this.error = err.response?.data?.error || err.message || 'Search failed'
-      } finally {
-        this.loading = false
-      }
-    },
-
-    formatTags(tags) {
-      if (!tags) return ''
-      const entries = Object.entries(tags).slice(0, 3)
-      const str = entries.map(([k, v]) => `${k}=${v}`).join(', ')
-      return entries.length < Object.keys(tags).length ? str + '…' : str
-    },
-
-    close() {
-      this.open = false
-    },
-  },
-}
-</script>
-
 <template>
   <Teleport to="body">
     <div v-if="open" class="modal-backdrop" @click.self="close">
@@ -325,6 +164,167 @@ export default {
     </div>
   </Teleport>
 </template>
+
+<script>
+/**
+ * SemanticSearchModal
+ *
+ * Modal for querying OSM entities via semantic triplet search.
+ * Becomes available once a country's pipeline completes.
+ * Supports both structured (JSON tags) and natural language queries.
+ */
+
+import axios from 'axios'
+
+export default {
+  name: 'SemanticSearchModal',
+  props: {
+    modelValue: {
+      type: Boolean,
+      default: false,
+    },
+    countryName: {
+      type: String,
+      required: true,
+    },
+  },
+  emits: ['update:modelValue', 'search-results'],
+  data() {
+    return {
+      queryMode: 'tags',
+      queryTagsInput: '{"amenity": "cafe"}',
+      naturalQuery: '',
+      lat: '',
+      lon: '',
+      rdfType: null,
+      topK: 20,
+      useLearnedWeights: false,
+      useAnn: false,
+      loading: false,
+      error: null,
+      results: [],
+      searched: false,
+      classOptions: [
+        { value: 'wkgs:Cafe', text: 'Cafe' },
+        { value: 'wkgs:Restaurant', text: 'Restaurant' },
+        { value: 'wkgs:Hotel', text: 'Hotel' },
+        { value: 'wkgs:Hospital', text: 'Hospital' },
+        { value: 'wkgs:School', text: 'School' },
+        { value: 'wkgs:Shop', text: 'Shop' },
+        { value: 'wkgs:Amenity', text: 'Amenity (general)' },
+      ],
+    }
+  },
+  computed: {
+    open: {
+      get() {
+        return this.modelValue
+      },
+      set(val) {
+        this.$emit('update:modelValue', val)
+      },
+    },
+    isTagsMode() {
+      return this.queryMode === 'tags'
+    },
+    isNaturalMode() {
+      return this.queryMode === 'natural'
+    },
+    isValid() {
+      if (this.isTagsMode) {
+        try {
+          JSON.parse(this.queryTagsInput)
+          return true
+        } catch {
+          return false
+        }
+      }
+      return this.naturalQuery.trim().length > 0
+    },
+  },
+  watch: {
+    modelValue(val) {
+      if (val) this.reset()
+    },
+  },
+  methods: {
+    reset() {
+      this.queryMode = 'tags'
+      this.queryTagsInput = '{"amenity": "cafe"}'
+      this.naturalQuery = ''
+      this.lat = ''
+      this.lon = ''
+      this.rdfType = null
+      this.topK = 20
+      this.loading = false
+      this.error = null
+      this.results = []
+      this.searched = false
+      this.useLearnedWeights = false
+      this.useAnn = false
+    },
+
+    async performSearch() {
+      this.loading = true
+      this.error = null
+      this.results = []
+      this.searched = false
+
+      try {
+        const payload = {
+          country_code: this.countryName,
+          top_k: parseInt(this.topK) || 20,
+          use_learned_weights: this.useLearnedWeights,
+        }
+
+        if (this.useAnn) {
+          payload.use_ann = true
+        }
+
+        if (this.isNaturalMode) {
+          if (!this.naturalQuery.trim()) {
+            throw new Error('Please enter a natural language query')
+          }
+          payload.natural_query = this.naturalQuery.trim()
+        } else {
+          let queryTags = {}
+          try {
+            queryTags = JSON.parse(this.queryTagsInput)
+          } catch {
+            throw new Error('Invalid JSON in query tags')
+          }
+          payload.query_tags = queryTags
+        }
+
+        if (this.lat) payload.lat = parseFloat(this.lat)
+        if (this.lon) payload.lon = parseFloat(this.lon)
+        if (this.rdfType) payload.rdf_type = this.rdfType
+
+        const response = await axios.post('/nca/semantic-triplet-search/', payload)
+        this.results = response.data.results || []
+        this.searched = true
+        this.$emit('search-results', this.results)
+      } catch (err) {
+        console.error('Semantic search failed:', err)
+        this.error = err.response?.data?.error || err.message || 'Search failed'
+      } finally {
+        this.loading = false
+      }
+    },
+
+    formatTags(tags) {
+      if (!tags) return ''
+      const entries = Object.entries(tags).slice(0, 3)
+      const str = entries.map(([k, v]) => `${k}=${v}`).join(', ')
+      return entries.length < Object.keys(tags).length ? str + '…' : str
+    },
+
+    close() {
+      this.open = false
+    },
+  },
+}
+</script>
 
 <style scoped>
 /* ── Overlay ── */

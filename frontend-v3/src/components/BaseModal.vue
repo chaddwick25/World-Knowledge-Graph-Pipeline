@@ -1,3 +1,24 @@
+<template>
+  <teleport to="body">
+    <div v-if="isOpen" class="modal-backdrop" @click="onBackdropClick">
+      <div class="modal" :class="`modal--${size}`">
+        <header class="modal__header">
+          <h3 class="modal__title">{{ title }}</h3>
+          <button class="modal__close" type="button" @click="close">×</button>
+        </header>
+        <section class="modal__body">
+          <slot />
+        </section>
+        <footer class="modal__footer">
+          <slot name="footer">
+            <button type="button" class="modal__btn" @click="close">Close</button>
+          </slot>
+        </footer>
+      </div>
+    </div>
+  </teleport>
+</template>
+
 <script>
 export default {
   name: 'BaseModal',
@@ -38,27 +59,6 @@ export default {
   },
 }
 </script>
-
-<template>
-  <teleport to="body">
-    <div v-if="isOpen" class="modal-backdrop" @click="onBackdropClick">
-      <div class="modal" :class="`modal--${size}`">
-        <header class="modal__header">
-          <h3 class="modal__title">{{ title }}</h3>
-          <button class="modal__close" type="button" @click="close">×</button>
-        </header>
-        <section class="modal__body">
-          <slot />
-        </section>
-        <footer class="modal__footer">
-          <slot name="footer">
-            <button type="button" class="modal__btn" @click="close">Close</button>
-          </slot>
-        </footer>
-      </div>
-    </div>
-  </teleport>
-</template>
 
 <style scoped>
 .modal-backdrop {

@@ -1,3 +1,38 @@
+<template>
+  <div class="map-wrapper">
+    <div ref="mapContainer" class="map-wrapper__map"></div>
+
+    <div v-if="isLoading" class="map-wrapper__overlay">
+      <div class="map-wrapper__spinner"></div>
+      <p>Loading countries...</p>
+    </div>
+
+    <!-- Relation legend (only when augmented links are visible) -->
+    <div v-if="activeRelationLegend.length" class="map-legend">
+      <div class="map-legend__title">Link Types</div>
+      <div class="map-legend__items">
+        <div
+          v-for="item in activeRelationLegend"
+          :key="item.relation"
+          class="map-legend__item"
+        >
+          <span
+            class="map-legend__dot"
+            :style="{ background: item.color }"
+          ></span>
+          <span class="map-legend__label">{{ item.relation }}</span>
+        </div>
+      </div>
+      <div class="map-legend__hint">
+        <span class="map-legend__line map-legend__line--solid"></span>
+        accepted
+        <span class="map-legend__line map-legend__line--dashed"></span>
+        rejected
+      </div>
+    </div>
+  </div>
+</template>
+
 <script>
 /**
  * WorldKGMap
@@ -257,7 +292,7 @@ export default {
     countryStyle(feature) {
       const isSupported = feature.properties.is_geovectors_supported
       const isSelected = this.selectedIds.includes(feature.properties.id)
-      
+
       if (!isSupported) {
         return {
           fillColor: 'transparent',
@@ -267,7 +302,7 @@ export default {
           opacity: 0,
         }
       }
-      
+
       if (isSelected) {
         return {
           fillColor: '#6366f1',
@@ -490,41 +525,6 @@ export default {
   },
 }
 </script>
-
-<template>
-  <div class="map-wrapper">
-    <div ref="mapContainer" class="map-wrapper__map"></div>
-
-    <div v-if="isLoading" class="map-wrapper__overlay">
-      <div class="map-wrapper__spinner"></div>
-      <p>Loading countries...</p>
-    </div>
-
-    <!-- Relation legend (only when augmented links are visible) -->
-    <div v-if="activeRelationLegend.length" class="map-legend">
-      <div class="map-legend__title">Link Types</div>
-      <div class="map-legend__items">
-        <div
-          v-for="item in activeRelationLegend"
-          :key="item.relation"
-          class="map-legend__item"
-        >
-          <span
-            class="map-legend__dot"
-            :style="{ background: item.color }"
-          ></span>
-          <span class="map-legend__label">{{ item.relation }}</span>
-        </div>
-      </div>
-      <div class="map-legend__hint">
-        <span class="map-legend__line map-legend__line--solid"></span>
-        accepted
-        <span class="map-legend__line map-legend__line--dashed"></span>
-        rejected
-      </div>
-    </div>
-  </div>
-</template>
 
 <style scoped>
 .map-wrapper {

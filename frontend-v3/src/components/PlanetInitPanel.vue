@@ -1,62 +1,3 @@
-<script>
-/**
- * PlanetInitPanel — Sidebar controller for Planet Initialization.
- *
- * This is the lightweight sidebar component. It delegates all state
- * to the shared usePlanetInit composable, which also powers the
- * live terminal in the map area (PlanetInitTerminal.vue).
- *
- * Shows:
- *   - Status badge + Initialize/Retry button
- *   - Compact step list
- *   - Summary + Continue button when complete
- *   - System Summary modal triggered on continue
- */
-
-import { computed, onUnmounted } from 'vue'
-import { usePlanetInit } from '../composables/usePlanetInit'
-import SystemSummaryModal from './SystemSummaryModal.vue'
-
-export default {
-  name: 'PlanetInitPanel',
-  components: { SystemSummaryModal },
-  props: {
-    suggestedPlanetFilePath: { type: String, default: '' },
-  },
-  emits: ['system-ready'],
-  setup(props, { emit }) {
-    const init = usePlanetInit()
-
-    // Sync suggested planet file path into the composable
-    if (props.suggestedPlanetFilePath) {
-      init.setSuggestedPlanetFilePath(props.suggestedPlanetFilePath)
-    }
-
-    // Step icon helper
-    function iconClass(stepStatus) {
-      if (stepStatus === 'completed') return 'step-icon step-icon--success'
-      if (stepStatus === 'in_progress') return 'step-icon step-icon--running'
-      if (stepStatus === 'failed') return 'step-icon step-icon--failed'
-      if (stepStatus === 'skipped') return 'step-icon step-icon--skipped'
-      return 'step-icon step-icon--pending'
-    }
-
-    function handleContinue() {
-      emit('system-ready')
-      init.showSummaryModal.value = true
-    }
-
-    // Cleanup is handled by the composable singleton
-
-    return {
-      init,
-      iconClass,
-      handleContinue,
-    }
-  },
-}
-</script>
-
 <template>
   <section
     class="planet-init"
@@ -144,6 +85,56 @@ export default {
     />
   </section>
 </template>
+
+<script>
+/**
+ * PlanetInitPanel — Sidebar controller for Planet Initialization.
+ *
+ * This is the lightweight sidebar component. It delegates all state
+ * to the shared usePlanetInit composable, which also powers the
+ * live terminal in the map area (PlanetInitTerminal.vue).
+ *
+ * Shows:
+ *   - Status badge + Initialize/Retry button
+ *   - Compact step list
+ *   - Summary + Continue button when complete
+ *   - System Summary modal triggered on continue
+ */
+
+import { usePlanetInit } from '../composables/usePlanetInit'
+import SystemSummaryModal from './SystemSummaryModal.vue'
+
+export default {
+  name: 'PlanetInitPanel',
+  components: { SystemSummaryModal },
+  props: {
+    suggestedPlanetFilePath: { type: String, default: '' },
+  },
+  emits: ['system-ready'],
+  setup() {
+    const init = usePlanetInit()
+    return { init }
+  },
+  created() {
+    if (this.suggestedPlanetFilePath) {
+      this.init.setSuggestedPlanetFilePath(this.suggestedPlanetFilePath)
+    }
+  },
+  methods: {
+    iconClass(stepStatus) {
+      if (stepStatus === 'completed') return 'step-icon step-icon--success'
+      if (stepStatus === 'in_progress') return 'step-icon step-icon--running'
+      if (stepStatus === 'failed') return 'step-icon step-icon--failed'
+      if (stepStatus === 'skipped') return 'step-icon step-icon--skipped'
+      return 'step-icon step-icon--pending'
+    },
+    handleContinue() {
+      this.$emit('system-ready')
+      this.init.showSummaryModal.value = true
+    },
+  },
+}
+</script>
 
 <style scoped>
 /* ── Container ───────────────────────────────── */

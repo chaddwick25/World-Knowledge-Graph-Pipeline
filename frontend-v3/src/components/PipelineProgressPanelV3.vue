@@ -1,192 +1,3 @@
-<script>
-/**
- * PipelineProgressPanelV3
- *
- * Displays pipeline progress for a single country.
- * Supports both WorldKG (15 steps) and Temporal preprocessing (4 phases).
- * Reads from the Pinia pipelineStore.
- *
- * Props:
- *   countryName  - Required. Country to track.
- *   pipelineType - 'worldkg' (default) or 'temporal'
- *
- * Events:
- *   pipeline-done  - { status, sessionId, error }
- */
-
-import { computed, watch, onMounted } from 'vue'
-import { usePipelineStore } from '../stores/pipelineStore'
-
-export default {
-  name: 'PipelineProgressPanelV3',
-  props: {
-    countryName: {
-      type: String,
-      required: true,
-    },
-    pipelineType: {
-      type: String,
-      default: 'worldkg', // 'worldkg' | 'temporal'
-    },
-    /**
-     * Optional session ID to connect WebSocket immediately
-     * (used when the pipeline was already started externally).
-     */
-    sessionId: {
-      type: String,
-      default: null,
-    },
-  },
-  emits: ['pipeline-done'],
-  setup(props, { emit }) {
-    const store = usePipelineStore()
-
-    // ── Reactive run state ──
-    const run = computed(() => store.runs[props.countryName] || null)
-    const status = computed(() => run.value?.status || 'idle')
-    const steps = computed(() => run.value?.steps || [])
-    const completedCount = computed(() => store.completedCount(run.value))
-    const totalCount = computed(() => steps.value.length)
-    const progressPct = computed(() => store.progressPct(run.value))
-    const errorMessage = computed(() => run.value?.error || null)
-    const logs = computed(() => run.value?.logs || [])
-
-    // DB-backed durable results (from fetchSnapshotJobResults)
-    const isDurable = computed(() => run.value?.durable === true)
-    const summary = computed(() => run.value?.summary || null)
-    const snapshotDate = computed(() => run.value?.snapshotDate || null)
-
-    const isRunning = computed(() => status.value === 'running' || status.value === 'in_progress')
-    const isComplete = computed(() => status.value === 'completed')
-    const isFailed = computed(() => status.value === 'failed')
-    const isSkipped = computed(() => status.value === 'skipped')
-    const isIdle = computed(() => status.value === 'idle')
-
-    // ── Derived labels ──
-    const badgeLabel = computed(() => {
-      if (isRunning.value) return 'Running'
-      if (isComplete.value) return 'Complete'
-      if (isFailed.value) return 'Failed'
-      if (isSkipped.value) return 'Skipped'
-      return 'Idle'
-    })
-
-    const badgeVariant = computed(() => {
-      if (isRunning.value) return 'info'
-      if (isComplete.value) return 'success'
-      if (isFailed.value) return 'danger'
-      if (isSkipped.value) return 'warning'
-      return 'secondary'
-    })
-
-    const currentStepName = computed(() => {
-      const active = steps.value.find((s) => s.status === 'in_progress')
-      return active ? active.name : null
-    })
-
-    const pipelineTitle = computed(() => {
-      if (props.pipelineType === 'temporal') return 'Preprocessing'
-      return 'WorldKG Pipeline'
-    })
-
-    // ── Watch for status changes → emit ──
-    watch(status, (newStatus) => {
-      if (['completed', 'failed', 'skipped'].includes(newStatus)) {
-        emit('pipeline-done', {
-          status: newStatus,
-          sessionId: run.value?.sessionId || null,
-          error: errorMessage.value,
-        })
-      }
-    })
-
-    // ── On mount: fetch existing state / connect WS ──
-    onMounted(async () => {
-      // Only fetch if no run exists yet (or we need to restore)
-      const existing = store.runs[props.countryName]
-      if (!existing || existing.status === 'idle') {
-        await store.fetchRunState(props.countryName)
-      }
-
-      // Connect WebSocket if we have a session ID
-      const currentRun = store.runs[props.countryName]
-      if (props.sessionId) {
-        store.connectWebSocket(props.sessionId, props.countryName)
-        if (currentRun) currentRun.sessionId = props.sessionId
-      } else if (currentRun?.sessionId && isRunning.value) {
-        store.connectWebSocket(currentRun.sessionId, props.countryName)
-      }
-    })
-
-    // ── Actions ──
-    async function handleRun() {
-      if (props.pipelineType === 'temporal') {
-        await store.startPreprocessing(props.countryName)
-      } else {
-        await store.startPipeline(props.countryName)
-      }
-    }
-
-    function handleRetry() {
-      handleRun()
-    }
-
-    // ── Step icon helper ──
-    function iconClass(stepStatus) {
-      if (stepStatus === 'completed') return 'step-icon step-icon--success'
-      if (stepStatus === 'in_progress') return 'step-icon step-icon--running'
-      if (stepStatus === 'failed') return 'step-icon step-icon--failed'
-      if (stepStatus === 'skipped') return 'step-icon step-icon--skipped'
-      return 'step-icon step-icon--pending'
-    }
-
-    function stepLabelClass(step) {
-      if (step.status === 'in_progress') return 'step-label step-label--active'
-      if (step.status === 'completed') return 'step-label step-label--done'
-      return 'step-label'
-    }
-
-    // Format milliseconds as "Xs" or "Xm Ys"
-    function formatDuration(ms) {
-      if (!ms || ms < 0) return ''
-      const seconds = Math.round(ms / 1000)
-      if (seconds < 60) return `${seconds}s`
-      const minutes = Math.floor(seconds / 60)
-      const secs = seconds % 60
-      return `${minutes}m ${secs}s`
-    }
-
-    return {
-      run,
-      steps,
-      status,
-      completedCount,
-      totalCount,
-      progressPct,
-      errorMessage,
-      logs,
-      isDurable,
-      summary,
-      snapshotDate,
-      isRunning,
-      isComplete,
-      isFailed,
-      isSkipped,
-      isIdle,
-      badgeLabel,
-      badgeVariant,
-      currentStepName,
-      pipelineTitle,
-      handleRun,
-      handleRetry,
-      iconClass,
-      stepLabelClass,
-      formatDuration,
-    }
-  },
-}
-</script>
-
 <template>
   <section
     v-if="run || status !== 'idle' || logs.length > 0"
@@ -339,6 +150,183 @@ export default {
     </header>
   </section>
 </template>
+
+<script>
+/**
+ * PipelineProgressPanelV3
+ *
+ * Displays pipeline progress for a single country.
+ * Supports both WorldKG (15 steps) and Temporal preprocessing (4 phases).
+ * Reads from the Pinia pipelineStore.
+ *
+ * Props:
+ *   countryName  - Required. Country to track.
+ *   pipelineType - 'worldkg' (default) or 'temporal'
+ *
+ * Events:
+ *   pipeline-done  - { status, sessionId, error }
+ */
+
+import { usePipelineStore } from '../stores/pipelineStore'
+
+export default {
+  name: 'PipelineProgressPanelV3',
+  props: {
+    countryName: {
+      type: String,
+      required: true,
+    },
+    pipelineType: {
+      type: String,
+      default: 'worldkg', // 'worldkg' | 'temporal'
+    },
+    /**
+     * Optional session ID to connect WebSocket immediately
+     * (used when the pipeline was already started externally).
+     */
+    sessionId: {
+      type: String,
+      default: null,
+    },
+  },
+  emits: ['pipeline-done'],
+  setup() {
+    const store = usePipelineStore()
+    return { store }
+  },
+  computed: {
+    run() {
+      return this.store.runs[this.countryName] || null
+    },
+    status() {
+      return this.run?.status || 'idle'
+    },
+    steps() {
+      return this.run?.steps || []
+    },
+    completedCount() {
+      return this.store.completedCount(this.run)
+    },
+    totalCount() {
+      return this.steps.length
+    },
+    progressPct() {
+      return this.store.progressPct(this.run)
+    },
+    errorMessage() {
+      return this.run?.error || null
+    },
+    logs() {
+      return this.run?.logs || []
+    },
+    isDurable() {
+      return this.run?.durable === true
+    },
+    summary() {
+      return this.run?.summary || null
+    },
+    snapshotDate() {
+      return this.run?.snapshotDate || null
+    },
+    isRunning() {
+      return this.status === 'running' || this.status === 'in_progress'
+    },
+    isComplete() {
+      return this.status === 'completed'
+    },
+    isFailed() {
+      return this.status === 'failed'
+    },
+    isSkipped() {
+      return this.status === 'skipped'
+    },
+    isIdle() {
+      return this.status === 'idle'
+    },
+    badgeLabel() {
+      if (this.isRunning) return 'Running'
+      if (this.isComplete) return 'Complete'
+      if (this.isFailed) return 'Failed'
+      if (this.isSkipped) return 'Skipped'
+      return 'Idle'
+    },
+    badgeVariant() {
+      if (this.isRunning) return 'info'
+      if (this.isComplete) return 'success'
+      if (this.isFailed) return 'danger'
+      if (this.isSkipped) return 'warning'
+      return 'secondary'
+    },
+    currentStepName() {
+      const active = this.steps.find((s) => s.status === 'in_progress')
+      return active ? active.name : null
+    },
+    pipelineTitle() {
+      if (this.pipelineType === 'temporal') return 'Preprocessing'
+      return 'WorldKG Pipeline'
+    },
+  },
+  watch: {
+    status(newStatus) {
+      if (['completed', 'failed', 'skipped'].includes(newStatus)) {
+        this.$emit('pipeline-done', {
+          status: newStatus,
+          sessionId: this.run?.sessionId || null,
+          error: this.errorMessage,
+        })
+      }
+    },
+  },
+  async mounted() {
+    // Only fetch if no run exists yet (or we need to restore)
+    const existing = this.store.runs[this.countryName]
+    if (!existing || existing.status === 'idle') {
+      await this.store.fetchRunState(this.countryName)
+    }
+
+    // Connect WebSocket if we have a session ID
+    const currentRun = this.store.runs[this.countryName]
+    if (this.sessionId) {
+      this.store.connectWebSocket(this.sessionId, this.countryName)
+      if (currentRun) currentRun.sessionId = this.sessionId
+    } else if (currentRun?.sessionId && this.isRunning) {
+      this.store.connectWebSocket(currentRun.sessionId, this.countryName)
+    }
+  },
+  methods: {
+    async handleRun() {
+      if (this.pipelineType === 'temporal') {
+        await this.store.startPreprocessing(this.countryName)
+      } else {
+        await this.store.startPipeline(this.countryName)
+      }
+    },
+    handleRetry() {
+      this.handleRun()
+    },
+    iconClass(stepStatus) {
+      if (stepStatus === 'completed') return 'step-icon step-icon--success'
+      if (stepStatus === 'in_progress') return 'step-icon step-icon--running'
+      if (stepStatus === 'failed') return 'step-icon step-icon--failed'
+      if (stepStatus === 'skipped') return 'step-icon step-icon--skipped'
+      return 'step-icon step-icon--pending'
+    },
+    stepLabelClass(step) {
+      if (step.status === 'in_progress') return 'step-label step-label--active'
+      if (step.status === 'completed') return 'step-label step-label--done'
+      return 'step-label'
+    },
+    formatDuration(ms) {
+      if (!ms || ms < 0) return ''
+      const seconds = Math.round(ms / 1000)
+      if (seconds < 60) return `${seconds}s`
+      const minutes = Math.floor(seconds / 60)
+      const secs = seconds % 60
+      return `${minutes}m ${secs}s`
+    },
+  },
+}
+</script>
 
 <style scoped>
 .pipeline {
