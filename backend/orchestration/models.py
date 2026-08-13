@@ -1035,7 +1035,6 @@ class CountryPipelineProfile(models.Model):
         default=MetadataStatus.OK,
         db_index=True,
     )
-    # TODO: Remove this feild
     notes = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

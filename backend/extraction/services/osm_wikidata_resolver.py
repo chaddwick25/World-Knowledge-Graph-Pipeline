@@ -292,6 +292,15 @@ def resolve_iso_code(input_code: str) -> str:
     except Exception:
         pass
 
+    # Try slug-based fuzzy matching (handles cases where the display name
+    # differs from the DB name, e.g. "Ireland And Northern Ireland" → "Ireland")
+    try:
+        iso_from_name = resolve_iso_from_country_name(code)
+        if iso_from_name:
+            return iso_from_name.upper()
+    except Exception:
+        pass
+
     return ''
 
 

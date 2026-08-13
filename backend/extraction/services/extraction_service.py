@@ -678,10 +678,10 @@ def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, o
         ]
         
         print(f"[Core {cpu_core_id}] Running: {' '.join(command)}")
-        # Inherit stderr to allow the progress bar to show in the terminal
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=None)
-        stdout, _ = process.communicate()
-        
+        # Capture stderr so the error handler can report the real osmium failure
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+
         # Record timing and size immediately
         end_time = timezone.now()
         duration_seconds = (end_time - start_time).total_seconds()

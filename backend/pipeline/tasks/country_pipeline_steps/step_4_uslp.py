@@ -66,7 +66,6 @@ def step_4_predict_spatial_links(self, env: CountryEnvelope) -> CountryEnvelope:
     name="sub_run_subgraph_uslp",
     max_retries=1, default_retry_delay=60,
 )
-# TODO: Look into this(Legacy Code ?)
 def _run_subgraph_uslp(
     self, subgraph_dict: dict, parent_config: dict
 ) -> dict:

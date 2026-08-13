@@ -86,6 +86,7 @@ class PigzWriter:
         self._proc: Optional[subprocess.Popen] = None
         self._stdin = None
         self._writer = None
+        self._stdout_file = None
         self._use_pigz = self._check_pigz()
     
     def _check_pigz(self) -> bool:
@@ -98,10 +99,11 @@ class PigzWriter:
     def __enter__(self):
         if self._use_pigz:
             # pigz: parallel compression
+            self._stdout_file = open(self.path, "wb")
             self._proc = subprocess.Popen(
                 ["pigz", "-p", str(self.num_threads), "-c"],
                 stdin=subprocess.PIPE,
-                stdout=open(self.path, "wb"),
+                stdout=self._stdout_file,
             )
             self._stdin = self._proc.stdin
             # Wrap binary stdin for csv.writer (needs text mode)
@@ -124,6 +126,8 @@ class PigzWriter:
                 self._stdin.close()
             if self._proc:
                 self._proc.wait()
+            if self._stdout_file:
+                self._stdout_file.close()
         else:
             if self._file:
                 self._file.close()

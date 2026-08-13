@@ -49,7 +49,6 @@ from extraction.services.country_override_service import (
 
 class Command(BaseCommand):
     help = "Pre-compute and store all resolved filesystem paths for countries and subgraphs."
-    # TODO: remove the hard coded dates
     SNAPSHOT_DATE = getattr(settings, 'SINGLE_SNAPSHOT_DATE', '2025_12_31')
     def add_arguments(self, parser):
         parser.add_argument(

@@ -23,8 +23,6 @@ planet initialization. They populate the DB structure so the frontend can
 show available countries and their status without requiring country PBFs.
 """
 
-# TODO: canvas might actually benefit from lazy loading the imports refactor imports below
-
 from __future__ import annotations
 import dataclasses
 import logging
