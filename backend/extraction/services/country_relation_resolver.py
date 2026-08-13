@@ -38,7 +38,6 @@ class CountryRelationResolver:
         
         ***REMOVED*** 2. Get SPARQL ISO -> Relation ID mapping
         sparql_map = sparql_country_relation_service.fetch_country_relations()
-        ***REMOVED*** TODO:remove if its legacy code I dont think we use fallback mapping
         ***REMOVED*** 3. Get all countries from RegionHierarchy for fallback mapping
         from api.models import RegionHierarchy
         all_regions = RegionHierarchy.objects.filter(parent__isnull=False).select_related('parent')

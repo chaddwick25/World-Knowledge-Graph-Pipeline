@@ -1,4 +1,3 @@
-***REMOVED***TODO: Refactor this page 
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -649,8 +648,8 @@ def worldkg_semantic_triplet_search(request):
             bbox = tuple(boundary.bbox)
         else:
             ***REMOVED*** Fallback to ISO/QID and override-aware resolution.
-            ***REMOVED*** First, try robust ISO resolution via the (deprecated) pipeline service
-            ***REMOVED*** helper, which already understands slugs and Wikidata IDs.
+            ***REMOVED*** First, try robust ISO resolution via resolve_iso_code(),
+            ***REMOVED*** which already understands slugs and Wikidata IDs.
             iso_code = None
             resolved_iso = None
             try:
