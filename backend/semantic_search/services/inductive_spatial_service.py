@@ -278,6 +278,13 @@ class InductiveSpatialService:
         """
         Compute geographic similarity score between two entities via geohash.
 
+        NOTE: This method is DEAD CODE — zero call sites in the codebase
+        (verified via codebase-wide search).  It implements the PRE-FIX
+        geo formula ``1 / (1 + d_km)`` which was replaced by the paper's
+        ``1 - d / d_max`` formula in ``spatial_link_prediction._geo_score``
+        (see ``docs/plans/USLP_GEO_SPACE_FORMULA_FIX.md``).  Retained for
+        reference only; do not call in new code.
+
         The USLP paper selects geohash precision per relation type:
         - Short precision (4–5): farther-distance relations (isInCountry)
         - Long precision (6–7): nearby relations (addrSuburb, addrHamlet)
