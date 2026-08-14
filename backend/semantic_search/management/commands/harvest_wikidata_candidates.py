@@ -49,8 +49,8 @@ from collections import Counter
 
 from django.core.management.base import BaseCommand
 
-from semantic_search.services.wikidata_candidate_service import WikidataCandidateService
-from semantic_search.services.worldkg_ontology_service import WorldKGOntologyService
+from worldkg_nca.services.wikidata_service import WikidataCandidateService
+from worldkg_nca.services.ontology_service import WorldKGOntologyService
 from igea.services.iterative_alignment_service import (
     IterativeEntityAlignmentService,
 )

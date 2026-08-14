@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from django.core.paginator import Paginator
 
 from worldkg_nca.models import OsmEntity
-from worldkg_nca.services.enrichment_service import get_worldkg_enrichment_service
+from semantic_search.services.worldkg_enrichment_service import get_worldkg_enrichment_service
 from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 from api.models import TemporalSnapshot, WorldKGClassDrift, WorldKGClassFingerprint
