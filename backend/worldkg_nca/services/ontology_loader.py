@@ -6,9 +6,7 @@ from typing import Dict, Optional
 import requests
 
 logger = logging.getLogger(__name__)
-# TODO: Audit this entire file for security and correctness
-# TODO: Load these from a config file
-WKGS_BASE_URI = "http://schema.worldkg.org/"
+WKGS_BASE_URI = "http://www.worldkg.org/schema/"
 ZENODO_ONTOLOGY_URL = "https://zenodo.org/record/4953986/files/worldkg_ontology.ttl"
 WORLDKG_REPO_URL = "https://github.com/alishiba14/WorldKG-Knowledge-Graph"
 class WorldKGOntologyLoader:
@@ -237,7 +235,6 @@ class WorldKGOntologyLoader:
         Exact key→class mapping requires the full WorldKG ontology or manual spec.
         """
         # Known depth-1 key class mappings from the WorldKG paper
-        # TODO: Load these from a config file
         KEY_CLASS_MAP = {
             'wkgs:Amenity':    'amenity',
             'wkgs:Natural':    'natural',

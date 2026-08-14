@@ -32,17 +32,48 @@ def _should_drop_indexes_during_load(iso: str) -> bool:
     """Decide whether to drop/rebuild vector indexes during the bulk load.
 
     Controlled by the ``DROP_INDEXES_DURING_LOAD`` env var:
-      - ``auto`` (default): True — HNSW maintenance per row is
-        O(m * ef_construction), always drop + rebuild on partitioned tables.
-      - ``true`` / ``1``:   Always drop/rebuild
-      - ``false`` / ``0``:  Never drop/rebuild
+      - ``auto`` (default): True when ``semantic_search_osmentity`` is
+        partitioned (runtime ``pg_partitioned_table`` check).  On a fresh DB
+        (monolith, not yet partitioned) returns False — there's no HNSW to
+        drop.  After the first country's Step 1 converts the monolith to a
+        partitioned table, returns True for all subsequent runs.
+      - ``true`` / ``1`` / ``yes``:   Always drop/rebuild
+      - ``false`` / ``0`` / ``no``:   Never drop/rebuild
+
+    Per PER_LEAF_INDEX_LIFECYCLE_PLAN.md §3.3 — the ``auto`` mode previously
+    hardcoded to True; this makes the code match the docs (and the
+    ``.devin/rules.md`` §2.8 description).
     """
     mode = os.environ.get("DROP_INDEXES_DURING_LOAD", "auto").lower()
     if mode in ("true", "1", "yes"):
         return True
     if mode in ("false", "0", "no"):
         return False
-    return True
+    # auto: check if the table is partitioned at runtime.
+    from django.db import connections
+    try:
+        with connections['vectors'].cursor() as cursor:
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_partitioned_table pt
+                    JOIN pg_class c ON c.oid = pt.partrelid
+                    JOIN pg_namespace n ON c.relnamespace = n.oid
+                    WHERE n.nspname = 'public'
+                      AND c.relname = 'semantic_search_osmentity'
+                );
+            """)
+            return bool(cursor.fetchone()[0])
+    except Exception:
+        # If the vectors DB isn't reachable (e.g. unit tests without a DB),
+        # fall back to the safe default: don't drop.  This matches the
+        # monolith case — no HNSW to drop.
+        logger.warning(
+            "auto mode: pg_partitioned_table check failed for %s; "
+            "defaulting to no drop",
+            iso,
+            exc_info=True,
+        )
+        return False
 
 
 @pipeline_task(

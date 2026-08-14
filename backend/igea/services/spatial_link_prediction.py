@@ -101,6 +101,85 @@ RELATION_GEOHASH_PRECISION: Dict[str, int] = {
 DEFAULT_GEOHASH_PRECISION = 4
 _GEOHASH_ALPHABET = "0123456789bcdefghjkmnpqrstuvwxyz"
 
+# Per-cluster max Haversine distance: (precision, cluster_geohash) -> km.
+# Mirrors the reference repo's distance_matrix.max(axis=0): each cluster
+# center is normalized by the distance to ITS farthest cluster center
+# (dataprep_utils.py:83).  Populated at pool-load time by
+# _compute_d_max_per_precision() and read by _geo_score and the GPU /
+# TorchUSLP scoring paths.
+#
+# LOAD-BEFORE-SCORE INVARIANT: this module global is shared by the CPU,
+# GPU, and TorchUSLP services.  Safe under the Celery prefork model
+# because every task loads its pool before scoring; never score against a
+# global populated by a different service's pool.
+_D_MAX_PER_CLUSTER: Dict[int, Dict[str, float]] = {}
+
+# Fallback d_max values derived from geohash cell widths at the equator.
+# Used only when the pool has not been loaded (e.g. unit tests) or a tail
+# cluster is missing from _D_MAX_PER_CLUSTER (single-cluster precision
+# level).  NOTE: these are NOT upper bounds on cluster-center distance —
+# a pool spanning two cells already has centers up to ~2 cell-widths
+# apart.  They are arbitrary scale constants that keep the score sane for
+# degenerate pools (a single-cluster pool yields d ≈ 0 → sim ≈ 1.0
+# regardless of the normalizer).
+# Source: geohash cell dimensions — P1 ≈ 5000km, P3 ≈ 156km, P4 ≈ 39km.
+_FALLBACK_D_MAX: Dict[int, float] = {1: 5000.0, 3: 156.0, 4: 39.0}
+
+
+def _compute_d_max_per_precision(pool: List[Dict]) -> Dict[int, Dict[str, float]]:
+    """Per-cluster max cluster-center distance, per precision level.
+
+    Mirrors the paper's reference code (dataprep_utils.py:71-83 +
+    fetch_entities_info.py:154-202) without materializing an N×N entity
+    matrix.  For each precision level:
+      1. Encode every candidate to a precision-P geohash.
+      2. Take the unique cluster centers (decode each geohash to lat/lon).
+      3. For each cluster center, compute the distance to its farthest
+         peer (the per-column max of the K×K distance matrix; the matrix
+         is symmetric, so row max == column max).
+
+    K = number of unique clusters: at most 32 for P1, but potentially
+    10^3–10^4 for P4 on a large pool (P4 cells are ~39km wide).  The
+    pairwise pass is therefore vectorized numpy in row-blocks — O(K²)
+    time, O(block × K) peak memory.  Precisions with a single cluster are
+    omitted; lookups fall back to _FALLBACK_D_MAX (d ≈ 0 → sim ≈ 1.0).
+    """
+    if not pool:
+        return {}
+    result: Dict[int, Dict[str, float]] = {}
+    coords = [(e['lat'], e['lon']) for e in pool]
+    for precision in (1, 3, 4):
+        # Unique cluster centers at this precision
+        centers: Dict[str, Tuple[float, float]] = {}
+        for lat, lon in coords:
+            gh = geohash2.encode(lat, lon, precision=precision)
+            if gh not in centers:
+                lat_s, lon_s = geohash2.decode(gh)
+                centers[gh] = (float(lat_s), float(lon_s))
+        if len(centers) <= 1:
+            continue
+        ghs = list(centers.keys())
+        pts = np.radians(np.array([centers[g] for g in ghs]))  # (K, 2)
+        # Vectorized pairwise Haversine in row-blocks (bounds peak memory
+        # to BLOCK × K instead of K² — matters when K ~ 10^4 at P4).
+        per_cluster_max = np.zeros(len(ghs))
+        BLOCK = 1024
+        for start in range(0, len(ghs), BLOCK):
+            b = pts[start:start + BLOCK]
+            dlat = b[:, 0][:, None] - pts[:, 0][None, :]
+            dlon = b[:, 1][:, None] - pts[:, 1][None, :]
+            a = (np.sin(dlat / 2) ** 2
+                 + np.cos(b[:, 0])[:, None]
+                 * np.cos(pts[:, 0])[None, :]
+                 * np.sin(dlon / 2) ** 2)
+            dist = 6371.0 * 2 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
+            per_cluster_max[start:start + BLOCK] = dist.max(axis=1)
+        result[precision] = {
+            gh: max(float(m), 1e-6)  # avoid div-by-zero
+            for gh, m in zip(ghs, per_cluster_max)
+        }
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Geohash helpers (no external dependency)
@@ -322,6 +401,11 @@ class SpatialLinkPredictionService:
         """
         self._pool = entities
         self._build_spatial_index()  # Build spatial index after loading
+        # Precompute per-cluster d_max for the paper's geo formula
+        # (1 - d/d_max).  Module global — see LOAD-BEFORE-SCORE INVARIANT
+        # at _D_MAX_PER_CLUSTER's definition.
+        global _D_MAX_PER_CLUSTER
+        _D_MAX_PER_CLUSTER = _compute_d_max_per_precision(self._pool)
         logger.info(f"SpatialLinkPredictionService: pool={len(self._pool)} candidates")
         return len(self._pool)
 
@@ -493,29 +577,47 @@ class SpatialLinkPredictionService:
     def _geo_score(self, head_lat: float, head_lon: float,
                    tail_lat: float, tail_lon: float,
                    relation: str) -> float:
-        """
-        Geographic space score using geohash centroids and Haversine distance.
+        """Geographic space score (paper §3.3).
 
-        Score = 1 / (1 + dist_km(geohash_center(h), geohash_center(t)))
-        where precision is selected per relation type.
-        
+        Paper formula (reference repo dataprep_utils.py:83):
+            geo_sim = 1 - d / d_max
+        where:
+          d     = Haversine distance between geohash cluster centers at the
+                  relation's precision level
+          d_max = the TAIL cluster's max distance to any other cluster center
+                  at that precision (the per-column max of the reference
+                  repo's distance matrix), precomputed at pool-load — see
+                  _compute_d_max_per_precision
+
+        Range: [0, 1].  d=0 (same cluster) → 1.0; d=d_max (tail cluster's
+        farthest peer) → 0.0.
+
         Uses fast geohash2 library (C-based) instead of pure Python implementation.
         """
         precision = RELATION_GEOHASH_PRECISION.get(relation, DEFAULT_GEOHASH_PRECISION)
-        
+
         # Use geohash2 library for fast encoding (C-based, 100x faster than pure Python)
         gh_h = geohash2.encode(head_lat, head_lon, precision=precision)
         gh_t = geohash2.encode(tail_lat, tail_lon, precision=precision)
-        
+
         # Decode to centers (returns strings, need to convert to floats)
         lat_h_str, lon_h_str = geohash2.decode(gh_h)
         lat_t_str, lon_t_str = geohash2.decode(gh_t)
         c_h = (float(lat_h_str), float(lon_h_str))
         c_t = (float(lat_t_str), float(lon_t_str))
-        
-        # Calculate haversine distance
+
+        # Calculate haversine distance between cluster centers
         dist_km = haversine(c_h, c_t, unit=Unit.KILOMETERS)
-        return 1.0 / (1.0 + dist_km)
+        # Per-tail-cluster d_max (reference: column max at the tail index).
+        # Tails are pool members, so this lookup hits whenever the pool was
+        # loaded; the fallback covers unit tests and degenerate pools.
+        d_max = _D_MAX_PER_CLUSTER.get(precision, {}).get(gh_t) \
+            or _FALLBACK_D_MAX.get(precision, 39.0)
+        sim = 1.0 - (dist_km / d_max)
+        # Clamp to [0, 1] — d can exceed d_max when the head lies outside the
+        # tail cluster's span (heads need not be pool members, so this is more
+        # common than in the reference repo's closed-world matrix lookup).
+        return max(0.0, min(1.0, sim))
 
     def _name_score(self, literal_string: str, candidate: Dict) -> float:
         """
@@ -585,12 +687,12 @@ class SpatialLinkPredictionService:
 
     def _total_score(self, head_lat: float, head_lon: float, head_osm_id: int,
                      relation: str, literal: str,
-                     candidate: Dict) -> Tuple[float, float]:
+                     candidate: Dict) -> Tuple[float, float, float, float, float]:
         """Sum of three USLP spaces (equal weight, paper Section 3.3).
 
         Paper (Section 3.3, Fig 3): final_score = geo + name + class  (no normalization)
         Paper does NOT apply a threshold — USLP is evaluated via ranking metrics (Hits@k, MRR).
-        
+
         Implementation: unnormalized = g + n + c  (same as paper)
                         normalized   = unnormalized / 3.0  (÷3 not in paper, but preserves ranking)
                         ACCEPTANCE_THRESHOLD = 0.7 applied to normalized (= 2.1 unnormalized)
@@ -599,14 +701,16 @@ class SpatialLinkPredictionService:
         See papers/SSLPandUSLP-main/USLP/approach_utils.py for the original scoring.
 
         Returns:
-            (unnormalized_score, normalized_score) tuple.
+            (unnormalized_score, normalized_score, geo_score, name_score, class_score) tuple.
             unnormalized_score = g + n + c  (range [0, 3.0])  ← matches paper
             normalized_score   = unnormalized_score / 3.0  (range [0, 1.0])  ← implementation
+            The decomposed g/n/c scores are returned so persist_links can
+            write per-space columns (Fix 2) without recomputing them.
         """
         g = self._geo_score(head_lat, head_lon,
                             candidate['lat'], candidate['lon'], relation)
         n = self._name_score(literal, candidate)
-        
+
         c = 0.0
         # Restore OpenKE Mathematical intent!
         if self.transe_service:
@@ -618,10 +722,10 @@ class SpatialLinkPredictionService:
             c = 1.0 / (1.0 + dist)
         else:
             c = self._class_score(relation, candidate)
-            
+
         unnormalized = g + n + c
         normalized = unnormalized / 3.0
-        return unnormalized, normalized
+        return unnormalized, normalized, g, n, c
 
     # ------------------------------------------------------------------
     # Entity-level prediction
@@ -690,7 +794,8 @@ class SpatialLinkPredictionService:
             # Score filtered candidates
             scored_candidates = []
             for candidate in candidates_to_score:
-                unnormalized, normalized = self._total_score(head_lat, head_lon, head_osm_id, relation, literal, candidate)
+                unnormalized, normalized, g, n, c = self._total_score(
+                    head_lat, head_lon, head_osm_id, relation, literal, candidate)
                 scored_candidates.append({
                     'candidate': candidate,
                     'unnormalized': unnormalized,
@@ -703,9 +808,12 @@ class SpatialLinkPredictionService:
                     'unnormalized_score': round(unnormalized, 4),
                     'normalized_score': round(normalized, 4),
                     'score': round(normalized, 4),  # backward-compat alias
+                    'geo_score': round(g, 4),
+                    'name_score': round(n, 4),
+                    'topo_score': round(c, 4),
                     'literal': literal,
                 })
-            
+
             # Debug: log top scores for first few entities (regardless of threshold)
             if len(all_scored) < 5 and scored_candidates:
                 scored_candidates.sort(key=lambda x: x['normalized'], reverse=True)

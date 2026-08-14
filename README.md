@@ -4,7 +4,7 @@ Productizing open-source models for geospatial reasoning via the [WorldKG Projec
 
 The pipeline transforms heterogeneous, noisy, unstructured OpenStreetMap data into homogeneous, clean, structured knowledge. It ingests OSM planet data, builds vector embeddings, aligns entities with Wikidata, and predicts spatial links — all orchestrated as a multi-stage ETL pipeline driven by a [Celery](https://docs.celeryq.dev/) canvas.
 
-The artifacts produced will be consumed by agents for geospatial reasoning ([paper](https://arxiv.org/pdf/2601.16965) — not yet implemented).
+The artifacts produced will be consumed by agents for geospatial reasoning. The current architectural direction is MapQA — a parser → executor → HITL pipeline that maps natural-language questions to 5 template-specific execution functions (see `docs/plans/MAPQA_TO_EXECUTION_PLAN.md`). The parser is implemented (Notebook 19, 99.8% zero-shot accuracy).
 
 ## Artifacts
 
@@ -161,6 +161,13 @@ choices can be traced back to the relevant chapter.
     ->  Redis is used as the message broker and cache for Celery and the WebSocket channel layer.
     ->  Redis is used to store the WorldKG Ontology and other metadata.
 
+  Vector Database Partitioning
+    ->  `semantic_search_osmentity` is partitioned: `PARTITION BY LIST (snapshot_id)` → `LIST (country_code)`.
+    ->  Each country gets its own leaf partition (e.g. `embeddings_2025_12_31_ni`) with its own HNSW index.
+    ->  HNSW indexes are dropped before bulk upsert and rebuilt in parallel after (3-5x faster writes).
+    ->  Materialized views (`mv_embeddings_<snap>_<cc>`) provide the query surface for search endpoints.
+    ->  Full details: `docs/plans/VECTOR_DATABASE_PARTITIONING.md`
+
 ---
 
 ### Linear Algebra in the Pipeline `[COHEN]`
@@ -229,7 +236,7 @@ choices can be traced back to the relevant chapter.
     -> Pre‑compute configs and primitives - WorldKG primitives (see `docs/Schematics/WorkKG_Primities.md`) are generated once and reused.
     -> Multi‑core processing with Osmium - Osmium‑tool is used to parallelize low‑level extraction work.
     -> Batch processing - Vector generation and spatial link prediction are run in batches rather than one entity at a time.
-    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel. Step 1 dispatches a chord of per-subgraph upsert tasks; Step 5 trains GV-NLE per subgraph (serialized via GPU lock).
+    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel. Step 1 upserts all entities into the country leaf partition, then dispatches parallel subgraph tasks that generate NLE pickles (DeepWalk training data). Step 5 trains GV-NLE per subgraph (serialized via GPU lock). Parallel encode + upsert (Approach B — in-process producer/consumer thread pool) is implemented and enabled by default via `PARALLEL_UPSERT_WORKERS` (default 8); set to 1 for the legacy single-threaded path; see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` and `docs/Schematics/PARALLEL_UPSERT_APPROACH_B_ARCHITECTURE.md`.
 
 Next Steps:
 1. Make the project public
@@ -239,5 +246,6 @@ Next Steps:
    -> Fully transition to the Gitlab CI/CD pipeline and use their issues tracker(get rid of local TODOs)
    -> Complete the post_release tasks(TODOs)
    -> Update the Documentation (un-comment the docs after reviewing)
-2. Research and then implement https://arxiv.org/pdf/2601.16965
-3. Investigate how to add support for https://arxiv.org/pdf/2310.00583
+2. Implement MapQA executor + HITL (see `docs/plans/MAPQA_TO_EXECUTION_PLAN.md`) — parser is done (Notebook 19), executor and MCP frontend are next
+3. Parallel upsert is enabled by default (`PARALLEL_UPSERT_WORKERS=8`) — tune in `.env` if needed (see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` §7)
+4. Investigate how to add support for https://arxiv.org/pdf/2310.00583

@@ -12,7 +12,8 @@ Provides 10-20x speedup over CPU-optimized version.
 import logging
 import numpy as np
 import torch
-from typing import List, Dict, Optional
+import geohash2
+from typing import Dict, List, Optional
 from igea.services.spatial_link_prediction import (
     SpatialLinkPredictionService,
     SPATIAL_LITERAL_TAGS,
@@ -20,6 +21,8 @@ from igea.services.spatial_link_prediction import (
     RELATION_GEOHASH_PRECISION,
     RELATION_TO_NATURAL_TEXT,
     ACCEPTANCE_THRESHOLD,
+    _D_MAX_PER_CLUSTER,
+    _FALLBACK_D_MAX,
 )
 from igea.services.gpu_fasttext_service import GPUFastTextService
 from igea.services.gpu_haversine_service import GPUHaversineService
@@ -59,8 +62,14 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
         self._gpu_pool_coords = None
         self._gpu_pool_embeddings = None
         self._gpu_pool_class_embeddings = None
+        # Per-precision pool geohash-center coords (N, 2) and per-row d_max
+        # (N,) — both aligned with self._gpu_pool_coords rows.  Used by the
+        # geo score to compute center-to-center distances with the paper's
+        # 1 - d/d_max formula (Fix 1, §3.1.3).
+        self._gpu_pool_center_coords: Dict[int, torch.Tensor] = {}
+        self._gpu_pool_d_max: Dict[int, torch.Tensor] = {}
         
-        if torch.cuda.is_available():
+        if self.device.type == 'cuda':
             logger.info(f"GPU USLP: Using device {self.device} ({torch.cuda.get_device_name(self.device)})")
             logger.info(f"GPU USLP: FP64 precision = {use_fp64}")
         else:
@@ -136,9 +145,27 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
             else:
                 classes.append(SpatialLinkPredictionService._derive_class_text_from_tags(e.get('tags', {})) or '')
         self._gpu_pool_class_embeddings = self.gpu_fasttext.precompute_embeddings(classes)
-        
+
+        # Precompute per-precision geohash cluster-center coords and per-row
+        # d_max for the paper's geo formula (1 - d/d_max on cluster centers,
+        # not raw coordinates).  Mirrors TorchUSLP's _geohash_matrices.
+        self._gpu_pool_center_coords = {}
+        self._gpu_pool_d_max = {}
+        for precision in (1, 3, 4):
+            gh_rows = [geohash2.encode(e['lat'], e['lon'], precision=precision)
+                       for e in self._pool]
+            centers = np.array([tuple(map(float, geohash2.decode(g)))
+                                for g in gh_rows], dtype=np.float32)
+            self._gpu_pool_center_coords[precision] = torch.from_numpy(centers).to(self.device)
+            d_max_map = _D_MAX_PER_CLUSTER.get(precision, {})
+            fallback = _FALLBACK_D_MAX.get(precision, 39.0)
+            self._gpu_pool_d_max[precision] = torch.from_numpy(np.array(
+                [d_max_map.get(g, fallback) for g in gh_rows], dtype=np.float32
+            )).to(self.device)
+
         logger.info(f"GPU USLP: Precomputed {len(self._pool):,} embeddings on {self.device}")
-        logger.info(f"GPU USLP: Memory allocated: {torch.cuda.memory_allocated(self.device) / 1024**3:.2f} GB")
+        if self.device.type == 'cuda':
+            logger.info(f"GPU USLP: Memory allocated: {torch.cuda.memory_allocated(self.device) / 1024**3:.2f} GB")
     
     def predict_links_for_entity(
         self,
@@ -203,7 +230,7 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
             
             # GPU-accelerated scoring
             total_scores, geo_scores, name_scores, class_scores = self._score_candidates_gpu(
-                literal, relation, distances, indices
+                literal, relation, distances, indices, head_lat, head_lon, precision
             )
             
             # total_scores are unnormalized sums [0, 3.0]
@@ -249,36 +276,66 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
                              literal: str,
                              relation: str,
                              distances: torch.Tensor,
-                             indices: torch.Tensor) -> tuple:
+                             indices: torch.Tensor,
+                             head_lat: float,
+                             head_lon: float,
+                             precision: int) -> tuple:
         """
         GPU-accelerated scoring for candidate entities.
-        
+
         Args:
             literal: Literal string from head entity
             relation: Relation type
-            distances: Haversine distances (N,)
+            distances: Haversine distances (N,) from head raw coords — used
+                       upstream for radius filtering, NOT for the geo score
             indices: Candidate indices (N,)
-            
+            head_lat, head_lon: Head entity raw coordinates
+            precision: Geohash precision for this relation
+
         Returns:
             Tuple of (total_scores, geo_scores, name_scores, class_scores)
+
+        Geo score uses the paper's formula (dataprep_utils.py:83):
+            geo_sim = 1 - d / d_max
+        where d is the Haversine distance between geohash CLUSTER CENTERS
+        (not raw entity coordinates) and d_max is the per-tail-cluster
+        max cluster-center distance precomputed at pool-load time.
         """
-        # Geo score: 1 / (1 + dist_km)
-        geo_scores = 1.0 / (1.0 + distances)
-        
+        # Geo score: paper formula 1 - d/d_max on geohash CLUSTER CENTERS
+        # (dataprep_utils.py:83), d_max per tail cluster (column max).
+        gh_h = geohash2.encode(head_lat, head_lon, precision=precision)
+        c_h_lat, c_h_lon = (float(x) for x in geohash2.decode(gh_h))
+        center_coords = self._gpu_pool_center_coords[precision]  # (N_pool, 2) degrees
+        d_max_all = self._gpu_pool_d_max[precision]              # (N_pool,) km
+
+        # (N,) km center-to-center distances for the filtered candidates.
+        cand_centers = center_coords[indices]  # (N, 2)
+        cand_d_max = d_max_all[indices]        # (N,)
+        lat1 = torch.deg2rad(torch.tensor(c_h_lat, device=cand_centers.device, dtype=cand_centers.dtype))
+        lon1 = torch.deg2rad(torch.tensor(c_h_lon, device=cand_centers.device, dtype=cand_centers.dtype))
+        lat2 = torch.deg2rad(cand_centers[:, 0])
+        lon2 = torch.deg2rad(cand_centers[:, 1])
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = (torch.sin(dlat / 2) ** 2
+             + torch.cos(lat1) * torch.cos(lat2) * torch.sin(dlon / 2) ** 2)
+        center_dists = 6371.0 * 2 * torch.arcsin(torch.sqrt(a.clamp(0, 1)))
+        geo_scores = torch.clamp(1.0 - center_dists / cand_d_max, min=0.0, max=1.0)
+
         # Name score: cosine similarity
         literal_emb = self.gpu_fasttext.calculate_embedding_batch([literal])
         candidate_name_embs = self._gpu_pool_embeddings[indices]
         name_scores = self.gpu_fasttext.cosine_similarity_batch(literal_emb, candidate_name_embs)
-        
+
         # Class score: cosine similarity (use natural language mapping for relation)
         rel_text = RELATION_TO_NATURAL_TEXT.get(relation, relation)
         relation_emb = self.gpu_fasttext.calculate_embedding_batch([rel_text])
         candidate_class_embs = self._gpu_pool_class_embeddings[indices]
         class_scores = self.gpu_fasttext.cosine_similarity_batch(relation_emb, candidate_class_embs)
-        
+
         # Total score (sum of three components)
         total_scores = geo_scores + name_scores + class_scores
-        
+
         return total_scores, geo_scores, name_scores, class_scores
     
     def get_gpu_info(self) -> Dict:
