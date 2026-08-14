@@ -3,10 +3,8 @@ from . import views
 from . import tag_discovery_views
 from . import filtered_snapshot_views
 from . import asset_views
-from . import preprocessing_views
 from . import search_update_views
 from . import country_search_views
-from . import views_worldkg_pipeline as worldkg_pipeline_views
 from . import projection_weight_views
 from . import views_augmented_data
 from . import views_system_summary
@@ -94,26 +92,26 @@ urlpatterns = [
     path('country-preprocess/', country_search_views.CountryPreProcessView.as_view(), name='country_preprocess'),
 
     # WorldKG Pipeline v1 (deprecated)
-    path('worldkg-pipeline/start/', worldkg_pipeline_views.WorldKGPipelineStartView.as_view(), name='worldkg_pipeline_start'),
-    path('worldkg-pipeline/status/<uuid:session_id>/', worldkg_pipeline_views.WorldKGPipelineStatusView.as_view(), name='worldkg_pipeline_status'),
-    path('worldkg-pipeline/summary/<str:country_name>/', worldkg_pipeline_views.WorldKGPipelineSummaryView.as_view(), name='worldkg_pipeline_summary'),
-    path('worldkg-pipeline/rejected-summary/<str:country_name>/', worldkg_pipeline_views.WorldKGPipelineRejectedSummaryView.as_view(), name='worldkg_pipeline_rejected_summary'),
-    path('worldkg-pipeline/state/<str:country_name>/', worldkg_pipeline_views.WorldKGPipelineCountryStateView.as_view(), name='worldkg_pipeline_country_state'),
-    path('worldkg-pipeline/validation-cost/<str:country_name>/', worldkg_pipeline_views.ValidationCostEstimateView.as_view(), name='worldkg_pipeline_validation_cost'),
+    path('worldkg-pipeline/start/', views.WorldKGPipelineStartView.as_view(), name='worldkg_pipeline_start'),
+    path('worldkg-pipeline/status/<uuid:session_id>/', views.WorldKGPipelineStatusView.as_view(), name='worldkg_pipeline_status'),
+    path('worldkg-pipeline/summary/<str:country_name>/', views.WorldKGPipelineSummaryView.as_view(), name='worldkg_pipeline_summary'),
+    path('worldkg-pipeline/rejected-summary/<str:country_name>/', views.WorldKGPipelineRejectedSummaryView.as_view(), name='worldkg_pipeline_rejected_summary'),
+    path('worldkg-pipeline/state/<str:country_name>/', views.WorldKGPipelineCountryStateView.as_view(), name='worldkg_pipeline_country_state'),
+    path('worldkg-pipeline/validation-cost/<str:country_name>/', views.ValidationCostEstimateView.as_view(), name='worldkg_pipeline_validation_cost'),
 
     # WorldKG Pipeline v2 (Celery Canvas) — Country-Level
-    path("worldkg-pipeline-v2/start/", worldkg_pipeline_views.WorldKGPipelineV2StartView.as_view(), name="worldkg_pipeline_v2_start"),
+    path("worldkg-pipeline-v2/start/", views.WorldKGPipelineV2StartView.as_view(), name="worldkg_pipeline_v2_start"),
 
     # Planet Initialization (Celery Canvas async)
-    path("planet/initialize/", worldkg_pipeline_views.PlanetInitializeView.as_view(), name="planet_initialize"),
-    path("planet/status/<uuid:pipeline_run_id>/", worldkg_pipeline_views.PlanetInitStatusView.as_view(), name="planet_init_status"),
-    path("planet/snapshot-dates/", worldkg_pipeline_views.SnapshotDatesView.as_view(), name="snapshot_dates"),
+    path("planet/initialize/", views.PlanetInitializeView.as_view(), name="planet_initialize"),
+    path("planet/status/<uuid:pipeline_run_id>/", views.PlanetInitStatusView.as_view(), name="planet_init_status"),
+    path("planet/snapshot-dates/", views.SnapshotDatesView.as_view(), name="snapshot_dates"),
 
     # Snapshot Jobs (DB ground truth — TEMPORAL_SNAPSHOT_REFACTOR.md Phases C/D/E)
-    path("snapshot-jobs/", worldkg_pipeline_views.SnapshotJobStatusView.as_view(), name="snapshot_jobs_list"),
-    path("snapshot-jobs/<str:country_code>/", worldkg_pipeline_views.SnapshotJobStatusView.as_view(), name="snapshot_jobs_by_country"),
-    path("snapshot-jobs/<str:country_code>/<str:snapshot_date>/", worldkg_pipeline_views.SnapshotJobStatusView.as_view(), name="snapshot_job_detail"),
-    path("snapshot-jobs/<str:country_code>/<str:snapshot_date>/results/", worldkg_pipeline_views.SnapshotJobResultsView.as_view(), name="snapshot_job_results"),
+    path("snapshot-jobs/", views.SnapshotJobStatusView.as_view(), name="snapshot_jobs_list"),
+    path("snapshot-jobs/<str:country_code>/", views.SnapshotJobStatusView.as_view(), name="snapshot_jobs_by_country"),
+    path("snapshot-jobs/<str:country_code>/<str:snapshot_date>/", views.SnapshotJobStatusView.as_view(), name="snapshot_job_detail"),
+    path("snapshot-jobs/<str:country_code>/<str:snapshot_date>/results/", views.SnapshotJobResultsView.as_view(), name="snapshot_job_results"),
 
     # System Summary
     path('system/summary/', views_system_summary.SystemSummaryView.as_view(), name='system_summary'),

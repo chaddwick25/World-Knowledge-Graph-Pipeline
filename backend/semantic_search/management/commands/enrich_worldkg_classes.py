@@ -3,9 +3,9 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from semantic_search.services.worldkg_enrichment_service import get_worldkg_enrichment_service
-from semantic_search.services.worldkg_ontology_service import get_worldkg_ontology_service
-from semantic_search.services.worldkg_triples_service import WorldKGTriplesService
-from semantic_search.services.worldkg_ontology_loader import WorldKGOntologyLoader
+from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
+from worldkg_nca.services.triples_service import WorldKGTriplesService
+from worldkg_nca.services.ontology_loader import WorldKGOntologyLoader
 
 logger = logging.getLogger(__name__)
 

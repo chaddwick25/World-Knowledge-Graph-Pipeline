@@ -42,7 +42,7 @@ def find_polygon_file(country_name: str) -> Optional[str]:
     PolygonFile DB model.
 
     Consolidates the duplicate ``_find_polygon_file`` methods that previously
-    lived in ``api/country_search_views.py`` and ``api/preprocessing_views.py``.
+    lived in ``api/country_search_views.py``.
 
     Args:
         country_name: Country name (e.g., "Belize")
