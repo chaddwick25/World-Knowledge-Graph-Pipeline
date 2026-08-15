@@ -17,6 +17,7 @@ from worldkg_nca.views.search import (
     worldkg_semantic_triplet_search,
     worldkg_semantic_query_plan,
     worldkg_subdivisions,
+    execute_query,
 )
 from worldkg_nca.views.links import (
     worldkg_link_candidates,
@@ -36,6 +37,7 @@ __all__ = [
     'worldkg_semantic_triplet_search',
     'worldkg_semantic_query_plan',
     'worldkg_subdivisions',
+    'execute_query',
     'worldkg_link_candidates',
     'worldkg_apply_link',
 ]

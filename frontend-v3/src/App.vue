@@ -3,12 +3,16 @@
     <main class="app-shell__main">
       <router-view />
     </main>
+    <QueryConfirmationModal />
   </div>
 </template>
 
 <script>
+import QueryConfirmationModal from './components/QueryConfirmationModal.vue'
+
 export default {
   name: 'AppShell',
+  components: { QueryConfirmationModal },
   methods: {
     isActive(path) {
       return this.$route.path === path

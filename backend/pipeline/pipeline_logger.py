@@ -137,7 +137,13 @@ def setup_pipeline_run_logger(pipeline_run_id: str, country_iso: str = "") -> st
     logger.info("Pipeline run log initialized: %s", log_file_str)
 
     ***REMOVED*** Also capture Celery/Django messages (root logger) into the same file.
+    ***REMOVED*** Set root to INFO so that module-level loggers (vector_storage_service,
+    ***REMOVED*** embedding_service, etc.) that propagate to root are captured — not
+    ***REMOVED*** just the "pipeline" logger.  Without this, root stays at WARNING
+    ***REMOVED*** (Python default) and all INFO-level upsert/enrichment logs are
+    ***REMOVED*** silently dropped after a fresh container start.
     _root = logging.getLogger()
+    _root.setLevel(logging.INFO)
     _remove_file_handlers(_root)
     root_fh = WatchedFileHandler(log_file_str)
     root_fh.setLevel(logging.INFO)
