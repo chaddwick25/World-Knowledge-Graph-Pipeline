@@ -180,30 +180,10 @@ def step_1_embed_osm_entities(self, env: CountryEnvelope) -> CountryEnvelope:
             entropy=result["entropy"], threshold=env.min_entropy,
         )
 
-    # Subgraph fan-out: only if country HAS subgraphs
-    if env.has_subgraphs and env.subgraphs:
-        _log(
-            logger,
-            "info",
-            "Launching subgraph embeddings in parallel",
-            subgraph_count=len(env.subgraphs),
-            country=env.iso,
-            pipeline_run_id=env.pipeline_run_id,
-        )
-        subgraph_tasks = [
-            _embed_subgraph.s(sg.to_dict(), env.to_dict())
-            for sg in env.subgraphs
-        ]
-        from celery import group
-        group(subgraph_tasks).apply_async()
-    else:
-        _log(
-            logger,
-            "info",
-            "No subgraphs to process (small territory or no subgraphs configured)",
-            country=env.iso,
-            pipeline_run_id=env.pipeline_run_id,
-        )
+    # Subgraph fan-out is handled by canvas.py via a chord so the chain
+    # waits for all subgraph embeddings to complete before proceeding to
+    # Step 2.  This task returns the envelope; canvas.py wraps it with
+    # chord([_embed_subgraph.si(...)], step_1b_finalize_subgraphs.s(cfg)).
 
     _log(
         logger,
@@ -219,7 +199,7 @@ def step_1_embed_osm_entities(self, env: CountryEnvelope) -> CountryEnvelope:
 def _embed_subgraph(
     self, subgraph_dict: dict, parent_config: dict
 ) -> dict:
-    """Embed a single subgraph (parallel Group subtask)."""
+    """Embed a single subgraph (parallel chord header subtask)."""
     sg = SubgraphConfig.from_dict(subgraph_dict)
     env = CountryEnvelope.from_dict(parent_config)
     _log(
@@ -240,3 +220,49 @@ def _embed_subgraph(
         continent=env.continent,
     )
     return {"subgraph": sg.name, "result": result}
+
+
+@pipeline_task(
+    bind=True, base=PipelineTask,
+    name="step_1b_finalize_subgraph_embeds",
+)
+def step_1b_finalize_subgraph_embeds(
+    self, aggregated_results: list, config_dict: dict = None
+) -> dict:
+    """Chord callback — finalize Step 1 after all subgraph embeddings complete.
+
+    ``config_dict`` is passed via ``chord(header, callback.s(config_dict))``
+    in ``canvas.py`` so the callback can reconstruct the envelope for
+    downstream chain continuation.
+    """
+    if config_dict is None:
+        for item in aggregated_results:
+            if isinstance(item, dict) and "iso" in item and "slug" in item:
+                config_dict = item
+                break
+
+    env = CountryEnvelope.from_dict(config_dict) if config_dict else None
+
+    subgraph_results = [
+        item for item in aggregated_results
+        if isinstance(item, dict) and "subgraph" in item
+    ]
+
+    _log(
+        logger,
+        "info",
+        "Step 1b: Finalizing subgraph embeddings — all subgraphs complete",
+        subgraph_count=len(subgraph_results),
+        country=env.iso if env else "unknown",
+        pipeline_run_id=env.pipeline_run_id if env else "unknown",
+    )
+
+    for sg_result in subgraph_results:
+        _log(
+            logger,
+            "info",
+            "Subgraph embed result",
+            subgraph=sg_result.get("subgraph"),
+        )
+
+    return config_dict or {"status": "completed", "subgraphs": subgraph_results}

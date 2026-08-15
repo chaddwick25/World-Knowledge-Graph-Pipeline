@@ -556,11 +556,13 @@ def worldkg_semantic_triplet_search(request):
 def worldkg_semantic_query_plan(request):
     """Semantic query planner for WorldKG / NCA.
 
-    This endpoint converts a free-text query into a structured plan that can be
-    executed by worldkg_semantic_triplet_search. It does not call any external
-    LLM APIs; instead it uses lightweight keyword heuristics and existing
-    country metadata.
+    Converts a free-text query into a structured plan using the MapQA
+    parser (TF-IDF + MultinomialNB). The parsed template, concepts, roles,
+    and DAG are returned alongside the legacy bbox/rdf_type fields for
+    backward compatibility with worldkg_semantic_triplet_search.
     """
+    from semantic_search.services.query_parser_service import QueryParserService
+
     country_code = request.data.get("country_code")
     query_text = request.data.get("query") or ""
     top_k = request.data.get("top_k", 20)
@@ -598,24 +600,33 @@ def worldkg_semantic_query_plan(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    query_lower = query_text.lower()
+    # ── MapQA parser (replaces class_keyword_map heuristic) ──
+    parser = QueryParserService.get_instance()
+    parsed = parser.parse(query_text)
 
-    class_keyword_map = {
-        "wkgs:Cafe": ["cafe", "coffee", "coffee shop", "espresso"],
-        "wkgs:Restaurant": ["restaurant", "diner", "food", "dining"],
-        "wkgs:Hotel": ["hotel", "resort", "lodging"],
-        "wkgs:Hospital": ["hospital", "clinic", "medical", "health"],
-        "wkgs:School": ["school", "university", "college", "campus"],
-        "wkgs:Shop": ["shop", "store", "mall", "market"],
-        "wkgs:Amenity": ["amenity", "amenities", "place", "places"],
-    }
-
+    # Extract OBJECT concept as primary amenity for backward-compat rdf_type
+    primary_rdf_type = None
     rdf_types = []
-    for cls, keywords in class_keyword_map.items():
-        if any(kw in query_lower for kw in keywords):
-            rdf_types.append(cls)
+    object_concept = None
+    for c in parsed.get("concepts", []):
+        if c["type"] == "OBJECT" and c.get("text"):
+            object_concept = c["text"]
+            break
 
-    primary_rdf_type = rdf_types[0] if rdf_types else None
+    # Map common amenity strings to wkgs: classes for backward compat
+    amenity_to_class = {
+        "cafe": "wkgs:Cafe", "coffee_shop": "wkgs:Cafe",
+        "restaurant": "wkgs:Restaurant", "diner": "wkgs:Restaurant",
+        "hotel": "wkgs:Hotel", "resort": "wkgs:Hotel",
+        "hospital": "wkgs:Hospital", "clinic": "wkgs:Hospital",
+        "school": "wkgs:School", "university": "wkgs:School", "college": "wkgs:School",
+        "shop": "wkgs:Shop", "store": "wkgs:Shop", "mall": "wkgs:Shop", "market": "wkgs:Shop",
+        "bar": "wkgs:Amenity", "pub": "wkgs:Amenity", "amenity": "wkgs:Amenity",
+    }
+    if object_concept:
+        key = object_concept.lower().replace(" ", "_")
+        primary_rdf_type = amenity_to_class.get(key, "wkgs:Amenity")
+        rdf_types = [primary_rdf_type]
 
     # Simple region hints from capitalized tokens (potential city/area names)
     region_hints = []
@@ -655,9 +666,65 @@ def worldkg_semantic_query_plan(request):
         "region_hints": region_hints,
         "executor": "worldkg_semantic_triplet_search",
         "semantic_triplet_params": semantic_triplet_params,
+        # ── MapQA parser fields (new) ──
+        "template": parsed.get("template"),
+        "concepts": parsed.get("concepts"),
+        "roles": parsed.get("roles"),
+        "dag": parsed.get("dag"),
+        "confidence": parsed.get("confidence"),
+        "validation": parsed.get("validation"),
     }
 
     return Response(plan)
+
+
+@api_view(["POST"])
+def execute_query(request):
+    """Execute a natural-language geospatial query end-to-end.
+
+    POST /api/nca/execute-query/
+    Body: {
+        "query": "Which bars are within 50m of Hollywood Blvd?",
+        "country_code": "US",          // optional
+        "snapshot_date": "2025_12_31", // optional
+    }
+
+    Pipeline: parse (QueryParserService) → execute (QueryExecutorService) → answer
+
+    Returns: {query, country_code, parsed, result}
+    """
+    from semantic_search.services.query_parser_service import QueryParserService
+    from semantic_search.services.query_executor_service import QueryExecutorService
+
+    query_text = (request.data.get("query") or "").strip()
+    country_code = request.data.get("country_code")
+    snapshot_date = request.data.get("snapshot_date")
+
+    if not query_text:
+        return Response({"error": "query required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Normalize country_code to ISO if provided
+    if country_code:
+        try:
+            country_code = resolve_iso_code(country_code)
+        except Exception:
+            pass  # use as-is if resolution fails
+
+    # Phase 1: parse
+    parser = QueryParserService.get_instance()
+    parsed = parser.parse(query_text)
+
+    # Phase 2: execute
+    result = QueryExecutorService.execute(
+        parsed, country_code, snapshot_date, question=query_text
+    )
+
+    return Response({
+        "query": query_text,
+        "country_code": country_code,
+        "parsed": parsed,
+        "result": result,
+    })
 
 
 @api_view(['GET'])

@@ -4,7 +4,7 @@ Productizing open-source models for geospatial reasoning via the [WorldKG Projec
 
 The pipeline transforms heterogeneous, noisy, unstructured OpenStreetMap data into homogeneous, clean, structured knowledge. It ingests OSM planet data, builds vector embeddings, aligns entities with Wikidata, and predicts spatial links — all orchestrated as a multi-stage ETL pipeline driven by a [Celery](https://docs.celeryq.dev/) canvas.
 
-The artifacts produced will be consumed by agents for geospatial reasoning. The current architectural direction is MapQA — a parser → executor → HITL pipeline that maps natural-language questions to 5 template-specific execution functions (see `docs/plans/MAPQA_TO_EXECUTION_PLAN.md`). The parser is implemented (Notebook 19, 99.8% zero-shot accuracy).
+The artifacts produced will be consumed by agents for geospatial reasoning. The current architectural direction is MapQA — a parser → executor → HITL pipeline that maps natural-language questions to 5 template-specific execution functions (see `docs/plans/MAPQA_TO_EXECUTION_PLAN.md`). The parser, executor, PostGIS spatial search, FastText fallback, MCP/HITL frontend, and test suite are all implemented (see `docs/plans/MAPQA_PARSER_IMPLEMENTED.md`).
 
 ## Artifacts
 
@@ -16,6 +16,7 @@ The artifacts produced will be consumed by agents for geospatial reasoning. The 
 | **WorldKG Enrichment** | Enriches OSM entities with Wikidata metadata and ontology classes |
 | **Semantic Search** | Natural-language queries over enriched OSM entities, with optional subdivision filtering by Wikidata QID |
 | **Subdivision Search** | Filter search results by administrative subdivision (city/department/state) using Wikidata QIDs resolved via `SubgraphProfile` bbox records |
+| **MapQA (NL → Geo)** | Natural-language geospatial question answering: TF-IDF parser (5 templates, 98.6% zero-shot accuracy) → PostGIS executor (ST_DWithin, Distance, 3-tier amenity fallback) → HITL confirmation modal via MCP. See `docs/plans/MAPQA_PARSER_IMPLEMENTED.md` |
 
 ## Pipeline Types
 
@@ -87,7 +88,9 @@ docker compose -f docker-compose.yml -f compose.override.yml up -d backend worke
 
 # Worker configuration:
 #   --pool=prefork --concurrency=4  (4 CPU workers for parallel upserts/IGEA/USLP)
-#   GPU tasks (GV-NLE training) serialize via fcntl.flock — no CUDA OOM
+#   GPU tasks (GV-NLE training) use per-GPU slot locks (fcntl.flock) — all subgraphs
+#   go to cuda:0 (RTX 4070) with concurrency=1 by default. Configure via
+#   GV_NLE_GPU_DEVICES and GV_NLE_GPU_CONCURRENCY env vars.
 #   RUN_MIGRATIONS env var: backend runs migrations, worker waits for them
 
 # Start frontend
@@ -124,7 +127,7 @@ choices can be traced back to the relevant chapter.
   Batch and parallel processing `[DMLS:Ch3]`
     -> Work is batched per country and per subgraph.
     -> Celery prefork pool (4 workers) parallelizes CPU-bound tasks: subgraph NLE pickle generation, IGEA, USLP.
-    -> GPU-bound tasks (GV-NLE training, Step 5) serialize via fcntl.flock to prevent CUDA OOM on single-GPU machines.
+    -> GPU-bound tasks (GV-NLE training, Step 5) use per-GPU slot locks (fcntl.flock). All subgraphs go to cuda:0 (RTX 4070, 16 GB) with concurrency=1 by default — large IE subgraphs (847K–1M entities) cause CUDA OOM at concurrency=2. Configure via `GV_NLE_GPU_DEVICES` and `GV_NLE_GPU_CONCURRENCY` env vars.
     -> Migration race prevention: `RUN_MIGRATIONS` env var in `docker-entrypoint.sh` — backend runs migrations, worker waits.
     -> Per-country leaf partitions with right-sized HNSW indexes keep query latency low.
 
@@ -236,7 +239,7 @@ choices can be traced back to the relevant chapter.
     -> Pre‑compute configs and primitives - WorldKG primitives (see `docs/Schematics/WorkKG_Primities.md`) are generated once and reused.
     -> Multi‑core processing with Osmium - Osmium‑tool is used to parallelize low‑level extraction work.
     -> Batch processing - Vector generation and spatial link prediction are run in batches rather than one entity at a time.
-    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel. Step 1 upserts all entities into the country leaf partition, then dispatches parallel subgraph tasks that generate NLE pickles (DeepWalk training data). Step 5 trains GV-NLE per subgraph (serialized via GPU lock). Parallel encode + upsert (Approach B — in-process producer/consumer thread pool) is implemented and enabled by default via `PARALLEL_UPSERT_WORKERS` (default 8); set to 1 for the legacy single-threaded path; see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` and `docs/Schematics/PARALLEL_UPSERT_APPROACH_B_ARCHITECTURE.md`.
+    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel. Step 1 upserts all entities into the country leaf partition, then dispatches parallel subgraph tasks that generate NLE pickles (DeepWalk training data). Step 5 trains GV-NLE per subgraph (serialized via per-GPU slot lock). Parallel encode + serial upsert (Approach B — in-process producer/consumer thread pool with N encoding threads and 1 upsert thread) is implemented and enabled by default via `PARALLEL_UPSERT_WORKERS` (default 8); set to 1 for the legacy single-threaded path; see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` and `docs/issues/PARALLEL_UPSERT_REGRESSION.md`. pgvector bulk upsert optimizations (reusable UNLOGGED staging table with TRUNCATE, `SET LOCAL synchronous_commit = off`, `ORDER BY` deterministic lock order) are documented in `docs/plans/PGVECTOR_BULK_UPSERT_OPTIMIZATIONS.md`. Parallel WorldKG enrichment uses `ThreadPoolExecutor` with 8 threads and batch_size=5000 (see `ENRICHMENT_WORKERS` env var).
 
 Next Steps:
 1. Make the project public
@@ -246,6 +249,6 @@ Next Steps:
    -> Fully transition to the Gitlab CI/CD pipeline and use their issues tracker(get rid of local TODOs)
    -> Complete the post_release tasks(TODOs)
    -> Update the Documentation (un-comment the docs after reviewing)
-2. Implement MapQA executor + HITL (see `docs/plans/MAPQA_TO_EXECUTION_PLAN.md`) — parser is done (Notebook 19), executor and MCP frontend are next
-3. Parallel upsert is enabled by default (`PARALLEL_UPSERT_WORKERS=8`) — tune in `.env` if needed (see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` §7)
+2. MapQA parser + executor + MCP/HITL are implemented (see `docs/plans/MAPQA_PARSER_IMPLEMENTED.md`) — remaining: shadow-mode deployment, feature-flagged cutover, drift monitoring, retraining workflow
+3. Parallel upsert is enabled by default (`PARALLEL_UPSERT_WORKERS=8`) — tune in `.env` if needed (see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` §7). GPU concurrency defaults to 1 on cuda:0 (`GV_NLE_GPU_CONCURRENCY=1,1`) — set to 2 only for countries with uniformly small subgraphs.
 4. Investigate how to add support for https://arxiv.org/pdf/2310.00583

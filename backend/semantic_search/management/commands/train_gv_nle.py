@@ -467,13 +467,19 @@ class Command(BaseCommand):
                 )
                 
                 # PyG training (memory-safe, 10-20x faster)
+                # batch_size: 256 for 16GB+ GPUs (cuda:0), 128 for 8GB (cuda:1).
+                # Conservative default stays at 128; bumped to 256 for the 4070
+                # since GPU memory logs show max ~8 GB reserved at 128 batch —
+                # doubling the batch better fills the 16 GB card and reduces
+                # per-batch overhead.
+                _batch = 256 if "cuda:0" in gpu_device else 128
                 embeddings = pyg_service.train(
                     graph=graph,
                     walk_length=walk_length,
                     num_walks=num_walks,
                     window_size=window_size,
                     epochs=epochs,
-                    batch_size=128,  # Conservative for memory safety
+                    batch_size=_batch,
                     learning_rate=0.01
                 )
                 

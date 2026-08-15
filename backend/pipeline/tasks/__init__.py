@@ -29,6 +29,7 @@ from pipeline.tasks.planet_initialization_pipeline_steps import (  # noqa: F401
 from pipeline.tasks.country_pipeline_steps.step_1_embed import (  # noqa: F401
     step_1_embed_osm_entities,
     _embed_subgraph,
+    step_1b_finalize_subgraph_embeds,
 )
 from pipeline.tasks.country_pipeline_steps.step_2_harvest import (  # noqa: F401
     step_2_harvest_wikidata,
@@ -44,6 +45,7 @@ from pipeline.tasks.country_pipeline_steps.step_4_uslp import (  # noqa: F401
 from pipeline.tasks.country_pipeline_steps.step_5_nle import (  # noqa: F401
     step_5_train_gv_nle,
     _train_subgraph_gv_nle,
+    step_5b_finalize_subgraph_nle,
 )
 from pipeline.tasks.country_pipeline_steps.step_6_ready import (  # noqa: F401
     step_6_mark_search_ready,

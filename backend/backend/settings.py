@@ -173,6 +173,14 @@ LOGS_DIR = os.getenv('LOGS_DIR', _default_logs_dir)
 _default_wikidata_cache_dir = os.path.join(BASE_DATA_DIR, 'data/wikidata_cache') if BASE_DATA_DIR else None
 WIKIDATA_CACHE_DIR = os.getenv('WIKIDATA_CACHE_DIR', _default_wikidata_cache_dir)
 
+# MapQA parser data directory — training data + model artifacts.
+# Layout (see docs/plans/MAPQA_PARSER_BUILD_ORDER.md §8):
+#   {MAPQA_PARSER_DATA_DIR}/raw/           — symlink to docs/Schematics/MapQA-dataset-main/
+#   {MAPQA_PARSER_DATA_DIR}/training_data/ — mapqa_template_mapping.csv (generated)
+#   {MAPQA_PARSER_DATA_DIR}/artifacts/     — vectorizer.pkl, classifier.pkl, etc.
+_default_mapqa_parser_dir = os.path.join(BASE_DIR, 'data', 'mapqa_parser')
+MAPQA_PARSER_DATA_DIR = os.getenv('MAPQA_PARSER_DATA_DIR', _default_mapqa_parser_dir)
+
 # Hot storage path (SSD/NVME working files)
 HOT_STORAGE_PATH = os.getenv('HOT_STORAGE_PATH', BASE_DATA_DIR)
 

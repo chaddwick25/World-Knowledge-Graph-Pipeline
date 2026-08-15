@@ -109,6 +109,50 @@
     <!-- Error -->
     <p v-if="error" class="search-form__error">{{ error }}</p>
 
+    <!-- Parsed query (MapQA parser — natural language mode only) -->
+    <div v-if="parsedQuery" class="parsed-query">
+      <div class="parsed-query__header">
+        <span class="parsed-query__template">{{ parsedQuery.template }}</span>
+        <span
+          class="parsed-query__confidence"
+          :class="confidenceClass"
+        >
+          {{ (parsedQuery.confidence * 100).toFixed(0) }}% confident
+        </span>
+      </div>
+      <div class="parsed-query__concepts">
+        <span
+          v-for="(concept, idx) in parsedQuery.concepts"
+          :key="idx"
+          class="parsed-query__concept"
+        >
+          <span class="parsed-query__concept-type">{{ concept.type }}</span>
+          <span class="parsed-query__concept-text">{{ concept.text || '—' }}</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- Answer summary (MapQA executor) -->
+    <div v-if="executeAnswer" class="execute-answer">
+      <strong>Answer:</strong> {{ executeAnswer }}
+      <div v-if="executeTrace.length > 0" class="execute-answer__trace">
+        <details>
+          <summary>Execution trace ({{ executeTrace.length }} steps)</summary>
+          <ol>
+            <li v-for="(step, idx) in executeTrace" :key="idx">
+              <strong>{{ step.step }}</strong>
+              <span v-if="step.input"> — in: {{ formatTraceValue(step.input) }}</span>
+              <span v-if="step.output_count !== undefined"> — count: {{ step.output_count }}</span>
+              <span v-if="step.output"> — out: {{ formatTraceValue(step.output) }}</span>
+              <span v-if="step.output_km !== undefined"> — {{ step.output_km }} km</span>
+              <span v-if="step.output_degrees !== undefined"> — {{ step.output_degrees }}°</span>
+              <span v-if="step.error" class="execute-answer__trace-error"> — ERROR: {{ step.error }}</span>
+            </li>
+          </ol>
+        </details>
+      </div>
+    </div>
+
     <!-- Results -->
     <div v-if="results.length > 0" class="search-results">
       <h4 class="search-results__title">Results ({{ results.length }})</h4>
@@ -209,6 +253,10 @@ export default {
       results: [],
       searched: false,
       subdivisionQid: null,
+      // MapQA parser state (natural language mode)
+      parsedQuery: null,
+      executeAnswer: null,
+      executeTrace: [],
       classOptions: [
         { value: 'wkgs:Cafe', text: 'Cafe' },
         { value: 'wkgs:Restaurant', text: 'Restaurant' },
@@ -241,6 +289,12 @@ export default {
       }
       return this.naturalQuery.trim().length > 0
     },
+    confidenceClass() {
+      const c = this.parsedQuery?.confidence || 0
+      if (c >= 0.8) return 'parsed-query__confidence--high'
+      if (c >= 0.6) return 'parsed-query__confidence--medium'
+      return 'parsed-query__confidence--low'
+    },
   },
   watch: {
     countryName() {
@@ -264,6 +318,9 @@ export default {
       this.useAnn = false
       this.encoder = 'fasttext'
       this.subdivisionQid = null
+      this.parsedQuery = null
+      this.executeAnswer = null
+      this.executeTrace = []
     },
 
     async performSearch() {
@@ -271,25 +328,68 @@ export default {
       this.error = null
       this.results = []
       this.searched = false
+      this.parsedQuery = null
+      this.executeAnswer = null
+      this.executeTrace = []
 
       try {
-        const payload = {
-          country_code: this.countryName,
-          top_k: parseInt(this.topK) || 20,
-          use_learned_weights: this.useLearnedWeights,
-          encoder: this.encoder,
-        }
-
-        if (this.useAnn) {
-          payload.use_ann = true
-        }
-
         if (this.isNaturalMode) {
+          // Natural language mode: use the MapQA parser + executor pipeline
           if (!this.naturalQuery.trim()) {
             throw new Error('Please enter a natural language query')
           }
-          payload.natural_query = this.naturalQuery.trim()
+          const payload = {
+            query: this.naturalQuery.trim(),
+          }
+          if (this.countryName) payload.country_code = this.countryName
+          if (this.snapshotDate) payload.snapshot_date = this.snapshotDate
+
+          const response = await axios.post('/nca/execute-query/', payload)
+          const data = response.data
+
+          // Display parsed query (template + concepts)
+          if (data.parsed) {
+            this.parsedQuery = data.parsed
+          }
+
+          // Display executor results
+          if (data.result) {
+            this.executeAnswer = data.result.answer || null
+            this.executeTrace = data.result.trace || []
+            // Results from the executor (entities with lat/lon)
+            if (data.result.results && Array.isArray(data.result.results)) {
+              this.results = data.result.results.map(r => ({
+                osm_type: r.osm_type,
+                osm_id: r.osm_id,
+                tags: r.tags,
+                wkg_class: r.wkg_class,
+                geom: (r.lat != null && r.lon != null)
+                  ? { lat: r.lat, lon: r.lon }
+                  : null,
+                scores: { final_score: null },
+                distance_m: r.distance_m,
+              }))
+            }
+            if (data.result.error) {
+              this.error = data.result.error
+            }
+          }
+
+          this.searched = true
+          this.$emit('search-results', this.results)
         } else {
+          // Structured (JSON) mode: use the existing triplet search
+          const payload = {
+            country_code: this.countryName,
+            top_k: parseInt(this.topK) || 20,
+            use_learned_weights: this.useLearnedWeights,
+            encoder: this.encoder,
+          }
+
+          if (this.useAnn) {
+            payload.use_ann = true
+          }
+
           let queryTags = {}
           try {
             queryTags = JSON.parse(this.queryTagsInput)
@@ -297,21 +397,21 @@ export default {
             throw new Error('Invalid JSON in query tags')
           }
           payload.query_tags = queryTags
+
+          if (this.lat) payload.lat = parseFloat(this.lat)
+          if (this.lon) payload.lon = parseFloat(this.lon)
+          if (this.rdfType) payload.rdf_type = this.rdfType
+          if (this.subdivisionQid) payload.subdivision_qid = this.subdivisionQid
+
+          if (this.snapshotDate) {
+            payload.snapshot_date = this.snapshotDate
+          }
+
+          const response = await axios.post('/nca/semantic-triplet-search/', payload)
+          this.results = response.data.results || []
+          this.searched = true
+          this.$emit('search-results', this.results)
         }
-
-        if (this.lat) payload.lat = parseFloat(this.lat)
-        if (this.lon) payload.lon = parseFloat(this.lon)
-        if (this.rdfType) payload.rdf_type = this.rdfType
-        if (this.subdivisionQid) payload.subdivision_qid = this.subdivisionQid
-
-        if (this.snapshotDate) {
-          payload.snapshot_date = this.snapshotDate
-        }
-
-        const response = await axios.post('/nca/semantic-triplet-search/', payload)
-        this.results = response.data.results || []
-        this.searched = true
-        this.$emit('search-results', this.results)
       } catch (err) {
         console.error('Semantic search failed:', err)
         this.error = err.response?.data?.error || err.message || 'Search failed'
@@ -325,6 +425,17 @@ export default {
       const entries = Object.entries(tags).slice(0, 3)
       const str = entries.map(([k, v]) => `${k}=${v}`).join(', ')
       return entries.length < Object.keys(tags).length ? str + '…' : str
+    },
+
+    formatTraceValue(val) {
+      if (val == null) return ''
+      if (typeof val === 'string') return val
+      if (typeof val === 'number') return String(val)
+      try {
+        return JSON.stringify(val)
+      } catch {
+        return String(val)
+      }
     },
   },
 }
@@ -506,5 +617,114 @@ export default {
 .search-results__empty {
   color: #9ca3af;
   font-size: 0.8rem;
+}
+
+/* ── Parsed query (MapQA parser) ── */
+
+.parsed-query {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.4rem;
+  border: 1px solid #1f2937;
+  background: #020617;
+}
+
+.parsed-query__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.parsed-query__template {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #a5b4fc;
+}
+
+.parsed-query__confidence {
+  font-size: 0.68rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+}
+
+.parsed-query__confidence--high {
+  background: #064e3b;
+  color: #6ee7b7;
+}
+
+.parsed-query__confidence--medium {
+  background: #78350f;
+  color: #fcd34d;
+}
+
+.parsed-query__confidence--low {
+  background: #7f1d1d;
+  color: #fca5a5;
+}
+
+.parsed-query__concepts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.parsed-query__concept {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+}
+
+.parsed-query__concept-type {
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  background: #1e293b;
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.parsed-query__concept-text {
+  color: #d1d5db;
+}
+
+/* ── Answer summary (MapQA executor) ── */
+
+.execute-answer {
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.4rem;
+  border: 1px solid #064e3b;
+  background: #022c22;
+  font-size: 0.8rem;
+  color: #d1fae5;
+}
+
+.execute-answer strong {
+  color: #6ee7b7;
+}
+
+.execute-answer__trace {
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  color: #9ca3af;
+}
+
+.execute-answer__trace summary {
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.execute-answer__trace ol {
+  margin: 0.3rem 0 0 1rem;
+  padding-left: 0.5rem;
+}
+
+.execute-answer__trace li {
+  margin-bottom: 0.15rem;
+}
+
+.execute-answer__trace-error {
+  color: #fca5a5;
 }
 </style>

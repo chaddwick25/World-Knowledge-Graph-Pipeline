@@ -4,12 +4,12 @@ from django.db import connections
 
 class Command(BaseCommand):
     help = (
-        "Drop HNSW indexes on semantic_search_osmentity and its partitions.\n\n"
-        "Default (no args): global mode — drops root → snapshot → every leaf.\n"
-        "With --country + --snapshot: per-leaf mode — drops only the HNSW "
-        "indexes on embeddings_{snapshot}_{country} (no root/snapshot/other "
-        "leaves touched).  Per-leaf mode is what Step 1 uses so other "
-        "countries' search stays online during a single country's upsert."
+        "Drop indexes on semantic_search_osmentity leaf partitions for bulk load.\n\n"
+        "Default (no args): global mode — drops root → snapshot → every leaf HNSW.\n"
+        "With --country + --snapshot: per-leaf mode — drops ALL non-constraint indexes\n"
+        "(HNSW, GIST, and auxiliary B-trees) on embeddings_{snapshot}_{country}.\n"
+        "The unique constraint index and primary key are preserved so ON CONFLICT works.\n"
+        "Per-leaf mode is what Step 1 uses so other countries' search stays online."
     )
 
     def add_arguments(self, parser):
@@ -31,11 +31,11 @@ class Command(BaseCommand):
         if country and snapshot:
             leaf_name = f"embeddings_{snapshot}_{country.lower()}"
             self.stdout.write(self.style.WARNING(
-                f"Per-leaf mode: dropping HNSW indexes on {leaf_name} only..."
+                f"Per-leaf mode: dropping all non-constraint indexes on {leaf_name}..."
             ))
-            dropped = self._drop_leaf_hnsw(leaf_name)
+            dropped = self._drop_leaf_bulk_indexes(leaf_name)
             self.stdout.write(self.style.SUCCESS(
-                f"Dropped {dropped} HNSW index(es) on leaf {leaf_name}."
+                f"Dropped {dropped} index(es) on leaf {leaf_name}."
             ))
             return
 
@@ -57,30 +57,48 @@ class Command(BaseCommand):
         ))
 
     # ------------------------------------------------------------------ #
-    # Per-leaf mode
+    # Per-leaf mode — drops ALL non-constraint indexes (HNSW + GIST + B-tree)
     # ------------------------------------------------------------------ #
-    def _drop_leaf_hnsw(self, leaf_name: str) -> int:
-        """Drop HNSW indexes on a single leaf partition.
+    def _drop_leaf_bulk_indexes(self, leaf_name: str) -> int:
+        """Drop ALL non-constraint indexes on a single leaf partition.
 
-        Only the leaf's own HNSW indexes are dropped — root/snapshot
-        partitioned indexes are NOT touched (they are `ON ONLY` and don't
-        affect per-row upsert performance).  Other countries' leaves are
-        untouched so their search stays online.
+        During a bulk upsert, every live index must be maintained per-row.
+        The GIST geometry index and auxiliary B-tree indexes (osm, wikidata,
+        wkg_class) add ~8-20ms per row at scale — 7-25s overhead per 20K
+        batch.  Dropping them reduces each batch to pure COPY + unique-key
+        conflict resolution (3-5s target).
+
+        Preserved (required for ON CONFLICT and row identity):
+          - Primary key constraint index (pkey)
+          - The 5-column unique constraint index used by ON CONFLICT
+
+        All other indexes (HNSW vector, GIST geometry, extra B-trees) are
+        dropped and will be rebuilt by create_osmentity_vector_indexes after
+        the bulk load completes.
         """
         with connections['vectors'].cursor() as cursor:
+            # Select all non-unique, non-primary-key indexes on this leaf.
+            #
+            # We use pg_index.indisunique / indisprimary instead of
+            # pg_constraint because for partitioned tables the constraint
+            # record lives on the PARENT partition, not the leaf — so a
+            # pg_constraint join misses leaf indexes that back inherited
+            # unique constraints and incorrectly tries to drop them (which
+            # PostgreSQL rejects with "required by parent index").
             cursor.execute(
                 """
                 SELECT i.indexname
                 FROM pg_indexes i
-                LEFT JOIN pg_constraint c
-                  ON c.conname = i.indexname
-                 AND c.contype IN ('p', 'u')
+                JOIN pg_class t
+                  ON t.relname = i.tablename
+                 AND i.schemaname = 'public'
+                JOIN pg_index ix ON ix.indrelid = t.oid
+                JOIN pg_class idx_class
+                  ON idx_class.oid = ix.indexrelid
+                 AND idx_class.relname = i.indexname
                 WHERE i.tablename = %s
-                  AND c.contype IS NULL
-                  AND (
-                    i.indexdef LIKE '%%hnsw%%'
-                    OR i.indexname LIKE '%%hnsw%%'
-                  );
+                  AND NOT ix.indisunique
+                  AND NOT ix.indisprimary;
                 """,
                 [leaf_name],
             )
@@ -89,7 +107,7 @@ class Command(BaseCommand):
             for (idx_name,) in indexes:
                 cursor.execute(f"DROP INDEX IF EXISTS {idx_name};")
                 self.stdout.write(
-                    f"  Dropped leaf HNSW index: {idx_name} (on {leaf_name})"
+                    f"  Dropped index: {idx_name} (on {leaf_name})"
                 )
         return len(indexes)
 

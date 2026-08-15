@@ -1,4 +1,5 @@
 import logging
+import os
 import requests
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
@@ -18,6 +19,33 @@ logger = logging.getLogger(__name__)
 WKGS_BASE_URI = "http://schema.worldkg.org/"
 WKG_BASE_URI = "http://www.worldkg.org/"
 OSMN_BASE_URI = "https://www.openstreetmap.org/node/"
+
+
+# ── Parallel enrichment worker (module-level for threading) ─────────────────
+
+def _enrich_chunk_thread(
+    service: "WorldKGEnrichmentService",
+    chunk: List[Tuple[int, dict]],
+) -> List[Tuple[int, Optional[Dict]]]:
+    """Enrich a chunk of (osm_id, tags) tuples in a worker thread.
+
+    Uses ThreadPoolExecutor — safe within Celery's daemonic worker
+    processes (unlike multiprocessing.Pool which is blocked by Python's
+    "daemonic processes are not allowed to have children" assertion).
+
+    The ontology is shared in-process (thread-safe for read-only access),
+    so no fork/copy overhead is needed.
+    """
+    from collections import namedtuple
+    _MinimalEntity = namedtuple('_MinimalEntity', ['osm_id', 'tags'])
+
+    results = []
+    for osm_id, tags in chunk:
+        entity = _MinimalEntity(osm_id=osm_id, tags=tags)
+        result = service._enrich_via_local_tags(entity)
+        results.append((osm_id, result))
+
+    return results
 
 
 class WorldKGEnrichmentService:
@@ -295,16 +323,80 @@ class WorldKGEnrichmentService:
             'wkg_type_value': wkg_type_value,
             'method': 'local'
         }
-    
+
+    def _parallel_enrich_batch(
+        self,
+        executor,
+        entities: List[OsmEntity],
+        num_workers: int,
+        batch_timestamp,
+    ) -> List[OsmEntity]:
+        """Enrich a batch of entities using a ThreadPoolExecutor.
+
+        Extracts ``(osm_id, tags)`` from each entity, splits into
+        ``num_workers`` sub-chunks, dispatches to the thread pool, then
+        applies results back to the model instances for bulk_update.
+
+        Uses threads (not processes) because Celery worker processes
+        are daemonic and Python forbids daemonic processes from
+        spawning children.  The ontology is read-only and thread-safe
+        for concurrent reads.
+
+        Returns the list of enriched model instances (those with a
+        non-None result).
+        """
+        from concurrent.futures import as_completed
+
+        # Extract (osm_id, tags) tuples.
+        items = [(e.osm_id, e.tags) for e in entities]
+
+        # Split into num_workers sub-chunks (roughly equal).
+        chunk_size = max(1, len(items) // num_workers)
+        chunks = [
+            items[i:i + chunk_size]
+            for i in range(0, len(items), chunk_size)
+        ]
+
+        # Dispatch to thread pool and collect results.
+        futures = [
+            executor.submit(_enrich_chunk_thread, self, chunk)
+            for chunk in chunks
+        ]
+        chunk_results = [f.result() for f in as_completed(futures)]
+
+        # Build a lookup: {osm_id: result_dict}
+        result_map = {}
+        for chunk_result in chunk_results:
+            for osm_id, result in chunk_result:
+                if result is not None:
+                    result_map[osm_id] = result
+
+        # Apply results back to model instances.
+        enriched = []
+        for entity in entities:
+            result = result_map.get(entity.osm_id)
+            if result:
+                entity.wkg_class = result['wkg_class']
+                entity.wkg_superclasses = result['wkg_superclasses']
+                entity.wikidata_uri = result.get('wikidata_uri')
+                entity.wkg_depth = result['wkg_depth']
+                entity.wkg_type_key = result.get('wkg_type_key')
+                entity.wkg_type_value = result.get('wkg_type_value')
+                entity.wkg_enriched_at = batch_timestamp
+                enriched.append(entity)
+
+        return enriched
+
     def batch_enrich_region(
         self,
         region: Optional[str] = None,
         poly_file: Optional[str] = None,
         snapshot_id: Optional[str] = None,
-        batch_size: int = 1000,
+        batch_size: int = 5000,
         use_sparql: bool = False,
         skip_enriched: bool = True,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        num_workers: Optional[int] = None,
     ) -> Dict:
         """Batch enrich OSM entities for a region or snapshot.
 
@@ -312,15 +404,25 @@ class WorldKGEnrichmentService:
         per batch so progress is committed incrementally. This avoids losing
         all work if the database connection drops mid-run.
 
+        When ``use_sparql=False`` (the default) and ``num_workers > 1``,
+        enrichment is parallelized across ``num_workers`` threads using
+        ``ThreadPoolExecutor``.  Threads are used instead of processes
+        because Celery worker processes are daemonic and Python forbids
+        daemonic processes from spawning children.  The ontology is
+        read-only and thread-safe for concurrent reads.
+
         Args:
             region: Filter by region name
             poly_file: Path to .poly boundary file for exact geometry filtering.
                        If provided, entities are filtered spatially by this polygon.
             snapshot_id: Filter by source snapshot UUID
-            batch_size: Number of entities to process per batch
+            batch_size: Number of entities to process per batch (default 5000)
             use_sparql: Use SPARQL endpoint (slower but more accurate)
             skip_enriched: Skip entities already enriched
             limit: Limit total entities to process (useful for testing)
+            num_workers: Number of parallel worker processes for local
+                         enrichment.  Defaults to ``ENRICHMENT_WORKERS`` env
+                         var or 8.  Set to 1 for serial enrichment.
 
         Returns:
             Statistics dict
@@ -390,7 +492,7 @@ class WorldKGEnrichmentService:
         
         total = query.count()
         logger.info(f"Starting batch enrichment of {total} entities")
-        
+
         self.stats = {
             'enriched': 0,
             'failed': 0,
@@ -398,30 +500,119 @@ class WorldKGEnrichmentService:
             'sparql_queries': 0,
             'local_predictions': 0
         }
-        
+
+        # Resolve worker count: env var > parameter > default 8.
+        # Set to 1 for serial enrichment (e.g. when use_sparql=True).
+        if num_workers is None:
+            num_workers = int(os.environ.get("ENRICHMENT_WORKERS", "8"))
+        if use_sparql:
+            num_workers = 1  # SPARQL hits external endpoint — no parallelism
+
         # Process in batches using server-side cursor for memory efficiency
         total_batches = (total + batch_size - 1) // batch_size if total else 0
         batch_num = 0
         enriched_entities = []
         batch_timestamp = timezone.now()
 
-        for entity in query.iterator(chunk_size=batch_size):
-            result = self.enrich_entity(entity, use_sparql=use_sparql)
+        if num_workers > 1:
+            # ── Parallel enrichment path (ThreadPoolExecutor) ──────────
+            # Use threads instead of processes because Celery worker
+            # processes are daemonic and Python forbids daemonic
+            # processes from spawning children.  The ontology is
+            # read-only and thread-safe for concurrent reads.
+            from concurrent.futures import ThreadPoolExecutor
 
-            if result:
-                entity.wkg_class = result['wkg_class']
-                entity.wkg_superclasses = result['wkg_superclasses']
-                entity.wikidata_uri = result.get('wikidata_uri')
-                entity.wkg_depth = result['wkg_depth']
-                entity.wkg_type_key = result.get('wkg_type_key')
-                entity.wkg_type_value = result.get('wkg_type_value')
-                entity.wkg_enriched_at = batch_timestamp
-                enriched_entities.append(entity)
-                self.stats['enriched'] += 1
-            else:
-                self.stats['failed'] += 1
+            logger.info(
+                f"Parallel enrichment: workers={num_workers} batch_size={batch_size}"
+            )
 
-            if len(enriched_entities) >= batch_size:
+            # Collect entities from the server-side cursor into batches,
+            # then dispatch each batch to the thread pool as sub-chunks.
+            current_batch = []
+            executor = ThreadPoolExecutor(max_workers=num_workers)
+            try:
+                for entity in query.iterator(chunk_size=batch_size):
+                    current_batch.append(entity)
+
+                    if len(current_batch) >= batch_size:
+                        enriched_entities = self._parallel_enrich_batch(
+                            executor, current_batch, num_workers, batch_timestamp,
+                        )
+                        OsmEntity.objects.using('vectors').bulk_update(
+                            enriched_entities,
+                            ['wkg_class', 'wkg_superclasses', 'wikidata_uri', 'wkg_depth',
+                             'wkg_type_key', 'wkg_type_value', 'wkg_enriched_at']
+                        )
+                        batch_num += 1
+                        logger.info(
+                            f"Batch {batch_num}/{total_batches}: "
+                            f"{len(enriched_entities)} enriched"
+                        )
+                        self.stats['enriched'] += len(enriched_entities)
+                        self.stats['failed'] += len(current_batch) - len(enriched_entities)
+                        self.stats['local_predictions'] += len(enriched_entities)
+                        current_batch = []
+                        enriched_entities = []
+                        batch_timestamp = timezone.now()
+
+                # Flush remaining
+                if current_batch:
+                    enriched_entities = self._parallel_enrich_batch(
+                        executor, current_batch, num_workers, batch_timestamp,
+                    )
+                    OsmEntity.objects.using('vectors').bulk_update(
+                        enriched_entities,
+                        ['wkg_class', 'wkg_superclasses', 'wikidata_uri', 'wkg_depth',
+                         'wkg_type_key', 'wkg_type_value', 'wkg_enriched_at']
+                    )
+                    batch_num += 1
+                    logger.info(
+                        f"Batch {batch_num}/{total_batches}: "
+                        f"{len(enriched_entities)} enriched (final)"
+                    )
+                    self.stats['enriched'] += len(enriched_entities)
+                    self.stats['failed'] += len(current_batch) - len(enriched_entities)
+                    self.stats['local_predictions'] += len(enriched_entities)
+            finally:
+                executor.shutdown(wait=True)
+        else:
+            # ── Serial enrichment path (legacy) ────────────────────────
+            for entity in query.iterator(chunk_size=batch_size):
+                result = self.enrich_entity(entity, use_sparql=use_sparql)
+
+                if result:
+                    entity.wkg_class = result['wkg_class']
+                    entity.wkg_superclasses = result['wkg_superclasses']
+                    entity.wikidata_uri = result.get('wikidata_uri')
+                    entity.wkg_depth = result['wkg_depth']
+                    entity.wkg_type_key = result.get('wkg_type_key')
+                    entity.wkg_type_value = result.get('wkg_type_value')
+                    entity.wkg_enriched_at = batch_timestamp
+                    enriched_entities.append(entity)
+                    self.stats['enriched'] += 1
+                    if not use_sparql:
+                        self.stats['local_predictions'] += 1
+                    else:
+                        self.stats['sparql_queries'] += 1
+                else:
+                    self.stats['failed'] += 1
+
+                if len(enriched_entities) >= batch_size:
+                    OsmEntity.objects.using('vectors').bulk_update(
+                        enriched_entities,
+                        ['wkg_class', 'wkg_superclasses', 'wikidata_uri', 'wkg_depth',
+                         'wkg_type_key', 'wkg_type_value', 'wkg_enriched_at']
+                    )
+                    batch_num += 1
+                    logger.info(
+                        f"Batch {batch_num}/{total_batches}: "
+                        f"{len(enriched_entities)} enriched"
+                    )
+                    enriched_entities = []
+                    batch_timestamp = timezone.now()
+
+            # Flush remaining
+            if enriched_entities:
                 OsmEntity.objects.using('vectors').bulk_update(
                     enriched_entities,
                     ['wkg_class', 'wkg_superclasses', 'wikidata_uri', 'wkg_depth',
@@ -430,23 +621,8 @@ class WorldKGEnrichmentService:
                 batch_num += 1
                 logger.info(
                     f"Batch {batch_num}/{total_batches}: "
-                    f"{len(enriched_entities)} enriched"
+                    f"{len(enriched_entities)} enriched (final)"
                 )
-                enriched_entities = []
-                batch_timestamp = timezone.now()
-
-        # Flush remaining
-        if enriched_entities:
-            OsmEntity.objects.using('vectors').bulk_update(
-                enriched_entities,
-                ['wkg_class', 'wkg_superclasses', 'wikidata_uri', 'wkg_depth',
-                 'wkg_type_key', 'wkg_type_value', 'wkg_enriched_at']
-            )
-            batch_num += 1
-            logger.info(
-                f"Batch {batch_num}/{total_batches}: "
-                f"{len(enriched_entities)} enriched (final)"
-            )
         
         logger.info(f"Batch enrichment complete: {self.stats}")
         return self.stats

@@ -166,11 +166,13 @@ def _get_step_tasks():
         step_0j_prebuild_merge_us_embeddings,
         step_0k_rescan_embeddings,
         step_1_embed_osm_entities,
+        step_1b_finalize_subgraph_embeds,
         step_2_harvest_wikidata,
         step_3_run_igea,
         step_4_predict_spatial_links,
         step_4b_finalize_subgraph_uslp,
         step_5_train_gv_nle,
+        step_5b_finalize_subgraph_nle,
         step_6_mark_search_ready,
     )
     return {
@@ -188,18 +190,79 @@ def _get_step_tasks():
         0.97: step_0l_enrich_worldkg_classes,       # Load WorldKG ontology TTL into Redis
         0.98: step_0m_generate_osm_boundaries,      # Generate OSM boundary data
         1: step_1_embed_osm_entities,
+        1.5: step_1b_finalize_subgraph_embeds,      # Chord callback for Step 1 subgraphs
         2: step_2_harvest_wikidata,
         3: step_3_run_igea,
         4: step_4_predict_spatial_links,
         4.5: step_4b_finalize_subgraph_uslp,
         5: step_5_train_gv_nle,
+        5.5: step_5b_finalize_subgraph_nle,         # Chord callback for Step 5 subgraphs
         6: step_6_mark_search_ready,
     }
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# Subgraph USLP Chord Helpers
+# Subgraph Chord Helpers (Steps 1, 4, 5)
 # ══════════════════════════════════════════════════════════════════════════
+def _lightweight_config_dict(cfg) -> dict:
+    """Return a config dict with the subgraphs list stripped out.
+
+    Each subgraph task receives its own ``sg.to_dict()`` as the first
+    argument, so it does not need the full list of all subgraphs in the
+    parent config.  Stripping the subgraphs list dramatically reduces
+    the serialized message size when 90 subgraph tasks are embedded in
+    a Celery canvas chain (1.5 MB → ~100 KB), preventing Redis
+    connection resets on large chord fan-outs.
+    """
+    config_dict = cfg.to_dict()
+    config_dict.pop("subgraphs", None)
+    return config_dict
+
+
+def _get_subgraph_embed_tasks(cfg) -> list:
+    """Build the header for the Step 1 subgraph embedding chord.
+
+    Returns a list of Celery task signatures (one per subgraph).
+    The chord's callback (``step_1b_finalize_subgraph_embeds``) aggregates
+    results and passes the config dict downstream so Step 2 can proceed.
+
+    For countries without subgraphs, returns an empty list — canvas.py
+    skips the chord and chains step_1 directly to step_2.
+    """
+    from pipeline.tasks import _embed_subgraph
+
+    if not (cfg.has_subgraphs and cfg.subgraphs):
+        return []
+
+    config_dict = _lightweight_config_dict(cfg)
+    return [
+        _embed_subgraph.si(sg.to_dict(), config_dict)
+        for sg in cfg.subgraphs
+    ]
+
+
+def _get_subgraph_nle_tasks(cfg) -> list:
+    """Build the header for the Step 5 subgraph NLE training chord.
+
+    Returns a list of Celery task signatures (one per subgraph).
+    The chord's callback (``step_5b_finalize_subgraph_nle``) aggregates
+    results and passes the config dict downstream so Step 6 can proceed.
+
+    For countries without subgraphs, returns an empty list — canvas.py
+    skips the chord and chains step_5 directly to step_6.
+    """
+    from pipeline.tasks import _train_subgraph_gv_nle
+
+    if not (cfg.has_subgraphs and cfg.subgraphs):
+        return []
+
+    config_dict = _lightweight_config_dict(cfg)
+    return [
+        _train_subgraph_gv_nle.si(sg.to_dict(), config_dict)
+        for sg in cfg.subgraphs
+    ]
+
+
 def _get_subgraph_uslp_tasks(cfg) -> list:
     """Build the header for a parallel subgraph USLP chord.
 
@@ -214,7 +277,7 @@ def _get_subgraph_uslp_tasks(cfg) -> list:
     """
     from pipeline.tasks import _run_subgraph_uslp
 
-    config_dict = cfg.to_dict()
+    config_dict = _lightweight_config_dict(cfg)
 
     if cfg.has_subgraphs and cfg.subgraphs:
         # Fan out: one USLP task per subgraph
@@ -497,10 +560,56 @@ def _run_eager(cfg, run, steps) -> None:
             )
             raise
 
+    def _run_sync_subgraphs(step_name, subgraph_tasks, callback_task, config):
+        """Run subgraph tasks synchronously in eager mode, then call the callback."""
+        if not subgraph_tasks:
+            return config
+        results = []
+        for sg_task in subgraph_tasks:
+            # .si() signatures are immutable — call with no extra args
+            sg_result = sg_task.apply()
+            results.append(sg_result.result)
+        # Call the callback with (aggregated_results, config_dict)
+        cb_result = callback_task(results, config)
+        return cb_result if cb_result else config
+
     try:
-        for i, task in enumerate(tasks_list, 1):
-            step_name = _STEP_NAMES.get(i, f'step_{i}')
-            config_dict = _run_sync_step(step_name, task, config_dict)
+        # Step 1: embed + entropy
+        step_name = _STEP_NAMES.get(1, 'step_1')
+        config_dict = _run_sync_step(step_name, tasks_list[0], config_dict)
+        # Step 1b: subgraph embeddings (if any)
+        embed_header = _get_subgraph_embed_tasks(cfg)
+        if embed_header:
+            config_dict = _run_sync_subgraphs(
+                'step_1b', embed_header, steps[1.5], config_dict,
+            )
+        # Step 2: harvest
+        step_name = _STEP_NAMES.get(2, 'step_2')
+        config_dict = _run_sync_step(step_name, tasks_list[1], config_dict)
+        # Step 3: IGEA
+        step_name = _STEP_NAMES.get(3, 'step_3')
+        config_dict = _run_sync_step(step_name, tasks_list[2], config_dict)
+        # Step 4: USLP (country-level)
+        step_name = _STEP_NAMES.get(4, 'step_4')
+        config_dict = _run_sync_step(step_name, tasks_list[3], config_dict)
+        # Step 4b: subgraph USLP (if any)
+        uslp_header = _get_subgraph_uslp_tasks(cfg)
+        if uslp_header:
+            config_dict = _run_sync_subgraphs(
+                'step_4b', uslp_header, steps[4.5], config_dict,
+            )
+        # Step 5: train GV-NLE
+        step_name = _STEP_NAMES.get(5, 'step_5')
+        config_dict = _run_sync_step(step_name, tasks_list[4], config_dict)
+        # Step 5b: subgraph NLE training (if any)
+        nle_header = _get_subgraph_nle_tasks(cfg)
+        if nle_header:
+            config_dict = _run_sync_subgraphs(
+                'step_5b', nle_header, steps[5.5], config_dict,
+            )
+        # Step 6: mark search ready
+        step_name = _STEP_NAMES.get(6, 'step_6')
+        config_dict = _run_sync_step(step_name, tasks_list[5], config_dict)
 
         run.status = PipelineRun.PipelineStatus.COMPLETED
         run.completed_at = datetime.now(timezone.utc)
@@ -528,30 +637,64 @@ def _run_eager(cfg, run, steps) -> None:
 def _run_async(cfg, run, steps) -> None:
     """Execute pipeline steps via Celery Canvas (normal async mode).
 
-    Step 4 uses a chord for parallel subgraph USLP when subgraphs exist.
-    For small territories (no subgraphs), the chord still works with a
-    single country-level USLP task. The chord callback receives the
-    aggregated list of subgraph results; we wrap it with .s() and pass
-    the config_dict so the callback can reconstruct CountryEnvelope for
-    logging and chain continuation.
+    Steps 1, 4, and 5 use chords for parallel subgraph processing when
+    subgraphs exist.  The chord callbacks aggregate results and pass the
+    config dict downstream so the chain can continue.
+
+    For small territories (no subgraphs), the subgraph chords are skipped
+    and the chain runs step_1 → step_2 → step_3 → step_4 → step_5 → step_6
+    directly.
     """
     from celery import chain
     from orchestration.models import PipelineRun
 
+    # Use lightweight config (subgraphs stripped) for chord callbacks and
+    # subgraph tasks to keep the serialized Redis message small.  The full
+    # config_dict with subgraphs is only needed by step_1 itself (which
+    # rehydrates subgraphs from DB anyway).
+    config_dict = _lightweight_config_dict(cfg)
+
+    # ── Step 1 chord: subgraph embeddings ──
+    embed_header = _get_subgraph_embed_tasks(cfg)
+    if embed_header:
+        embed_callback = steps[1.5].s(config_dict)  # step_1b_finalize_subgraph_embeds
+        step1_chord = chord(embed_header, embed_callback)
+    else:
+        step1_chord = None  # no subgraphs — step_1 returns env directly
+
+    # ── Step 4 chord: subgraph USLP ──
     uslp_header = _get_subgraph_uslp_tasks(cfg)
-    uslp_callback = steps[4.5].s(cfg.to_dict())  # step_4b_finalize_subgraph_uslp
+    uslp_callback = steps[4.5].s(config_dict)  # step_4b_finalize_subgraph_uslp
     uslp_chord = chord(uslp_header, uslp_callback)
+
+    # ── Step 5 chord: subgraph NLE training ──
+    nle_header = _get_subgraph_nle_tasks(cfg)
+    if nle_header:
+        nle_callback = steps[5.5].s(config_dict)  # step_5b_finalize_subgraph_nle
+        step5_chord = chord(nle_header, nle_callback)
+    else:
+        step5_chord = None  # no subgraphs — step_5 returns env directly
 
     # Build chain — all tasks call _push_update internally,
     # which now sends via Redis ChannelLayer (cross-process).
-    canvas = chain(
-        steps[1].s(cfg.to_dict()),
+    # When a chord is present, it replaces the bare step in the chain so
+    # the chain waits for all subgraph tasks to complete before proceeding.
+    canvas_parts = [
+        steps[1].s(config_dict),
+    ]
+    if step1_chord is not None:
+        canvas_parts.append(step1_chord)
+    canvas_parts.extend([
         steps[2].s(),
         steps[3].s(),
         uslp_chord,
         steps[5].s(),
-        steps[6].s(),
-    )
+    ])
+    if step5_chord is not None:
+        canvas_parts.append(step5_chord)
+    canvas_parts.append(steps[6].s())
+
+    canvas = chain(*canvas_parts)
 
     # Dispatch to Celery FIRST, then mark as RUNNING.
     # This eliminates the PENDING -> RUNNING race window where Celery

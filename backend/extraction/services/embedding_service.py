@@ -24,8 +24,16 @@ logger = logging.getLogger(__name__)
 # Phase gate for the dual-encoding (FastText + NLE) parallel path.
 # Phase 1 ships the FastText-only parallel path; Phase 2 enables dual after
 # the pickle-country parity test (PARALLEL_UPSERT_APPROACH_B_PLAN.md §5.2)
-# passes.  Flip to True (or remove the gate) to enable.
-_PARALLEL_DUAL_ENABLED = False
+# passes.
+#
+# Enabled 2026-08-14: all countries currently have pickle_path=None, so
+# flipping this gate routes has_pretrained_nle=True countries to
+# _run_parallel (FastText-only) — identical encoding to the single-threaded
+# DBOnlyWriter path, just parallelized.  The _run_parallel_dual path is
+# only reached when pickle_path is set, which is not the case today.
+# If a country with a pickle is added later, _run_parallel_dual will be
+# exercised and should be parity-tested first (§5.2).
+_PARALLEL_DUAL_ENABLED = True
 
 
 class EmbeddingService:
@@ -272,6 +280,7 @@ class EmbeddingService:
         from geovectors_encoder.core.util import read_from_snapshot
         from geovectors_encoder.services.batch_collector import (
             BatchCollector,
+            SENTINEL,
             spawn_encode_workers,
         )
 
@@ -281,7 +290,7 @@ class EmbeddingService:
         )
         ft_model = FastTextModel()
         work_queue: "queue_mod.Queue" = queue_mod.Queue(maxsize=workers * queue_depth)
-        threads, error_box = spawn_encode_workers(
+        threads, upsert_thread, upsert_queue, error_box = spawn_encode_workers(
             work_queue, workers, ft_model, nle_model=None,
             snapshot_date=cfg.snapshot_date, country_code=cfg.iso,
             has_nle=False,
@@ -293,9 +302,15 @@ class EmbeddingService:
             )
             for record in itertools.chain(w_data, r_data):
                 collector.add_line(record)
+            # Send sentinels to encoding workers
             collector.finish(workers)
+            # Wait for all encoding workers to finish pushing to upsert_queue
             for t in threads:
                 t.join()
+            # Send sentinel to upsert worker
+            upsert_queue.put(SENTINEL)
+            # Wait for upsert worker to finish
+            upsert_thread.join()
             exc, tb = error_box.get()
             if exc is not None:
                 raise RuntimeError(
@@ -307,6 +322,10 @@ class EmbeddingService:
             # are dropped by workers (they break on the first sentinel).
             try:
                 collector.finish(workers)
+            except Exception:
+                pass
+            try:
+                upsert_queue.put(SENTINEL)
             except Exception:
                 pass
         return collector.total
@@ -326,6 +345,7 @@ class EmbeddingService:
         from geovectors_encoder.core.util import read_from_snapshot
         from geovectors_encoder.services.batch_collector import (
             BatchCollector,
+            SENTINEL,
             spawn_encode_workers,
         )
 
@@ -336,7 +356,7 @@ class EmbeddingService:
         ft_model = FastTextModel()
         nle_model = self._build_shared_nle_model(cfg)
         work_queue: "queue_mod.Queue" = queue_mod.Queue(maxsize=workers * queue_depth)
-        threads, error_box = spawn_encode_workers(
+        threads, upsert_thread, upsert_queue, error_box = spawn_encode_workers(
             work_queue, workers, ft_model, nle_model=nle_model,
             snapshot_date=cfg.snapshot_date, country_code=cfg.iso,
             has_nle=True,
@@ -348,9 +368,15 @@ class EmbeddingService:
             )
             for record in itertools.chain(w_data, r_data):
                 collector.add_line(record)
+            # Send sentinels to encoding workers
             collector.finish(workers)
+            # Wait for all encoding workers to finish pushing to upsert_queue
             for t in threads:
                 t.join()
+            # Send sentinel to upsert worker
+            upsert_queue.put(SENTINEL)
+            # Wait for upsert worker to finish
+            upsert_thread.join()
             exc, tb = error_box.get()
             if exc is not None:
                 raise RuntimeError(
@@ -359,6 +385,10 @@ class EmbeddingService:
         finally:
             try:
                 collector.finish(workers)
+            except Exception:
+                pass
+            try:
+                upsert_queue.put(SENTINEL)
             except Exception:
                 pass
             # NLEModel.destroy() is a no-op on DjangoPostgresDB (Django owns
@@ -401,7 +431,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _parallel_upsert_workers() -> int:
-    """Consumer threads.  8 = default (parallel encode + upsert).
+    """Encoding threads.  8 = default (parallel encode, serial upsert).
 
     Set to 1 to force the legacy single-threaded path.
     """

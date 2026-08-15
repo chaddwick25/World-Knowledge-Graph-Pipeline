@@ -27,6 +27,12 @@ compose.override.yml
 # Generated data artifacts with absolute paths
 backend/data/country_relations.json
 
+# MapQA parser training data + model artifacts (regenerable via
+# scripts/map_mapqa_to_templates.py + train_mapqa_parser command)
+backend/data/mapqa_parser/
+# Root symlink to backend/data/mapqa_parser/training_data/ (backward compat)
+/mapqa_template_mapping.csv
+
 docs
 
 

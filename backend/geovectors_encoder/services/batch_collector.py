@@ -22,13 +22,19 @@ on this):
 
 Thread-safety (verified against the code, see plan §2.3):
 
-- ``FastTextModel`` and ``NLEModel`` are shared across worker threads.
+- ``FastTextModel`` and ``NLEModel`` are shared across encoding threads.
   FastText inference releases the GIL; ``NLEModel.encode_coords`` issues a
   PostGIS KNN query via ``DjangoPostgresDB.get_pool_connection()`` which
   returns the *calling thread's* Django connection — each worker gets its
   own psycopg2 connection automatically.
-- One ``VectorStorageService`` per type per worker thread = fully isolated.
-- Worker threads close their own Django connections in ``finally`` via
+- Encoding threads do **no** database I/O — they only encode and push
+  encoded batches onto the ``upsert_queue``.
+- A single ``upsert_worker`` thread owns the only ``VectorStorageService``
+  instances (one for tags, one for NLE).  This eliminates PostgreSQL lock
+  contention on the leaf partition's unique index — the regression that
+  occurred when 8 workers each ran ``INSERT ... ON CONFLICT`` concurrently
+  (see ``docs/issues/PARALLEL_UPSERT_REGRESSION.md``).
+- The upsert thread closes its Django connections in ``finally`` via
   ``connections.close_all()`` (no request lifecycle in Celery threads).
 """
 
@@ -155,57 +161,45 @@ class BatchCollector:
 def encoding_worker(
     worker_id: int,
     work_queue: "queue.Queue[Any]",
+    upsert_queue: "queue.Queue[Any]",
     error_box: ErrorBox,
     ft_model: Any,
     nle_model: Optional[Any],
-    tags_storage: Any,
-    nle_storage: Optional[Any],
 ) -> None:
-    """Consume batches until a sentinel is seen; encode + upsert each record.
+    """Consume raw-record batches; encode them; push encoded batches to the
+    single upsert worker.
 
-    One ``VectorStorageService`` per type is created by the caller and bound
-    to this worker thread — they are never shared.  ``ft_model`` and
-    ``nle_model`` are shared across workers (read-only inference, see plan
-    §2.3).
+    This worker does **no** database I/O — it only runs CPU-bound FastText
+    (and optionally NLE) inference, which releases the GIL and parallelizes
+    across threads.  The encoded batches are pushed onto ``upsert_queue``
+    for the single ``upsert_worker`` thread to serialize into PostgreSQL.
 
-    On exception: record it in ``error_box``, then drain the queue to
-    sentinel so the producer thread can't block on a full bounded queue.
-    Django connections for *this* thread are always closed in ``finally``.
+    On exception: record it in ``error_box``, then drain the work queue so
+    the producer thread can't block on a full bounded queue.
     """
-    from django.db import connections
-
     try:
         while True:
             batch = work_queue.get()
             if batch is SENTINEL:
                 break
+            encoded_batch: List[Tuple[Any, Any, Optional[Any]]] = []
             for record in batch:
                 try:
                     tag_vec = ft_model.encode_instance(record)
                 except Exception:
-                    # A single bad record shouldn't kill the worker — but if
-                    # encoding is fundamentally broken we want to know fast.
-                    # Re-raise to trigger the error-box path below.
                     raise
-                if tag_vec is not None:
-                    tags_storage.add(record, tag_vec)
+                nle_vec = None
                 if nle_model is not None:
                     nle_vec = nle_model.encode_instance(record)
-                    if nle_vec is not None and nle_storage is not None:
-                        nle_storage.add(record, nle_vec)
-            tags_storage.flush()
-            if nle_storage is not None:
-                nle_storage.flush()
+                if tag_vec is not None or nle_vec is not None:
+                    encoded_batch.append((record, tag_vec, nle_vec))
+            if encoded_batch:
+                upsert_queue.put(encoded_batch)
     except Exception as exc:
         error_box.set(exc)
         logger.error(
-            "[parallel-embed] worker %d failed: %s", worker_id, exc, exc_info=True,
+            "[parallel-embed] encoding worker %d failed: %s", worker_id, exc, exc_info=True,
         )
-        # Drain the queue so the producer never blocks on queue.put().
-        # Stop after consuming n_workers sentinels worth — in practice we
-        # just drain until we've seen enough sentinels that the queue is
-        # empty, which happens naturally because finish() enqueues exactly
-        # n_workers of them.
         try:
             while True:
                 item = work_queue.get_nowait()
@@ -213,24 +207,89 @@ def encoding_worker(
                     continue
         except queue.Empty:
             pass
+
+
+def upsert_worker(
+    worker_id: int,
+    upsert_queue: "queue.Queue[Any]",
+    error_box: ErrorBox,
+    snapshot_date: str,
+    country_code: str,
+    has_nle: bool,
+) -> None:
+    """Single-threaded consumer that serializes all DB upserts.
+
+    Pulls encoded batches (``(record, tag_vec, nle_vec)`` tuples) from
+    ``upsert_queue`` and writes them via ``VectorStorageService``.  Because
+    there is only one upsert thread, there is zero lock contention on the
+    leaf partition's unique index — each batch is the sole writer.
+
+    On exception: record it in ``error_box``, then drain the queue so
+    encoding workers can't block on a full bounded queue.
+    """
+    from django.db import connections
+    from geovectors_encoder.services.vector_storage_service import VectorStorageService
+
+    tags_storage = VectorStorageService(
+        model_type="tags", version=snapshot_date,
+        snapshot_id=snapshot_date, country_code=country_code,
+    )
+    nle_storage = None
+    if has_nle:
+        nle_storage = VectorStorageService(
+            model_type="nle", version=snapshot_date,
+            snapshot_id=snapshot_date, country_code=country_code,
+        )
+
+    try:
+        while True:
+            batch = upsert_queue.get()
+            if batch is SENTINEL:
+                break
+            for record, tag_vec, nle_vec in batch:
+                if tag_vec is not None:
+                    tags_storage.add(record, tag_vec)
+                if nle_vec is not None and nle_storage is not None:
+                    nle_storage.add(record, nle_vec)
+            tags_storage.flush()
+            if nle_storage is not None:
+                nle_storage.flush()
+    except Exception as exc:
+        error_box.set(exc)
+        logger.error(
+            "[parallel-embed] upsert worker failed: %s", exc, exc_info=True,
+        )
+        try:
+            while True:
+                item = upsert_queue.get_nowait()
+                if item is SENTINEL:
+                    continue
+        except queue.Empty:
+            pass
     finally:
-        # Belt-and-braces: flush any partial batch in this worker's storages.
         try:
             tags_storage.flush()
         except Exception:
-            logger.warning("[parallel-embed] worker %d tags flush failed in finally", worker_id)
+            logger.warning("[parallel-embed] upsert worker tags flush failed in finally")
         if nle_storage is not None:
             try:
                 nle_storage.flush()
             except Exception:
-                logger.warning("[parallel-embed] worker %d nle flush failed in finally", worker_id)
-        # Close THIS thread's Django connections (no request lifecycle in
-        # Celery worker threads to do it for us).  Pattern exists in
-        # geovectors_service.py:1250-1252.
+                logger.warning("[parallel-embed] upsert worker nle flush failed in finally")
+        # Drop reusable staging tables (opt 3 — see PGVECTOR_BULK_UPSERT_OPTIMIZATIONS.md).
+        try:
+            tags_storage.cleanup()
+        except Exception:
+            pass
+        if nle_storage is not None:
+            try:
+                nle_storage.cleanup()
+            except Exception:
+                pass
         try:
             connections.close_all()
         except Exception:
-            logger.warning("[parallel-embed] worker %d connections.close_all failed", worker_id)
+            logger.warning("[parallel-embed] upsert worker connections.close_all failed")
 
 
 def spawn_encode_workers(
@@ -241,36 +300,42 @@ def spawn_encode_workers(
     snapshot_date: str,
     country_code: str,
     has_nle: bool,
-) -> Tuple[List[threading.Thread], ErrorBox]:
-    """Create and start ``n_workers`` consumer threads.
+) -> Tuple[List[threading.Thread], threading.Thread, "queue.Queue[Any]", ErrorBox]:
+    """Create and start ``n_workers`` encoding threads plus a single upsert
+    thread.
 
-    Each thread gets its own ``VectorStorageService`` per type (never shared).
-    Returns ``(threads, error_box)``.  Caller is responsible for
-    ``collector.finish(n_workers)``, ``join``-ing the threads, and checking
-    ``error_box`` after join.
+    Encoding threads run CPU-bound FastText/NLE inference in parallel (GIL
+    is released during inference).  The single upsert thread serializes all
+    PostgreSQL writes to eliminate lock contention on the leaf partition.
+
+    Returns ``(encode_threads, upsert_thread, upsert_queue, error_box)``.
+    The caller is responsible for:
+      1. ``collector.finish(n_workers)`` — sends sentinels to encoding threads
+      2. ``join``-ing the encoding threads
+      3. Putting one ``SENTINEL`` on ``upsert_queue``
+      4. ``join``-ing the upsert thread
+      5. Checking ``error_box`` after both joins
     """
-    from geovectors_encoder.services.vector_storage_service import VectorStorageService
-
     error_box = ErrorBox()
+    upsert_queue: "queue.Queue[Any]" = queue.Queue(maxsize=n_workers * 2)
+
+    upsert_thread = threading.Thread(
+        target=upsert_worker,
+        args=(-1, upsert_queue, error_box, snapshot_date, country_code, has_nle),
+        name="parallel-upsert-worker",
+        daemon=True,
+    )
+    upsert_thread.start()
+
     threads: List[threading.Thread] = []
     for worker_id in range(n_workers):
-        tags_storage = VectorStorageService(
-            model_type="tags", version=snapshot_date,
-            snapshot_id=snapshot_date, country_code=country_code,
-        )
-        nle_storage = None
-        if has_nle:
-            nle_storage = VectorStorageService(
-                model_type="nle", version=snapshot_date,
-                snapshot_id=snapshot_date, country_code=country_code,
-            )
         thread = threading.Thread(
             target=encoding_worker,
-            args=(worker_id, work_queue, error_box, ft_model, nle_model,
-                  tags_storage, nle_storage),
+            args=(worker_id, work_queue, upsert_queue, error_box,
+                  ft_model, nle_model),
             name=f"parallel-embed-{worker_id}",
             daemon=True,
         )
         thread.start()
         threads.append(thread)
-    return threads, error_box
+    return threads, upsert_thread, upsert_queue, error_box

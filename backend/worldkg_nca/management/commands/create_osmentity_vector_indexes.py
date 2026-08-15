@@ -35,11 +35,11 @@ class Command(BaseCommand):
         if country and snapshot:
             leaf_name = f"embeddings_{snapshot}_{country.lower()}"
             self.stdout.write(self.style.WARNING(
-                f"Per-leaf mode: creating HNSW indexes on {leaf_name} only..."
+                f"Per-leaf mode: creating all indexes on {leaf_name} only..."
             ))
-            created = self._create_leaf_hnsw(leaf_name)
+            created = self._create_leaf_indexes(leaf_name)
             self.stdout.write(self.style.SUCCESS(
-                f"Created {created} HNSW index(es) on leaf {leaf_name}."
+                f"Created {created} index(es) on leaf {leaf_name}."
             ))
             return
 
@@ -63,23 +63,27 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------ #
     # Per-leaf mode
     # ------------------------------------------------------------------ #
-    def _create_leaf_hnsw(self, leaf_name: str) -> int:
-        """Create HNSW indexes on a single leaf partition.
+    def _create_leaf_indexes(self, leaf_name: str) -> int:
+        """Rebuild ALL indexes dropped by drop_osmentity_vector_indexes per-leaf mode.
 
-        Creates HNSW on `gv_tags_embedding` and `gv_nle_embedding` (whichever
-        vector columns exist on the leaf) using `CREATE INDEX CONCURRENTLY IF
-        NOT EXISTS`.  Only this leaf is touched.
+        Called after a bulk upsert completes.  Rebuilds:
+          1. HNSW vector indexes (gv_tags_embedding, gv_nle_embedding)
+          2. GIST geometry index (geom)
+          3. Auxiliary B-tree indexes (osm_type+osm_id, wikidata_uri, wkg_class)
+
+        Uses CONCURRENTLY for HNSW (can't hold ShareLock on large data);
+        plain CREATE INDEX for the B-tree/GIST indexes (faster, no transaction
+        issues).
         """
         conn = connections['vectors']
-        # CONCURRENTLY requires autocommit (no transaction block).
+        created = 0
+
+        # ---- 1. HNSW vector indexes (CONCURRENTLY required) ----
         old_autocommit = conn.get_autocommit()
         conn.set_autocommit(True)
         try:
             with conn.cursor() as cursor:
                 cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-
-                # Find vector columns on this leaf that don't yet have an
-                # HNSW index.
                 cursor.execute(
                     """
                     SELECT a.attname AS column_name
@@ -102,14 +106,11 @@ class Command(BaseCommand):
                     """,
                     [leaf_name],
                 )
-                missing = cursor.fetchall()
+                missing_hnsw = cursor.fetchall()
 
-            created = 0
-            for (col_name,) in missing:
+            for (col_name,) in missing_hnsw:
                 idx_name = f"idx_{leaf_name}_{col_name}_hnsw"
-                self.stdout.write(
-                    f"  Creating HNSW index {idx_name} on {leaf_name}.{col_name}..."
-                )
+                self.stdout.write(f"  Creating HNSW index {idx_name}...")
                 with conn.cursor() as cursor:
                     cursor.execute(f"""
                         CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name}
@@ -122,7 +123,51 @@ class Command(BaseCommand):
                 created += 1
         finally:
             conn.set_autocommit(old_autocommit)
+
+        # ---- 2. GIST geometry index + auxiliary B-tree indexes ----
+        # These are plain CREATE INDEX (no CONCURRENTLY needed — no live
+        # readers during Step 1 rebuild window).
+        aux_indexes = [
+            (
+                f"idx_{leaf_name}_geom",
+                f"CREATE INDEX IF NOT EXISTS idx_{leaf_name}_geom "
+                f"ON {leaf_name} USING gist (geom);",
+            ),
+            (
+                f"idx_{leaf_name}_osm",
+                f"CREATE INDEX IF NOT EXISTS idx_{leaf_name}_osm "
+                f"ON {leaf_name} USING btree (osm_type, osm_id);",
+            ),
+            (
+                f"idx_{leaf_name}_wikidata",
+                f"CREATE INDEX IF NOT EXISTS idx_{leaf_name}_wikidata "
+                f"ON {leaf_name} USING btree (wikidata_uri);",
+            ),
+            (
+                f"idx_{leaf_name}_wkg_class",
+                f"CREATE INDEX IF NOT EXISTS idx_{leaf_name}_wkg_class "
+                f"ON {leaf_name} USING btree (wkg_class);",
+            ),
+        ]
+        with conn.cursor() as cursor:
+            for idx_name, idx_sql in aux_indexes:
+                # Only create if missing.
+                cursor.execute(
+                    "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = %s);",
+                    [idx_name],
+                )
+                if not cursor.fetchone()[0]:
+                    self.stdout.write(f"  Creating index {idx_name}...")
+                    cursor.execute(idx_sql)
+                    self.stdout.write(f"    Created {idx_name}")
+                    created += 1
+
         return created
+
+    # kept for backward compatibility (global mode calls this)
+    def _create_leaf_hnsw(self, leaf_name: str) -> int:
+        """Alias: create only HNSW indexes (used by global mode)."""
+        return self._create_leaf_indexes(leaf_name)
 
     # ------------------------------------------------------------------ #
     # Global mode (existing behavior, refactored into a method)

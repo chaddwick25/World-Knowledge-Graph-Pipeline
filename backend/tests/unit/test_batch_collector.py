@@ -30,6 +30,7 @@ from geovectors_encoder.services.batch_collector import (
     SENTINEL,
     encoding_worker,
     spawn_encode_workers,
+    upsert_worker,
 )
 
 
@@ -201,9 +202,9 @@ def test_error_box_records_first_exception_only():
 def test_encoding_worker_terminates_on_single_sentinel():
     """Each worker consumes batches until it sees exactly one sentinel."""
     q: queue.Queue = queue.Queue(maxsize=10)
+    upsert_q: queue.Queue = queue.Queue(maxsize=10)
     error_box = ErrorBox()
     ft = StubModel()
-    storage = StubStorage()
 
     # Enqueue two real batches then one sentinel.
     q.put([_node_record(1), _node_record(2)])
@@ -212,14 +213,24 @@ def test_encoding_worker_terminates_on_single_sentinel():
 
     t = threading.Thread(
         target=encoding_worker,
-        args=(0, q, error_box, ft, None, storage, None),
+        args=(0, q, upsert_q, error_box, ft, None),
         daemon=True,
     )
     t.start()
     t.join(timeout=5.0)
     assert not t.is_alive(), "worker hung waiting for sentinel"
-    # All three records were encoded + added.
-    assert len(storage.added) == 3
+    # All three records were encoded and pushed to the upsert queue.
+    # The encoding worker pushes one encoded batch per input batch.
+    encoded_batches = []
+    while True:
+        try:
+            item = upsert_q.get_nowait()
+        except queue.Empty:
+            break
+        if item is not SENTINEL:
+            encoded_batches.append(item)
+    total_encoded = sum(len(b) for b in encoded_batches)
+    assert total_encoded == 3
     assert not error_box.is_set()
 
 
@@ -228,9 +239,9 @@ def test_encoding_worker_n_sentinels_terminate_n_workers():
     """N workers each terminate after exactly one sentinel."""
     n = 4
     q: queue.Queue = queue.Queue(maxsize=100)
+    upsert_q: queue.Queue = queue.Queue(maxsize=100)
     error_box = ErrorBox()
     ft = StubModel()
-    storages = [StubStorage() for _ in range(n)]
 
     # 8 batches of 1 record each, then 4 sentinels.
     for i in range(8):
@@ -242,7 +253,7 @@ def test_encoding_worker_n_sentinels_terminate_n_workers():
     for wid in range(n):
         t = threading.Thread(
             target=encoding_worker,
-            args=(wid, q, error_box, ft, None, storages[wid], None),
+            args=(wid, q, upsert_q, error_box, ft, None),
             daemon=True,
         )
         t.start()
@@ -252,8 +263,16 @@ def test_encoding_worker_n_sentinels_terminate_n_workers():
         t.join(timeout=5.0)
     assert not any(t.is_alive() for t in threads), "a worker hung"
     # 8 records distributed across 4 workers (no double-processing).
-    total_added = sum(len(s.added) for s in storages)
-    assert total_added == 8
+    encoded_batches = []
+    while True:
+        try:
+            item = upsert_q.get_nowait()
+        except queue.Empty:
+            break
+        if item is not SENTINEL:
+            encoded_batches.append(item)
+    total_encoded = sum(len(b) for b in encoded_batches)
+    assert total_encoded == 8
     assert not error_box.is_set()
 
 
@@ -267,15 +286,15 @@ def test_encoding_worker_error_propagates_and_drains_queue():
     so the producer can't deadlock on a full bounded queue.
     """
     q: queue.Queue = queue.Queue(maxsize=2)
+    upsert_q: queue.Queue = queue.Queue(maxsize=10)
     error_box = ErrorBox()
     ft = StubModel(fail_on={42})
-    storage = StubStorage()
 
     # Start the worker BEFORE filling the queue so puts don't block on
     # a full bounded queue with no consumer running.
     t = threading.Thread(
         target=encoding_worker,
-        args=(0, q, error_box, ft, None, storage, None),
+        args=(0, q, upsert_q, error_box, ft, None),
         daemon=True,
     )
     t.start()
@@ -297,8 +316,8 @@ def test_encoding_worker_error_propagates_and_drains_queue():
 
 
 @pytest.mark.unit
-def test_encoding_worker_closes_django_connections_in_finally(monkeypatch):
-    """Worker ``finally`` calls ``connections.close_all()`` even on success."""
+def test_upsert_worker_closes_django_connections_in_finally(monkeypatch):
+    """The upsert worker's ``finally`` calls ``connections.close_all()``."""
     import django.db
 
     closed = {"calls": 0}
@@ -309,23 +328,40 @@ def test_encoding_worker_closes_django_connections_in_finally(monkeypatch):
 
     monkeypatch.setattr(django.db, "connections", FakeConnections())
 
+    # Stub VectorStorageService so we don't need Django/DB.
+    import sys
+    import geovectors_encoder.services.batch_collector as bc_module
+
+    class FakeStorage:
+        def __init__(self, **kwargs): pass
+        def add(self, r, v): pass
+        def flush(self): pass
+
+    fake_vss = type("M", (), {"VectorStorageService": FakeStorage})
+    real_vss = sys.modules.get("geovectors_encoder.services.vector_storage_service")
+    sys.modules["geovectors_encoder.services.vector_storage_service"] = fake_vss
+
     q: queue.Queue = queue.Queue(maxsize=4)
     error_box = ErrorBox()
-    ft = StubModel()
-    storage = StubStorage()
 
-    q.put([_node_record(1)])
+    q.put([(_node_record(1), [0.1], None)])
     q.put(SENTINEL)
 
     t = threading.Thread(
-        target=encoding_worker,
-        args=(0, q, error_box, ft, None, storage, None),
+        target=upsert_worker,
+        args=(0, q, error_box, "2025_12_31", "ni", False),
         daemon=True,
     )
     t.start()
     t.join(timeout=5.0)
     assert not t.is_alive()
     assert closed["calls"] == 1
+
+    # Restore the real module.
+    if real_vss is not None:
+        sys.modules["geovectors_encoder.services.vector_storage_service"] = real_vss
+    else:
+        sys.modules.pop("geovectors_encoder.services.vector_storage_service", None)
 
 
 # --------------------------------------------------------------------------
@@ -407,7 +443,7 @@ def test_spawn_encode_workers_starts_n_threads(monkeypatch):
     q: queue.Queue = queue.Queue(maxsize=4)
     n = 3
     try:
-        threads, error_box = spawn_encode_workers(
+        threads, upsert_thread, upsert_queue, error_box = spawn_encode_workers(
             q, n, StubModel(), nle_model=None,
             snapshot_date="2025_12_31", country_code="ni",
             has_nle=False,
@@ -415,11 +451,16 @@ def test_spawn_encode_workers_starts_n_threads(monkeypatch):
         assert len(threads) == n
         assert all(t.daemon for t in threads)
         assert all(t.is_alive() for t in threads)
-        # Let them terminate cleanly.
+        assert upsert_thread.daemon
+        assert upsert_thread.is_alive()
+        # Let encoding workers terminate cleanly.
         for _ in range(n):
             q.put(SENTINEL)
         for t in threads:
             t.join(timeout=5.0)
+        # Signal the upsert worker to stop.
+        upsert_queue.put(SENTINEL)
+        upsert_thread.join(timeout=5.0)
     finally:
         # Restore the real module (or remove the fake if there was none).
         if real_vss is not None:
@@ -427,4 +468,5 @@ def test_spawn_encode_workers_starts_n_threads(monkeypatch):
         else:
             sys.modules.pop("geovectors_encoder.services.vector_storage_service", None)
     assert not any(t.is_alive() for t in threads)
+    assert not upsert_thread.is_alive()
     assert not error_box.is_set()
