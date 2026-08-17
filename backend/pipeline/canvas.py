@@ -435,39 +435,33 @@ def _run_eager(cfg, run, steps) -> None:
         return cb_result if cb_result else config
 
     try:
-        # Step 1: embed + entropy
+        # Step 1: embed + entropy — Step 1 generates subgraph PBFs during
+        # preprocess_snapshot, but the Step 1b chord was already built with
+        # the stale has_subgraphs flag.  Subgraph embeddings are generated
+        # by Step 1 itself (via EmbeddingService.run) for countries with
+        # subgraphs, so Step 1b is redundant in the eager path.
         step_name = _STEP_NAMES.get(1, 'step_1')
         config_dict = _run_sync_step(step_name, tasks_list[0], config_dict)
-        # Step 1b: subgraph embeddings (if any)
-        embed_header = _get_subgraph_embed_tasks(cfg)
-        if embed_header:
-            config_dict = _run_sync_subgraphs(
-                'step_1b', embed_header, steps[1.5], config_dict,
-            )
         # Step 2: harvest
         step_name = _STEP_NAMES.get(2, 'step_2')
         config_dict = _run_sync_step(step_name, tasks_list[1], config_dict)
         # Step 3: IGEA
         step_name = _STEP_NAMES.get(3, 'step_3')
         config_dict = _run_sync_step(step_name, tasks_list[2], config_dict)
-        # Step 4: USLP (country-level)
+        # Step 4: USLP — Step 4 now self-dispatches per-subgraph USLP
+        # internally (via rehydration) when subgraphs are available, so
+        # Step 4b is not needed in the eager path.  This prevents double
+        # USLP execution (country-level + per-subgraph) that the old
+        # eager path had when has_subgraphs=True.
         step_name = _STEP_NAMES.get(4, 'step_4')
         config_dict = _run_sync_step(step_name, tasks_list[3], config_dict)
-        # Step 4b: subgraph USLP (if any)
-        uslp_header = _get_subgraph_uslp_tasks(cfg)
-        if uslp_header:
-            config_dict = _run_sync_subgraphs(
-                'step_4b', uslp_header, steps[4.5], config_dict,
-            )
-        # Step 5: train GV-NLE
+        # Step 5: train GV-NLE — Step 5 now self-dispatches per-subgraph
+        # NLE training internally (via rehydration) when subgraphs are
+        # available, so Step 5b is not needed in the eager path.  This
+        # prevents double NLE training that the old eager path had when
+        # has_subgraphs=True.
         step_name = _STEP_NAMES.get(5, 'step_5')
         config_dict = _run_sync_step(step_name, tasks_list[4], config_dict)
-        # Step 5b: subgraph NLE training (if any)
-        nle_header = _get_subgraph_nle_tasks(cfg)
-        if nle_header:
-            config_dict = _run_sync_subgraphs(
-                'step_5b', nle_header, steps[5.5], config_dict,
-            )
         # Step 6: mark search ready
         step_name = _STEP_NAMES.get(6, 'step_6')
         config_dict = _run_sync_step(step_name, tasks_list[5], config_dict)

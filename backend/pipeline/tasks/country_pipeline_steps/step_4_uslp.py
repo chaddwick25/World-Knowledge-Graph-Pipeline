@@ -4,9 +4,15 @@ Celery tasks: Step 4 — USLP Spatial Link Prediction
 Subgraph parallelisation via chord in canvas.py. The chord header runs
 ``_run_subgraph_uslp`` per subgraph; the callback ``step_4b_finalize_subgraph_uslp``
 aggregates results.
+
+When subgraphs are not available at canvas-build time (fresh DB, subgraphs
+generated during Step 1), this task rehydrates subgraphs from the DB and
+self-dispatches per-subgraph USLP instead of running at country level.
+This prevents under-prediction on the first pipeline run after a DB reset.
 """
 
 from __future__ import annotations
+import dataclasses
 import logging
 from pathlib import Path
 from pipeline.tasks.helper import _log
@@ -27,7 +33,46 @@ logger = logging.getLogger("pipeline")
 )
 @pipeline_step("predict_spatial_links", CountryEnvelope, 4.0)
 def step_4_predict_spatial_links(self, env: CountryEnvelope) -> CountryEnvelope:
-    """Step 4: USLP spatial link prediction (gating layer)."""
+    """Step 4: USLP spatial link prediction (gating layer).
+
+    Rehydrates subgraphs from DB at the start (like Step 5) so that
+    subgraphs generated during Step 1 are picked up even if the canvas
+    chord was built with ``has_subgraphs=False``.
+    """
+
+    # Rehydrate subgraphs from DB to ensure fresh data.
+    # On a fresh DB, subgraphs are generated during Step 1's
+    # preprocess_snapshot, but the canvas chord was already built with
+    # has_subgraphs=False.  This rehydration picks up the newly generated
+    # subgraphs so we can fan out per-subgraph instead of country-level.
+    rehydrated = False
+    if not env.has_subgraphs or not env.subgraphs:
+        try:
+            fresh = CountryEnvelope.from_db(env.iso, snapshot_date=env.snapshot_date)
+            if fresh.has_subgraphs and fresh.subgraphs:
+                env = dataclasses.replace(
+                    env,
+                    subgraphs=fresh.subgraphs,
+                    state=dataclasses.replace(env.state, has_subgraphs=True),
+                )
+                rehydrated = True
+                _log(
+                    logger,
+                    "info",
+                    "Rehydrated subgraphs from DB",
+                    country=env.iso,
+                    subgraph_count=len(env.subgraphs),
+                    pipeline_run_id=env.pipeline_run_id,
+                )
+        except Exception as exc:
+            _log(
+                logger,
+                "info",
+                "Subgraph rehydration failed, using config as-is",
+                country=env.iso,
+                error=str(exc),
+                pipeline_run_id=env.pipeline_run_id,
+            )
 
     _log(
         logger,
@@ -38,18 +83,74 @@ def step_4_predict_spatial_links(self, env: CountryEnvelope) -> CountryEnvelope:
         top_k=env.uslp_top_k,
         max_heads=env.uslp_max_heads,
         use_gpu=env.uslp_use_gpu,
+        has_subgraphs=env.has_subgraphs,
+        subgraph_count=len(env.subgraphs),
+        rehydrated=rehydrated,
         pipeline_run_id=env.pipeline_run_id,
     )
 
     from django.core.management import call_command
-    call_command(
-        "predict_spatial_links",
-        country=env.iso, max_heads=env.uslp_max_heads,
-        limit=env.uslp_limit, threshold=env.uslp_threshold,
-        top_k=env.uslp_top_k, gpu=env.uslp_use_gpu,
-        gpu_device=env.uslp_gpu_device,
-        snapshot_date=env.snapshot_date,
-    )
+
+    if env.has_subgraphs and env.subgraphs:
+        # Per-subgraph USLP — fan out to each subgraph's polygon.
+        # This runs inline (not via Celery chord) because the canvas chord
+        # was already built with the stale has_subgraphs=False envelope.
+        # The chord callback (step_4b) will be a no-op since we handle
+        # everything here.
+        _log(
+            logger,
+            "info",
+            "Step 4: Running per-subgraph USLP (self-dispatched)",
+            country=env.iso,
+            subgraph_count=len(env.subgraphs),
+            pipeline_run_id=env.pipeline_run_id,
+        )
+        for sg in env.subgraphs:
+            poly_file = sg.poly_path
+            if not poly_file and env.snapshot_pbf_path:
+                snap_poly = Path(env.snapshot_pbf_path).with_suffix('.poly')
+                if snap_poly.exists():
+                    poly_file = str(snap_poly)
+            if not poly_file:
+                _log(
+                    logger,
+                    "warning",
+                    "No poly file for subgraph USLP — skipping",
+                    subgraph=sg.name,
+                    country=env.iso,
+                    pipeline_run_id=env.pipeline_run_id,
+                )
+                continue
+            _log(
+                logger,
+                "info",
+                "Running USLP for subgraph",
+                subgraph=sg.name,
+                country=env.iso,
+                pipeline_run_id=env.pipeline_run_id,
+            )
+            call_command(
+                "predict_spatial_links",
+                country=env.iso,
+                poly_file=poly_file,
+                max_heads=env.uslp_max_heads,
+                limit=env.uslp_limit,
+                threshold=env.uslp_threshold,
+                top_k=env.uslp_top_k,
+                gpu=env.uslp_use_gpu,
+                gpu_device=env.uslp_gpu_device,
+                snapshot_date=env.snapshot_date,
+            )
+    else:
+        # Country-level USLP (no subgraphs available).
+        call_command(
+            "predict_spatial_links",
+            country=env.iso, max_heads=env.uslp_max_heads,
+            limit=env.uslp_limit, threshold=env.uslp_threshold,
+            top_k=env.uslp_top_k, gpu=env.uslp_use_gpu,
+            gpu_device=env.uslp_gpu_device,
+            snapshot_date=env.snapshot_date,
+        )
 
     _log(
         logger,

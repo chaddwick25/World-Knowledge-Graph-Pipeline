@@ -175,7 +175,12 @@ def step_5_train_gv_nle(self, env: CountryEnvelope) -> CountryEnvelope:
     Small territories (has_subgraphs=False) run at country level only,
     skipping the subgraph fan-out.
     """
-    # Rehydrate subgraphs from DB to ensure fresh data
+    # Rehydrate subgraphs from DB to ensure fresh data.
+    # On a fresh DB, subgraphs are generated during Step 1's
+    # preprocess_snapshot, but the canvas chord was already built with
+    # has_subgraphs=False.  This rehydration picks up the newly generated
+    # subgraphs so we can self-dispatch per-subgraph training.
+    rehydrated = False
     if not env.has_subgraphs or not env.subgraphs:
         try:
             fresh = CountryEnvelope.from_db(env.iso, snapshot_date=env.snapshot_date)
@@ -185,6 +190,7 @@ def step_5_train_gv_nle(self, env: CountryEnvelope) -> CountryEnvelope:
                     subgraphs=fresh.subgraphs,
                     state=dataclasses.replace(env.state, has_subgraphs=True),
                 )
+                rehydrated = True
                 _log(
                     logger,
                     "info",
@@ -220,18 +226,58 @@ def step_5_train_gv_nle(self, env: CountryEnvelope) -> CountryEnvelope:
     )
 
     if env.has_subgraphs and env.subgraphs:
-        # Subgraph fan-out is handled by canvas.py via a chord so the chain
-        # waits for all subgraph NLE training to complete before proceeding
-        # to Step 6.  This task returns the envelope; canvas.py wraps it
-        # with chord([_train_subgraph_gv_nle.si(...)], step_5b_finalize.s(cfg)).
-        _log(
-            logger,
-            "info",
-            "Step 5: country-level training complete, subgraph fan-out via chord",
-            subgraph_count=len(env.subgraphs),
-            country=env.iso,
-            pipeline_run_id=env.pipeline_run_id,
-        )
+        if rehydrated:
+            # Subgraphs were rehydrated — the canvas chord was built with
+            # has_subgraphs=False, so there IS no Step 5b chord.  Self-dispatch
+            # per-subgraph training inline so NLE is not skipped.
+            _log(
+                logger,
+                "info",
+                "Step 5: Self-dispatching per-subgraph NLE training (no canvas chord)",
+                subgraph_count=len(env.subgraphs),
+                country=env.iso,
+                pipeline_run_id=env.pipeline_run_id,
+            )
+            for sg in env.subgraphs:
+                gpu_device = _assign_gpu(sg)
+                concurrency = _gpu_concurrency_for(gpu_device)
+                slot_lock = GpuSlotLock(gpu_device, concurrency)
+                _log(
+                    logger,
+                    "info",
+                    "Training GV-NLE for subgraph",
+                    subgraph=sg.name,
+                    country=env.iso,
+                    gpu_device=gpu_device,
+                    gpu_concurrency=concurrency,
+                    pipeline_run_id=env.pipeline_run_id,
+                )
+                slot_lock.acquire()
+                try:
+                    sg_env = dataclasses.replace(
+                        env,
+                        hyperparams=dataclasses.replace(
+                            env.hyperparams,
+                            deepwalk_gpu_device=gpu_device,
+                        ),
+                    )
+                    from geovectors_encoder.services.gv_nle_training_service import (
+                        GvNleTrainingService,
+                    )
+                    GvNleTrainingService().run_subgraph(sg, sg_env)
+                finally:
+                    slot_lock.release()
+        else:
+            # Subgraphs were already present at canvas build time — the
+            # canvas chord (Step 5b) handles per-subgraph training.
+            _log(
+                logger,
+                "info",
+                "Step 5: country-level training complete, subgraph fan-out via chord",
+                subgraph_count=len(env.subgraphs),
+                country=env.iso,
+                pipeline_run_id=env.pipeline_run_id,
+            )
     else:
         _log(
             logger,
