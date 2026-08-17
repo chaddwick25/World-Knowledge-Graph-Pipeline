@@ -15,8 +15,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 
-from extraction.services.osm_wikidata_resolver import resolve_iso_code
-from orchestration.models import ProcessingSession, Task, PipelineRun
+from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
+from core.models import ProcessingSession, Task, PipelineRun
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class WorldKGPipelineSummaryView(APIView):
     def get(self, request, country_name):
         from collections import Counter, defaultdict
         from igea.models import SpatialTripletScore
-        from orchestration.models import PipelineRun
+        from core.models import PipelineRun
 
         country_name = country_name.strip()
         if not country_name:
@@ -455,7 +455,7 @@ class SnapshotDatesView(APIView):
 
     def get(self, request):
         from django.conf import settings
-        from orchestration.models import SnapshotJob
+        from osmsnapshot.models import SnapshotJob
 
         start_year = getattr(settings, 'SNAPSHOT_START_YEAR',
                              getattr(settings, 'WORLDKG_SNAPSHOT_START_YEAR', 2021))
@@ -500,7 +500,7 @@ class SnapshotJobStatusView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, country_code=None, snapshot_date=None):
-        from orchestration.models import SnapshotJob
+        from osmsnapshot.models import SnapshotJob
 
         qs = SnapshotJob.objects.all().order_by('-snapshot_date')
 
@@ -566,7 +566,7 @@ class SnapshotJobResultsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, country_code, snapshot_date):
-        from orchestration.models import SnapshotJob
+        from osmsnapshot.models import SnapshotJob
 
         job = SnapshotJob.objects.filter(
             country_code__iexact=country_code, snapshot_date=snapshot_date,

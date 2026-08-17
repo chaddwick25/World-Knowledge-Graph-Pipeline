@@ -15,8 +15,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 
-from extraction.services.osm_wikidata_resolver import resolve_iso_code
-from orchestration.models import ProcessingSession, Task, PipelineRun
+from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
+from core.models import ProcessingSession, Task, PipelineRun
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +50,10 @@ class WorldKGPipelineV2StartView(APIView):
 
     def post(self, request):
         from pipeline.canvas import run_worldkg_pipeline
-        from orchestration.models import (
-            CountryPipelineProfile, EligibleCountry, SnapshotJob, PipelineRun,
+        from core.models import (
+            CountryPipelineProfile, EligibleCountry, PipelineRun,
         )
+        from osmsnapshot.models import SnapshotJob
         from django.conf import settings
         from django.utils import timezone
 
@@ -170,62 +171,65 @@ class WorldKGPipelineV2StartView(APIView):
 
 
 class PlanetInitializeView(APIView):
-    """
-    POST /api/planet/initialize/
+    """POST /api/planet/initialize/
 
-    Triggers planet initialization + continent extraction via Celery Canvas.
-    Runs Step 0 (planet init) + Step 0.5 (continent extraction) as an async chain.
+    Planet initialization is now a Docker entrypoint step
+    (``python manage.py init_planet``) rather than a Celery canvas — see
+    ``docs/plans/CORE_APP_CONSOLIDATION_PLAN.md``. This endpoint is kept
+    as a status-only facade: it refuses to dispatch a new run and instead
+    reports the latest ``PlanetSnapshot`` status so the frontend can
+    surface it. To re-run init manually, exec into the backend container
+    and run ``python manage.py init_planet``.
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
-        from django.conf import settings
-        from pipeline.canvas import run_planet_initialization
+        from core.models import PlanetSnapshot
 
-        planet_pbf_path = request.data.get(
-            'planet_pbf_path',
-        ) or request.data.get('path')
-
-        try:
-            run_id = run_planet_initialization(
-                planet_pbf_path=planet_pbf_path,
-                extract_continents=True,
-            )
-        except ImportError as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-        ws_url = f'ws://{settings.WS_HOST}:{settings.WS_PORT}/ws/pipeline/{run_id}/'
-
-        return Response({
-            'pipeline_run_id': run_id,
-            'ws_url': ws_url,
-            'status': 'started',
-            'message': 'Planet initialization + continent extraction dispatched',
-        }, status=status.HTTP_202_ACCEPTED)
+        latest = (
+            PlanetSnapshot.objects.order_by("-snapshot_date").first()
+        )
+        return Response(
+            {
+                'status': 'noop',
+                'message': (
+                    'Planet init is now a Docker startup step '
+                    '(python manage.py init_planet). POST is a no-op. '
+                    'GET /api/planet/status/ for the latest snapshot status.'
+                ),
+                'latest_snapshot_date': (
+                    latest.snapshot_date_str if latest else None
+                ),
+                'latest_snapshot_status': latest.status if latest else None,
+            },
+            status=status.HTTP_410_GONE,
+        )
 
 
 class PlanetInitStatusView(APIView):
-    """GET /api/planet/status/<pipeline_run_id>/"""
+    """GET /api/planet/status/<pipeline_run_id>/
+
+    Planet init no longer creates a ``PipelineRun`` row — status is now
+    tracked on ``PlanetSnapshot``. The path param is kept for URL
+    backwards-compat but ignored; we return the latest snapshot's status.
+    """
     permission_classes = [AllowAny]
 
     def get(self, request, pipeline_run_id):
-        try:
-            run = PipelineRun.objects.get(id=pipeline_run_id)
-        except PipelineRun.DoesNotExist:
+        from core.models import PlanetSnapshot
+
+        latest = PlanetSnapshot.objects.order_by("-snapshot_date").first()
+        if not latest:
             return Response(
-                {'error': 'Pipeline run not found'},
+                {'error': 'No PlanetSnapshot rows found — init_planet has not run yet.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
         return Response({
-            'pipeline_run_id': str(run.id),
-            'status': run.status,
-            'started_at': run.started_at.isoformat() if run.started_at else None,
-            'completed_at': run.completed_at.isoformat() if run.completed_at else None,
-            'error': run.error_message,
+            'pipeline_run_id': str(latest.id),
+            'snapshot_date': latest.snapshot_date_str,
+            'status': latest.status,
+            'started_at': latest.created_at.isoformat() if latest.created_at else None,
+            'completed_at': latest.completed_at.isoformat() if latest.completed_at else None,
         })
 
 

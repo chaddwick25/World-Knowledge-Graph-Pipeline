@@ -64,7 +64,7 @@ class PbfFileListView(generics.ListCreateAPIView):
         else:
             # Validate with osmium for new files or incomplete records
             try:
-                from extraction.services.osmium_facade import OsmiumFacade
+                from core.services.snapshot.osmium_facade import OsmiumFacade
                 facade = OsmiumFacade()
                 result = facade.file_info(path)
                 if result.get('exit_code') != 0:
@@ -153,7 +153,7 @@ class ExtractionChainView(APIView):
     Similar to recipe scripts like run_canada_recipe.py
     """
     def post(self, request, *args, **kwargs):
-        from extraction.services.extraction_chain_builder import ExtractionChainBuilder
+        from core.services.planet_init.extraction_chain_builder import ExtractionChainBuilder
         
         target_region_id = request.data.get('region_id')
         

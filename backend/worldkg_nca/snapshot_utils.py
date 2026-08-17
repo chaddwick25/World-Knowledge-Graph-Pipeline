@@ -3,7 +3,7 @@
 This module clarifies the distinction between the two snapshot-related
 fields on ``OsmEntity``:
 
-- ``source_snapshot_id`` — UUID FK to ``TemporalSnapshot`` (default DB).
+- ``source_snapshot_id`` — UUID to ``osmsnapshot.Snapshot`` (default DB).
   This is the *cross-database reference* that has existed since the
   monolith was built.
 
@@ -11,7 +11,7 @@ fields on ``OsmEntity``:
   (e.g. ``'2025_12_31'``).  This is the human-readable key used by the
   partitioned table (``embeddings_partitioned``) for ``LIST(snapshot_id)``
   partition pruning.  It is derived from ``source_snapshot_id`` →
-  ``TemporalSnapshot.timestamp.strftime('%Y_%m_%d')``.
+  ``Snapshot.snapshot_date``.
 
 The helpers below are used by every code path that needs to scope an
 ``OsmEntity`` query to a single snapshot partition.
@@ -25,19 +25,19 @@ from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
-# Default snapshot_id used when no TemporalSnapshot can be resolved.
+# Default snapshot_id used when no Snapshot can be resolved.
 DEFAULT_SNAPSHOT_ID = "2025_12_31"
 
 
 def snapshot_id_from_uuid(snapshot_uuid: Optional[UUID]) -> Optional[str]:
-    """Convert a ``TemporalSnapshot`` UUID to a ``YYYY_MM_DD`` partition key.
+    """Convert a ``Snapshot`` UUID to a ``YYYY_MM_DD`` partition key.
 
-    Looks up the ``TemporalSnapshot`` row (in the *default* DB) and formats
-    its ``timestamp`` field.  Returns ``None`` if the UUID is ``None`` or
+    Looks up the ``Snapshot`` row (in the *default* DB) and returns its
+    ``snapshot_date`` field.  Returns ``None`` if the UUID is ``None`` or
     the snapshot cannot be found.
 
     Args:
-        snapshot_uuid: UUID of a ``TemporalSnapshot`` row (i.e. the value
+        snapshot_uuid: UUID of a ``Snapshot`` row (i.e. the value
             of ``OsmEntity.source_snapshot_id``).
 
     Returns:
@@ -46,13 +46,13 @@ def snapshot_id_from_uuid(snapshot_uuid: Optional[UUID]) -> Optional[str]:
     if snapshot_uuid is None:
         return None
     try:
-        from api.models import TemporalSnapshot
+        from osmsnapshot.models import Snapshot
 
-        snapshot = TemporalSnapshot.objects.using("default").filter(
+        snapshot = Snapshot.objects.using("default").filter(
             id=snapshot_uuid
-        ).only("timestamp").first()
-        if snapshot and snapshot.timestamp:
-            return snapshot.timestamp.strftime("%Y_%m_%d")
+        ).only("snapshot_date").first()
+        if snapshot and snapshot.snapshot_date:
+            return snapshot.snapshot_date
     except Exception as exc:
         logger.warning(
             "snapshot_id_from_uuid: failed to resolve UUID %s: %s",

@@ -49,8 +49,8 @@ class Command(BaseCommand):
         self.stdout.write('')
         
         # Strategy 0: Proactive Disk Scan & Auto-Registration
-        from extraction.models import PbfFile
-        from extraction.services.regional_path_service import regional_path_service, normalize_continent_slug
+        from core.models import PbfFile
+        from core.services.snapshot.regional_path_service import regional_path_service, normalize_continent_slug
         for continent in continents:
             pbf_path = regional_path_service.get_continent_pbf_path(continent.name)
             if pbf_path.exists():

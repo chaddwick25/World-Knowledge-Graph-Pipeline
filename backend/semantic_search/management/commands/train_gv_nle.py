@@ -13,15 +13,15 @@ Usage:
 from django.core.management.base import BaseCommand
 from worldkg_nca.models import OsmEntity
 from semantic_search.services.knn_graph_service import KNNGraphService
-from extraction.services.regional_path_service import normalize_country_slug
+from core.services.snapshot.regional_path_service import normalize_country_slug
 from semantic_search.services.deepwalk_service import WeightedDeepWalkService
 from worldkg_nca.services.wikidata_service import (
     parse_poly_bbox,
     parse_poly_to_wkt,
     bbox_to_wkt,
 )
-from extraction.services.regional_path_service import regional_path_service
-from extraction.services.osm_wikidata_resolver import get_country_relations_dict, populate_bbox_for_profile
+from core.services.snapshot.regional_path_service import regional_path_service
+from core.services.planet_init.osm_wikidata_resolver import get_country_relations_dict, populate_bbox_for_profile
 import logging
 import os
 from io import StringIO
@@ -298,7 +298,7 @@ class Command(BaseCommand):
                 # 1. Prefer canonical bbox via CountryPipelineProfile + populate_bbox_for_profile
                 try:
                     from django.db import models
-                    from orchestration.models import CountryPipelineProfile
+                    from core.models import CountryPipelineProfile
 
                     profile = (
                         CountryPipelineProfile.objects.filter(

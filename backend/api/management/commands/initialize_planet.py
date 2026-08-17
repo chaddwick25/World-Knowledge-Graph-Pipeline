@@ -4,7 +4,7 @@ class Command(BaseCommand):
     help = 'Initialize planet file structure, Wikidata alignment, and OSMWikiData primitives'
     
     def handle(self, *args, **options):
-        from extraction.models import OSMWikiDataHierarchy
+        from core.models import OSMWikiDataHierarchy
         # Get or create planet-level OSMWikiDataHierarchy
         planet_hierarchy, _ = OSMWikiDataHierarchy.objects.get_or_create(
             slug='planet',
@@ -16,7 +16,7 @@ class Command(BaseCommand):
         )
         
         # Execute planet initialization
-        from extraction.services.planet_initialization_service import PlanetInitializationService
+        from core.services.planet_init.planet_initialization_service import PlanetInitializationService
         service = PlanetInitializationService(planet_hierarchy.processing_policy)
         results = service.execute()
         

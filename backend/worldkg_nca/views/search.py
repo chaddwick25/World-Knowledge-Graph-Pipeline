@@ -10,15 +10,15 @@ from django.conf import settings
 import math
 
 from worldkg_nca.models import OsmEntity, PrecomputedLinkCandidate
-from extraction.models import ProjectionWeightAsset
+from core.models import ProjectionWeightAsset
 from semantic_search.services.worldkg_enrichment_service import get_worldkg_enrichment_service
 from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 from semantic_search.services.worldkg_drift_service import get_worldkg_drift_service
-from api.models import TemporalSnapshot, WorldKGClassDrift
+from api.models import WorldKGClassDrift
 from semantic_search.services.fasttext_service import FastTextEmbeddingService
-from extraction.services.osm_wikidata_resolver import resolve_country_bbox, get_country_by_name
+from core.services.planet_init.osm_wikidata_resolver import resolve_country_bbox, get_country_by_name
 from worldkg_nca.services.link_candidate_service import WorldKGLinkCandidateService
-from extraction.services.osm_wikidata_resolver import resolve_iso_code
+from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
 from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 
 
@@ -146,8 +146,8 @@ def worldkg_semantic_triplet_search(request):
     # Use the same bbox resolution logic as enrichment service for consistency,
     # but be robust to callers that pass slug-style identifiers such as
     # "ireland-and-northern-ireland" or "Ireland_and_northern_ireland".
-    from extraction.services.country_override_service import get_country_override_record
-    from extraction.models import OsmBoundary
+    from core.services.snapshot.country_override_service import get_country_override_record
+    from core.models import OsmBoundary
     from semantic_search.utils.subdivision_resolver import (
         resolve_subdivision_bbox as _resolve_subdivision_bbox,
         resolve_subdivision_country_code,
@@ -757,7 +757,7 @@ def worldkg_subdivisions(request):
             ]
         }
     """
-    from orchestration.models import SubgraphProfile, CountryPipelineProfile
+    from core.models import SubgraphProfile, CountryPipelineProfile
 
     country_code = request.query_params.get('country_code')
     if not country_code:

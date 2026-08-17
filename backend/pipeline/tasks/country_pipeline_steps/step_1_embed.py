@@ -104,7 +104,7 @@ def step_1_embed_osm_entities(self, env: CountryEnvelope) -> CountryEnvelope:
     # Snapshot preprocessing (v2 helper with explicit logger)
     preprocess_snapshot(env, logger=logger)
 
-    from extraction.services.embedding_service import EmbeddingService
+    from core.services.snapshot.embedding_service import EmbeddingService
     result = EmbeddingService(Path(settings.EMBEDDINGS_ROOT)).run(env)
 
     _log(

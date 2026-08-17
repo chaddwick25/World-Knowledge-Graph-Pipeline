@@ -29,7 +29,7 @@ def fake_geofabrik_index():
 
 @pytest.fixture
 def mock_geofabrik_index(fake_geofabrik_index):
-    with patch("extraction.services.geofabrik_poly_service.geofabrik_index_service") as mock_service:
+    with patch("core.services.planet_init.geofabrik_poly_service.geofabrik_index_service") as mock_service:
         mock_service.fetch_index.return_value = fake_geofabrik_index
         mock_service.INDEX_URL = "https://download.geofabrik.de/index-v1.json"
         yield mock_service
@@ -37,7 +37,7 @@ def mock_geofabrik_index(fake_geofabrik_index):
 
 @pytest.fixture
 def mock_requests():
-    with patch("extraction.services.geofabrik_poly_service.requests") as mock_req:
+    with patch("core.services.planet_init.geofabrik_poly_service.requests") as mock_req:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.content = b"dummy poly content\n"
@@ -59,7 +59,7 @@ def poly_base_dir(tmp_path):
 class TestGeofabrikPolyServiceFix:
 
     def test_north_america_poly_uses_underscores(self, poly_base_dir, mock_geofabrik_index, mock_requests):
-        from extraction.services.geofabrik_poly_service import download_all_geofabrik_polygons
+        from core.services.planet_init.geofabrik_poly_service import download_all_geofabrik_polygons
         stats = download_all_geofabrik_polygons(base_dir=str(poly_base_dir))
         expected = poly_base_dir / "north_america.poly"
         assert expected.exists(), (
@@ -71,7 +71,7 @@ class TestGeofabrikPolyServiceFix:
         assert stats["downloaded"] >= 1
 
     def test_central_america_poly_uses_underscores(self, poly_base_dir, mock_geofabrik_index, mock_requests):
-        from extraction.services.geofabrik_poly_service import download_all_geofabrik_polygons
+        from core.services.planet_init.geofabrik_poly_service import download_all_geofabrik_polygons
         download_all_geofabrik_polygons(base_dir=str(poly_base_dir))
         expected = poly_base_dir / "central_america.poly"
         assert expected.exists()
@@ -79,13 +79,13 @@ class TestGeofabrikPolyServiceFix:
         assert not old.exists()
 
     def test_single_word_continents_unchanged(self, poly_base_dir, mock_geofabrik_index, mock_requests):
-        from extraction.services.geofabrik_poly_service import download_all_geofabrik_polygons
+        from core.services.planet_init.geofabrik_poly_service import download_all_geofabrik_polygons
         download_all_geofabrik_polygons(base_dir=str(poly_base_dir))
         for name in ("europe", "africa"):
             assert (poly_base_dir / f"{name}.poly").exists(), f"{name}.poly should exist"
 
     def test_skip_existing_file(self, poly_base_dir, mock_geofabrik_index, mock_requests):
-        from extraction.services.geofabrik_poly_service import download_all_geofabrik_polygons
+        from core.services.planet_init.geofabrik_poly_service import download_all_geofabrik_polygons
         existing = poly_base_dir / "north_america.poly"
         existing.write_text("existing content")
         mock_requests.get.reset_mock()
@@ -102,7 +102,7 @@ class TestGeofabrikPolyServiceFix:
 @pytest.mark.integration
 class TestDownloadStats:
     def test_stats_counts(self, poly_base_dir, mock_geofabrik_index, mock_requests):
-        from extraction.services.geofabrik_poly_service import download_all_geofabrik_polygons
+        from core.services.planet_init.geofabrik_poly_service import download_all_geofabrik_polygons
         stats = download_all_geofabrik_polygons(base_dir=str(poly_base_dir))
         assert stats["downloaded"] > 0
         total = stats["downloaded"] + stats["skipped"] + stats["not_found"] + stats["errors"]
@@ -115,14 +115,14 @@ class TestDownloadStats:
 @pytest.mark.integration
 class TestDownloadResilience:
     def test_404_does_not_stop_processing(self, poly_base_dir, mock_geofabrik_index):
-        with patch("extraction.services.geofabrik_poly_service.requests") as mock_req:
+        with patch("core.services.planet_init.geofabrik_poly_service.requests") as mock_req:
             def side_effect(url, **kwargs):
                 mock_resp = MagicMock()
                 mock_resp.status_code = 404 if "north-america" in url else 200
                 mock_resp.content = b"dummy\n"
                 return mock_resp
             mock_req.get.side_effect = side_effect
-            from extraction.services.geofabrik_poly_service import download_all_geofabrik_polygons
+            from core.services.planet_init.geofabrik_poly_service import download_all_geofabrik_polygons
             stats = download_all_geofabrik_polygons(base_dir=str(poly_base_dir))
             assert stats["not_found"] >= 1
             assert stats["downloaded"] >= 2
@@ -134,7 +134,7 @@ class TestDownloadResilience:
 @pytest.mark.integration
 class TestBackwardCompatibility:
     def test_existing_underscore_file_not_overwritten(self, poly_base_dir, mock_geofabrik_index, mock_requests):
-        from extraction.services.geofabrik_poly_service import download_all_geofabrik_polygons
+        from core.services.planet_init.geofabrik_poly_service import download_all_geofabrik_polygons
         existing = poly_base_dir / "north_america.poly"
         existing.write_text("existing content")
         mock_requests.get.reset_mock()

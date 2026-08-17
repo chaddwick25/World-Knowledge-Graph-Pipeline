@@ -45,8 +45,8 @@ class TestResolveIsoCodeFastPath:
     @pytest.fixture(autouse=True)
     def _patch_db(self):
         with patch.dict("sys.modules", {
-            "extraction.services.osm_wikidata_resolver.OSMWikiDataHierarchy": MagicMock(),
-            "extraction.services.osm_wikidata_resolver.CountryPipelineProfile": MagicMock(),
+            "core.services.planet_init.osm_wikidata_resolver.OSMWikiDataHierarchy": MagicMock(),
+            "core.services.planet_init.osm_wikidata_resolver.CountryPipelineProfile": MagicMock(),
         }):
             yield
 
@@ -342,7 +342,7 @@ class TestCountryEnvelopeSlugNormalization:
     ])
     def test_normalize_country_slug(self, db_slug, expected_norm):
         """normalize_country_slug must always produce underscores."""
-        from extraction.services.regional_path_service import normalize_country_slug
+        from core.services.snapshot.regional_path_service import normalize_country_slug
         result = normalize_country_slug(db_slug)
         assert result == expected_norm, (
             f"normalize_country_slug({db_slug!r}) = {result!r}, "
@@ -427,7 +427,7 @@ class TestPathFromResolvedIso:
         Simulate what get_country_slug() + normalize_country_slug() do when
         the DB stores a slug like 'cape-verde' for ISO 'CV'.
         """
-        from extraction.services.regional_path_service import normalize_country_slug
+        from core.services.snapshot.regional_path_service import normalize_country_slug
 
         # Simulate DB slug lookup (simplified)
         iso_to_slug = {
@@ -448,7 +448,7 @@ class TestPathFromResolvedIso:
     @pytest.mark.unit
     def test_cape_verde_path_construction(self):
         """Cape Verde path must use underscores throughout."""
-        from extraction.services.regional_path_service import (
+        from core.services.snapshot.regional_path_service import (
             normalize_country_slug, normalize_continent_slug,
         )
         cont = normalize_continent_slug("africa")

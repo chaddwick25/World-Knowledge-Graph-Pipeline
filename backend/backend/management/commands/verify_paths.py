@@ -280,7 +280,7 @@ class Command(BaseCommand):
         """
 
         from django.core.management import call_command
-        from extraction.services.geofabrik_poly_service import download_all_geofabrik_polygons
+        from core.services.planet_init.geofabrik_poly_service import download_all_geofabrik_polygons
 
         polygon_dir = getattr(settings, 'POLYGON_FILES_DIR', None)
         if polygon_dir:

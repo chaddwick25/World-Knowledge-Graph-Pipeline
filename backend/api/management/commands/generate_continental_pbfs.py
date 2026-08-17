@@ -84,7 +84,7 @@ class Command(BaseCommand):
 
         # Step 1: Sync Hierarchy and Initialize RegionalExtractionState
         self.stdout.write(self.style.SUCCESS("Step 1: Syncing polygon file hierarchy..."))
-        from extraction.services.regional_path_service import normalize_continent_slug
+        from core.services.snapshot.regional_path_service import normalize_continent_slug
         self.sync_hierarchy(Path(folder_path), source_pbf_path)
         
         if options.get('sync_only'):
@@ -100,7 +100,7 @@ class Command(BaseCommand):
             start_year = options.get('start_year')
             
             # Get target regions
-            from extraction.models import RegionalExtractionState
+            from core.models import RegionalExtractionState
             if options.get('country'):
                 country_name = options.get('country')
                 target_states = RegionalExtractionState.objects.filter(
@@ -133,7 +133,7 @@ class Command(BaseCommand):
                         # Direct continent extraction via osmium extract --polygon.
                         # Replaces the legacy temporal_orchestrator.run_pipeline(phases=[1])
                         # call. Uses the continent's .poly file to extract from the planet PBF.
-                        from extraction.services.regional_path_service import (
+                        from core.services.snapshot.regional_path_service import (
                             regional_path_service,
                             normalize_continent_slug,
                         )
@@ -260,7 +260,7 @@ class Command(BaseCommand):
         ]
 
         def sync_directory(current_path, parent_obj=None):
-            from extraction.models import PolygonFile, RegionalExtractionState
+            from core.models import PolygonFile, RegionalExtractionState
             for item in sorted(current_path.iterdir()):
                 if item.is_dir():
                     if item.name in EXCLUDED_DIRS:
@@ -349,10 +349,10 @@ class Command(BaseCommand):
 
     def process_continent_from_state(self, state, source_pbf_path, output_base_dir, session):
         """Process a single continent using its RegionalExtractionState"""
-        from extraction.models import RegionalExtractionState
+        from core.models import RegionalExtractionState
         try:
             source_pbf_file = self.get_or_create_source_pbf(source_pbf_path)
-            from extraction.services.extraction_service import ExtractionService
+            from core.services.snapshot.extraction_service import ExtractionService
             extraction_service = ExtractionService()
             
             continent_output_dir = Path(output_base_dir) / state.region_name

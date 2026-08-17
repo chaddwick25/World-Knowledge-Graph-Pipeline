@@ -128,7 +128,7 @@ class PolygonFileSerializer(serializers.ModelSerializer):
 
 class ProjectionWeightAssetSerializer(serializers.ModelSerializer):
     class Meta:
-        from extraction.models import ProjectionWeightAsset
+        from core.models import ProjectionWeightAsset
         model = ProjectionWeightAsset
         fields = '__all__'
 

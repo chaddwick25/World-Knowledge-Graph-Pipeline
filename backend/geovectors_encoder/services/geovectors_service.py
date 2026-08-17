@@ -12,10 +12,10 @@ import pickle
 from django.db import connections, models
 from shapely.geometry import Polygon, Point
 
-from orchestration.models import ProcessingSession, Task, CountryPipelineProfile, SubgraphProfile
-from extraction.models import RegionHierarchy
-from extraction.services.regional_path_service import regional_path_service, normalize_country_slug, normalize_continent_slug
-from extraction.services.osm_wikidata_resolver import get_country_by_name, get_country_relations_dict
+from core.models import ProcessingSession, Task, CountryPipelineProfile, SubgraphProfile
+from core.models import RegionHierarchy
+from core.services.snapshot.regional_path_service import regional_path_service, normalize_country_slug, normalize_continent_slug
+from core.services.planet_init.osm_wikidata_resolver import get_country_by_name, get_country_relations_dict
 # Internal imports from core
 from ..core.encoder import run_on_dump
 from ..core.db import DjangoPostgresDB
@@ -100,7 +100,7 @@ class GeoVectorsEncoderService:
 
         # ── 2. Filesystem fallback ──
         try:
-            from extraction.services.subgraph_list_service import build_subgraph_list
+            from core.services.snapshot.subgraph_list_service import build_subgraph_list
             subgraphs = build_subgraph_list(country_name, auto_all=True)
             if subgraphs:
                 logger.info(
@@ -165,7 +165,7 @@ class GeoVectorsEncoderService:
 
         # ── 2. Filesystem fallback ──
         try:
-            from extraction.services.subgraph_list_service import build_subgraph_list
+            from core.services.snapshot.subgraph_list_service import build_subgraph_list
             fs_subgraphs = build_subgraph_list(country_name, auto_all=True)
             for sg in fs_subgraphs:
                 subgraphs.append({
@@ -192,7 +192,7 @@ class GeoVectorsEncoderService:
         Includes spatial masking via .poly files.
         """
         # 1. Resolve paths from DB-backed country relations
-        from extraction.models import RegionHierarchy
+        from core.models import RegionHierarchy
 
         relations = get_country_relations_dict()
         if not relations:
@@ -623,7 +623,7 @@ class GeoVectorsEncoderService:
 
         # 1. Identify continent if not provided
         if not continent:
-            from extraction.models import RegionHierarchy
+            from core.models import RegionHierarchy
             # Try exact match first
             region = RegionHierarchy.objects.filter(name__iexact=norm_name).first()
             if not region:

@@ -7,7 +7,7 @@ from django.contrib.gis.geos import Polygon
 from django.db import transaction
 from django.utils import timezone
 
-from extraction.services.osm_wikidata_resolver import (
+from core.services.planet_init.osm_wikidata_resolver import (
     resolve_country_bbox,
 )
 from worldkg_nca.models import OsmEntity
@@ -481,7 +481,7 @@ class WorldKGEnrichmentService:
         # Spatial filtering (same logic as batch_enrich_region)
         bbox: Optional[Tuple[float, float, float, float]] = None
         if poly_file:
-            from extraction.services.osm_wikidata_resolver import parse_poly_bbox
+            from core.services.planet_init.osm_wikidata_resolver import parse_poly_bbox
             bbox = parse_poly_bbox(poly_file)
         elif region:
             bbox = resolve_country_bbox(region, None)
@@ -672,7 +672,7 @@ class WorldKGEnrichmentService:
         bbox: Optional[Tuple[float, float, float, float]] = None
 
         if poly_file:
-            from extraction.services.osm_wikidata_resolver import parse_poly_bbox
+            from core.services.planet_init.osm_wikidata_resolver import parse_poly_bbox
             bbox = parse_poly_bbox(poly_file)
             if bbox:
                 logger.info(

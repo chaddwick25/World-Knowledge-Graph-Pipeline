@@ -22,8 +22,8 @@ The artifacts produced will be consumed by agents for geospatial reasoning. The 
 
 Both are driven by Celery:
 
-1. **Planet Initialization Pipeline** — Runs once to initialize configs and primitives. See [Planet Initialization Architecture](docs/Schematics/Planet_Initialization_Architecture.md) and [WorldKG Primitives](docs/Schematics/WorkKG_Primities.md).
-2. **Country Pipeline** — Produces the artifacts above for a specific country (or synthetic territory).
+1. **Planet Initialization** — Runs once to initialize configs and primitives. Now a single `init_planet` management command (replaces the former Celery canvas of step_0a–step_0m tasks), invoked as a Docker entrypoint step after migrations. See [Planet Initialization Architecture](docs/Schematics/Planet_Initialization_Architecture.md) and [WorldKG Primitives](docs/Schematics/WorkKG_Primities.md). Run manually: `python manage.py init_planet` (idempotent — uses `PlanetSnapshot` as a soft lock).
+2. **Country Pipeline** — Produces the artifacts above for a specific country (or synthetic territory). Driven by a Celery canvas of Steps 1–6.
 
 ## Country Pipeline Stages
 
@@ -66,7 +66,7 @@ Both are driven by Celery:
 - USLP discovers relationships between entities using tri-space scoring (geo + name + class).
 - Dashboard queries filter by `country_name`, `snapshot_id`, `predicted=True` — optimized by composite index `igea_triplet_csp_idx` on `SpatialTripletScore` (applied to `vectors` DB via `VectorDBRouter`).
 - Aggregation uses Django `aggregate()` + `Case/When` for geo/name/class dominance, histogram buckets, and avg confidence in a single SQL round-trip.
-- Augmented data sources include Google Places API and `toronto-data` (Django app in backend), or any appropriate open-source data.
+- Augmented data sources include Google Places API and `toronto-data` (Django app in backend, currently disabled), or any appropriate open-source data.
 
 ### 5. Learned Layer
 
@@ -92,6 +92,7 @@ docker compose -f docker-compose.yml -f compose.override.yml up -d backend worke
 #   go to cuda:0 (RTX 4070) with concurrency=1 by default. Configure via
 #   GV_NLE_GPU_DEVICES and GV_NLE_GPU_CONCURRENCY env vars.
 #   RUN_MIGRATIONS env var: backend runs migrations, worker waits for them
+#   RUN_INIT_PLANET env var: backend runs `init_planet` after migrations, worker skips it
 
 # Start frontend
 cd frontend-v3
@@ -129,6 +130,7 @@ choices can be traced back to the relevant chapter.
     -> Celery prefork pool (4 workers) parallelizes CPU-bound tasks: subgraph NLE pickle generation, IGEA, USLP.
     -> GPU-bound tasks (GV-NLE training, Step 5) use per-GPU slot locks (fcntl.flock). All subgraphs go to cuda:0 (RTX 4070, 16 GB) with concurrency=1 by default — large IE subgraphs (847K–1M entities) cause CUDA OOM at concurrency=2. Configure via `GV_NLE_GPU_DEVICES` and `GV_NLE_GPU_CONCURRENCY` env vars.
     -> Migration race prevention: `RUN_MIGRATIONS` env var in `docker-entrypoint.sh` — backend runs migrations, worker waits.
+    -> Planet init as Docker startup step: `RUN_INIT_PLANET` env var — backend runs `python manage.py init_planet` after migrations (idempotent, gated by `PlanetSnapshot` lock); worker skips it. Replaces the former Celery canvas of step_0a–step_0m tasks.
     -> Per-country leaf partitions with right-sized HNSW indexes keep query latency low.
 
   Structured logging and observability `[DMLS:Ch8]`
@@ -252,3 +254,26 @@ Next Steps:
 2. MapQA parser + executor + MCP/HITL are implemented (see `docs/plans/MAPQA_PARSER_IMPLEMENTED.md`) — remaining: shadow-mode deployment, feature-flagged cutover, drift monitoring, retraining workflow
 3. Parallel upsert is enabled by default (`PARALLEL_UPSERT_WORKERS=8`) — tune in `.env` if needed (see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` §7). GPU concurrency defaults to 1 on cuda:0 (`GV_NLE_GPU_CONCURRENCY=1,1`) — set to 2 only for countries with uniformly small subgraphs.
 4. Investigate how to add support for https://arxiv.org/pdf/2310.00583
+
+## Fresh Database Setup
+
+After dropping and recreating both databases (e.g. after a schema refactor):
+
+```bash
+# 1. Migrate both databases
+docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py migrate
+docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py migrate --database=vectors
+
+# 2. Initialize planet data (hierarchy, profiles, paths, embeddings scan, ontology, boundaries)
+docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py init_planet
+
+# Or with flags:
+#   --skip-continents   Skip continent PBF extraction (if already done)
+#   --skip-embeddings   Skip embedding scan/split/merge
+#   --step <name>       Run only a specific step
+#   --no-lock           Force re-run even if today's PlanetSnapshot is COMPLETED
+```
+
+The backend container's entrypoint runs `init_planet` automatically on startup (`RUN_INIT_PLANET=true`), so simply restarting the backend after a DB reset will trigger it. The worker has `RUN_INIT_PLANET=false`.
+
+**Important**: On a fresh vectors DB, `semantic_search_osmentity` starts as a monolith table with a 3-column unique constraint `(osm_type, osm_id, gv_tags_version)`. The first country pipeline run's Step 1 calls `create_country_partitions` which detects the empty monolith, converts it to a partitioned table (`PARTITION BY LIST (snapshot_id)` → `LIST (country_code)`), and creates the per-country leaf partition with a 5-column unique constraint. The `vector_storage_service._bulk_upsert()` method checks `pg_partitioned_table` at runtime to select the correct ON CONFLICT target — no manual flag needed.

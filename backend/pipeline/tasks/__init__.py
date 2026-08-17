@@ -1,27 +1,13 @@
 """
 WorldKG Pipeline — Celery Tasks Package
+
+Planet initialization (formerly step_0a..step_0m) is now handled by the
+``init_planet`` management command, run as a Docker entrypoint step on
+the backend container after migrations. See
+``docs/plans/CORE_APP_CONSOLIDATION_PLAN.md`` and
+``core/management/commands/init_planet.py``.
 """
 from __future__ import annotations
-
-# ══════════════════════════════════════════════════════════════════════════
-# Step 0 — Planet / Continent / Pre-build
-# ══════════════════════════════════════════════════════════════════════════
-from pipeline.tasks.planet_initialization_pipeline_steps import (  # noqa: F401
-    step_0_initialize_planet,
-    step_0b_initialize_continent,
-    step_0c_prebuild_structure,
-    step_0d_prebuild_country_paths,
-    step_0e_prebuild_subgraphs,
-    step_0f_prebuild_wikidata_ids,
-    step_0h_scan_embeddings,
-    step_0h_copy_gb_to_uk,
-    step_0i_prebuild_split_embeddings,
-    step_0j_prebuild_merge_us_embeddings,
-    step_0k_rescan_embeddings,
-    step_0l_enrich_worldkg_classes,
-    step_0m_generate_osm_boundaries,
-    _finalize_planet_init_chain,
-)
 
 # ══════════════════════════════════════════════════════════════════════════
 # Steps 1–6 — Country Pipeline

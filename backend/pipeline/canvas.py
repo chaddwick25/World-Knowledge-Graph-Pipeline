@@ -55,7 +55,7 @@ def _check_existing_run(iso: str) -> None:
     In eager mode, relies solely on DB state since there's no Celery worker
     to cross-check with.
     """
-    from orchestration.models import PipelineRun
+    from core.models import PipelineRun
 
     eager = getattr(celery_app.conf, "task_always_eager", False)
 
@@ -150,21 +150,14 @@ def _check_existing_run(iso: str) -> None:
 # Pipeline Entry Points
 # ══════════════════════════════════════════════════════════════════════════
 def _get_step_tasks():
-    """Lazy-import Celery tasks to avoid circular imports at module load."""
+    """Lazy-import Celery tasks to avoid circular imports at module load.
+
+    Planet-init steps (formerly 0–0.98) are no longer Celery tasks — they
+    are now sub-steps of the ``init_planet`` management command (see
+    ``core/management/commands/init_planet.py``). Only Steps 1–6 (country
+    pipeline) remain in the Celery canvas.
+    """
     from pipeline.tasks import (
-        step_0_initialize_planet,
-        step_0b_initialize_continent,
-        step_0c_prebuild_structure,
-        step_0d_prebuild_country_paths,
-        step_0e_prebuild_subgraphs,
-        step_0f_prebuild_wikidata_ids,
-        step_0l_enrich_worldkg_classes,
-        step_0m_generate_osm_boundaries,
-        step_0h_scan_embeddings,
-        step_0h_copy_gb_to_uk,
-        step_0i_prebuild_split_embeddings,
-        step_0j_prebuild_merge_us_embeddings,
-        step_0k_rescan_embeddings,
         step_1_embed_osm_entities,
         step_1b_finalize_subgraph_embeds,
         step_2_harvest_wikidata,
@@ -176,19 +169,6 @@ def _get_step_tasks():
         step_6_mark_search_ready,
     )
     return {
-        0: step_0_initialize_planet,
-        0.5: step_0b_initialize_continent,
-        0.7: step_0c_prebuild_structure,
-        0.8: step_0d_prebuild_country_paths,
-        0.85: step_0h_scan_embeddings,              # Scan embeddings → EligibleCountry
-        0.855: step_0h_copy_gb_to_uk,              # Copy great-britain → united-kingdom naming
-        0.86: step_0i_prebuild_split_embeddings,     # Split multi-country TSVs (GB, MY/SG/BN)
-        0.87: step_0j_prebuild_merge_us_embeddings,  # Merge US regional shards
-        0.88: step_0k_rescan_embeddings,             # Re-scan after split/merge
-        0.95: step_0e_prebuild_subgraphs,
-        0.96: step_0f_prebuild_wikidata_ids,
-        0.97: step_0l_enrich_worldkg_classes,       # Load WorldKG ontology TTL into Redis
-        0.98: step_0m_generate_osm_boundaries,      # Generate OSM boundary data
         1: step_1_embed_osm_entities,
         1.5: step_1b_finalize_subgraph_embeds,      # Chord callback for Step 1 subgraphs
         2: step_2_harvest_wikidata,
@@ -305,173 +285,54 @@ def _get_subgraph_uslp_tasks(cfg) -> list:
 # ══════════════════════════════════════════════════════════════════════════
 # Planet / Continent Init (Foundation Layer)
 # ══════════════════════════════════════════════════════════════════════════
+# Planet init (formerly steps 0a–0m) is now a management command
+# (``core/management/commands/init_planet.py``) invoked as a Docker
+# entrypoint step on the backend container. The wrappers below are kept
+# as thin facades so any in-process caller (e.g. legacy API endpoints,
+# tests) still has a function to call. They run ``init_planet``
+# synchronously — there is no Celery canvas for planet init any more.
 def run_planet_initialization(
     planet_pbf_path: Optional[str] = None,
     extract_continents: bool = True,
 ) -> str:
-    """Execute Planet Initialization (Steps 0–0.95) via Celery Canvas.
+    """Run planet initialization synchronously via the ``init_planet`` command.
 
-    This is a **foundation** chain that must complete before any country-level
-    pipeline can run. It sets up:
-      - File structure (directories)
-      - Planetary metrics (osmium fileinfo)
-      - Wikidata alignment (country_relations.json → OSMWikiDataHierarchy)
-      - Continent extraction (planet → continent PBFs)
-      - Pre-build DB structure (CountryPipelineProfile, paths, subgraphs, Q-IDs)
-
-    Steps 0.6–0.95 run automatically after Steps 0+0.5 so that the frontend
-    and country pipeline have the DB records they need.
-
-    Args:
-        planet_pbf_path: Path to the planet .osm.pbf file.
-                         Defaults to settings.PLANET_OSM_FILE_PATH.
-        extract_continents: If True, extract continent PBFs from the planet.
-
-    Returns:
-        pipeline_run_id (UUID string) — track progress via PipelineRun model.
+    Returns a synthetic pipeline_run_id (a PlanetSnapshot row is created by
+    ``init_planet`` itself). The ``extract_continents`` flag maps to the
+    command's ``--skip-continents`` inverse.
     """
-    from celery import chain
+    from django.core.management import call_command
 
-    # Build a PlanetEnvelope for tracking
-    from pipeline.envelopes import PlanetEnvelope
-    cfg = PlanetEnvelope(
-        pipeline_run_id=str(uuid4()),
-        pbf_path=planet_pbf_path,
-        extract_continents=extract_continents,
-    )
-
-    from orchestration.models import PipelineRun
-    run = PipelineRun.objects.create(
-        country_code="PL",
-        country_name="Planet",
-        pipeline_type="planet_init",
-        status=PipelineRun.PipelineStatus.PENDING,
-        configuration={
-            "planet_pbf_path": planet_pbf_path,
-            "extract_continents": extract_continents,
-        },
-    )
-    cfg = dataclasses.replace(cfg, pipeline_run_id=str(run.id))
-
-    # Set up per-run log file
-    setup_pipeline_run_logger(
-        pipeline_run_id=cfg.pipeline_run_id,
-        country_iso=cfg.iso,
-    )
-
-    steps = _get_step_tasks()
-
-    _log(logger, "info",
-        "Starting Planet Initialization",
-        pipeline_run_id=cfg.pipeline_run_id,
-        planet_pbf_path=planet_pbf_path,
-        extract_continents=extract_continents,
-    )
-
-    # Chain: Step 0 (planet init) → Step 0.5 (continent extraction, optional)
-    # → Step 0.6 (Phase 1: extract continent snapshots from historical planets)
-    # → Steps 0.7–0.98 (pre-build DB structure, always runs after planet init)
-    canvas_tasks = [steps[0].s(cfg.to_dict())]
-    if extract_continents:
-        canvas_tasks.append(steps[0.5].s())
-
-    # Pre-build steps after planet and continents are ready.
-    # These populate DB records needed by the frontend and country pipeline.
-    canvas_tasks.append(steps[0.7].s())   # prebuild_worldkg_structure
-    canvas_tasks.append(steps[0.8].s())   # prebuild_country_paths
-    canvas_tasks.append(steps[0.85].s())  # prebuild_scan_embeddings — EligibleCountry table
-    canvas_tasks.append(steps[0.855].s()) # prebuild_copy_gb_to_uk — great-britain → united-kingdom
-    canvas_tasks.append(steps[0.86].s())  # prebuild_split_embeddings — TSV splits (GB, MY/SG/BN)
-    canvas_tasks.append(steps[0.87].s())  # prebuild_merge_us_embeddings — US merge
-    canvas_tasks.append(steps[0.88].s())  # prebuild_rescan_embeddings — re-scan after split/merge
-    canvas_tasks.append(steps[0.95].s())  # prebuild_subgraphs
-    canvas_tasks.append(steps[0.96].s())  # prebuild_wikidata_ids
-    canvas_tasks.append(steps[0.97].s())  # enrich_worldkg_classes — Load WorldKG ontology TTL into Redis
-    canvas_tasks.append(steps[0.98].s())  # generate_osm_boundaries — Generate OSM boundary data
-
-    # Add a final callback that marks the PipelineRun as COMPLETED
-    # and sends a pipeline_complete WebSocket message
-    from pipeline.tasks import _finalize_planet_init_chain
-    canvas = chain(*canvas_tasks) | _finalize_planet_init_chain.s(cfg.pipeline_run_id)
-
-    # Dispatch to Celery FIRST, then mark as RUNNING
-    result = canvas.apply_async(task_id=cfg.pipeline_run_id)
-
-    run.status = PipelineRun.PipelineStatus.RUNNING
-    run.queued_at = datetime.now(timezone.utc)
-    run.started_at = datetime.now(timezone.utc)
-    run.save(update_fields=["status", "queued_at", "started_at"])
-
-    _log(logger, "info",
-        "Planet initialization dispatched",
-        pipeline_run_id=cfg.pipeline_run_id,
-        task_id=result.id,
-    )
-
-    return cfg.pipeline_run_id
+    kwargs = {"planet_pbf": planet_pbf_path} if planet_pbf_path else {}
+    if not extract_continents:
+        kwargs["skip_continents"] = True
+    call_command("init_planet", **kwargs)
+    # Return a stable identifier — callers (e.g. PipelineRun rows) treat
+    # this as opaque. Use today's PlanetSnapshot date string if available.
+    from core.models import PlanetSnapshot
+    today = datetime.now(timezone.utc).strftime("%Y_%m_%d")
+    snap = PlanetSnapshot.objects.filter(snapshot_date_str=today).first()
+    return str(snap.id) if snap else today
 
 
 def run_continent_initialization(
     continent_slug: str,
     planet_pbf_path: Optional[str] = None,
 ) -> str:
-    """Extract a single continent PBF from the planet (Step 0.5).
+    """Extract a single continent PBF from the planet.
 
-    Args:
-        continent_slug: Continent slug (e.g., "europe", "africa").
-        planet_pbf_path: Path to planet .osm.pbf.
-
-    Returns:
-        pipeline_run_id (UUID string).
+    Planet init no longer has per-continent Celery tasks — continent
+    extraction is one step (``extract_continents``) inside ``init_planet``.
+    This facade runs ``init_planet --step extract_continents`` so callers
+    that just want a continent re-extract still have an entry point.
     """
-    from pipeline.envelopes import PlanetEnvelope
-    cfg = PlanetEnvelope(
-        pipeline_run_id=str(uuid4()),
-        pbf_path=planet_pbf_path,
-        extract_continents=True,
-    )
+    from django.core.management import call_command
 
-    from orchestration.models import PipelineRun
-    run = PipelineRun.objects.create(
-        country_code=continent_slug.upper(),
-        country_name=continent_slug.capitalize(),
-        pipeline_type="continent_init",
-        status=PipelineRun.PipelineStatus.PENDING,
-        configuration={
-            "continent_slug": continent_slug,
-            "planet_pbf_path": planet_pbf_path,
-        },
-    )
-    cfg = dataclasses.replace(cfg, pipeline_run_id=str(run.id))
-
-    steps = _get_step_tasks()
-    task = steps[0.5]
-
-    # Set up per-run log file
-    setup_pipeline_run_logger(
-        pipeline_run_id=cfg.pipeline_run_id,
-        country_iso=cfg.iso,
-    )
-
-    # Dispatch to Celery FIRST, then mark as RUNNING
-    result = task.apply_async(
-        kwargs={"config_dict": cfg.to_dict()},
-        task_id=cfg.pipeline_run_id,
-    )
-
-    run.status = PipelineRun.PipelineStatus.RUNNING
-    run.queued_at = datetime.now(timezone.utc)
-    run.started_at = datetime.now(timezone.utc)
-    run.save(update_fields=["status", "queued_at", "started_at"])
-
-    _log(logger, "info",
-        "Continent initialization dispatched",
-        continent=continent_slug,
-        pipeline_run_id=cfg.pipeline_run_id,
-        task_id=result.id,
-    )
-
-    return cfg.pipeline_run_id
+    kwargs = {"step": "extract_continents"}
+    if planet_pbf_path:
+        kwargs["planet_pbf"] = planet_pbf_path
+    call_command("init_planet", **kwargs)
+    return continent_slug
 
 # ══════════════════════════════════════════════════════════════════════════
 # Country-Level Pipeline
@@ -495,7 +356,7 @@ def _mark_pipeline_failed(run, exc, cfg) -> None:
     Used by the eager path's outer except block. The on_failure hook handles
     per-step failures; this handles the pipeline-level failure wrapper.
     """
-    from orchestration.models import PipelineRun
+    from core.models import PipelineRun
     run.status = PipelineRun.PipelineStatus.FAILED
     run.error_message = str(exc)
     run.completed_at = datetime.now(timezone.utc)
@@ -521,7 +382,7 @@ def _run_eager(cfg, run, steps) -> None:
     the ``@pipeline_step`` decorator + on_success/on_failure hooks — this
     function just calls the tasks and logs the orchestration-level view.
     """
-    from orchestration.models import PipelineRun
+    from core.models import PipelineRun
 
     _log(logger, "info",
         "Eager mode detected — executing steps synchronously",
@@ -646,7 +507,7 @@ def _run_async(cfg, run, steps) -> None:
     directly.
     """
     from celery import chain
-    from orchestration.models import PipelineRun
+    from core.models import PipelineRun
 
     # Use lightweight config (subgraphs stripped) for chord callbacks and
     # subgraph tasks to keep the serialized Redis message small.  The full
@@ -763,7 +624,7 @@ def run_worldkg_pipeline(
     )
 
     # ── 2. Create PipelineRun (DB tracking) ────────────────────────────
-    from orchestration.models import PipelineRun
+    from core.models import PipelineRun
     run = PipelineRun.objects.create(
         country_code=cfg.iso,
         country_name=cfg.name,
@@ -814,7 +675,7 @@ def run_pipeline_stage(
     """
     # TODO: might need to pass the config dict instead to support Agentic related envelopes(new type)
     from pipeline.envelopes import CountryEnvelope
-    from orchestration.models import PipelineRun
+    from core.models import PipelineRun
 
     cfg = CountryEnvelope.from_db(iso, snapshot_date=snapshot_date)
     steps = _get_step_tasks()

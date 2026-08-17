@@ -69,10 +69,10 @@ if [ "$RUN_MIGRATIONS" = "false" ]; then
   WAITED=0
   while [ $WAITED -lt $MAX_WAIT ]; do
     APPLIED=$(PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "
-      SELECT count(*) FROM django_migrations WHERE app = 'orchestration' AND name = '0001_initial';
+      SELECT count(*) FROM django_migrations WHERE app = 'core' AND name = '0001_initial';
     " 2>/dev/null || echo "0")
     if [ "$APPLIED" -ge "1" ]; then
-      echo "Backend migrations detected ($APPLIED orchestration migrations applied). Proceeding."
+      echo "Backend migrations detected ($APPLIED core migrations applied). Proceeding."
       break
     fi
     echo "Waiting for backend to finish migrations... (${WAITED}s/${MAX_WAIT}s)"
@@ -101,6 +101,20 @@ else
 
   echo "Running migrations for vectors database..."
   python manage.py migrate --database=vectors
+
+  # Planet initialization now runs as a Docker startup step (replaces the
+  # former Celery canvas of step_0a..step_0m tasks). Idempotent — safe to
+  # run on every boot; short-circuits via the PlanetSnapshot lock if a
+  # COMPLETED row already exists for today. Disable with RUN_INIT_PLANET=false
+  # (e.g. for the worker container, which reuses this entrypoint).
+  if [ "$RUN_INIT_PLANET" = "false" ]; then
+    echo "Skipping init_planet (RUN_INIT_PLANET=false)."
+  else
+    echo "Running init_planet..."
+    # Best-effort: failures don't abort container startup (matches the old
+    # Celery chain's max_retries=1 semantics). Logs are surfaced via stderr.
+    python manage.py init_planet || echo "WARNING: init_planet reported failures; see logs above."
+  fi
 fi
 
 echo "Entrypoint setup complete!"

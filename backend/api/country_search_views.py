@@ -20,7 +20,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 
 from django.conf import settings
-from extraction.models import RegionHierarchy, OSMWikiDataHierarchy
+from core.models import RegionHierarchy, OSMWikiDataHierarchy
 from api.models import (
     PbfFile,
     ProcessingSession,
@@ -39,359 +39,9 @@ logger = logging.getLogger(__name__)
 
 def _resolve_iso_from_country_name(country_name: str) -> str:
     """Resolve ISO code from country name (delegates to osm_wikidata_resolver)."""
-    from extraction.services.osm_wikidata_resolver import resolve_iso_from_country_name
+    from core.services.planet_init.osm_wikidata_resolver import resolve_iso_from_country_name
     return resolve_iso_from_country_name(country_name)
 
-
-class CountrySearchUpdateView(APIView):
-    """
-    Trigger full search update pipeline for a country.
-    
-    Pipeline: Region Extract → Yearly → Monthly → Graph Assets
-    """
-    permission_classes = [AllowAny]
-    
-    def post(self, request):
-        """
-        POST /api/country-search-update/
-        
-        Payload:
-        {
-            "country_name": "Grenada",
-            "region_id": "uuid-of-region-hierarchy-node"  # Optional
-        }
-        """
-        country_name = request.data.get('country_name')
-        region_id = request.data.get('region_id')
-        
-        if not country_name:
-            return Response({
-                'error': 'country_name is required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            # Check if already processed
-            country_processing, created = CountrySearchProcessing.objects.get_or_create(
-                country_name=country_name
-            )
-            
-            if country_processing.is_processed:
-                return Response({
-                    'error': f'{country_name} has already been processed',
-                    'processing_completed_at': country_processing.processing_completed_at,
-                    'yearly_extracts_count': country_processing.yearly_extracts_count,
-                    'monthly_extracts_count': country_processing.monthly_extracts_count,
-                    'asset_bundles_count': country_processing.asset_bundles_count
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Create processing session
-            session = ProcessingSession.objects.create(
-                session_name=f"Search Update: {country_name}",
-                session_type='SEARCH_UPDATE',
-                status='IN_PROGRESS',
-                configuration={
-                    'country_name': country_name,
-                    'region_id': region_id,
-                    'temporal_start': '2021-09-01',
-                    'temporal_end': '2025-01-31'
-                }
-            )
-            
-            country_processing.processing_session = session
-            country_processing.processing_started_at = timezone.now()
-            country_processing.save()
-            
-            # Execute pipeline
-            result = self._execute_pipeline(country_name, region_id, session, country_processing)
-            
-            return Response(result, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"Country search update failed: {e}", exc_info=True)
-            return Response({
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    def _execute_pipeline(self, country_name, region_id, session, country_processing):
-        """Execute the full pipeline using existing API patterns"""
-        from extraction.services.graph_asset_service import GraphAssetService
-        graph_service = GraphAssetService()
-        
-        result = {
-            'status': 'processing',
-            'country_name': country_name,
-            'processing_session_id': str(session.id),
-            'region_extract_created': False,
-            'yearly_extracts_count': 0,
-            'monthly_extracts_count': 0,
-            'asset_bundles_count': 0,
-            'steps_completed': []
-        }
-        
-        try:
-            # Step 1: Find or create region extract
-            region_pbf = self._get_or_create_region_extract(country_name, region_id)
-            
-            if not region_pbf:
-                raise ValueError(f"Could not find or create region extract for {country_name}")
-            
-            country_processing.region_pbf = region_pbf
-            country_processing.save()
-            result['region_extract_created'] = True
-            result['steps_completed'].append('region_extract_ready')
-            
-            # Step 2: Generate yearly extracts (2021-2024)
-            # Use TemporalExtractService directly (same as Home page pattern)
-            logger.info(f"Generating yearly extracts for {country_name}")
-            temporal_service = TemporalExtractService()
-            
-            yearly_result = temporal_service.generate_temporal_extracts({
-                'source_pbf_id': str(region_pbf.id),
-                'granularity': 'yearly',
-                'start_year': 2021,
-                'end_year': 2024
-            })
-            
-            yearly_extract_ids = yearly_result.get('extract_ids', [])
-            result['yearly_extracts_count'] = len(yearly_extract_ids)
-            result['steps_completed'].append('yearly_extracts_generated')
-            
-            # Step 3: Generate monthly extracts from yearly extracts
-            # Following Home page pattern: generate monthly from each yearly
-            logger.info(f"Generating monthly extracts for {country_name}")
-            all_monthly_ids = []
-            
-            for yearly_id in yearly_extract_ids:
-                monthly_result = temporal_service.generate_temporal_extracts({
-                    'source_pbf_id': yearly_id,
-                    'granularity': 'monthly',
-                    'start_year': 2021,
-                    'end_year': 2025
-                })
-                all_monthly_ids.extend(monthly_result.get('extract_ids', []))
-            
-            # Filter to Sep 2021 - Jan 2025 range
-            monthly_pbfs = PbfFile.objects.filter(id__in=all_monthly_ids)
-            filtered_monthly_ids = []
-            
-            for pbf in monthly_pbfs:
-                if pbf.min_timestamp:
-                    pbf_date = pbf.min_timestamp.date()
-                    if date(2021, 9, 1) <= pbf_date <= date(2025, 1, 31):
-                        filtered_monthly_ids.append(str(pbf.id))
-            
-            result['monthly_extracts_count'] = len(filtered_monthly_ids)
-            result['steps_completed'].append('monthly_extracts_generated')
-            
-            # Step 4: Generate graph assets from monthly extracts (parallel)
-            logger.info(f"Generating graph assets using multiprocessing")
-            logger.info(f"Monthly extracts to process: {len(filtered_monthly_ids)}")
-            
-            from extraction.services.graph_asset_parallel_service import GraphAssetParallelService
-            
-            asset_service = GraphAssetParallelService()
-            asset_result = asset_service.batch_generate_parallel(
-                monthly_pbf_ids=filtered_monthly_ids,
-                country_name=country_name,
-                max_workers=20
-            )
-            
-            if asset_result['success']:
-                logger.info(f"Graph assets generated successfully")
-                logger.info(f"  New: {asset_result['new']}, Skipped: {asset_result['skipped']}")
-                result['asset_bundles_count'] = asset_result['successful']
-            else:
-                logger.error(f"Graph asset generation failed: {asset_result.get('error')}")
-                result['asset_bundles_count'] = 0
-            
-            result['steps_completed'].append('graph_assets_generated')
-            
-            # Mark as completed
-            country_processing.is_processed = True
-            country_processing.processing_completed_at = timezone.now()
-            country_processing.yearly_extracts_count = result['yearly_extracts_count']
-            country_processing.monthly_extracts_count = result['monthly_extracts_count']
-            country_processing.asset_bundles_count = result['asset_bundles_count']
-            country_processing.temporal_start = date(2021, 9, 1)
-            country_processing.temporal_end = date(2025, 1, 31)
-            country_processing.save()
-            
-            session.status = 'COMPLETED'
-            session.completed_at = timezone.now()
-            session.results = result
-            session.save()
-            
-            result['status'] = 'completed'
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"Pipeline execution failed: {e}", exc_info=True)
-            session.status = 'FAILED'
-            session.results = {'error': str(e)}
-            session.save()
-            raise
-    
-    def _get_or_create_region_extract(self, country_name, region_id=None):
-        """Find existing region extract or create it automatically"""
-        # Try to find existing region PBF by country name
-        region_pbf = PbfFile.objects.filter(
-            path__icontains=country_name.lower(),
-            extraction_level='REGION'
-        ).first()
-        
-        if region_pbf:
-            logger.info(f"Found existing region extract: {region_pbf.path}")
-            return region_pbf
-        
-        # If region_id provided, try to find via RegionHierarchy
-        if region_id:
-            try:
-                region = RegionHierarchy.objects.get(id=region_id)
-                if hasattr(region, 'corresponding_pbf') and region.corresponding_pbf:
-                    return region.corresponding_pbf
-            except RegionHierarchy.DoesNotExist:
-                pass
-        
-        # Region extract doesn't exist - create it automatically
-        logger.info(f"No region extract found for {country_name}. Creating automatically...")
-        return self._create_region_extract(country_name)
-    
-    def _create_region_extract(self, country_name):
-        """
-        Create region extract from continent using Task-based extraction.
-        Follows the same pattern as Home page CreatePbfExtractTaskView.
-        """
-        try:
-            # Find polygon file for this country
-            polygon_file = self._find_polygon_file(country_name)
-            
-            if not polygon_file:
-                raise ValueError(f"No polygon file found for {country_name}")
-            
-            # Find appropriate continent PBF to extract from
-            continent_pbf = self._find_continent_for_country(country_name)
-            
-            if not continent_pbf:
-                raise ValueError(f"No continent PBF found for {country_name}")
-            
-            logger.info(f"Creating region extract for {country_name}")
-            logger.info(f"  Source: {continent_pbf.path}")
-            logger.info(f"  Polygon: {polygon_file}")
-            
-            # Generate hierarchical output path based on continent PBF location
-            from extraction.services.regional_path_service import normalize_country_slug
-            region_name_clean = normalize_country_slug(country_name)
-            continent_dir = Path(continent_pbf.path).parent
-            region_dir = continent_dir / region_name_clean
-            region_dir.mkdir(parents=True, exist_ok=True)
-            output_path = str(region_dir / f"{region_name_clean}.pbf")
-            
-            # Create Task (same as Home page CreatePbfExtractTaskView)
-            task = Task.objects.create(
-                task_type=Task.TaskType.EXTRACT_PBF,
-                parameters={
-                    "source_pbf_id": str(continent_pbf.id),
-                    "poly_file_path": polygon_file,
-                    "output_pbf_path": output_path,
-                    "cpu_core_id": 1  # Use E-core 1
-                }
-            )
-            
-            # Run extraction synchronously using run_pbf_extraction
-            from extraction.services.extraction_service import run_pbf_extraction
-            task_id = str(task.id)
-            run_pbf_extraction(
-                source_pbf_id=str(continent_pbf.id),
-                poly_file_path=polygon_file,
-                output_pbf_path=output_path,
-                cpu_core_id=1,
-                task_id=task_id
-            )
-            
-            # Refresh task to get the result
-            task.refresh_from_db()
-            
-            # Find the created PBF file - try multiple approaches
-            region_pbf = None
-            
-            # Approach 1: Check task result for pbf_id
-            if task.result and 'pbf_id' in task.result:
-                try:
-                    region_pbf = PbfFile.objects.get(id=task.result['pbf_id'])
-                    logger.info(f"Found PBF from task result: {region_pbf.id}")
-                except PbfFile.DoesNotExist:
-                    pass
-            
-            # Approach 2: Query by path (most recent)
-            if not region_pbf:
-                region_pbf = PbfFile.objects.filter(path=output_path).order_by('-created_at').first()
-                if region_pbf:
-                    logger.info(f"Found PBF by path: {region_pbf.id}")
-            
-            # Approach 3: Query by RegionHierarchy link
-            if not region_pbf:
-                try:
-                    region_hierarchy = RegionHierarchy.objects.filter(
-                        name__iexact=country_name
-                    ).first()
-                    if region_hierarchy and hasattr(region_hierarchy, 'corresponding_pbf'):
-                        region_pbf = region_hierarchy.corresponding_pbf
-                        logger.info(f"Found PBF via RegionHierarchy: {region_pbf.id}")
-                except Exception as e:
-                    logger.warning(f"RegionHierarchy lookup failed for {country_name}: {e}")
-            
-            if region_pbf:
-                logger.info(f"Region extract created successfully: {region_pbf.path}")
-                return region_pbf
-            else:
-                raise ValueError(f"Region PBF not found after extraction. Task status: {task.status}")
-                
-        except Exception as e:
-            logger.error(f"Failed to create region extract for {country_name}: {e}", exc_info=True)
-            raise
-    
-    def _find_polygon_file(self, country_name):
-        """Find polygon file for country (delegates to regional_path_service)."""
-        from extraction.services.regional_path_service import find_polygon_file
-        return find_polygon_file(country_name)
-    
-    def _find_continent_for_country(self, country_name):
-        """Find the appropriate continent PBF for a country by searching the hierarchy"""
-        try:
-            # First find the country in RegionHierarchy
-            country_region = RegionHierarchy.objects.filter(name__iexact=country_name).first()
-            if not country_region:
-                # Fallback to direct PbfFile search if hierarchy doesn't exist yet
-                pbf = PbfFile.objects.filter(path__icontains=country_name).first()
-                if pbf and hasattr(pbf, 'parent_pbf'):
-                    current_pbf = pbf.parent_pbf
-                    while current_pbf:
-                        # Flexible check: CONTINENT type OR path contains continent name
-                        if current_pbf.extraction_level == 'CONTINENT' or current_pbf.pbf_file_type == 'CONTINENT':
-                            return current_pbf
-                        
-                        # Fallback: if it's the root of the hierarchy and registered as a REGION, it's likely a mislabeled continent
-                        if current_pbf.pbf_file_type == 'REGION' and (pbf_file_path.parent.name == 'osm_wikidata_extractions'):
-                             logger.info(f"Found root-level PBF for {continent_name}, treating as CONTINENT source.")
-                             return current_pbf
-                        current_pbf = current_pbf.parent_pbf
-                return None
-                
-            # Climb the hierarchy tree to find a node with a corresponding_pbf
-            # that is an actual CONTINENT level extraction
-            current_region = country_region.parent
-            while current_region:
-                if current_region.corresponding_pbf:
-                    pbf = current_region.corresponding_pbf
-                    if pbf.extraction_level == 'CONTINENT' or pbf.pbf_file_type == 'CONTINENT':
-                        return pbf
-                current_region = current_region.parent
-                
-        except Exception as e:
-            logger.error(f"Error finding continent for {country_name}: {e}")
-            
-        return None
 
 
 class CountrySearchStatusView(APIView):
@@ -405,13 +55,12 @@ class CountrySearchStatusView(APIView):
         """
         GET /api/country-search-status/{country_name}/
         """
-        from extraction.services.regional_path_service import regional_path_service, normalize_country_slug
-        from extraction.services.country_override_service import get_country_slug
+        from core.services.snapshot.regional_path_service import regional_path_service, normalize_country_slug
+        from core.services.snapshot.country_override_service import get_country_slug
         from api.models import RegionHierarchy
         import calendar
         
         try:
-            # TODO: rethink this (overrides)
             # Simplified: just try direct DB lookup with the provided name
             country_processing = CountrySearchProcessing.objects.filter(
                 country_name__iexact=country_name
@@ -472,7 +121,7 @@ class CountryPreProcessView(APIView):
 
         try:
             # Check if country has already been processed
-            from orchestration.models import CountrySearchProcessing
+            from core.models import CountrySearchProcessing
             existing = CountrySearchProcessing.objects.filter(country_name__iexact=country_name).first()
             if existing and existing.is_processed and not force:
                 logger.info(f"[HEARTBEAT-V2] Country {country_name} already processed, skipping")
@@ -515,7 +164,7 @@ class CountryPreProcessView(APIView):
             # Run preprocessing in background thread
             def run_preprocessing_background():
                 try:
-                    from extraction.services.snapshot_extraction_service import (
+                    from core.services.snapshot.snapshot_extraction_service import (
                         SnapshotExtractionService,
                     )
                     from channels.layers import get_channel_layer
@@ -551,7 +200,7 @@ class CountryPreProcessView(APIView):
                         return
 
                     # Resolve OSM relation ID for the country
-                    from orchestration.models import CountryPipelineProfile
+                    from core.models import CountryPipelineProfile
                     profile = CountryPipelineProfile.objects.filter(
                         iso2__iexact=iso,
                     ).first()
@@ -580,7 +229,7 @@ class CountryPreProcessView(APIView):
                     push_update('subgraph_generation', 'completed', 'Subgraph generation complete', 100)
 
                     # Enqueue step 5 (GeoVectors Encode) for this country and session.
-                    from orchestration.models import Task as OrchestratorTask
+                    from core.models import Task as OrchestratorTask
                     OrchestratorTask.objects.create(
                         task_type=OrchestratorTask.TaskType.GEOVECTORS_ENCODE,
                         parameters={
@@ -670,8 +319,8 @@ class CountrySubgraphsView(APIView):
         # currently use the single-snapshot filesystem layout.
         # _snapshot_date = request.query_params.get('snapshot_date')
 
-        from extraction.services.osm_wikidata_resolver import get_country_relations_dict
-        from extraction.services.regional_path_service import (
+        from core.services.planet_init.osm_wikidata_resolver import get_country_relations_dict
+        from core.services.snapshot.regional_path_service import (
             normalize_country_slug,
             normalize_continent_slug,
             regional_path_service,

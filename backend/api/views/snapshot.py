@@ -217,7 +217,7 @@ class TemporalExtractView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            from extraction.services.temporal_extract_service import TemporalExtractService
+            from core.services.snapshot.temporal_extract_service import TemporalExtractService
             
             service = TemporalExtractService()
             result = service.generate_temporal_extracts(request.data)

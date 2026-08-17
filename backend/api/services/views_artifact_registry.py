@@ -27,7 +27,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from orchestration.services.artifact_service import ArtifactService
+from core.services.pipeline.artifact_service import ArtifactService
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +171,7 @@ class TaskResultListView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         try:
-            from orchestration.models import PipelineAsset, PipelineRun
+            from core.models import PipelineAsset, PipelineRun
         except Exception as exc:  # pragma: no cover
             return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -267,7 +267,7 @@ def _import_task_result():
 
 def _collect_task_ids(run_id: str) -> List[str]:
     """Union of task_ids linked to a run via PipelineLogEntry + PipelineAsset."""
-    from orchestration.models import PipelineLogEntry, PipelineAsset
+    from core.models import PipelineLogEntry, PipelineAsset
     ids = set()
     for entry in PipelineLogEntry.objects.filter(pipeline_run_id=run_id):
         if entry.task_id:

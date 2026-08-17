@@ -1,8 +1,7 @@
-# Backward compatibility imports - models moved to extraction, orchestration, analysis apps
+# Backward compatibility imports - models moved to extraction, orchestration, osmsnapshot apps
 # This file maintains imports for existing code that references api.models
-# Note: analysis.models will be migrated to extraction/orchestration in a future release
 
-from extraction.models import (
+from core.models import (
     PbfFile,
     RegionHierarchy,
     PbfExtract,
@@ -10,7 +9,7 @@ from extraction.models import (
     PbfCollection
 )
 
-from orchestration.models import (
+from core.models import (
     ProcessingSession,
     Task,
     OsmiumDatasetMetrics,
@@ -20,11 +19,12 @@ from orchestration.models import (
     CountrySearchProcessing,
 )
 
-from analysis.models import (
-    TemporalSnapshot,
+from osmsnapshot.models import (
+    Snapshot,
+    GraphExtract,
+    SnapshotJob,
     WorldKGClassDrift,
     WorldKGClassFingerprint,
-    AssetBundle,
     PbfTagDistribution,
 )
 
@@ -42,9 +42,10 @@ __all__ = [
     'CountryArtifact',
     'EmbeddingArtifact',
     'CountrySearchProcessing',
-    'TemporalSnapshot',
+    'Snapshot',
+    'GraphExtract',
+    'SnapshotJob',
     'WorldKGClassDrift',
     'WorldKGClassFingerprint',
-    'AssetBundle',
     'PbfTagDistribution',
 ]

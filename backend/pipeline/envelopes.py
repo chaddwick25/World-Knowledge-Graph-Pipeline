@@ -475,12 +475,12 @@ class CountryEnvelope:
         Ports the logic from the legacy CountryConfig.from_db(), splitting the result
         into identity/paths/hyperparams/state/storage.
         """
-        from orchestration.models import CountryPipelineProfile, SubgraphProfile
-        from extraction.services.regional_path_service import (
+        from core.models import CountryPipelineProfile, SubgraphProfile
+        from core.services.snapshot.regional_path_service import (
             regional_path_service,
             normalize_country_slug,
         )
-        from extraction.models import OSMWikiDataHierarchy
+        from core.models import OSMWikiDataHierarchy
 
         # ── 1. Resolve country profile ──────────────────────────────────
         profile = (
@@ -500,11 +500,11 @@ class CountryEnvelope:
 
         if not profile:
             # Non-sovereign synthetic ISO handling
-            from extraction.services.non_sovereign_territories import (
+            from core.services.planet_init.non_sovereign_territories import (
                 is_non_sovereign_synthetic_iso,
                 synthetic_iso_to_info,
             )
-            from orchestration.models import EligibleCountry
+            from core.models import EligibleCountry
 
             if is_non_sovereign_synthetic_iso(iso):
                 iso_upper = iso.upper()
@@ -550,7 +550,7 @@ class CountryEnvelope:
                 )
 
         # ── 1b. Enrich from OSMWikiDataHierarchy ────────────────────────
-        from extraction.services.non_sovereign_territories import (
+        from core.services.planet_init.non_sovereign_territories import (
             is_non_sovereign_synthetic_iso as _is_synth,
             synthetic_iso_to_info as _synth_info,
         )
@@ -597,7 +597,7 @@ class CountryEnvelope:
 
         # Filesystem discovery
         try:
-            from extraction.services.subgraph_list_service import build_subgraph_list
+            from core.services.snapshot.subgraph_list_service import build_subgraph_list
             fs_subgraphs = build_subgraph_list(
                 country_name=profile.canonical_name,
                 auto_all=True,
@@ -698,7 +698,7 @@ class CountryEnvelope:
 
         candidate_slugs = []
         if iso:
-            from extraction.services.country_override_service import get_country_slug as _get_override_slug
+            from core.services.snapshot.country_override_service import get_country_slug as _get_override_slug
             override_slug = _get_override_slug(iso, country_norm)
             if override_slug and override_slug not in candidate_slugs:
                 candidate_slugs.append(override_slug)

@@ -636,7 +636,7 @@ class AugmentedDataService:
         if not iso:
             return []
 
-        from orchestration.models import CountryPipelineProfile, SubgraphProfile
+        from core.models import CountryPipelineProfile, SubgraphProfile
 
         profile = CountryPipelineProfile.objects.filter(
             iso2__iexact=iso
@@ -678,7 +678,7 @@ class AugmentedDataService:
     @staticmethod
     def _resolve_iso(country_name: str) -> Optional[str]:
         """Resolve ISO code from country name."""
-        from orchestration.models import CountryPipelineProfile
+        from core.models import CountryPipelineProfile
 
         profile = CountryPipelineProfile.objects.filter(
             canonical_name__iexact=country_name
@@ -686,7 +686,7 @@ class AugmentedDataService:
         if profile and profile.iso2:
             return profile.iso2
 
-        from extraction.services.osm_wikidata_resolver import resolve_iso_code
+        from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
         return resolve_iso_code(country_name)
 
     @staticmethod

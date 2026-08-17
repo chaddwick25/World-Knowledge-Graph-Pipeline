@@ -83,7 +83,7 @@ def _run_log_path(pipeline_run_id: str, country_iso: str) -> Path:
     ts = None
     if pipeline_run_id:
         try:
-            from orchestration.models import PipelineRun
+            from core.models import PipelineRun
             run = PipelineRun.objects.filter(id=pipeline_run_id).only("created_at").first()
             if run and run.created_at:
                 ts = run.created_at.strftime("%Y-%m-%d_%H-%M-%S")
@@ -187,7 +187,7 @@ class PipelineLogger:
         """Write a PipelineLogEntry row + emit to Python logging."""
         # 1. DB write (structured, queryable, shard-ready)
         try:
-            from orchestration.models import PipelineLogEntry, PipelineRun
+            from core.models import PipelineLogEntry, PipelineRun
             # Only set the run FK if the PipelineRun actually exists.
             # When running steps directly (e.g., via manage.py shell without
             # a PipelineRun record), the FK would violate the constraint.

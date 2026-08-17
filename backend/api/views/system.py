@@ -85,7 +85,7 @@ class SystemInitializeView(APIView):
     """
     def post(self, request, *args, **kwargs):
         from django.core.management import call_command
-        from extraction.models import OsmBoundary
+        from core.models import OsmBoundary
         
         try:
             steps_completed = []
@@ -218,9 +218,9 @@ class RegionMapDataView(APIView):
     Each country includes its parent continent name for backend resolution.
     """
     def get(self, request, *args, **kwargs):
-        from extraction.services.region_status_service import RegionStatusService
-        from extraction.services.polygon_geojson_service import PolygonGeoJsonService
-        from extraction.models import RegionHierarchy, OsmBoundary
+        from core.services.snapshot.region_status_service import RegionStatusService
+        from core.services.planet_init.polygon_geojson_service import PolygonGeoJsonService
+        from core.models import RegionHierarchy, OsmBoundary
         
         try:
             # Check if we have OSM boundaries with polygon file links
@@ -255,8 +255,8 @@ class RegionMapDataView(APIView):
         entries (e.g. 'malaysia_singapore_brunei' found under different
         RegionHierarchy paths) only appear once on the map.
         """
-        from extraction.services.region_status_service import RegionStatusService
-        from extraction.models import OsmBoundary, RegionHierarchy
+        from core.services.snapshot.region_status_service import RegionStatusService
+        from core.models import OsmBoundary, RegionHierarchy
         
         countries = []
         seen_names = set()
@@ -268,7 +268,7 @@ class RegionMapDataView(APIView):
         ).select_related('polygon_file__region_hierarchy__parent').order_by('name')
         
         # Load relations for GeoVectors support check from OSMWikiDataHierarchy
-        from extraction.services.osm_wikidata_resolver import get_country_relations_dict
+        from core.services.planet_init.osm_wikidata_resolver import get_country_relations_dict
         relations = get_country_relations_dict()
 
         for boundary in boundaries:
@@ -290,7 +290,7 @@ class RegionMapDataView(APIView):
                 status_data = RegionStatusService.get_region_status(region)
                 
                 # Check GeoVectors support
-                from extraction.services.regional_path_service import normalize_country_slug
+                from core.services.snapshot.regional_path_service import normalize_country_slug
                 is_supported = False
                 search_term_underscore = normalize_country_slug(region.name)
                 search_term_hyphen = search_term_underscore.replace('_', '-')
@@ -325,14 +325,14 @@ class RegionMapDataView(APIView):
         countries like united_kingdom (england, scotland, wales) so the
         map shows individual clickable regions after TSV splits.
         """
-        from extraction.services.region_status_service import RegionStatusService
-        from extraction.services.polygon_geojson_service import PolygonGeoJsonService
-        from extraction.models import RegionHierarchy
+        from core.services.snapshot.region_status_service import RegionStatusService
+        from core.services.planet_init.polygon_geojson_service import PolygonGeoJsonService
+        from core.models import RegionHierarchy
         
         countries = []
         
         # Load relations for GeoVectors support check from OSMWikiDataHierarchy
-        from extraction.services.osm_wikidata_resolver import get_country_relations_dict
+        from core.services.planet_init.osm_wikidata_resolver import get_country_relations_dict
         relations = get_country_relations_dict()
         
         def _collect(region, continent_name, continent_id, depth=0):
@@ -351,7 +351,7 @@ class RegionMapDataView(APIView):
                 status_data = RegionStatusService.get_region_status(region)
                 
                 # Check GeoVectors support
-                from extraction.services.regional_path_service import normalize_country_slug
+                from core.services.snapshot.regional_path_service import normalize_country_slug
                 is_supported = False
                 search_term_underscore = normalize_country_slug(region.name)
                 search_term_hyphen = search_term_underscore.replace('_', '-')

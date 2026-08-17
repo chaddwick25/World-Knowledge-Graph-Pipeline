@@ -48,8 +48,8 @@ class Command(BaseCommand):
             )
 
         # Use planet initialization service for continent extraction
-        from extraction.services.planet_initialization_service import PlanetInitializationService
-        from extraction.models import OSMWikiDataHierarchy
+        from core.services.planet_init.planet_initialization_service import PlanetInitializationService
+        from core.models import OSMWikiDataHierarchy
         
         # Get default policy
         planet_hierarchy = OSMWikiDataHierarchy(admin_level=None)

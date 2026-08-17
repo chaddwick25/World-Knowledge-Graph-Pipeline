@@ -94,7 +94,7 @@ class Command(BaseCommand):
             )
         )
 
-        from extraction.services.snapshot_extraction_service import (
+        from core.services.snapshot.snapshot_extraction_service import (
             SnapshotExtractionService,
         )
 
@@ -131,7 +131,7 @@ class Command(BaseCommand):
     def _resolve_iso(self, country: str) -> str:
         """Resolve ISO 3166-1 alpha-2 code from CountryPipelineProfile."""
         try:
-            from orchestration.models import CountryPipelineProfile, EligibleCountry
+            from core.models import CountryPipelineProfile, EligibleCountry
             profile = CountryPipelineProfile.objects.filter(
                 iso2__iexact=country,
             ).first()
@@ -153,7 +153,7 @@ class Command(BaseCommand):
     def _resolve_osm_relation_id(self, iso: str):
         """Resolve OSM relation ID from CountryPipelineProfile."""
         try:
-            from orchestration.models import CountryPipelineProfile
+            from core.models import CountryPipelineProfile
             profile = CountryPipelineProfile.objects.filter(
                 iso2__iexact=iso,
             ).first()
@@ -167,7 +167,7 @@ class Command(BaseCommand):
         """Resolve continent name from OSMWikiDataHierarchy or country_relations.json."""
         # Try DB first
         try:
-            from extraction.models import OSMWikiDataHierarchy
+            from core.models import OSMWikiDataHierarchy
 
             # Try ISO code first
             entry = OSMWikiDataHierarchy.objects.filter(

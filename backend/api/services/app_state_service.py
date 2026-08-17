@@ -134,7 +134,7 @@ class AppStateService:
         self, country_name: str, iso: Optional[str]
     ) -> Optional[PipelineState]:
         """Build pipeline state from PipelineRun + cross-check with Celery."""
-        from orchestration.models import PipelineRun
+        from core.models import PipelineRun
 
         if not iso:
             return None
@@ -288,7 +288,7 @@ class AppStateService:
     @staticmethod
     def _build_search_state(country_name: str, iso: Optional[str]) -> SearchState:
         """Build search readiness state."""
-        from orchestration.models import CountryPipelineProfile, CountrySearchProcessing
+        from core.models import CountryPipelineProfile, CountrySearchProcessing
 
         profile = None
         if iso:
@@ -349,7 +349,7 @@ class AppStateService:
     @staticmethod
     def _resolve_iso(country_name: str) -> Optional[str]:
         """Resolve ISO code from country name."""
-        from orchestration.models import CountryPipelineProfile
+        from core.models import CountryPipelineProfile
 
         profile = CountryPipelineProfile.objects.filter(
             canonical_name__iexact=country_name
@@ -357,5 +357,5 @@ class AppStateService:
         if profile and profile.iso2:
             return profile.iso2
 
-        from extraction.services.osm_wikidata_resolver import resolve_iso_code
+        from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
         return resolve_iso_code(country_name)

@@ -100,7 +100,7 @@ def _run_embed(workers: int, iso: str) -> Dict:
     Returns the service result dict (``entity_count``, ``entropy``, ``has_nle``).
     """
     from pipeline.envelopes import CountryEnvelope
-    from extraction.services.embedding_service import EmbeddingService
+    from core.services.snapshot.embedding_service import EmbeddingService
     from django.conf import settings
 
     env = CountryEnvelope.from_db(iso, hyperparam_overrides={
@@ -204,7 +204,7 @@ class ParallelEmbedParityTest(unittest.TestCase):
         Enable the gate in ``embedding_service.py`` before running this.
         """
         from pipeline.envelopes import CountryEnvelope
-        from extraction.services.embedding_service import _PARALLEL_DUAL_ENABLED
+        from core.services.snapshot.embedding_service import _PARALLEL_DUAL_ENABLED
 
         iso = _country()
         probe = CountryEnvelope.from_db(iso)

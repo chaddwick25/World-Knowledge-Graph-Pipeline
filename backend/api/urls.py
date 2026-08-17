@@ -1,8 +1,5 @@
 from django.urls import path, include
 from . import views
-from . import tag_discovery_views
-from . import filtered_snapshot_views
-from . import asset_views
 from . import search_update_views
 from . import country_search_views
 from . import projection_weight_views
@@ -52,13 +49,6 @@ urlpatterns = [
     path('pbf/temporal-ranges/', PbfTemporalRangesView.as_view(), name='pbf_temporal_ranges'),
     path('polygons/list/', PolygonFileListView.as_view(), name='polygon_list'),
     
-    # Analysis Service - Tag Discovery
-    path('tag-discovery/analyze/', tag_discovery_views.TagDiscoveryView.as_view(), name='tag-discovery-analyze'),
-    
-    # Asset Bundles (Optional - for frontend)
-    path('assets/bundles/', asset_views.AssetBundleListView.as_view(), name='asset_bundles'),
-    path('assets/bundles/<int:bundle_id>/', asset_views.AssetBundleDetailView.as_view(), name='asset_bundle_detail'),
-    
     # Hierarchical Preprocessing
     # Legacy endpoints removed during refactoring.
     # Country preprocessing is now handled via:
@@ -81,8 +71,7 @@ urlpatterns = [
     path('artifacts/<str:country_code>/', search_update_views.CountryArtifactsView.as_view(), name='country_artifacts'),
     path('artifacts/monthly/check/<str:country_code>/', search_update_views.CheckMonthlyAvailabilityView.as_view(), name='check_monthly_availability'),
     
-    # Country Search Update (Home Page Integration)
-    path('country-search-update/', country_search_views.CountrySearchUpdateView.as_view(), name='country_search_update'),
+    # Country Search Status (Home Page Integration)
     path('country-search-status/<str:country_name>/', country_search_views.CountrySearchStatusView.as_view(), name='country_search_status'),
 
     # Country Subgraphs (for subgraph-level pipelines)

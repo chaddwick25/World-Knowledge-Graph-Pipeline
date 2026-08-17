@@ -3,10 +3,10 @@ from django.conf import settings
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from orchestration.models import ProcessingSession
-from extraction.services.osm_wikidata_resolver import get_country_by_name
-from extraction.services.regional_path_service import normalize_country_slug, normalize_continent_slug
-from extraction.services.subgraph_list_service import build_subgraph_list
+from core.models import ProcessingSession
+from core.services.planet_init.osm_wikidata_resolver import get_country_by_name
+from core.services.snapshot.regional_path_service import normalize_country_slug, normalize_continent_slug
+from core.services.snapshot.subgraph_list_service import build_subgraph_list
 from igea.tasks import run_uslp_for_subgraph_batch
 
 logger = logging.getLogger(__name__)

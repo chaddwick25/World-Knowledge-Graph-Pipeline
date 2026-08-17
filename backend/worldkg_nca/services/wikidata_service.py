@@ -30,7 +30,7 @@ from typing import Dict, List, Optional, Tuple
 
 from django.db import models
 
-from extraction.services import osm_wikidata_resolver
+from core.services.planet_init import osm_wikidata_resolver
 from semantic_search.utils.sparql_mixin import SPARQLRetryMixin
 
 logger = logging.getLogger(__name__)

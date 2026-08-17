@@ -5,7 +5,7 @@ from collections import Counter
 from django.db.models import Count, Avg, StdDev
 from django.utils import timezone
 
-from api.models import TemporalSnapshot, WorldKGClassDrift, WorldKGClassFingerprint
+from api.models import Snapshot, WorldKGClassDrift, WorldKGClassFingerprint
 from worldkg_nca.models import OsmEntity
 from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 
@@ -27,12 +27,12 @@ class WorldKGDriftService:
     
     def compute_fingerprint(
         self,
-        snapshot: TemporalSnapshot,
+        snapshot: Snapshot,
         processing_session=None
     ) -> WorldKGClassFingerprint:
         """
-        Compute WorldKG class fingerprint for a temporal snapshot.
-        
+        Compute WorldKG class fingerprint for a snapshot.
+
         Returns:
             WorldKGClassFingerprint instance
         """
@@ -48,7 +48,7 @@ class WorldKGDriftService:
             logger.warning(f"No WorldKG-enriched entities for snapshot {snapshot.id}")
             # Return empty fingerprint
             return WorldKGClassFingerprint.objects.create(
-                region=snapshot.region,
+                region=snapshot.country_code,
                 snapshot=snapshot,
                 class_distribution={},
                 mean_depth=0.0,
@@ -88,7 +88,7 @@ class WorldKGDriftService:
         )
         
         fingerprint, _created = WorldKGClassFingerprint.objects.update_or_create(
-            region=snapshot.region,
+            region=snapshot.country_code,
             snapshot=snapshot,
             defaults={
                 'class_distribution': class_distribution,
@@ -104,7 +104,7 @@ class WorldKGDriftService:
         )
         
         logger.info(
-            f"Created fingerprint for {snapshot.region} @ {snapshot.timestamp}: "
+            f"Created fingerprint for {snapshot.country_code} @ {snapshot.snapshot_date}: "
             f"{total_entities} entities, {len(class_counts)} unique classes"
         )
         
@@ -112,8 +112,8 @@ class WorldKGDriftService:
     
     def compute_drift(
         self,
-        snapshot_from: TemporalSnapshot,
-        snapshot_to: TemporalSnapshot,
+        snapshot_from: Snapshot,
+        snapshot_to: Snapshot,
         bbox: Optional[List[float]] = None,
         processing_session=None
     ) -> WorldKGClassDrift:
@@ -164,7 +164,7 @@ class WorldKGDriftService:
             drift_magnitude = 'extreme'
         
         drift = WorldKGClassDrift.objects.create(
-            region=snapshot_from.region,
+            region=snapshot_from.country_code,
             bbox=bbox or [],
             snapshot_from=snapshot_from,
             snapshot_to=snapshot_to,
@@ -181,7 +181,7 @@ class WorldKGDriftService:
         )
         
         logger.info(
-            f"Computed drift for {snapshot_from.region}: "
+            f"Computed drift for {snapshot_from.country_code}: "
             f"JS={js_div:.3f}, depth_delta={depth_delta:.2f}, magnitude={drift_magnitude}"
         )
         
@@ -189,7 +189,7 @@ class WorldKGDriftService:
     
     def _get_or_create_fingerprint(
         self,
-        snapshot: TemporalSnapshot,
+        snapshot: Snapshot,
         processing_session=None
     ) -> WorldKGClassFingerprint:
         """Get existing fingerprint or create new one."""

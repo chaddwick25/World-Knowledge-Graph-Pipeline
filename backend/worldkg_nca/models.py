@@ -177,21 +177,21 @@ class OsmEntity(models.Model):
     source_snapshot_id = models.UUIDField(
         null=True,
         blank=True,
-        help_text="UUID of source TemporalSnapshot (cross-database reference)"
+        help_text="UUID of source Snapshot (cross-database reference)"
     )
     # ── Phase 6 partition keys (temporal + geographic) ──────────────────
     # These are nullable on the monolith and populated via backfill.
     # After cutover they become NOT NULL partition keys on the
     # partitioned table (embeddings_partitioned).
     # NOTE: source_snapshot_id (UUID FK) ≠ snapshot_id (VARCHAR partition key).
-    #   source_snapshot_id = UUID of TemporalSnapshot row (default DB)
+    #   source_snapshot_id = UUID of Snapshot row (default DB)
     #   snapshot_id         = human-readable 'YYYY_MM_DD' partition key
     snapshot_id = models.CharField(
         max_length=20,
         null=True,
         blank=True,
         help_text="Temporal partition key (YYYY_MM_DD, e.g. '2025_12_31'). "
-                  "Derived from source_snapshot_id → TemporalSnapshot.timestamp."
+                  "Derived from source_snapshot_id → Snapshot.snapshot_date."
     )
     country_code = models.CharField(
         max_length=3,
@@ -240,10 +240,10 @@ class OsmEntity(models.Model):
     
     @property
     def source_snapshot(self):
-        """Resolve cross-database reference to TemporalSnapshot (default DB)."""
+        """Resolve cross-database reference to Snapshot (default DB)."""
         if self.source_snapshot_id:
-            from api.models import TemporalSnapshot
-            return TemporalSnapshot.objects.using('default').filter(id=self.source_snapshot_id).first()
+            from osmsnapshot.models import Snapshot
+            return Snapshot.objects.using('default').filter(id=self.source_snapshot_id).first()
         return None
     
     @classmethod

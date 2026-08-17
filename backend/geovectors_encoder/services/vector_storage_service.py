@@ -35,7 +35,7 @@ class VectorStorageService:
     Handles batching and upserting vectors into the OsmEntity model.
     """
     def __init__(self, batch_size=20000, model_type='tags', version=None,
-                 snapshot_id=None, country_code=None):
+                 snapshot_id=None, country_code=None, source_snapshot_id=None):
         self.batch_size = batch_size
         self.model_type = model_type # 'tags' or 'nle'
         self.version = version or '1.0'
@@ -44,6 +44,10 @@ class VectorStorageService:
         # Nullable on the monolith; required after cutover.
         self.snapshot_id = snapshot_id
         self.country_code = country_code
+        # UUID of the osmsnapshot.Snapshot row (default DB) that produced
+        # the entities being upserted.  Stored on OsmEntity.source_snapshot_id
+        # for cross-database provenance.
+        self.source_snapshot_id = source_snapshot_id
         # Cache the resolved leaf partition name after the first lookup so we
         # don't issue a pg_tables catalog query on every single flush call.
         self._cached_leaf_partition: str | None = None
@@ -79,7 +83,8 @@ class VectorStorageService:
                 gv_tags_version VARCHAR(50),
                 gv_nle_trained BOOLEAN,
                 snapshot_id VARCHAR(20),
-                country_code VARCHAR(3)
+                country_code VARCHAR(3),
+                source_snapshot_id UUID
             );
         """)
         self._staging_table = staging_name
@@ -212,6 +217,7 @@ class VectorStorageService:
                 # Phase 6 partition keys (NULL on monolith until backfilled)
                 snap_id = self.snapshot_id if self.snapshot_id else "\\N"
                 cc = self.country_code if self.country_code else "\\N"
+                src_snap = str(self.source_snapshot_id) if self.source_snapshot_id else "\\N"
 
                 writer.writerow([
                     item['osm_type'],
@@ -222,7 +228,8 @@ class VectorStorageService:
                     self.version,
                     gv_nle_trained,
                     snap_id,
-                    cc
+                    cc,
+                    src_snap
                 ])
 
             csv_buffer.seek(0)
@@ -240,7 +247,7 @@ class VectorStorageService:
                 # COPY into the staging table.
                 psycopg_cursor = cursor.cursor if hasattr(cursor, 'cursor') else cursor.connection.cursor()
                 psycopg_cursor.copy_expert(f"""
-                    COPY {staging_table} (osm_type, osm_id, tags, geom, embedding, gv_tags_version, gv_nle_trained, snapshot_id, country_code)
+                    COPY {staging_table} (osm_type, osm_id, tags, geom, embedding, gv_tags_version, gv_nle_trained, snapshot_id, country_code, source_snapshot_id)
                     FROM STDIN WITH (FORMAT csv, DELIMITER '\t', NULL '\\N')
                 """, csv_buffer)
 
@@ -250,12 +257,6 @@ class VectorStorageService:
                 if not self._staging_indexed:
                     cursor.execute(f"CREATE INDEX ON {staging_table} (osm_type, osm_id);")
                     self._staging_indexed = True
-
-                # The ON CONFLICT target uses the 5-column unique constraint
-                # on the partitioned table.
-                conflict_target = (
-                    "(osm_type, osm_id, gv_tags_version, snapshot_id, country_code)"
-                )
 
                 # INSERT directly into the leaf partition when it exists.
                 # This bypasses partition routing overhead (~3-5s per 20K batch).
@@ -270,6 +271,33 @@ class VectorStorageService:
                     if self._cached_leaf_partition:
                         target_table = self._cached_leaf_partition
 
+                # Runtime partition-aware ON CONFLICT target selection.
+                # The partitioned table has a 5-column unique constraint
+                # (osm_type, osm_id, gv_tags_version, snapshot_id, country_code)
+                # while the monolith has a 3-column unique constraint
+                # (osm_type, osm_id, gv_tags_version). Check pg_partitioned_table
+                # once and cache the result — the table doesn't change shape
+                # mid-run.
+                if not hasattr(self, '_is_partitioned_checked'):
+                    cursor.execute("""
+                        SELECT EXISTS (
+                            SELECT 1 FROM pg_partitioned_table pt
+                            JOIN pg_class c ON c.oid = pt.partrelid
+                            WHERE c.relname = 'semantic_search_osmentity'
+                        );
+                    """)
+                    self._is_partitioned = cursor.fetchone()[0]
+                    self._is_partitioned_checked = True
+
+                if self._is_partitioned:
+                    conflict_target = (
+                        "(osm_type, osm_id, gv_tags_version, snapshot_id, country_code)"
+                    )
+                else:
+                    conflict_target = (
+                        "(osm_type, osm_id, gv_tags_version)"
+                    )
+
                 # When inserting directly into a leaf, the conflict target
                 # references the leaf's unique index, so the table alias in
                 # the DO UPDATE SET must match the target table name.
@@ -280,13 +308,13 @@ class VectorStorageService:
                     INSERT INTO {target_table} (
                         osm_type, osm_id, tags, geom, {col_name},
                         gv_tags_version, gv_nle_trained,
-                        snapshot_id, country_code,
+                        snapshot_id, country_code, source_snapshot_id,
                         created_at, updated_at
                     )
                     SELECT
                         osm_type, osm_id, tags, geom, embedding,
                         gv_tags_version, gv_nle_trained,
-                        snapshot_id, country_code,
+                        snapshot_id, country_code, source_snapshot_id,
                         NOW(), NOW()
                     FROM {staging_table}
                     ORDER BY osm_type, osm_id
@@ -297,6 +325,7 @@ class VectorStorageService:
                         gv_nle_trained = EXCLUDED.gv_nle_trained,
                         snapshot_id = COALESCE(EXCLUDED.snapshot_id, {conflict_table_alias}.snapshot_id),
                         country_code = COALESCE(EXCLUDED.country_code, {conflict_table_alias}.country_code),
+                        source_snapshot_id = COALESCE(EXCLUDED.source_snapshot_id, {conflict_table_alias}.source_snapshot_id),
                         updated_at = NOW();
                 """)
 

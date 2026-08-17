@@ -22,7 +22,7 @@ from pathlib import Path
 from django.utils import timezone
 from django.contrib.gis.geos import GEOSGeometry
 
-from orchestration.models import ProcessingSession
+from core.models import ProcessingSession
 from worldkg_nca.models import OsmEntity
 from worldkg_nca.services.wikidata_service import parse_poly_to_wkt
 from igea.services.spatial_link_prediction import (

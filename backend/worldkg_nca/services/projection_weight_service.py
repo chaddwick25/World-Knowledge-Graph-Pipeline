@@ -6,8 +6,8 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 from django.conf import settings
 from django.db.models import Q
 
-from orchestration.services.base_service import BaseService
-from extraction.models import ProjectionWeightAsset
+from core.services.pipeline.base_service import BaseService
+from core.models import ProjectionWeightAsset
 from igea.models import SpatialTripletScore, SpatialTripletScoreRejected
 
 

@@ -225,7 +225,7 @@ def compute_entropy(cfg: CfgLike, logger: logging.Logger) -> float:
 # ══════════════════════════════════════════════════════════════════════════
 def create_planet_run_record(cfg: CfgLike) -> None:
     """Create or update a PlanetSnapshot record for tracking."""
-    from orchestration.models import PlanetSnapshot
+    from core.models import PlanetSnapshot
     from django.utils import timezone as tz
 
     snapshot_date = datetime.now().date()
@@ -247,15 +247,15 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
     direct planet-PBF extraction via ``SnapshotExtractionService``. See
     ``docs/plans/TEMPORAL_SNAPSHOT_REFACTOR.md`` Phase B.
     """
-    from extraction.services.snapshot_extraction_service import (
+    from core.services.snapshot.snapshot_extraction_service import (
         SnapshotExtractionService,
     )
-    from extraction.services.regional_path_service import (
+    from core.services.snapshot.regional_path_service import (
         regional_path_service,
         normalize_continent_slug,
         normalize_country_slug,
     )
-    from extraction.services.country_override_service import (
+    from core.services.snapshot.country_override_service import (
         get_country_slug as get_override_country_slug,
     )
 
@@ -348,7 +348,7 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
 
     if cfg.osm_relation_id and snapshot_exists:
         try:
-            from extraction.services.subgraph_pbf_service import subgraph_pbf_service
+            from core.services.snapshot.subgraph_pbf_service import subgraph_pbf_service
 
             country_slug_for_subgraphs = (
                 get_override_country_slug(
@@ -414,7 +414,7 @@ def sync_subgraph_profiles(
 ) -> None:
     """Sync SubgraphProfile DB records from subgraph generation results (v2)."""
 
-    from orchestration.models import CountryPipelineProfile, SubgraphProfile
+    from core.models import CountryPipelineProfile, SubgraphProfile
     profile = CountryPipelineProfile.objects.filter(iso2__iexact=iso).first()
     if not profile:
         _log(

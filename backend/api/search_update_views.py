@@ -42,7 +42,7 @@ class SearchUpdateView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            from orchestration.services.search_update_orchestrator import SearchUpdateOrchestrator
+            from core.services.pipeline.search_update_orchestrator import SearchUpdateOrchestrator
             
             orchestrator = SearchUpdateOrchestrator()
             result = orchestrator.execute_full_pipeline(request.data)
@@ -64,7 +64,7 @@ class SearchUpdateStatusView(APIView):
     
     def get(self, request, session_id):
         try:
-            from orchestration.services.search_update_orchestrator import SearchUpdateOrchestrator
+            from core.services.pipeline.search_update_orchestrator import SearchUpdateOrchestrator
             
             orchestrator = SearchUpdateOrchestrator()
             status_info = orchestrator.get_session_status(session_id)

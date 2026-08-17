@@ -274,7 +274,7 @@ class Command(BaseCommand):
         # We now apply this even when snapshot_id is provided so snapshot-scoped runs
         # still benefit from country-level spatial filtering.
         if country and not polygon_wkt:
-            from extraction.services import osm_wikidata_resolver
+            from core.services.planet_init import osm_wikidata_resolver
             try:
                 country_upper = country.upper()
                 relations = osm_wikidata_resolver.get_country_relations_dict()
@@ -295,7 +295,7 @@ class Command(BaseCommand):
 
             if iso_code:
                 from django.db import models
-                from orchestration.models import CountryPipelineProfile
+                from core.models import CountryPipelineProfile
 
                 profile = (
                     CountryPipelineProfile.objects.filter(
@@ -346,7 +346,7 @@ class Command(BaseCommand):
         head_entities = []
 
         # Pre-resolve country/ISO once instead of per-row to avoid redundant work
-        from extraction.services.osm_wikidata_resolver import resolve_iso_code
+        from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
         country_upper = country.upper() if country else None
         iso_code_for_tags = (
             resolve_iso_code(country).upper()

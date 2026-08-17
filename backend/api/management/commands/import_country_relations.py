@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from django.core.management.base import BaseCommand
 from django.conf import settings
-from extraction.models import OSMWikiDataHierarchy, RegionHierarchy
+from core.models import OSMWikiDataHierarchy, RegionHierarchy
 
 class Command(BaseCommand):
     help = 'Import country relations into OSMWikiDataHierarchy model (direct from SPARQL+Geofabrik, no JSON intermediary)'
@@ -48,7 +48,7 @@ class Command(BaseCommand):
         else:
             # Direct mode: resolve from SPARQL + Geofabrik, no JSON file hop
             self.stdout.write('Resolving country relations directly from SPARQL + Geofabrik...')
-            from extraction.services.country_relation_resolver import country_relation_resolver
+            from core.services.planet_init.country_relation_resolver import country_relation_resolver
 
             data = country_relation_resolver.sync(force_refresh=False)
             self.stdout.write(f'Resolved {len(data)} countries')

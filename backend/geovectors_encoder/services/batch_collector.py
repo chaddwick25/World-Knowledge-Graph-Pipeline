@@ -216,6 +216,7 @@ def upsert_worker(
     snapshot_date: str,
     country_code: str,
     has_nle: bool,
+    source_snapshot_id: Optional[str] = None,
 ) -> None:
     """Single-threaded consumer that serializes all DB upserts.
 
@@ -233,12 +234,14 @@ def upsert_worker(
     tags_storage = VectorStorageService(
         model_type="tags", version=snapshot_date,
         snapshot_id=snapshot_date, country_code=country_code,
+        source_snapshot_id=source_snapshot_id,
     )
     nle_storage = None
     if has_nle:
         nle_storage = VectorStorageService(
             model_type="nle", version=snapshot_date,
             snapshot_id=snapshot_date, country_code=country_code,
+            source_snapshot_id=source_snapshot_id,
         )
 
     try:
@@ -300,6 +303,7 @@ def spawn_encode_workers(
     snapshot_date: str,
     country_code: str,
     has_nle: bool,
+    source_snapshot_id: Optional[str] = None,
 ) -> Tuple[List[threading.Thread], threading.Thread, "queue.Queue[Any]", ErrorBox]:
     """Create and start ``n_workers`` encoding threads plus a single upsert
     thread.
@@ -321,7 +325,7 @@ def spawn_encode_workers(
 
     upsert_thread = threading.Thread(
         target=upsert_worker,
-        args=(-1, upsert_queue, error_box, snapshot_date, country_code, has_nle),
+        args=(-1, upsert_queue, error_box, snapshot_date, country_code, has_nle, source_snapshot_id),
         name="parallel-upsert-worker",
         daemon=True,
     )

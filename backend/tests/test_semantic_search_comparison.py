@@ -17,7 +17,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from django.contrib.gis.geos import Point
 from worldkg_nca.models import OsmEntity
-from extraction.services.osm_wikidata_resolver import resolve_country_bbox
+from core.services.planet_init.osm_wikidata_resolver import resolve_country_bbox
 from django.test.utils import override_settings
 from unittest.mock import patch
 
@@ -34,7 +34,7 @@ class SemanticSearchComparisonTest(TestCase):
         self.top_k = 20
         
         # Mock bbox resolution to avoid database dependency
-        self.bbox_patch = patch('extraction.services.osm_wikidata_resolver.resolve_country_bbox')
+        self.bbox_patch = patch('core.services.planet_init.osm_wikidata_resolver.resolve_country_bbox')
         self.mock_bbox = self.bbox_patch.start()
         self.mock_bbox.return_value = (7.4, 43.7, 7.45, 43.75)  # Monaco bbox
 

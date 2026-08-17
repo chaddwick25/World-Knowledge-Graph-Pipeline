@@ -110,7 +110,7 @@ def _emit_pipeline_assets(inv: dict, task_id) -> None:
     if not descriptors or not run_id:
         return
     try:
-        from orchestration.models import PipelineAsset, PipelineRun
+        from core.models import PipelineAsset, PipelineRun
     except Exception as exc:  # pragma: no cover - import-time safety
         logger.warning("PipelineAsset import failed, skipping emission: %s", exc)
         return
@@ -179,7 +179,7 @@ def _update_run_stage(
     if not run_id:
         return
     try:
-        from orchestration.models import PipelineRun
+        from core.models import PipelineRun
         run = PipelineRun.objects.filter(id=run_id).first()
         if not run:
             return

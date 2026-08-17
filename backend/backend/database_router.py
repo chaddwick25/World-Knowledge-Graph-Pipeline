@@ -33,30 +33,33 @@ class ShardRouter:
 
 
 class AppRouter:
-    """Route database operations for extraction, analysis, orchestration apps."""
-    
+    """Route database operations for core, extraction, orchestration apps.
+
+    ``extraction`` and ``orchestration`` are slated for deletion (see
+    ``docs/plans/CORE_APP_CONSOLIDATION_PLAN.md``) — their models now live in
+    ``core``. They are kept here temporarily so stale references during the
+    migration window don't break routing.
+    """
+
+    route_app_labels = {'core', 'osmsnapshot'}
+
     def db_for_read(self, model, **hints):
-        # if model._meta.app_label in ['extraction', 'analysis', 'orchestration', 'toronto_data']:
-        if model._meta.app_label in ['extraction', 'analysis', 'orchestration']:
+        if model._meta.app_label in self.route_app_labels:
             return 'default'
         return None
-    
+
     def db_for_write(self, model, **hints):
-        # if model._meta.app_label in ['extraction', 'analysis', 'orchestration', 'toronto_data']:
-        if model._meta.app_label in ['extraction', 'analysis', 'orchestration']:
+        if model._meta.app_label in self.route_app_labels:
             return 'default'
         return None
-    
+
     def allow_relation(self, obj1, obj2, **hints):
-        # app_labels = {'extraction', 'analysis', 'orchestration', 'toronto_data'}
-        app_labels = {'extraction', 'analysis', 'orchestration'}
-        if obj1._meta.app_label in app_labels and obj2._meta.app_label in app_labels:
+        if obj1._meta.app_label in self.route_app_labels and obj2._meta.app_label in self.route_app_labels:
             return True
         return None
-    
+
     def allow_migrate(self, db, app_label, model_name=None, **hints):
-        # if app_label in ['extraction', 'analysis', 'orchestration', 'toronto_data']:
-        if app_label in ['extraction', 'analysis', 'orchestration']:
+        if app_label in self.route_app_labels:
             return db == 'default'
         return None
 

@@ -66,7 +66,7 @@ import numpy as np
 import geohash2
 from typing import List, Dict, Optional, Tuple
 from haversine import haversine, Unit
-from extraction.services.regional_path_service import normalize_country_name
+from core.services.snapshot.regional_path_service import normalize_country_name
 
 logger = logging.getLogger(__name__)
 # TODO Maybe load these params in a yaml file, that way we can use them in the notebook.
@@ -439,7 +439,7 @@ class SpatialLinkPredictionService:
         country_tokens = None
         bbox_applied = False
         if country and not polygon_wkt:
-            from extraction.services import osm_wikidata_resolver
+            from core.services.planet_init import osm_wikidata_resolver
 
             country_tokens = set()
             country_upper = country.upper()
@@ -492,7 +492,7 @@ class SpatialLinkPredictionService:
                 bbox = None
                 try:
                     from django.db import models
-                    from orchestration.models import CountryPipelineProfile
+                    from core.models import CountryPipelineProfile
 
                     profile = (
                         CountryPipelineProfile.objects.filter(
@@ -889,7 +889,7 @@ class SpatialLinkPredictionService:
 
         Args:
             links:        output of predict_links_batch
-            snapshot_id:  UUID of the source TemporalSnapshot
+            snapshot_id:  UUID of the source Snapshot
             country_name: Country name for self-describing data
             method:       embedding method identifier (unused, kept for compatibility)
 

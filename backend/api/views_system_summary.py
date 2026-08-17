@@ -95,8 +95,8 @@ class SystemSummaryView(APIView):
     # ── Embeddings ──────────────────────────────────────────────────────
 
     def _get_embeddings_info(self):
-        from orchestration.models import CountryPipelineProfile, PipelineRun
-        from extraction.models import OSMWikiDataHierarchy
+        from core.models import CountryPipelineProfile, PipelineRun
+        from core.models import OSMWikiDataHierarchy
 
         total = CountryPipelineProfile.objects.count()
         with_embeddings = CountryPipelineProfile.objects.filter(has_embeddings=True).count()
@@ -217,7 +217,7 @@ class SystemSummaryView(APIView):
     # ── Pipeline runs ───────────────────────────────────────────────────
 
     def _get_pipeline_run_info(self):
-        from orchestration.models import PipelineRun
+        from core.models import PipelineRun
 
         completed = PipelineRun.objects.filter(
             status__in=["COMPLETED", "SUCCESS"]
@@ -253,7 +253,7 @@ class SystemSummaryView(APIView):
         These are idempotent — we check if the output data exists rather
         than tracking a separate status flag.
         """
-        from orchestration.models import CountryPipelineProfile, PipelineRun
+        from core.models import CountryPipelineProfile, PipelineRun
 
         # enrich_worldkg_classes: check if any entities have worldkg_class in Redis
         # or if the ontology TTL was loaded (we check by seeing if any profiles
@@ -274,11 +274,11 @@ class SystemSummaryView(APIView):
         )
 
         # prebuild_subgraphs: any SubgraphProfile records exist
-        from orchestration.models import SubgraphProfile
+        from core.models import SubgraphProfile
         subgraph_ok = SubgraphProfile.objects.count() > 0
 
         # prebuild_wikidata_ids: OSMWikiDataHierarchy has Q-IDs
-        from extraction.models import OSMWikiDataHierarchy
+        from core.models import OSMWikiDataHierarchy
         wikidata_ok = (
             OSMWikiDataHierarchy.objects.exclude(wikidata_id__isnull=True)
             .exclude(wikidata_id="")

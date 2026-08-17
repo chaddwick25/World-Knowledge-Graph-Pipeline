@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple
 from django.db.models import Q
-from extraction.models import ProjectionWeightAsset
+from core.models import ProjectionWeightAsset
 from igea.models import EntityAlignment
 from worldkg_nca.models import OsmEntity
 

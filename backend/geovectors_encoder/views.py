@@ -2,8 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from orchestration.models import Task, ProcessingSession
-from extraction.services.osm_wikidata_resolver import get_country_by_name
+from core.models import Task, ProcessingSession
+from core.services.planet_init.osm_wikidata_resolver import get_country_by_name
 
 import logging
 import threading

@@ -2,7 +2,6 @@ import numpy as np
 from tqdm import tqdm
 from multiprocessing import Process
 import osmium
-from copy import deepcopy
 import setproctitle
 from argparse import Namespace
 
@@ -190,10 +189,16 @@ class DependencyGeomHandler(osmium.SimpleHandler):
                  relation_ways,
                  relation_relations):
         osmium.SimpleHandler.__init__(self)
-        self.way_nodes = deepcopy(way_nodes)
-        self.relation_nodes = deepcopy(relation_nodes)
-        self.relation_ways = deepcopy(relation_ways)
-        self.relation_relations = deepcopy(relation_relations)
+        # Take ownership of the dicts directly — no deepcopy.
+        # The handler consumes keys (deletes resolved entries) and may add
+        # new keys (when a way/relation member is discovered).  The caller
+        # snapshots the original key sets before each pass so it can
+        # distinguish old-unresolved keys from newly-discovered keys
+        # after the PBF read, without doubling memory via deepcopy.
+        self.way_nodes = way_nodes
+        self.relation_nodes = relation_nodes
+        self.relation_ways = relation_ways
+        self.relation_relations = relation_relations
         self.way_coords = way_coords
         self.relation_coords = relation_coords
 
@@ -256,13 +261,6 @@ def concat_data(sample_dict, coord_dict):
     return result
 
 
-def remove_old_key(new_dict, old_dict):
-    for k in old_dict:
-        if k in new_dict:
-            del new_dict[k]
-    return new_dict
-
-
 def read_from_snapshot(path, targets=None, writer=None, max_runs=float('inf'), chunk_size=20000):
     """
     Streaming version that processes OSM entities in chunks to prevent OOM.
@@ -298,6 +296,15 @@ def read_from_snapshot(path, targets=None, writer=None, max_runs=float('inf'), c
     current_run = 0
     while (len(way_nodes) > 0 or len(relation_nodes) > 0 or len(relation_ways) > 0 or len(relation_relations)) \
             and current_run < max_runs:
+        # Snapshot original key sets so we can distinguish old-unresolved
+        # keys from newly-discovered keys after the PBF pass — replaces the
+        # former deepcopy() which doubled memory for no correctness benefit.
+        # A set of int keys is orders of magnitude smaller than a full copy
+        # of {int: set(int)} dicts.
+        old_relation_nodes_keys = set(relation_nodes.keys())
+        old_relation_ways_keys = set(relation_ways.keys())
+        old_relation_relations_keys = set(relation_relations.keys())
+
         dep_handler = DependencyGeomHandler(way_coords,
                                             relation_coords,
                                             way_nodes,
@@ -307,10 +314,18 @@ def read_from_snapshot(path, targets=None, writer=None, max_runs=float('inf'), c
         setproctitle.setproctitle("Dependency handler pass"+str(current_run) + " " + path)
 
         dep_handler.apply_file(path)
+        # way_nodes is read-only in the handler (never added to), so all
+        # remaining keys are unresolved — drop them.
         way_nodes = {}
-        relation_nodes = remove_old_key(dep_handler.relation_nodes, relation_nodes)
-        relation_ways = remove_old_key(dep_handler.relation_ways, relation_ways)
-        relation_relations = remove_old_key(dep_handler.relation_relations, relation_relations)
+        # Keep only NEW keys (discovered during this pass via way/relation
+        # member expansion).  Old keys that weren't consumed are unresolved
+        # and dropped — same behavior as the former remove_old_key().
+        relation_nodes = {k: v for k, v in dep_handler.relation_nodes.items()
+                          if k not in old_relation_nodes_keys}
+        relation_ways = {k: v for k, v in dep_handler.relation_ways.items()
+                         if k not in old_relation_ways_keys}
+        relation_relations = {k: v for k, v in dep_handler.relation_relations.items()
+                              if k not in old_relation_relations_keys}
         current_run += 1
 
     w_data = concat_data(w_data, way_coords)

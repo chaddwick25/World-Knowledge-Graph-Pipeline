@@ -7,14 +7,14 @@ from .serializers import ProjectionWeightAssetSerializer
 
 
 class ProjectionWeightAssetListView(generics.ListAPIView):
-    from extraction.models import ProjectionWeightAsset
+    from core.models import ProjectionWeightAsset
     queryset = ProjectionWeightAsset.objects.all().order_by("country_code", "region_name")
     serializer_class = ProjectionWeightAssetSerializer
 
 
 class ProjectionWeightAssetDetailView(APIView):
     def get(self, request, country_code, *args, **kwargs):
-        from extraction.models import ProjectionWeightAsset
+        from core.models import ProjectionWeightAsset
         asset = (
             ProjectionWeightAsset.objects.filter(country_code__iexact=country_code)
             .order_by("-updated_at")
@@ -26,7 +26,7 @@ class ProjectionWeightAssetDetailView(APIView):
         return Response(serializer.data)
 
     def delete(self, request, country_code, *args, **kwargs):
-        from extraction.models import ProjectionWeightAsset
+        from core.models import ProjectionWeightAsset
         assets = ProjectionWeightAsset.objects.filter(country_code__iexact=country_code)
         deleted, _ = assets.delete()
         return Response({"deleted": deleted}, status=status.HTTP_200_OK)
@@ -61,7 +61,7 @@ class ProjectionWeightLearnView(APIView):
         call_command("learn_projection_weights", *cmd_args)
 
         # Return latest asset for this country if it exists
-        from extraction.models import ProjectionWeightAsset
+        from core.models import ProjectionWeightAsset
         asset = (
             ProjectionWeightAsset.objects.filter(country_code__iexact=iso_code or country)
             .order_by("-updated_at")

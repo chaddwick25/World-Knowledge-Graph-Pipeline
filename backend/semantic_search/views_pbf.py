@@ -18,8 +18,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from extraction.models import PbfFile
-from api.models import TemporalSnapshot
+from core.models import PbfFile
+from api.models import Snapshot
 from worldkg_nca.models import OsmEntity
 from .services.fasttext_service import FastTextEmbeddingService
 
@@ -40,8 +40,8 @@ class SnapshotHybridSearchView(APIView):
     
     def get(self, request, snapshot_id):
         try:
-            snapshot = TemporalSnapshot.objects.get(id=snapshot_id)
-        except TemporalSnapshot.DoesNotExist:
+            snapshot = Snapshot.objects.get(id=snapshot_id)
+        except Snapshot.DoesNotExist:
             return Response({
                 'error': 'Snapshot not found',
                 'snapshot_id': str(snapshot_id)
@@ -57,8 +57,8 @@ class SnapshotHybridSearchView(APIView):
                 'error': 'No trained embeddings for this snapshot',
                 'snapshot': {
                     'id': str(snapshot.id),
-                    'region': snapshot.region,
-                    'timestamp': snapshot.timestamp.isoformat()
+                    'region': snapshot.country_code,
+                    'timestamp': snapshot.snapshot_date
                 }
             }, status=status.HTTP_404_NOT_FOUND)
         
@@ -100,8 +100,8 @@ class SnapshotHybridSearchView(APIView):
         return Response({
             'snapshot': {
                 'id': str(snapshot.id),
-                'region': snapshot.region,
-                'timestamp': snapshot.timestamp.isoformat(),
+                'region': snapshot.country_code,
+                'timestamp': snapshot.snapshot_date,
                 'entity_count': entity_count
             },
             'query': {
@@ -137,8 +137,8 @@ class SnapshotGVTagsSearchView(APIView):
     
     def get(self, request, snapshot_id):
         try:
-            snapshot = TemporalSnapshot.objects.get(id=snapshot_id)
-        except TemporalSnapshot.DoesNotExist:
+            snapshot = Snapshot.objects.get(id=snapshot_id)
+        except Snapshot.DoesNotExist:
             return Response({
                 'error': 'Snapshot not found'
             }, status=status.HTTP_404_NOT_FOUND)
@@ -168,8 +168,8 @@ class SnapshotGVTagsSearchView(APIView):
         return Response({
             'snapshot': {
                 'id': str(snapshot.id),
-                'region': snapshot.region,
-                'timestamp': snapshot.timestamp.isoformat()
+                'region': snapshot.country_code,
+                'timestamp': snapshot.snapshot_date
             },
             'results': [{
                 'osm_id': e.osm_id,
@@ -193,8 +193,8 @@ class SnapshotGVNLESearchView(APIView):
     
     def get(self, request, snapshot_id):
         try:
-            snapshot = TemporalSnapshot.objects.get(id=snapshot_id)
-        except TemporalSnapshot.DoesNotExist:
+            snapshot = Snapshot.objects.get(id=snapshot_id)
+        except Snapshot.DoesNotExist:
             return Response({
                 'error': 'Snapshot not found'
             }, status=status.HTTP_404_NOT_FOUND)
@@ -234,8 +234,8 @@ class SnapshotGVNLESearchView(APIView):
         return Response({
             'snapshot': {
                 'id': str(snapshot.id),
-                'region': snapshot.region,
-                'timestamp': snapshot.timestamp.isoformat()
+                'region': snapshot.country_code,
+                'timestamp': snapshot.snapshot_date
             },
             'reference': {
                 'osm_id': reference_entity.osm_id,
@@ -277,11 +277,11 @@ class SnapshotListView(APIView):
         results = []
         for stat in snapshot_stats:
             try:
-                snapshot = TemporalSnapshot.objects.get(id=stat['source_snapshot_id'])
+                snapshot = Snapshot.objects.get(id=stat['source_snapshot_id'])
                 results.append({
                     'id': str(snapshot.id),
-                    'region': snapshot.region,
-                    'timestamp': snapshot.timestamp.isoformat(),
+                    'region': snapshot.country_code,
+                    'timestamp': snapshot.snapshot_date,
                     'snapshot_interval': snapshot.snapshot_interval,
                     'pbf_file': {
                         'id': str(snapshot.pbf_file.id),
@@ -293,7 +293,7 @@ class SnapshotListView(APIView):
                         'last_trained': stat['last_trained'].isoformat()
                     }
                 })
-            except TemporalSnapshot.DoesNotExist:
+            except Snapshot.DoesNotExist:
                 continue
         
         return Response({
@@ -426,7 +426,7 @@ class PbfListView(APIView):
         pbf_map = {}
         for snapshot_id in snapshot_ids:
             try:
-                snapshot = TemporalSnapshot.objects.get(id=snapshot_id)
+                snapshot = Snapshot.objects.get(id=snapshot_id)
                 if snapshot.pbf_file:
                     pbf_id = str(snapshot.pbf_file.id)
                     if pbf_id not in pbf_map:
@@ -435,7 +435,7 @@ class PbfListView(APIView):
                             'snapshot_ids': []
                         }
                     pbf_map[pbf_id]['snapshot_ids'].append(snapshot_id)
-            except TemporalSnapshot.DoesNotExist:
+            except Snapshot.DoesNotExist:
                 continue
         
         # Get entity counts per PBF

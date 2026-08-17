@@ -135,7 +135,8 @@ class PipelineTask(_TaskBase):
         # Mark linked SnapshotJob as FAILED (DB ground truth)
         if inv.get("run_id"):
             try:
-                from orchestration.models import PipelineRun, SnapshotJob
+                from core.models import PipelineRun
+                from osmsnapshot.models import SnapshotJob
                 run = PipelineRun.objects.filter(id=inv["run_id"]).first()
                 if run is not None:
                     for job in SnapshotJob.objects.filter(pipeline_run=run):

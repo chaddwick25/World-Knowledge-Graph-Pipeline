@@ -46,8 +46,6 @@ class IgeaPipelineService:
             parse_poly_to_wkt,
             WikidataCandidateService,
         )
-
-        # TODO: Double-check the threshold
         igea = IterativeEntityAlignmentService(
             max_iterations=3,
             threshold=0.6,
