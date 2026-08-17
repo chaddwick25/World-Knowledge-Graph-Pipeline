@@ -449,6 +449,12 @@ SELECT ?entity ?typeUri WHERE {{
             for cls_name in all_classes:
                 wd_uri = self.ontology_service.get_wikidata_equivalent(cls_name)
                 if wd_uri:
+                    # Normalize /wiki/ to /entity/ — Wikidata's SPARQL endpoint
+                    # returns entity URIs as http://www.wikidata.org/entity/Q...
+                    # but the ontology TTL stores them as /wiki/Q...
+                    wd_uri = wd_uri.replace(
+                        "www.wikidata.org/wiki/", "www.wikidata.org/entity/"
+                    )
                     self._wikidata_to_wkg[wd_uri] = cls_name
             logger.info(
                 f"WikidataCandidate: NCA reverse map built "

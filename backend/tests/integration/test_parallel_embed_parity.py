@@ -113,14 +113,10 @@ def _run_embed(workers: int, iso: str) -> Dict:
     env.snapshot_date = f"{env.snapshot_date}_{suffix}"
 
     os.environ["PARALLEL_UPSERT_WORKERS"] = str(workers)
-    # Drop/rebuild indexes for parity (both runs do the same work).
-    drop = getattr(settings, "DROP_INDEXES_DURING_LOAD", "auto")
-    drop_flag = drop in (True, "true", "1", "auto")
 
     service = EmbeddingService(embeddings_root=getattr(settings, "EMBEDDINGS_ROOT", "/app/data/embeddings"))
     return service.run(
         env,
-        drop_indexes_during_load=drop_flag,
         skip_post_process=True,
     )
 

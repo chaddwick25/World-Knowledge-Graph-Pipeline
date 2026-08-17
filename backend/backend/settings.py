@@ -190,8 +190,8 @@ COLD_STORAGE_PATH = os.getenv('COLD_STORAGE_PATH', COLD_STORAGE_BASE_DIR)
 # USLP (Unsupervised Spatial Link Prediction) Configuration
 USLP_THRESHOLD = float(os.getenv('USLP_THRESHOLD', '0.7'))
 USLP_TOP_K = int(os.getenv('USLP_TOP_K', '50'))
-USLP_LIMIT = int(os.getenv('USLP_LIMIT', '10000000'))
-USLP_MAX_HEADS = int(os.getenv('USLP_MAX_HEADS', '10000000'))
+USLP_LIMIT = int(os.getenv('USLP_LIMIT', '1000000000'))
+USLP_MAX_HEADS = int(os.getenv('USLP_MAX_HEADS', '1000000000'))
 # USLP_USE_GPU: 'auto' (default), 'true', or 'false'
 USLP_USE_GPU = os.getenv('USLP_USE_GPU', 'true').lower()
 USLP_GPU_DEVICE = os.getenv('USLP_GPU_DEVICE', 'cuda:0')
@@ -200,14 +200,24 @@ USLP_USE_FP64 = os.getenv('USLP_USE_FP64', 'false').lower() == 'true'
 CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:6379/0"
 
 # ── Celery Result Backend ──
-# Use Django's SQL DB via django-celery-results for durable, queryable task
-# results. Redis remains the broker (DB 0) for task routing.
-CELERY_RESULT_BACKEND = "django-db"
-# Keep the Redis URL fallback available for environments that have not yet
-# adopted the SQL result backend.
-CELERY_RESULT_BACKEND_URL = os.environ.get(
-    "CELERY_RESULT_BACKEND_URL",
-    f"redis://{os.getenv('REDIS_HOST', 'localhost')}:6379/1"
+# Custom Django DB backend with chord-in-chain fix.
+#
+# django-celery-results 2.0.0's DatabaseBackend has a bug where
+# ChordCounter records are not reliably created for chords embedded in a
+# chain (Step 5 NLE chord). This caused on_chord_part_return to raise
+# ChordCounter.DoesNotExist, marking tasks as FAILURE and triggering
+# re-delivery — each subgraph was trained 2-7x instead of once (Norway:
+# 9h47m instead of ~4h50m).
+#
+# Our PatchedDatabaseBackend (pipeline/celery_results_backend.py) fixes
+# this by replacing ChordCounter with the standard Celery
+# fallback_chord_unlock() polling task. TaskResult records are still
+# written to Django's DB, so /api/task-results/<run_id>/ works.
+#
+# See: docs/issues/CHORDCOUNTER_DOES_NOT_EXIST_BUG.md
+CELERY_RESULT_BACKEND = os.environ.get(
+    "CELERY_RESULT_BACKEND",
+    "pipeline.celery_results_backend:PatchedDatabaseBackend",
 )
 # Results expire after 48 hours (matches longest pipeline run + buffer)
 CELERY_RESULT_EXPIRES = 60 * 60 * 48  # 48 hours

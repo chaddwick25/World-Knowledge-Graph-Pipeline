@@ -45,27 +45,17 @@ class EmbeddingService:
     def __init__(self, embeddings_root: Path) -> None:
         self.embeddings_root = Path(embeddings_root)
 
-    def run(self, cfg: "CountryEnvelope", drop_indexes_during_load: bool = False,
+    def run(self, cfg: "CountryEnvelope",
             pbf_path_override: str = None,
-            skip_index_drop: bool = False,
-            skip_index_rebuild: bool = False,
             skip_post_process: bool = False) -> Dict:
         """Run the embedding pipeline for a country.
 
         Args:
             cfg: CountryEnvelope with snapshot_pbf_path, pickle_path,
                  has_pretrained_nle, iso, snapshot_date, etc.
-            drop_indexes_during_load: If True, drop HNSW vector indexes
-                HNSW) before the bulk upsert and rebuild them in parallel
-                after.  Gives 3-5x faster upserts for large countries
-                (Phase 5 of OSMENTITY_MONOLITH_OPTIMIZATION.md).
             pbf_path_override: If set, read from this PBF instead of
                 ``cfg.snapshot_pbf_path``.  Used by parallel subgraph upsert
                 tasks to read per-subgraph PBFs.
-            skip_index_drop: If True, skip dropping indexes (coordinated by
-                the caller for parallel subgraph upserts).
-            skip_index_rebuild: If True, skip rebuilding indexes (coordinated
-                by the caller for parallel subgraph upserts).
             skip_post_process: If True, skip WorldKG enrichment + entropy
                 computation (done by the caller after all subgraphs complete).
 
@@ -111,62 +101,54 @@ class EmbeddingService:
                 cfg.iso,
             )
 
-        should_drop = drop_indexes_during_load and not skip_index_drop
-        if should_drop:
-            self._drop_vector_indexes(cfg.iso, cfg.snapshot_date)
-
-        try:
-            if use_parallel:
-                if cfg.has_pretrained_nle and cfg.pickle_path:
-                    entity_count = self._run_parallel_dual(
-                        cfg, pbf_path, workers, queue_depth,
-                    )
-                else:
-                    entity_count = self._run_parallel(
-                        cfg, pbf_path, workers, queue_depth,
-                    )
+        if use_parallel:
+            if cfg.has_pretrained_nle and cfg.pickle_path:
+                entity_count = self._run_parallel_dual(
+                    cfg, pbf_path, workers, queue_depth,
+                )
             else:
-                # === legacy single-threaded path (unchanged behavior) ===
-                ft_model = FastTextModel()
-                tags_storage = VectorStorageService(
-                    model_type="tags", version=cfg.snapshot_date,
-                    snapshot_id=cfg.snapshot_date, country_code=cfg.iso,
+                entity_count = self._run_parallel(
+                    cfg, pbf_path, workers, queue_depth,
                 )
+        else:
+            # === legacy single-threaded path (unchanged behavior) ===
+            ft_model = FastTextModel()
+            tags_storage = VectorStorageService(
+                model_type="tags", version=cfg.snapshot_date,
+                snapshot_id=cfg.snapshot_date, country_code=cfg.iso,
+            )
 
-                if cfg.has_pretrained_nle and cfg.pickle_path:
+            if cfg.has_pretrained_nle and cfg.pickle_path:
+                logger.info(
+                    "Dual encoding mode (FastText + NLE from pickle) [pickle_path=%s country=%s]",
+                    cfg.pickle_path, cfg.iso,
+                )
+                writer, nle_storage = self._build_dual_writer(cfg, ft_model, tags_storage)
+            else:
+                if not cfg.has_pretrained_nle:
                     logger.info(
-                        "Dual encoding mode (FastText + NLE from pickle) [pickle_path=%s country=%s]",
-                        cfg.pickle_path, cfg.iso,
+                        "FastText-only mode (no pre-trained NLE model) [country=%s]",
+                        cfg.iso,
                     )
-                    writer, nle_storage = self._build_dual_writer(cfg, ft_model, tags_storage)
-                else:
-                    if not cfg.has_pretrained_nle:
-                        logger.info(
-                            "FastText-only mode (no pre-trained NLE model) [country=%s]",
-                            cfg.iso,
-                        )
-                    writer = DBOnlyWriter(ft_model, tags_storage)
-                    nle_storage = None
+                writer = DBOnlyWriter(ft_model, tags_storage)
+                nle_storage = None
 
-                n_data, w_data, r_data = read_from_snapshot(
-                    pbf_path, writer=writer, max_runs=2,
-                )
-                for record in itertools.chain(w_data, r_data):
-                    writer.add_line(record)
-                tags_storage.flush()
-                if nle_storage:
-                    nle_storage.flush()
-                    # NLEModel doesn't expose destroy in all versions; guard it
-                    try:
-                        if hasattr(writer, "nle_encoder") and hasattr(writer.nle_encoder, "destroy"):
-                            writer.nle_encoder.destroy()
-                    except Exception:
-                        pass
-                entity_count = len(n_data) + len(w_data) + len(r_data)
-                # === end legacy single-threaded path ===
-        finally:
-            if should_drop and not skip_index_rebuild:
-                self._rebuild_vector_indexes(cfg.iso, cfg.snapshot_date)
+            n_data, w_data, r_data = read_from_snapshot(
+                pbf_path, writer=writer, max_runs=2,
+            )
+            for record in itertools.chain(w_data, r_data):
+                writer.add_line(record)
+            tags_storage.flush()
+            if nle_storage:
+                nle_storage.flush()
+                # NLEModel doesn't expose destroy in all versions; guard it
+                try:
+                    if hasattr(writer, "nle_encoder") and hasattr(writer.nle_encoder, "destroy"):
+                        writer.nle_encoder.destroy()
+                except Exception:
+                    pass
+            entity_count = len(n_data) + len(w_data) + len(r_data)
+            # === end legacy single-threaded path ===
 
         if skip_post_process:
             return {
@@ -185,51 +167,6 @@ class EmbeddingService:
             "has_nle": cfg.has_pretrained_nle,
             "entity_count": entity_count,
         }
-
-    def _drop_vector_indexes(self, country_code: str, snapshot_id: str) -> None:
-        """Drop HNSW indexes for fast bulk load (no per-row maintenance).
-
-        Per-leaf scoped (PER_LEAF_INDEX_LIFECYCLE_PLAN.md §3.1): only the
-        current country's leaf partition is touched, so other countries'
-        search stays online during this upsert.
-        """
-        from django.core.management import call_command
-
-        logger.info(
-            "Dropping HNSW indexes on leaf %s_%s for bulk load...",
-            snapshot_id, country_code,
-        )
-        call_command(
-            "drop_osmentity_vector_indexes",
-            country=country_code, snapshot=snapshot_id,
-        )
-        logger.info("Vector indexes dropped.")
-
-    def _rebuild_vector_indexes(self, country_code: str, snapshot_id: str) -> None:
-        """Rebuild HNSW indexes after bulk load (per-leaf scoped).
-
-        Per-leaf scoped (PER_LEAF_INDEX_LIFECYCLE_PLAN.md §3.1-3.2): only the
-        current country's leaf is rebuilt, so the cost scales with the country
-        being upserted, not the total rows across all countries.
-
-        NOTE: the `static_embedding` HNSW index is NOT rebuilt here.  It is
-        only meaningful after Step 5 (GV-NLE training) populates
-        `static_embedding`.  Build it via `compute_static_embeddings` +
-        `create_static_embedding_hnsw_index` after Step 5, or wire it into
-        Step 6 in a future change.  Rebuilding it in Step 1 was wasted work
-        (mostly-NULL rows).
-        """
-        from django.core.management import call_command
-
-        logger.info(
-            "Rebuilding HNSW indexes on leaf %s_%s...",
-            snapshot_id, country_code,
-        )
-        call_command(
-            "create_osmentity_vector_indexes",
-            country=country_code, snapshot=snapshot_id,
-        )
-        logger.info("Vector indexes rebuilt.")
 
     def _build_dual_writer(self, cfg, ft_model, tags_storage):
         """Build a DualEncodingWriter for the FastText + NLE path.
@@ -435,7 +372,7 @@ def _parallel_upsert_workers() -> int:
 
     Set to 1 to force the legacy single-threaded path.
     """
-    return max(1, _env_int("PARALLEL_UPSERT_WORKERS", 8))
+    return max(1, _env_int("PARALLEL_UPSERT_WORKERS", 1))
 
 
 def _parallel_upsert_queue_depth() -> int:

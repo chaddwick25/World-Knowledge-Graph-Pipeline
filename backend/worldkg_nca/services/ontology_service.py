@@ -56,6 +56,8 @@ class WorldKGOntologyService:
         self._class_superclasses: Dict[str, List[str]] = {}
         self._class_wikidata: Dict[str, str] = {}
         self._legacy_tags_index: Dict[str, Dict[str, str]] = {}
+        self._class_to_key_value: Dict[str, tuple] = {}
+        self._key_class_index_reverse: Dict[str, str] = {}
     
     def _class_key(self, class_name: str, suffix: str) -> str:
         """Generate Redis key for class metadata."""
@@ -324,6 +326,8 @@ class WorldKGOntologyService:
         self._class_superclasses.clear()
         self._class_wikidata.clear()
         self._legacy_tags_index.clear()
+        self._class_to_key_value.clear()
+        self._key_class_index_reverse.clear()
 
         for class_name in all_classes:
             osm_key = self.get_canonical_osm_key(class_name)
@@ -344,8 +348,11 @@ class WorldKGOntologyService:
             if osm_key:
                 if osm_value:
                     self._key_value_index.setdefault(osm_key, {})[osm_value] = class_name
+                    if class_name not in self._class_to_key_value:
+                        self._class_to_key_value[class_name] = (osm_key, osm_value)
                 else:
                     self._key_class_index[osm_key] = class_name
+                    self._key_class_index_reverse[class_name] = osm_key
 
         self._index_built = True
         logger.info(
@@ -422,6 +429,8 @@ class WorldKGOntologyService:
         self._class_superclasses.clear()
         self._class_wikidata.clear()
         self._legacy_tags_index.clear()
+        self._class_to_key_value.clear()
+        self._key_class_index_reverse.clear()
         logger.info(f"Cleared {len(keys)} WorldKG ontology keys from Redis")
 
 

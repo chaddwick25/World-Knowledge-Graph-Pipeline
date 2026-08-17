@@ -7,7 +7,6 @@ Preprocessing + GV-Tags + provisional GV-NLE + entropy gate + subgraph fan-out.
 from __future__ import annotations
 
 import dataclasses
-import os
 from pathlib import Path
 import logging
 
@@ -26,54 +25,6 @@ from pipeline.tasks.helper import (
 )
 
 logger = logging.getLogger("pipeline")
-
-
-def _should_drop_indexes_during_load(iso: str) -> bool:
-    """Decide whether to drop/rebuild vector indexes during the bulk load.
-
-    Controlled by the ``DROP_INDEXES_DURING_LOAD`` env var:
-      - ``auto`` (default): True when ``semantic_search_osmentity`` is
-        partitioned (runtime ``pg_partitioned_table`` check).  On a fresh DB
-        (monolith, not yet partitioned) returns False — there's no HNSW to
-        drop.  After the first country's Step 1 converts the monolith to a
-        partitioned table, returns True for all subsequent runs.
-      - ``true`` / ``1`` / ``yes``:   Always drop/rebuild
-      - ``false`` / ``0`` / ``no``:   Never drop/rebuild
-
-    Per PER_LEAF_INDEX_LIFECYCLE_PLAN.md §3.3 — the ``auto`` mode previously
-    hardcoded to True; this makes the code match the docs (and the
-    ``.devin/rules.md`` §2.8 description).
-    """
-    mode = os.environ.get("DROP_INDEXES_DURING_LOAD", "auto").lower()
-    if mode in ("true", "1", "yes"):
-        return True
-    if mode in ("false", "0", "no"):
-        return False
-    # auto: check if the table is partitioned at runtime.
-    from django.db import connections
-    try:
-        with connections['vectors'].cursor() as cursor:
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_partitioned_table pt
-                    JOIN pg_class c ON c.oid = pt.partrelid
-                    JOIN pg_namespace n ON c.relnamespace = n.oid
-                    WHERE n.nspname = 'public'
-                      AND c.relname = 'semantic_search_osmentity'
-                );
-            """)
-            return bool(cursor.fetchone()[0])
-    except Exception:
-        # If the vectors DB isn't reachable (e.g. unit tests without a DB),
-        # fall back to the safe default: don't drop.  This matches the
-        # monolith case — no HNSW to drop.
-        logger.warning(
-            "auto mode: pg_partitioned_table check failed for %s; "
-            "defaulting to no drop",
-            iso,
-            exc_info=True,
-        )
-        return False
 
 
 @pipeline_task(
@@ -138,6 +89,7 @@ def step_1_embed_osm_entities(self, env: CountryEnvelope) -> CountryEnvelope:
             snapshot=env.snapshot_date,
             skip_data=True,
             skip_mv=True,
+            skip_hnsw=True,
         )
     except Exception as exc:
         _log(
@@ -153,18 +105,7 @@ def step_1_embed_osm_entities(self, env: CountryEnvelope) -> CountryEnvelope:
     preprocess_snapshot(env, logger=logger)
 
     from extraction.services.embedding_service import EmbeddingService
-    drop_indexes = _should_drop_indexes_during_load(env.iso)
-    if drop_indexes:
-        _log(
-            logger,
-            "info",
-            "Drop-indexes-during-load enabled for bulk upsert",
-            country=env.iso,
-            pipeline_run_id=env.pipeline_run_id,
-        )
-    result = EmbeddingService(Path(settings.EMBEDDINGS_ROOT)).run(
-        env, drop_indexes_during_load=drop_indexes,
-    )
+    result = EmbeddingService(Path(settings.EMBEDDINGS_ROOT)).run(env)
 
     _log(
         logger,

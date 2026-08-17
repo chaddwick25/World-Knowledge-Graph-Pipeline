@@ -12,11 +12,11 @@ Implements the test plan from
 - ``create_osmentity_vector_indexes --country ni --snapshot 2025_12_31``:
   - Creates HNSW only on ``embeddings_2025_12_31_ni``
   - Does NOT create HNSW on other leaves
-- ``_should_drop_indexes_during_load`` with ``auto``:
-  - Returns ``True`` when ``pg_partitioned_table`` row exists
-  - Returns ``False`` when it doesn't (monolith)
-  - Returns ``True`` for ``true``/``1``/``yes`` regardless
-  - Returns ``False`` for ``false``/``0``/``no`` regardless
+
+Note: Step 1 no longer drops/rebuilds indexes during the bulk load.
+The management commands remain for manual operator use. The
+``_should_drop_indexes_during_load`` function and its tests were removed
+when the Step 1 index lifecycle was eliminated.
 
 These tests do NOT touch the database — ``connections['vectors']`` is
 stubbed so the SQL the commands issue is captured and inspected.
@@ -107,10 +107,7 @@ def stub_vectors(monkeypatch):
 
     The management commands import ``connections`` at module load time
     (``from django.db import connections``), so we patch the attribute on
-    each consumer module.  The step_1_embed helper does a *lazy* import
-    inside ``_should_drop_indexes_during_load`` (``from django.db import
-    connections``), so we also patch ``django.db.connections`` to cover
-    that path.
+    each consumer module.
     """
     conn = StubConnection()
     stub = StubConnections(conn)
@@ -320,74 +317,3 @@ class TestCreateGlobal:
         create_sqls = [s for s in sqls if "CREATE INDEX CONCURRENTLY" in s]
         assert len(create_sqls) == 1
         assert "embeddings_2025_12_31_jm" in create_sqls[0]
-
-
-# --------------------------------------------------------------------------- #
-# _should_drop_indexes_during_load — auto mode runtime check
-# --------------------------------------------------------------------------- #
-
-class TestShouldDropIndexesDuringLoad:
-    """``auto`` mode does the runtime ``pg_partitioned_table`` check."""
-
-    @pytest.mark.unit
-    def test_true_values_always_drop(self, monkeypatch):
-        from pipeline.tasks.country_pipeline_steps.step_1_embed import (
-            _should_drop_indexes_during_load,
-        )
-        for val in ("true", "1", "yes", "TRUE", "Yes"):
-            monkeypatch.setenv("DROP_INDEXES_DURING_LOAD", val)
-            assert _should_drop_indexes_during_load("ni") is True
-
-    @pytest.mark.unit
-    def test_false_values_never_drop(self, monkeypatch):
-        from pipeline.tasks.country_pipeline_steps.step_1_embed import (
-            _should_drop_indexes_during_load,
-        )
-        for val in ("false", "0", "no", "FALSE", "No"):
-            monkeypatch.setenv("DROP_INDEXES_DURING_LOAD", val)
-            assert _should_drop_indexes_during_load("ni") is False
-
-    @pytest.mark.unit
-    def test_auto_returns_true_when_partitioned(self, stub_vectors, monkeypatch):
-        monkeypatch.setenv("DROP_INDEXES_DURING_LOAD", "auto")
-        stub_vectors._cursor.results = [[True]]   # EXISTS → true
-        from pipeline.tasks.country_pipeline_steps.step_1_embed import (
-            _should_drop_indexes_during_load,
-        )
-        assert _should_drop_indexes_during_load("ni") is True
-        # And the check actually ran the partitioned-table query.
-        assert any(
-            "pg_partitioned_table" in sql
-            for sql, _ in stub_vectors._cursor.executed
-        )
-
-    @pytest.mark.unit
-    def test_auto_returns_false_when_monolith(self, stub_vectors, monkeypatch):
-        """On a fresh DB (monolith, not partitioned) auto → no drop."""
-        monkeypatch.setenv("DROP_INDEXES_DURING_LOAD", "auto")
-        stub_vectors._cursor.results = [[False]]  # EXISTS → false
-        from pipeline.tasks.country_pipeline_steps.step_1_embed import (
-            _should_drop_indexes_during_load,
-        )
-        assert _should_drop_indexes_during_load("ni") is False
-
-    @pytest.mark.unit
-    def test_auto_defaults_to_false_on_db_error(self, monkeypatch):
-        """If the vectors DB is unreachable, auto falls back to no-drop."""
-        monkeypatch.setenv("DROP_INDEXES_DURING_LOAD", "auto")
-
-        class BoomCursor(StubCursor):
-            def execute(self, sql, params=None):
-                raise RuntimeError("vectors DB not reachable")
-
-        class BoomConnection(StubConnection):
-            def cursor(self):
-                return BoomCursor()
-
-        stub = StubConnections(BoomConnection())
-        import django.db as django_db
-        monkeypatch.setattr(django_db, "connections", stub)
-        from pipeline.tasks.country_pipeline_steps.step_1_embed import (
-            _should_drop_indexes_during_load,
-        )
-        assert _should_drop_indexes_during_load("ni") is False
