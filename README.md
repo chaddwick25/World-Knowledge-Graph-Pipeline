@@ -166,9 +166,9 @@ choices can be traced back to the relevant chapter.
 
   Vector Database Partitioning
     ->  `semantic_search_osmentity` is partitioned: `PARTITION BY LIST (snapshot_id)` → `LIST (country_code)`.
-    ->  Each country gets its own leaf partition (e.g. `embeddings_2025_12_31_ni`) with its own HNSW index.
-    ->  HNSW indexes are dropped before bulk upsert and rebuilt in parallel after (3-5x faster writes).
-    ->  Materialized views (`mv_embeddings_<snap>_<cc>`) provide the query surface for search endpoints.
+    ->  Each country gets its own leaf partition (e.g. `embeddings_2025_12_31_ni`).
+    ->  Step 1 creates leaf partitions with `skip_hnsw=True` — the leaf HNSW index is never built because no query path uses it (all queries use exact search `+ 0`, the materialized view's HNSW, or `static_embedding`). This eliminates per-INSERT HNSW maintenance during bulk upsert (~3x faster writes).
+    ->  Materialized views (`mv_embeddings_<snap>_<cc>`) with their own HNSW index are created in Step 6 and provide the query surface for search endpoints.
     ->  Full details: `docs/plans/VECTOR_DATABASE_PARTITIONING.md`
 
 ---
@@ -179,7 +179,7 @@ choices can be traced back to the relevant chapter.
     -> pgvector uses L2/cosine distance for ANN search over GV-Tags (300D) and GV-NLE (100D) embeddings.
     -> HNSW indexes on `static_embedding` and `gv_tags_embedding` columns enable sub-10ms similarity queries.
     -> The partitioning scheme (per-country leaf partitions) keeps each HNSW index right-sized for the target machine's RAM.
-    -> During bulk upserts, HNSW indexes on leaf partitions are dropped and recreated after loading (14x speedup: 5.5s → 0.4s per 20K batch).
+    -> During bulk upserts, the leaf HNSW index is not created at all (Step 1 passes `skip_hnsw=True`), eliminating per-INSERT HNSW graph maintenance. Upserts run at ~3.5s per 20K batch. The materialized view HNSW (created in Step 6) is the one queries use.
 
   Covariance Matrix & OSM Data Analysis `[COHEN:Ch7]`
     -> The covariance matrix of embedding dimensions reveals correlations in the noisy, heterogeneous OSM tag space.
@@ -239,7 +239,7 @@ choices can be traced back to the relevant chapter.
     -> Pre‑compute configs and primitives - WorldKG primitives (see `docs/Schematics/WorkKG_Primities.md`) are generated once and reused.
     -> Multi‑core processing with Osmium - Osmium‑tool is used to parallelize low‑level extraction work.
     -> Batch processing - Vector generation and spatial link prediction are run in batches rather than one entity at a time.
-    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel. Step 1 upserts all entities into the country leaf partition, then dispatches parallel subgraph tasks that generate NLE pickles (DeepWalk training data). Step 5 trains GV-NLE per subgraph (serialized via per-GPU slot lock). Parallel encode + serial upsert (Approach B — in-process producer/consumer thread pool with N encoding threads and 1 upsert thread) is implemented and enabled by default via `PARALLEL_UPSERT_WORKERS` (default 8); set to 1 for the legacy single-threaded path; see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` and `docs/issues/PARALLEL_UPSERT_REGRESSION.md`. pgvector bulk upsert optimizations (reusable UNLOGGED staging table with TRUNCATE, `SET LOCAL synchronous_commit = off`, `ORDER BY` deterministic lock order) are documented in `docs/plans/PGVECTOR_BULK_UPSERT_OPTIMIZATIONS.md`. Parallel WorldKG enrichment uses `ThreadPoolExecutor` with 8 threads and batch_size=5000 (see `ENRICHMENT_WORKERS` env var).
+    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel. Step 1 upserts all entities into the country leaf partition, then dispatches parallel subgraph tasks that generate NLE pickles (DeepWalk training data). Step 5 trains GV-NLE per subgraph (serialized via per-GPU slot lock). Parallel encode + serial upsert (Approach B — in-process producer/consumer thread pool with N encoding threads and 1 upsert thread) is implemented and enabled by default via `PARALLEL_UPSERT_WORKERS` (default 8); set to 1 for the legacy single-threaded path; see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` and `docs/issues/PARALLEL_UPSERT_REGRESSION.md`. pgvector bulk upsert optimizations (reusable UNLOGGED staging table with TRUNCATE, `SET LOCAL synchronous_commit = off`, `ORDER BY` deterministic lock order) are documented in `docs/plans/completed/PGVECTOR_BULK_UPSERT_OPTIMIZATIONS.md`. WorldKG enrichment uses SQL-side `UPDATE...FROM` join (ontology loaded into a temp table, `jsonb_each_text` expands entity tags, deepest match selected via `ROW_NUMBER() OVER (PARTITION BY)`); ~10x faster than the previous Python `ThreadPoolExecutor` loop — Ireland (2.47M entities) enriched in 2 min 14 sec vs ~60 min with the old path. Chord completion uses a custom `PatchedDatabaseBackend` (`pipeline/celery_results_backend.py`) that replaces the buggy `ChordCounter` mechanism with Celery's standard `fallback_chord_unlock()` polling task — `TaskResult` rows are still written to Django's DB; see `docs/issues/CHORDCOUNTER_DOES_NOT_EXIST_BUG.md` and `docs/Schematics/CELERY_CHORD_ARCHITECTURE.md`.
 
 Next Steps:
 1. Make the project public

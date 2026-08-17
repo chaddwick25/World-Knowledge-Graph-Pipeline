@@ -152,9 +152,13 @@ def enrich_worldkg_classes(cfg: CfgLike, logger: logging.Logger) -> None:
     )
 
     svc = get_worldkg_enrichment_service()
-    svc.batch_enrich_region(
+    ***REMOVED*** Use SQL-side enrichment (UPDATE...FROM join) — ~10x faster
+    ***REMOVED*** than the Python ThreadPoolExecutor path for large countries.
+    ***REMOVED*** Falls back to batch_enrich_region if ontology not loaded.
+    svc.sql_enrich_region(
         region=cfg.iso,
         poly_file=poly_path,
+        snapshot_id=cfg.snapshot_date,
     )
 
 
