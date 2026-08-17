@@ -613,7 +613,7 @@ class IterativeEntityAlignmentService:
         Args:
             country_code: Optional ISO country code for scoped processing
                           (tag-based fallback; prefer polygon_wkt for accuracy).
-            snapshot_id:  UUID of the source TemporalSnapshot for provenance.
+            snapshot_id:  UUID of the source Snapshot for provenance.
             polygon_wkt:  Optional WKT POLYGON string for PostGIS ST_Within
                           spatial filtering — more accurate than country_code
                           because it does not rely on addr:country= OSM tags.

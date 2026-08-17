@@ -44,7 +44,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        from orchestration.models import PipelineRun
+        from core.models import PipelineRun
 
         run_id = options.get('pipeline_run_id')
         country = options.get('country')
@@ -107,7 +107,7 @@ class Command(BaseCommand):
             return
 
         try:
-            from orchestration.models import PipelineRun
+            from core.models import PipelineRun
             run = PipelineRun.objects.get(id=run_id)
         except PipelineRun.DoesNotExist:
             self.stdout.write(

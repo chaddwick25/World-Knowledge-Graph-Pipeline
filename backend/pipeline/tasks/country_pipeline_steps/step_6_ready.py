@@ -88,7 +88,7 @@ def step_6_mark_search_ready(self, env: CountryEnvelope) -> CountryEnvelope:
             pipeline_run_id=env.pipeline_run_id,
         )
 
-    from orchestration.services.search_ready_service import SearchReadyService
+    from core.services.pipeline.search_ready_service import SearchReadyService
     SearchReadyService().run(env)
 
     _log(

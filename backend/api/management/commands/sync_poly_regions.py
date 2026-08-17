@@ -4,7 +4,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import Count
 from django.conf import settings
 from api.models import RegionHierarchy, PbfFile
-from extraction.services.regional_path_service import normalize_continent_slug
+from core.services.snapshot.regional_path_service import normalize_continent_slug
 
 class Command(BaseCommand):
     help = 'Sync polygon file hierarchy with RegionHierarchy and RegionalExtractionState models'
@@ -32,7 +32,7 @@ class Command(BaseCommand):
         ]
 
         def sync_directory(current_path, parent_obj=None):
-            from extraction.models import PolygonFile, RegionalExtractionState
+            from core.models import PolygonFile, RegionalExtractionState
             for item in sorted(current_path.iterdir()):
                 if item.is_dir():
                     if item.name in EXCLUDED_DIRS:

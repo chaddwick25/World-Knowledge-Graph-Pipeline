@@ -93,6 +93,7 @@ services:
       - PLANET_OSM_FILE_PATH=/app/data/OSM-PBF-FILES/planet/history-260209.osm.pbf
       - FASTTEXT_MODEL_PATH=/app/data/OSM-PBF-FILES/models/fasttext/cc.en.300.bin
       - RUN_MIGRATIONS=true
+      - RUN_INIT_PLANET=true
     ports:
       - "8000:8000"
     volumes:
@@ -141,6 +142,7 @@ services:
       - FASTTEXT_MODEL_PATH=/app/data/OSM-PBF-FILES/models/fasttext/cc.en.300.bin
       - NVIDIA_VISIBLE_DEVICES=all
       - RUN_MIGRATIONS=false
+      - RUN_INIT_PLANET=false
     volumes:
       - ./backend:/app
       - backend_venv:/app/.venv
@@ -158,7 +160,7 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    command: celery -A pipeline.celery_app worker --loglevel=info --pool=prefork --concurrency=4
+    command: celery -A pipeline.celery_app worker --loglevel=info --pool=prefork --concurrency=4 --max-memory-per-child=8589934592
 
 volumes:
   backend_venv:

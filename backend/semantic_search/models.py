@@ -21,12 +21,12 @@ class SnapshotDiff(models.Model):
 
     snapshot_id = models.UUIDField(
         db_index=True,
-        help_text="UUID of the TemporalSnapshot that produced this diff"
+        help_text="UUID of the Snapshot that produced this diff"
     )
     prev_snapshot_id = models.UUIDField(
         null=True,
         blank=True,
-        help_text="UUID of the previous TemporalSnapshot (None = first run)"
+        help_text="UUID of the previous Snapshot (None = first run)"
     )
 
     country_code = models.CharField(max_length=10, blank=True, default='')
@@ -130,7 +130,7 @@ class SpatialLink(models.Model):
         null=True,
         blank=True,
         db_index=True,
-        help_text="TemporalSnapshot that produced this prediction"
+        help_text="Snapshot that produced this prediction"
     )
     verified = models.BooleanField(
         default=False,

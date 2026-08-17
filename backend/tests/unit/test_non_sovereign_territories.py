@@ -1,6 +1,6 @@
 """Tests for non-sovereign territory utilities."""
 import pytest
-from extraction.services.non_sovereign_territories import (
+from core.services.planet_init.non_sovereign_territories import (
     NON_SOVEREIGN_TERRITORIES,
     is_non_sovereign_synthetic_iso,
     resolve_non_sovereign_iso,

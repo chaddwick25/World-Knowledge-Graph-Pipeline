@@ -31,7 +31,7 @@ def resolve_subdivision_bbox(
         qid = f"Q{qid}"
 
     try:
-        from orchestration.models import SubgraphProfile
+        from core.models import SubgraphProfile
 
         sg = SubgraphProfile.objects.filter(wikidata_id=qid).first()
         if not sg:
@@ -92,7 +92,7 @@ def resolve_subdivision_country_code(
         qid = f"Q{qid}"
 
     try:
-        from orchestration.models import SubgraphProfile
+        from core.models import SubgraphProfile
 
         sg = SubgraphProfile.objects.select_related("country_profile").filter(
             wikidata_id=qid,

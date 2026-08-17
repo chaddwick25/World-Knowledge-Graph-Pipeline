@@ -11,7 +11,7 @@ import pytest
 from pathlib import Path
 import tempfile
 
-from extraction.services.regional_path_service import (
+from core.services.snapshot.regional_path_service import (
     normalize_continent_slug,
     normalize_country_slug,
     normalize_country_name,

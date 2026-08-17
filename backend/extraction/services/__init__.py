@@ -1,3 +1,0 @@
-
-from .geofabrik_poly_service import download_all_geofabrik_polygons
-

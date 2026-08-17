@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from typing import List, Dict
 from pathlib import Path
-from extraction.services.regional_path_service import normalize_country_name
+from core.services.snapshot.regional_path_service import normalize_country_name
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,7 @@ from worldkg_nca.models import OsmEntity
 from semantic_search.services.worldkg_enrichment_service import get_worldkg_enrichment_service
 from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 from worldkg_nca.snapshot_utils import get_latest_snapshot_id
-from api.models import TemporalSnapshot, WorldKGClassDrift, WorldKGClassFingerprint
+from api.models import Snapshot, WorldKGClassDrift, WorldKGClassFingerprint
 from semantic_search.services.worldkg_drift_service import get_worldkg_drift_service
 
 
@@ -278,8 +278,8 @@ def worldkg_compute_fingerprint(request):
         )
     
     try:
-        snapshot = TemporalSnapshot.objects.get(id=snapshot_id)
-    except TemporalSnapshot.DoesNotExist:
+        snapshot = Snapshot.objects.get(id=snapshot_id)
+    except Snapshot.DoesNotExist:
         return Response(
             {"error": f"Snapshot {snapshot_id} not found"},
             status=status.HTTP_404_NOT_FOUND
@@ -339,9 +339,9 @@ def worldkg_compute_drift(request):
         )
     
     try:
-        snapshot_from = TemporalSnapshot.objects.get(id=snapshot_from_id)
-        snapshot_to = TemporalSnapshot.objects.get(id=snapshot_to_id)
-    except TemporalSnapshot.DoesNotExist as e:
+        snapshot_from = Snapshot.objects.get(id=snapshot_from_id)
+        snapshot_to = Snapshot.objects.get(id=snapshot_to_id)
+    except Snapshot.DoesNotExist as e:
         return Response(
             {"error": str(e)},
             status=status.HTTP_404_NOT_FOUND
