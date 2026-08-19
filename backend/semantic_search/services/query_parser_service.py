@@ -188,13 +188,53 @@ class QueryParserService:
 
         if concept_type == "OBJECT":
             lower = question.lower()
-            # Prefer the longest match (avoids "rest" matching before "restaurant")
+            # Split on prepositions — the OBJECT is what comes BEFORE the
+            # preposition (the search target), the LOCATION is what comes
+            # AFTER (the anchor).  This prevents "cafe near a school" from
+            # matching "school" as the OBJECT.
+            #
+            # Find the FIRST preposition in the text (not iterate in order)
+            # so "chinese food within 100m of a park" splits at "within",
+            # not at "of".
+            preps = ("near", "around", "by", "beside", "of", "from", "to",
+                     "within", "close to", "next to", "right by", "adjacent to")
+            object_part = lower
+            earliest_match = None
+            for prep in preps:
+                pattern = rf"\b{prep}\b"
+                m = re.search(pattern, lower)
+                if m and (earliest_match is None or m.start() < earliest_match.start()):
+                    earliest_match = m
+            if earliest_match:
+                object_part = lower[:earliest_match.start()].strip()
+
+            # Closed-vocabulary slot match: try amenity_vocab first.
+            # This handles "restaurant", "cafe", "bus_station", etc.
+            # ([MAPQA_BUILD:§3.2] — closed-vocab slots are exact-match)
             best = None
             for amenity in self.amenity_vocab:
-                if amenity.lower() in lower:
+                if amenity.lower() in object_part:
                     if best is None or len(amenity) > len(best):
                         best = amenity
-            return best
+            if best is not None:
+                return best
+
+            # Open-vocabulary slot: no amenity_vocab match found.
+            # Return the raw phrase before the preposition.  The executor's
+            # data-plane 3-tier fallback (exact tag → ontology class →
+            # FastText semantic) will resolve it to OSM entities.
+            # ([MAPQA_BUILD:§3.2] — open-vocab slots are extraction problems;
+            #  [MAPQA_TO_EXECUTION_PLAN:§4.1] — parser is control plane,
+            #  FastText is data plane, they don't share models)
+            #
+            # Strip leading question words ("what", "which", "is", "are")
+            # to get the clean noun phrase.
+            stripped = re.sub(
+                r"^(what|which|is|are|the|a|an)\s+", "", object_part
+            ).strip()
+            if stripped:
+                return stripped
+            return object_part if object_part else None
 
         if concept_type == "LOCATION":
             return self._extract_entity_name(question, template)

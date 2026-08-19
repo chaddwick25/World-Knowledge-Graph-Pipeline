@@ -241,20 +241,20 @@ class KNNGraphService:
     def get_graph_statistics(self, graph: Dict[int, List[Tuple[int, float]]]) -> Dict:
         """
         Calculate statistics about the k-NN graph.
-        
+
         Args:
             graph: k-NN graph structure
-            
+
         Returns:
             Dict with statistics
         """
         num_nodes = len(graph)
         num_edges = sum(len(neighbors) for neighbors in graph.values())
-        
+
         # Weight statistics
-        all_weights = [weight for neighbors in graph.values() 
+        all_weights = [weight for neighbors in graph.values()
                       for _, weight in neighbors]
-        
+
         return {
             'num_nodes': num_nodes,
             'num_edges': num_edges,
@@ -264,3 +264,95 @@ class KNNGraphService:
             'weight_min': np.min(all_weights),
             'weight_max': np.max(all_weights),
         }
+
+    # ──────────────────────────────────────────────────────────────────────
+    # NetworkX graph construction (spectral / community analysis substrate)
+    # ──────────────────────────────────────────────────────────────────────
+
+    def build_graph(
+        self,
+        country_code: str,
+        snapshot_id: str,
+        k: int = None,
+        entity_limit: int = None,
+    ):
+        """Build a weighted ``networkx.Graph`` for a country snapshot.
+
+        Loads OSM entities from the vectors DB filtered by ``country_code``
+        and ``snapshot_id``, builds the k-NN adjacency (same haversine +
+        log-damped inverse-distance weighting as DeepWalk), and returns an
+        undirected ``networkx.Graph`` ready for spectral / community analysis.
+
+        Node identifiers are ``osm_id`` (int), matching the convention used
+        by ``build_knn_graph``. Edge attribute ``weight`` holds the k-NN
+        edge weight. Node attribute ``wkg_class`` is populated when
+        available so callers (e.g. ``GraphSignalService``) can build the
+        class signal without a second DB round-trip.
+
+        Args:
+            country_code: ISO 3166-1 alpha-2 code (e.g. "BZ")
+            snapshot_id: ``YYYY_MM_DD`` snapshot partition key
+            k: Override the default neighbor count (default: ``self.k``)
+            entity_limit: Optional cap on the number of entities loaded
+                (useful for quick tests / large-country sampling)
+
+        Returns:
+            ``networkx.Graph`` — undirected, weighted, with ``wkg_class``
+            node attributes where available.
+        """
+        import networkx as nx
+        from worldkg_nca.models import OsmEntity
+
+        if k is None:
+            k = self.k
+
+        qs = OsmEntity.objects.using('vectors').filter(
+            geom__isnull=False,
+            country_code__iexact=country_code,
+            snapshot_id=snapshot_id,
+        )
+        if entity_limit is not None:
+            qs = qs[:entity_limit]
+
+        entities = []
+        class_map = {}
+        for entity in qs.iterator():
+            if not entity.geom:
+                continue
+            entities.append({
+                'osm_id': entity.osm_id,
+                'lat': entity.geom.y,
+                'lon': entity.geom.x,
+            })
+            if entity.wkg_class:
+                class_map[entity.osm_id] = entity.wkg_class
+
+        logger.info(
+            "build_graph: loaded %d entities for %s/%s (k=%d)",
+            len(entities), country_code, snapshot_id, k,
+        )
+
+        adj = self.build_knn_graph(entities)
+
+        G = nx.Graph()
+        for osm_id, cls in class_map.items():
+            G.add_node(osm_id, wkg_class=cls)
+        for source, neighbors in adj.items():
+            if source not in G:
+                G.add_node(source)
+            for target, weight in neighbors:
+                if target not in G:
+                    G.add_node(target)
+                # Undirected — keep the max weight if both directions exist
+                if G.has_edge(source, target):
+                    G[source][target]['weight'] = max(
+                        G[source][target]['weight'], weight
+                    )
+                else:
+                    G.add_edge(source, target, weight=weight)
+
+        logger.info(
+            "build_graph: %s/%s → %d nodes, %d edges",
+            country_code, snapshot_id, G.number_of_nodes(), G.number_of_edges(),
+        )
+        return G

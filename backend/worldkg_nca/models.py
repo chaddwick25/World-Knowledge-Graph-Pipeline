@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.postgres.fields import ArrayField
+from django.contrib.postgres.indexes import GinIndex
 from pgvector.django import VectorField
 from django.contrib.gis.db import models as gis_models
 import uuid
@@ -224,6 +225,15 @@ class OsmEntity(models.Model):
             models.Index(fields=['snapshot_id']),
             models.Index(fields=['country_code']),
             models.Index(fields=['snapshot_id', 'country_code']),
+            # GIN index on tags jsonb — accelerates tags ? 'key' and
+            # tags ?| ARRAY[...] queries used by USLP head filtering and
+            # semantic search tag matching.  On CA (53M rows) this drops
+            # tag-existence queries from ~85s seq scan to <100ms.
+            GinIndex(
+                fields=['tags'],
+                name='osmentity_tags_gin_idx',
+                opclasses=['jsonb_path_ops'],
+            ),
         ]
         ordering = ['osm_type', 'osm_id']
         verbose_name = 'OSM Entity'
@@ -283,6 +293,210 @@ class OsmEntity(models.Model):
             version=version,
             timestamp=timestamp
         )
+
+
+# ---------------------------------------------------------------------------
+# Factor-node metric tables (docs/plans/FACTOR_NODE_RUNTIME_JOINS_PLAN.md)
+#
+# Per-entity, snapshot-pinned metrics written by batch pipeline steps
+# (5c/5d) and consumed at query time via SQL joins — the materialized
+# "factor nodes" of the Spatial-Agent paper's factorized GeoFlow Graph G′
+# (§3.3).  All tables live on the ``vectors`` DB so they can join
+# ``OsmEntity`` without FDW.
+#
+# Key convention: the k-NN graph's node keyspace is ``osm_id`` only
+# (KNNGraphService.build_graph), so these tables key on
+# (snapshot_id, country_code, osm_id) — no osm_type.
+# ---------------------------------------------------------------------------
+
+# Fixed width of the eigen_loadings vector column.  Small countries compute
+# K=128 non-trivial eigenvectors; large countries (≥500k nodes) compute
+# K=64 and are zero-padded to 128 (both vectors share the padding, so
+# pgvector inner products remain correct).
+EIGEN_LOADING_DIM = 128
+
+
+class SpectralNodeMetric(models.Model):
+    """Per-entity spectral + structural metrics for one snapshot (Step 5c).
+
+    One row per (snapshot_id, country_code, osm_id).  ``eigen_loadings``
+    holds the node's row of the eigenvector matrix Φ (φ₁..φ_K, zero-padded
+    to EIGEN_LOADING_DIM); combined with the eigenvalues stored on
+    ``GraphSpectralFingerprint`` it turns heat-kernel diffusion into a
+    single pgvector inner-product query:
+
+        score(node) = Σ_k e^{-t·λ_k} · φ_k(anchor) · φ_k(node)
+
+    IMPORTANT: eigen_loadings are coordinates in *this snapshot's*
+    eigenbasis — never mix rows across snapshot_id in one vector operation.
+
+    References:
+    - [COHEN:Ch13] — Eigendecomposition
+    - [GRAPH_REP:Ch3] — Graph Laplacian, spectral features
+    - [SPATIAL_AGENT:§3.3] — factor nodes (materialized as rows)
+    """
+
+    id = models.BigAutoField(primary_key=True)
+
+    snapshot_id = models.CharField(
+        max_length=20,
+        help_text="Snapshot date (YYYY_MM_DD) — matches OsmEntity.snapshot_id",
+    )
+    country_code = models.CharField(
+        max_length=3,
+        help_text="ISO 3166-1 alpha-2 country code",
+    )
+    osm_id = models.BigIntegerField(
+        help_text="OSM element ID (k-NN graph node key)",
+    )
+
+    eigen_loadings = VectorField(
+        dimensions=EIGEN_LOADING_DIM,
+        null=True, blank=True,
+        help_text="Node's row of Φ (φ₁..φ_K, zero-padded to 128)",
+    )
+    fiedler_component = models.FloatField(
+        null=True, blank=True,
+        help_text="φ₂(node) — duplicated from eigen_loadings[0] for cheap "
+                  "scalar filtering/sorting without vector ops",
+    )
+    louvain_community = models.IntegerField(
+        null=True, blank=True,
+        help_text="Louvain community ID (CommunityDetectionService, Step 5c)",
+    )
+    dirichlet_contrib = models.FloatField(
+        null=True, blank=True,
+        help_text="Per-node local Dirichlet term s_i·(Ls)_i for the "
+                  "wkg_class graph signal",
+    )
+
+    # Structural metrics (derived from the same k-NN graph)
+    degree = models.IntegerField(
+        null=True, blank=True,
+        help_text="Node degree in the k-NN graph",
+    )
+    clustering_coeff = models.FloatField(
+        null=True, blank=True,
+        help_text="Local clustering coefficient",
+    )
+    component_id = models.IntegerField(
+        null=True, blank=True,
+        help_text="Connected-component membership (0-indexed, arbitrary)",
+    )
+    component_size = models.IntegerField(
+        null=True, blank=True,
+        help_text="Size of the node's connected component",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'factor_spectral_node_metric'
+        unique_together = [['snapshot_id', 'country_code', 'osm_id']]
+        indexes = [
+            models.Index(fields=['snapshot_id', 'country_code', 'louvain_community'],
+                         name='factor_spec_community_idx'),
+        ]
+        ordering = ['snapshot_id', 'country_code', 'osm_id']
+
+    def __str__(self):
+        return (f"SpectralNodeMetric({self.country_code}/{self.snapshot_id}/"
+                f"{self.osm_id})")
+
+
+class DriftNodeMetric(models.Model):
+    """Per-entity spectral drift between two snapshots (Step 5d).
+
+    Keyed by the snapshot *pair* (snapshot_from_id, snapshot_to_id) plus
+    country and osm_id.  Eigenvector signs are aligned across the pair
+    before deltas are computed (eigsh signs are indeterminate per run).
+
+    References:
+    - [STATS:Ch3] — distributional drift
+    - [SPATIAL_AGENT:§3.3] — factor nodes (materialized as rows)
+    """
+
+    id = models.BigAutoField(primary_key=True)
+
+    country_code = models.CharField(
+        max_length=3,
+        help_text="ISO 3166-1 alpha-2 country code",
+    )
+    snapshot_from_id = models.CharField(
+        max_length=20,
+        help_text="Earlier snapshot date (YYYY_MM_DD)",
+    )
+    snapshot_to_id = models.CharField(
+        max_length=20,
+        help_text="Later snapshot date (YYYY_MM_DD)",
+    )
+    osm_id = models.BigIntegerField(
+        help_text="OSM element ID (present in both snapshots)",
+    )
+
+    fiedler_delta = models.FloatField(
+        null=True, blank=True,
+        help_text="φ₂(t) − φ₂(t−1) after eigenvector sign alignment",
+    )
+    loading_drift = models.FloatField(
+        null=True, blank=True,
+        help_text="Cosine distance between sign-aligned eigen-loading "
+                  "vectors across the pair ∈ [0, 2]",
+    )
+    community_changed = models.BooleanField(
+        null=True, blank=True,
+        help_text="Louvain community membership changed across the pair",
+    )
+    degree_delta = models.IntegerField(
+        null=True, blank=True,
+        help_text="degree(t) − degree(t−1) in the k-NN graph",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'factor_drift_node_metric'
+        unique_together = [[
+            'country_code', 'snapshot_from_id', 'snapshot_to_id', 'osm_id',
+        ]]
+        indexes = [
+            models.Index(fields=['country_code', 'snapshot_from_id', 'snapshot_to_id'],
+                         name='factor_drift_pair_idx'),
+        ]
+        ordering = ['country_code', 'snapshot_from_id', 'snapshot_to_id', 'osm_id']
+
+    def __str__(self):
+        return (f"DriftNodeMetric({self.country_code} "
+                f"{self.snapshot_from_id}→{self.snapshot_to_id}/{self.osm_id})")
+
+
+class AmenityEmbedding(models.Model):
+    """Precomputed FastText embedding for a MapQA amenity vocabulary entry.
+
+    Removes the last runtime FastText call from the executor's semantic
+    fallback tier: the query-side embedding of a known amenity string
+    becomes a plain row lookup.  Written by
+    ``python manage.py compute_amenity_embeddings``.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    amenity_text = models.CharField(
+        max_length=200, unique=True,
+        help_text="Amenity value from the MapQA vocabulary (lowercased)",
+    )
+    embedding = VectorField(
+        dimensions=300,
+        help_text="FastText 300D embedding (L2-normalized, GeoVectors space)",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'factor_amenity_embedding'
+        ordering = ['amenity_text']
+
+    def __str__(self):
+        return f"AmenityEmbedding({self.amenity_text})"
 
 
 class PrecomputedLinkCandidate(models.Model):

@@ -195,11 +195,22 @@ class Command(BaseCommand):
         rows = self._load_csv(csv_path)
         self.stdout.write(f"  {len(rows)} rows loaded")
 
-        # Split: California = train, Illinois = zero-shot test
-        train_rows = [r for r in rows if r["Region"] == "california_full"]
+        # Load supplementary natural-language QA pairs (cuisine descriptors,
+        # colloquial amenity names) to improve concept extractor coverage
+        # for phrases not in the OSM amenity vocabulary.
+        # ([SPATIAL_AGENT:§3.2] — semantic domain vs spatial domain grounding)
+        nl_csv = data_dir / "training_data" / "natural_language_qa_pairs.csv"
+        if nl_csv.exists():
+            nl_rows = self._load_csv(nl_csv)
+            self.stdout.write(f"  Natural-language augmentation: {len(nl_rows)} rows")
+            # Add to training set (Region="augmented" → treated as train)
+            rows.extend(nl_rows)
+
+        # Split: California + augmented = train, Illinois = zero-shot test
+        train_rows = [r for r in rows if r["Region"] in ("california_full", "augmented")]
         test_rows = [r for r in rows if r["Region"] == "illinois_test"]
-        self.stdout.write(f"  California train: {len(train_rows)}")
-        self.stdout.write(f"  Illinois test:    {len(test_rows)}")
+        self.stdout.write(f"  Train (CA + augmented): {len(train_rows)}")
+        self.stdout.write(f"  Illinois test:          {len(test_rows)}")
 
         train_questions = [r["MapQA question"] for r in train_rows]
         train_templates = [r["Macro-template"] for r in train_rows]

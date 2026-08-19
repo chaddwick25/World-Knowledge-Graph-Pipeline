@@ -223,6 +223,51 @@ def compute_entropy(cfg: CfgLike, logger: logging.Logger) -> float:
 # ══════════════════════════════════════════════════════════════════════════
 # Planet Record
 # ══════════════════════════════════════════════════════════════════════════
+def _ensure_snapshot_row(cfg: CfgLike, logger: logging.Logger) -> None:
+    """Idempotently register a Snapshot row when the PBF already exists on disk.
+
+    Called from ``preprocess_snapshot`` when the snapshot PBF is already
+    present (skipping the full ``SnapshotExtractionService`` extraction).
+    Steps 5c (spectral analysis) and 5d (temporal drift) require a
+    ``Snapshot`` row for ``(country_code, snapshot_date)`` — without it,
+    they no-op silently.
+
+    This registers both the ``PbfFile`` and ``Snapshot`` rows if missing.
+    Never raises — failures are logged as warnings (non-fatal).
+    """
+    if not cfg.snapshot_pbf_path:
+        return
+    try:
+        from core.models import PbfFile
+        from osmsnapshot.models import Snapshot
+
+        pbf_path = str(cfg.snapshot_pbf_path)
+        pbf_file, _ = PbfFile.objects.get_or_create(
+            path=pbf_path,
+            defaults={
+                "file_type": "snapshot",
+                "size_bytes": Path(pbf_path).stat().st_size if Path(pbf_path).exists() else 0,
+            },
+        )
+        Snapshot.objects.update_or_create(
+            country_code=cfg.iso,
+            snapshot_date=cfg.snapshot_date,
+            defaults={"pbf_file": pbf_file},
+        )
+    except Exception as exc:
+        _log(
+            logger,
+            "warning",
+            "Snapshot row registration failed (non-fatal) — "
+            "Steps 5c/5d will skip spectral/temporal analysis",
+            country=cfg.iso,
+            snapshot_date=cfg.snapshot_date,
+            error=str(exc),
+            pipeline_run_id=cfg.pipeline_run_id,
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════
 def create_planet_run_record(cfg: CfgLike) -> None:
     """Create or update a PlanetSnapshot record for tracking."""
     from core.models import PlanetSnapshot
@@ -345,6 +390,11 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
             country=cfg.iso,
             pipeline_run_id=cfg.pipeline_run_id,
         )
+        # The PBF exists on disk, but the Snapshot row may not exist in the
+        # DB (e.g. PBF was pre-generated manually or the DB was recreated).
+        # Steps 5c (spectral) and 5d (temporal) require a Snapshot row —
+        # register it idempotently so downstream steps can find it.
+        _ensure_snapshot_row(cfg, logger)
 
     if cfg.osm_relation_id and snapshot_exists:
         try:

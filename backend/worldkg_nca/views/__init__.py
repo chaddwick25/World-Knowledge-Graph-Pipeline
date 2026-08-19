@@ -19,6 +19,12 @@ from worldkg_nca.views.search import (
     worldkg_subdivisions,
     execute_query,
 )
+from worldkg_nca.views.graph import (
+    spectral_query,
+    temporal_query,
+    community_query,
+    event_diffusion_query,
+)
 from worldkg_nca.views.links import (
     worldkg_link_candidates,
     worldkg_apply_link,
@@ -38,6 +44,10 @@ __all__ = [
     'worldkg_semantic_query_plan',
     'worldkg_subdivisions',
     'execute_query',
+    'spectral_query',
+    'temporal_query',
+    'community_query',
+    'event_diffusion_query',
     'worldkg_link_candidates',
     'worldkg_apply_link',
 ]

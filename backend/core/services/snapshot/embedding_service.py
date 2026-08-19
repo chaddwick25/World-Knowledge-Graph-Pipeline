@@ -100,6 +100,11 @@ class EmbeddingService:
         # legacy single-threaded path.
         workers = _parallel_upsert_workers()
         queue_depth = _parallel_upsert_queue_depth()
+        chunk_size = _parallel_upsert_chunk_size()
+        logger.info(
+            "EmbeddingService config: workers=%d queue_depth=%d chunk_size=%d [country=%s]",
+            workers, queue_depth, chunk_size, cfg.iso,
+        )
         if workers > 1 and pbf_path:
             pbf_mb = _pbf_size_mb(pbf_path)
             min_mb = _parallel_upsert_min_pbf_mb()
@@ -155,6 +160,7 @@ class EmbeddingService:
 
             n_data, w_data, r_data = read_from_snapshot(
                 pbf_path, writer=writer, max_runs=2,
+                chunk_size=_parallel_upsert_chunk_size(),
             )
             for record in itertools.chain(w_data, r_data):
                 writer.add_line(record)
@@ -257,6 +263,7 @@ class EmbeddingService:
         try:
             n_data, w_data, r_data = read_from_snapshot(
                 pbf_path, writer=collector, max_runs=2,
+                chunk_size=_parallel_upsert_chunk_size(),
             )
             for record in itertools.chain(w_data, r_data):
                 collector.add_line(record)
@@ -324,6 +331,7 @@ class EmbeddingService:
         try:
             n_data, w_data, r_data = read_from_snapshot(
                 pbf_path, writer=collector, max_runs=2,
+                chunk_size=_parallel_upsert_chunk_size(),
             )
             for record in itertools.chain(w_data, r_data):
                 collector.add_line(record)
@@ -405,6 +413,24 @@ def _parallel_upsert_queue_depth() -> int:
 def _parallel_upsert_min_pbf_mb() -> int:
     """Skip parallel path for PBFs smaller than this (overhead dominates)."""
     return max(0, _env_int("PARALLEL_UPSERT_MIN_PBF_MB", 0))
+
+
+def _parallel_upsert_chunk_size() -> int:
+    """Batch size (records per flush) passed to ``read_from_snapshot``.
+
+    Default 20000 (the upstream GeoVectors value).  Increasing this reduces
+    per-batch SQL overhead (fewer WAL flushes / transaction commits) at the
+    cost of higher peak memory.  Tripling to 60000 with 2 workers is a
+    proposed throughput optimization — see
+    ``docs/Schematics/OSM_Streaming_Core_Pattern.md`` §9.3 and the
+    benchmark test ``tests/integration/test_chunk_size_benchmark.py``.
+
+    Memory note: each encoded record is ~400D × 4 bytes = ~1.6 KB for the
+    GV-Tags vector, plus raw record overhead.  60k records ≈ 96 MB per
+    encoded batch; with 2 workers + 1 upsert in flight ≈ 288 MB for encoded
+    vectors alone (plus the ~2 GB FastText model).
+    """
+    return max(1000, _env_int("PARALLEL_UPSERT_CHUNK_SIZE", 20000))
 
 
 def _pbf_size_mb(pbf_path: str):

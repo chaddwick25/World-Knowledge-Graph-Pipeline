@@ -16,14 +16,18 @@ The artifacts produced will be consumed by agents for geospatial reasoning. The 
 | **WorldKG Enrichment** | Enriches OSM entities with Wikidata metadata and ontology classes |
 | **Semantic Search** | Natural-language queries over enriched OSM entities, with optional subdivision filtering by Wikidata QID |
 | **Subdivision Search** | Filter search results by administrative subdivision (city/department/state) using Wikidata QIDs resolved via `SubgraphProfile` bbox records |
-| **MapQA (NL → Geo)** | Natural-language geospatial question answering: TF-IDF parser (5 templates, 98.6% zero-shot accuracy) → PostGIS executor (ST_DWithin, Distance, 3-tier amenity fallback) → HITL confirmation modal via MCP. See `docs/plans/MAPQA_PARSER_IMPLEMENTED.md` |
+| **MapQA (NL → Geo)** | Natural-language geospatial question answering: TF-IDF parser (9 templates, 98.6% zero-shot accuracy) → graph-grounded executor (heat kernel diffusion, Dijkstra shortest path, BFS) with PostGIS fallback → HITL confirmation modal via MCP. See `docs/plans/MAPQA_PARSER_IMPLEMENTED.md` |
+| **Graph Spectral Analysis** | Laplacian eigenvalues, Fiedler vector, algebraic connectivity, and signal smoothness on the k-NN graph. Louvain community detection. k-NN graph serialized to GraphML in Step 5c as a debug artifact. Stored as `GraphSpectralFingerprint` per region+snapshot. Step 5c also writes per-entity `factor_spectral_node_metric` rows (eigen-loadings as 128D pgvector, community, Dirichlet contribution, degree, clustering) for SQL-only runtime factor resolution |
+| **Temporal Drift** | Spectral drift between snapshots (‖λ_t - λ_{t-1}‖₂), ARIMA forecasting, CUSUM change-point detection. Stored as `GraphSpectralDrift` per region+snapshot pair. Step 5d also writes per-entity `factor_drift_node_metric` rows (sign-aligned Fiedler delta, loading drift, community change, degree delta) for runtime drift joins |
+| **Embedding Drift** | Sliced Wasserstein Distance between snapshot embeddings (semantic + spatial axes), freshness score. Management command: `compute_embedding_drift` |
+| **Factor-Node Tables** | Flat, join-friendly pgvector tables (`factor_spectral_node_metric`, `factor_drift_node_metric`, `factor_amenity_embedding`) on the vectors DB, colocated with `OsmEntity`. Batch-written by Steps 5c/5d + `compute_amenity_embeddings`. Runtime `FactorResolutionService` resolves SUPPORT/COND/factor nodes via SQL + pgvector `<#>` — no NetworkX/SciPy/sklearn at request time. The factor-table path is authoritative (`FACTOR_NODE_TABLES_ENABLED` defaults `true`); the legacy runtime graph path has been removed. See `docs/Schematics_V2/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md` |
 
 ## Pipeline Types
 
 Both are driven by Celery:
 
 1. **Planet Initialization** — Runs once to initialize configs and primitives. Now a single `init_planet` management command (replaces the former Celery canvas of step_0a–step_0m tasks), invoked as a Docker entrypoint step after migrations. See [Planet Initialization Architecture](docs/Schematics/Planet_Initialization_Architecture.md) and [WorldKG Primitives](docs/Schematics/WorkKG_Primities.md). Run manually: `python manage.py init_planet` (idempotent — uses `PlanetSnapshot` as a soft lock).
-2. **Country Pipeline** — Produces the artifacts above for a specific country (or synthetic territory). Driven by a Celery canvas of Steps 1–6.
+2. **Country Pipeline** — Produces the artifacts above for a specific country (or synthetic territory). Driven by a Celery canvas of Steps 1–6 plus Step 5c (graph spectral analysis) and Step 5d (temporal drift).
 
 ## Country Pipeline Stages
 
@@ -73,6 +77,36 @@ Both are driven by Celery:
 - Embeddings saved for each entity are used to train graph representation learning models:
   - **FastText**: 300D semantic embeddings via weighted average of tag embeddings (entity-local, no retraining).
   - **DeepWalk**: 100D spatial embeddings via weighted random walks on k-NN graphs (IDW edge weights).
+
+### 5c. Graph Spectral Analysis
+
+- Computes Laplacian spectral features on the k-NN graph built in Step 5.
+- Top-k eigenvalues, Fiedler vector, algebraic connectivity (λ₂), spectral gap.
+- WorldKG classes encoded as graph signals; Dirichlet energy measures spatial clustering of semantic classes.
+- Louvain community detection on the same graph reveals local cluster structure.
+- **k-NN graph serialized to GraphML** as a debug artifact at `{GRAPH_ARTIFACT_DIR}/{country}_{snapshot}.graphml`. The legacy runtime graph path (GraphML → NetworkX → SciPy) has been removed; the factor-table path resolves spectral/diffusion/community queries via SQL + pgvector at request time. GraphML is retained for batch-side debugging only.
+- Stored as `GraphSpectralFingerprint` rows (one per region+snapshot).
+- **Factor-node writer**: `FactorNodeWriter.write_spectral_nodes()` writes per-entity rows to `factor_spectral_node_metric` (eigen-loadings as 128D pgvector, Fiedler component, Louvain community, Dirichlet contribution, degree, clustering coefficient, component ID/size). These rows enable the runtime `FactorResolutionService` to resolve factor nodes via SQL + pgvector without loading the graph. See `docs/Schematics_V2/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md`.
+- Non-fatal: failures are logged and the pipeline continues.
+
+### 5d. Temporal Drift
+
+- Computes spectral drift between current and previous snapshot.
+- Metrics: spectral distance (‖λ_t - λ_{t-1}‖₂), connectivity delta, Fiedler drift (cosine distance), smoothness delta.
+- Drift magnitude classified as low/medium/high/extreme.
+- ARIMA(1,1,1) forecast of next-snapshot eigenvalues when ≥3 snapshots exist; exponential smoothing fallback otherwise.
+- CUSUM change-point detection on spectral distance time series.
+- Stored as `GraphSpectralDrift` rows (one per region+snapshot pair).
+- **Factor-node writer**: `FactorNodeWriter.write_drift_nodes()` writes per-entity rows to `factor_drift_node_metric` (sign-aligned Fiedler delta, loading drift cosine distance, community changed, degree delta). Eigenvector sign alignment is performed before per-node drift comparison. See `docs/Schematics_V2/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md`.
+- Conditional: only runs when ≥2 snapshots exist. Non-fatal.
+
+### Embedding Drift (Management Command)
+
+- Sliced Wasserstein Distance (SWD) between snapshot embeddings — distribution shift detection.
+- Computes separate semantic (300D GV-Tags) and spatial (100D GV-NLE) drift.
+- Freshness score: `F = α·exp(-λ_sem·W_sem) + (1-α)·exp(-λ_spat·W_spat)` ∈ [0, 1].
+- Subdivision-level drift via `SubgraphProfile` bboxes.
+- Run: `python manage.py compute_embedding_drift --country BZ --snapshot-from 2025_12_31_baseline --snapshot-to 2025_12_31`
 
 ## Quickstart
 
@@ -241,7 +275,7 @@ choices can be traced back to the relevant chapter.
     -> Pre‑compute configs and primitives - WorldKG primitives (see `docs/Schematics/WorkKG_Primities.md`) are generated once and reused.
     -> Multi‑core processing with Osmium - Osmium‑tool is used to parallelize low‑level extraction work.
     -> Batch processing - Vector generation and spatial link prediction are run in batches rather than one entity at a time.
-    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel. Step 1 upserts all entities into the country leaf partition, then dispatches parallel subgraph tasks that generate NLE pickles (DeepWalk training data). Step 5 trains GV-NLE per subgraph (serialized via per-GPU slot lock). Parallel encode + serial upsert (Approach B — in-process producer/consumer thread pool with N encoding threads and 1 upsert thread) is implemented and enabled by default via `PARALLEL_UPSERT_WORKERS` (default 8); set to 1 for the legacy single-threaded path; see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` and `docs/issues/PARALLEL_UPSERT_REGRESSION.md`. pgvector bulk upsert optimizations (reusable UNLOGGED staging table with TRUNCATE, `SET LOCAL synchronous_commit = off`, `ORDER BY` deterministic lock order) are documented in `docs/plans/completed/PGVECTOR_BULK_UPSERT_OPTIMIZATIONS.md`. WorldKG enrichment uses SQL-side `UPDATE...FROM` join (ontology loaded into a temp table, `jsonb_each_text` expands entity tags, deepest match selected via `ROW_NUMBER() OVER (PARTITION BY)`); ~10x faster than the previous Python `ThreadPoolExecutor` loop — Ireland (2.47M entities) enriched in 2 min 14 sec vs ~60 min with the old path. Chord completion uses a custom `PatchedDatabaseBackend` (`pipeline/celery_results_backend.py`) that replaces the buggy `ChordCounter` mechanism with Celery's standard `fallback_chord_unlock()` polling task — `TaskResult` rows are still written to Django's DB; see `docs/issues/CHORDCOUNTER_DOES_NOT_EXIST_BUG.md` and `docs/Schematics/CELERY_CHORD_ARCHITECTURE.md`.
+    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel. Step 1 upserts all entities into the country leaf partition, then dispatches parallel subgraph tasks that generate NLE pickles (DeepWalk training data). Step 4 (USLP) and Step 5 (GV-NLE) rehydrate subgraphs from the DB at task start and self-dispatch per-subgraph work inline — this fixes under-prediction on fresh DBs where `has_subgraphs=False` at canvas dispatch time (subgraph poly files are generated during Step 1, after the canvas chord was already built). Step 5 trains GV-NLE per subgraph (serialized via per-GPU slot lock). Parallel encode + serial upsert (Approach B — in-process producer/consumer thread pool with N encoding threads and 1 upsert thread) is implemented and enabled by default via `PARALLEL_UPSERT_WORKERS` (default 8); set to 1 for the legacy single-threaded path; see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` and `docs/issues/PARALLEL_UPSERT_REGRESSION.md`. pgvector bulk upsert optimizations (reusable UNLOGGED staging table with TRUNCATE, `SET LOCAL synchronous_commit = off`, `ORDER BY` deterministic lock order) are documented in `docs/plans/completed/PGVECTOR_BULK_UPSERT_OPTIMIZATIONS.md`. WorldKG enrichment uses SQL-side `UPDATE...FROM` join (ontology loaded into a temp table, `jsonb_each_text` expands entity tags, deepest match selected via `ROW_NUMBER() OVER (PARTITION BY)`); ~10x faster than the previous Python `ThreadPoolExecutor` loop — Ireland (2.47M entities) enriched in 2 min 14 sec vs ~60 min with the old path. Chord completion uses a custom `PatchedDatabaseBackend` (`pipeline/celery_results_backend.py`) that replaces the buggy `ChordCounter` mechanism with Celery's standard `fallback_chord_unlock()` polling task — `TaskResult` rows are still written to Django's DB; see `docs/issues/CHORDCOUNTER_DOES_NOT_EXIST_BUG.md` and `docs/Schematics/CELERY_CHORD_ARCHITECTURE.md`.
 
 Next Steps:
 1. Make the project public
@@ -251,9 +285,12 @@ Next Steps:
    -> Fully transition to the Gitlab CI/CD pipeline and use their issues tracker(get rid of local TODOs)
    -> Complete the post_release tasks(TODOs)
    -> Update the Documentation (un-comment the docs after reviewing)
-2. MapQA parser + executor + MCP/HITL are implemented (see `docs/plans/MAPQA_PARSER_IMPLEMENTED.md`) — remaining: shadow-mode deployment, feature-flagged cutover, drift monitoring, retraining workflow
+2. MapQA parser + executor + MCP/HITL are implemented (see `docs/plans/completed/MAPQA_PARSER_IMPLEMENTED.md`). The executor uses the factor-table path as authoritative — spectral/diffusion/community queries resolve via SQL + pgvector `<#>` against `factor_*` tables, with PostGIS as the spatial fallback for distance/radius templates. **Factor-node runtime joins** are complete (see `docs/plans/FACTOR_NODE_RUNTIME_JOINS_PLAN.md` and `docs/Schematics_V2/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md`): per-entity spectral/drift/amenity metrics are batch-written to `factor_*` tables on the vectors DB, and `FactorResolutionService` resolves them at runtime via SQL + pgvector `<#>` — no NetworkX/SciPy/sklearn at request time. The legacy runtime graph path (GraphML → NetworkX → SciPy) has been removed; `FACTOR_NODE_TABLES_ENABLED` defaults `true`.
 3. Parallel upsert is enabled by default (`PARALLEL_UPSERT_WORKERS=8`) — tune in `.env` if needed (see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` §7). GPU concurrency defaults to 1 on cuda:0 (`GV_NLE_GPU_CONCURRENCY=1,1`) — set to 2 only for countries with uniformly small subgraphs.
 4. Investigate how to add support for https://arxiv.org/pdf/2310.00583
+5. USLP threshold calibration command implemented (`calibrate_uslp_thresholds`) — validates hyperparameter limits against actual pipeline data without modifying YAML thresholds. See `backend/igea/management/commands/calibrate_uslp_thresholds.py`.
+6. Database indexes added (migration `0011_osmentity_parent_indexes`): B-tree on `wkg_class` and GIN on `tags` for the `OsmEntity` parent table. Verify with `EXPLAIN ANALYZE` after migration.
+7. Factor-node tables (migrations `0012`–`0014`): `factor_spectral_node_metric`, `factor_drift_node_metric`, `factor_amenity_embedding` on the vectors DB. Amenity embeddings (621 rows) are precomputed by `compute_amenity_embeddings` (an `init_planet` step). Runtime factor resolution is authoritative (`FACTOR_NODE_TABLES_ENABLED` defaults `true`); legacy runtime graph path removed. Test DBs need `vector` + `postgis` extensions in both `test_vector_db` and `test_django_db`.
 
 ## Fresh Database Setup
 

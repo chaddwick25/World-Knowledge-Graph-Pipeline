@@ -17,6 +17,11 @@ urlpatterns = [
     path('semantic-triplet-search/', views.worldkg_semantic_triplet_search, name='nca_semantic_triplet_search'),
     path('execute-query/', views.execute_query, name='nca_execute_query'),
     path('subdivisions/', views.worldkg_subdivisions, name='nca_subdivisions'),
+    # Graph / spectral / community / event queries (GRAPH_SPECTRAL_TEMPORAL_PLAN.md Phase 4)
+    path('spectral-query/', views.spectral_query, name='nca_spectral_query'),
+    path('temporal-query/', views.temporal_query, name='nca_temporal_query'),
+    path('community-query/', views.community_query, name='nca_community_query'),
+    path('event-diffusion-query/', views.event_diffusion_query, name='nca_event_diffusion_query'),
     path('link-candidates/', views.worldkg_link_candidates, name='nca_link_candidates'),
     path('apply-link/', views.worldkg_apply_link, name='nca_apply_link'),
     

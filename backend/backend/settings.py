@@ -181,6 +181,23 @@ WIKIDATA_CACHE_DIR = os.getenv('WIKIDATA_CACHE_DIR', _default_wikidata_cache_dir
 _default_mapqa_parser_dir = os.path.join(BASE_DIR, 'data', 'mapqa_parser')
 MAPQA_PARSER_DATA_DIR = os.getenv('MAPQA_PARSER_DATA_DIR', _default_mapqa_parser_dir)
 
+# k-NN graph artifact directory — serialized graphs from Step 5c.
+# Layout:
+#   {GRAPH_ARTIFACT_DIR}/{country_code}_{snapshot_id}.graphml
+# These are loaded at query time by QueryExecutorService for graph-based
+# operators (heat kernel diffusion, Dijkstra, BFS) per the Spatial-Agent
+# paper's GeoFlow Graph execution model.
+_default_graph_artifact_dir = os.path.join(BASE_DIR, 'data', 'graph_artifacts')
+GRAPH_ARTIFACT_DIR = os.getenv('GRAPH_ARTIFACT_DIR', _default_graph_artifact_dir)
+
+# Factor-node tables (docs/plans/FACTOR_NODE_RUNTIME_JOINS_PLAN.md).
+# The MapQA executor resolves SUPPORT/factor nodes via SQL joins against
+# the factor_* tables (written by Steps 5c/5d) instead of loading GraphML
+# + NetworkX + scipy at request time.  The legacy runtime graph path has
+# been removed; the table path is authoritative.  PostGIS remains as a
+# spatial fallback for templates without factor-table coverage.
+FACTOR_NODE_TABLES_ENABLED = os.getenv('FACTOR_NODE_TABLES_ENABLED', 'true').lower() == 'true'
+
 # Hot storage path (SSD/NVME working files)
 HOT_STORAGE_PATH = os.getenv('HOT_STORAGE_PATH', BASE_DATA_DIR)
 

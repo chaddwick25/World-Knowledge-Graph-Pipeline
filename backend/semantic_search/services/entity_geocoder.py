@@ -9,6 +9,7 @@ Implements MAPQA_TO_EXECUTION_PLAN.md §2.2.3.
 """
 
 import logging
+import math
 
 from worldkg_nca.models import OsmEntity
 from worldkg_nca.snapshot_utils import get_latest_snapshot_id
@@ -40,6 +41,9 @@ class EntityGeocoder:
             logger.warning("No snapshot_id available for geocoding")
             return None
 
+        # Strip leading articles ("a bus station" → "bus station")
+        clean_name = EntityGeocoder._strip_articles(entity_name)
+
         qs = OsmEntity.objects.using("vectors").filter(
             snapshot_id=snapshot_id,
         )
@@ -47,24 +51,49 @@ class EntityGeocoder:
             qs = qs.filter(country_code=country_code.upper())
 
         # 1. Exact name match (case-insensitive) — check the 'name' tag
-        qs_exact = qs.filter(tags__name__iexact=entity_name)
-        entity = qs_exact.first()
-        if entity:
-            return EntityGeocoder._entity_to_dict(entity)
+        #    Try the cleaned name first, then the original.
+        for name_variant in [clean_name, entity_name]:
+            if not name_variant:
+                continue
+            qs_exact = qs.filter(tags__name__iexact=name_variant)
+            entity = qs_exact.first()
+            if entity:
+                result = EntityGeocoder._entity_to_dict(entity)
+                if result and result.get("lat") is not None:
+                    return result
+                # Exact match but no coords — keep looking but remember as fallback
+                fallback = result
 
-        # 2. ILIKE contains match
-        qs_ilike = qs.filter(tags__name__icontains=entity_name)
-        entity = qs_ilike.first()
-        if entity:
-            return EntityGeocoder._entity_to_dict(entity)
+        # 2. ILIKE contains match — prefer entities with valid coordinates
+        for name_variant in [clean_name, entity_name]:
+            if not name_variant:
+                continue
+            qs_ilike = qs.filter(tags__name__icontains=name_variant)
+            # Prefer nodes (which have valid Point geom) over ways
+            for entity in qs_ilike[:20]:
+                result = EntityGeocoder._entity_to_dict(entity)
+                if result and result.get("lat") is not None:
+                    return result
+                fallback = result
 
         # 3. Try with common abbreviations expanded
-        expanded = EntityGeocoder._expand_abbreviations(entity_name)
-        if expanded != entity_name:
+        expanded = EntityGeocoder._expand_abbreviations(clean_name)
+        if expanded != clean_name:
             qs_exp = qs.filter(tags__name__icontains=expanded)
-            entity = qs_exp.first()
-            if entity:
-                return EntityGeocoder._entity_to_dict(entity)
+            for entity in qs_exp[:20]:
+                result = EntityGeocoder._entity_to_dict(entity)
+                if result and result.get("lat") is not None:
+                    return result
+                fallback = result
+
+        # 4. Last resort: return the best match even without coordinates
+        #    (the executor may still use it as a graph node lookup)
+        try:
+            fallback
+        except NameError:
+            fallback = None
+        if fallback:
+            return fallback
 
         logger.debug("Geocode failed for '%s' (country=%s, snapshot=%s)",
                      entity_name, country_code, snapshot_id)
@@ -84,8 +113,19 @@ class EntityGeocoder:
         tags = entity.tags or {}
         lat = lon = None
         if entity.geom:
-            lat = entity.geom.y
-            lon = entity.geom.x
+            try:
+                y = entity.geom.y
+                x = entity.geom.x
+                # Ways may have POINT(NaN NaN) — treat as no coordinates
+                if y is not None and x is not None and not (
+                    isinstance(y, float) and math.isnan(y)
+                ) and not (
+                    isinstance(x, float) and math.isnan(x)
+                ):
+                    lat = y
+                    lon = x
+            except Exception:
+                pass
         return {
             "osm_id": entity.osm_id,
             "osm_type": entity.osm_type,
@@ -95,6 +135,17 @@ class EntityGeocoder:
             "tags": tags,
             "wkg_class": entity.wkg_class,
         }
+
+    @staticmethod
+    def _strip_articles(name: str) -> str:
+        """Strip leading English articles: 'a bus station' → 'bus station'."""
+        if not name:
+            return name
+        lower = name.lower().strip()
+        for article in ("a ", "an ", "the "):
+            if lower.startswith(article):
+                return name.strip()[len(article):].strip()
+        return name.strip()
 
     @staticmethod
     def _expand_abbreviations(name: str) -> str:

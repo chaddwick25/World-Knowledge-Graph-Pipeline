@@ -511,3 +511,162 @@ class DriftScore(gis_models.Model):
     def __str__(self):
         alert_flag = "🚨" if self.is_alert else "✓"
         return f"{alert_flag} {self.census_tract.geouid} @ {self.timestamp.strftime('%Y-%m-%d')}: {self.drift_score:.4f}"
+
+
+# ---------------------------------------------------------------------------
+# Graph spectral analysis (Step 5c / 5d — GRAPH_SPECTRAL_TEMPORAL_PLAN.md)
+# ---------------------------------------------------------------------------
+
+class GraphSpectralFingerprint(models.Model):
+    """Spectral features of the k-NN graph per snapshot.
+
+    Computed in pipeline Step 5c from the k-NN graph built in Step 5.
+    Used by temporal drift analysis (Step 5d) and query-time spectral
+    queries.
+
+    References:
+    - [COHEN:Ch13] — Eigendecomposition
+    - [GRAPH_REP:Ch3] — Graph Laplacian, spectral features
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    region = models.CharField(
+        max_length=10,
+        db_index=True,
+        help_text="ISO 3166-1 alpha-2 country code",
+    )
+    snapshot = models.ForeignKey(
+        'osmsnapshot.Snapshot',
+        on_delete=models.CASCADE,
+        related_name='spectral_fingerprints',
+        help_text="Snapshot this fingerprint was computed from",
+    )
+
+    eigenvalues = models.JSONField(
+        help_text="Top-k non-trivial eigenvalues of the normalized Laplacian "
+                  "(λ₁..λₖ, sorted ascending, each ∈ [0, 2])"
+    )
+    fiedler_vector = models.JSONField(
+        help_text="Fiedler vector (2nd eigenvector) — sampled/truncated for storage"
+    )
+    algebraic_connectivity = models.FloatField(
+        help_text="λ₂ (Fiedler value) — how well-connected the graph is"
+    )
+    spectral_gap = models.FloatField(
+        help_text="λₖ - λ₂ — reveals cluster structure"
+    )
+    signal_smoothness = models.FloatField(
+        help_text="Dirichlet energy sᵀLs for the wkg_class graph signal"
+    )
+    node_count = models.IntegerField(help_text="Number of graph nodes")
+    edge_count = models.IntegerField(help_text="Number of graph edges")
+    k_eigenvalues = models.IntegerField(
+        default=128,
+        help_text="Number of eigenvalues computed",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'semantic_search_graphspectralfingerprint'
+        unique_together = [('region', 'snapshot')]
+        indexes = [
+            models.Index(fields=['region', '-created_at']),
+        ]
+        ordering = ['region', '-created_at']
+        verbose_name = 'Graph Spectral Fingerprint'
+        verbose_name_plural = 'Graph Spectral Fingerprints'
+
+    def __str__(self):
+        return (
+            f"SpectralFP({self.region}, λ₂={self.algebraic_connectivity:.6f}, "
+            f"nodes={self.node_count})"
+        )
+
+
+class GraphSpectralDrift(models.Model):
+    """Spectral drift between two snapshots.
+
+    Computed in pipeline Step 5d when ≥2 snapshots exist for a country.
+    Captures structural change (eigenvalue/Fiedler drift) and
+    signal-weighted co-evolution (Dirichlet energy delta) plus optional
+    ARIMA / exponential-smoothing forecasts.
+
+    References:
+    - [STATS:Ch3] — Spectral distance, KL divergence
+    - [STATS:Ch6] — Time series, forecasting, change-point detection
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    region = models.CharField(
+        max_length=10,
+        db_index=True,
+        help_text="ISO 3166-1 alpha-2 country code",
+    )
+    snapshot_from = models.ForeignKey(
+        'osmsnapshot.Snapshot',
+        related_name='spectral_drift_from',
+        on_delete=models.CASCADE,
+        help_text="Earlier snapshot (T_{t-1})",
+    )
+    snapshot_to = models.ForeignKey(
+        'osmsnapshot.Snapshot',
+        related_name='spectral_drift_to',
+        on_delete=models.CASCADE,
+        help_text="Later snapshot (T_t)",
+    )
+
+    spectral_distance = models.FloatField(
+        help_text="‖λ_t - λ_{t-1}‖₂ — structural change magnitude"
+    )
+    connectivity_delta = models.FloatField(
+        help_text="Δλ₂ — algebraic connectivity shift"
+    )
+    spectral_gap_delta = models.FloatField(
+        help_text="Δ(λₖ - λ₂) — spectral gap shift"
+    )
+    fiedler_drift = models.FloatField(
+        help_text="Cosine distance between Fiedler vectors ∈ [0, 2]"
+    )
+    smoothness_delta = models.FloatField(
+        help_text="Δ(sᵀLs) — Dirichlet energy shift"
+    )
+    drift_magnitude = models.CharField(
+        max_length=10,
+        default='low',
+        help_text="Categorical magnitude: low / medium / high / extreme",
+    )
+
+    forecast_eigenvalues = models.JSONField(
+        null=True, blank=True,
+        help_text="ARIMA / exp-smoothing forecast of next-snapshot eigenvalues",
+    )
+    forecast_confidence = models.JSONField(
+        null=True, blank=True,
+        help_text="1.96σ prediction interval half-widths per eigenvalue",
+    )
+    changepoint_detected = models.BooleanField(
+        default=False,
+        help_text="True if CUSUM detected a structural change point",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'semantic_search_graphspectraldrift'
+        unique_together = [('region', 'snapshot_from', 'snapshot_to')]
+        indexes = [
+            models.Index(fields=['region', '-created_at']),
+        ]
+        ordering = ['region', '-created_at']
+        verbose_name = 'Graph Spectral Drift'
+        verbose_name_plural = 'Graph Spectral Drifts'
+
+    def __str__(self):
+        return (
+            f"SpectralDrift({self.region}, "
+            f"dist={self.spectral_distance:.4f}, "
+            f"Δλ₂={self.connectivity_delta:.4f})"
+        )
