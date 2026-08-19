@@ -166,6 +166,8 @@ def _get_step_tasks():
         step_4b_finalize_subgraph_uslp,
         step_5_train_gv_nle,
         step_5b_finalize_subgraph_nle,
+        step_5c_graph_spectral_analysis,
+        step_5d_temporal_drift,
         step_6_mark_search_ready,
     )
     return {
@@ -177,6 +179,8 @@ def _get_step_tasks():
         4.5: step_4b_finalize_subgraph_uslp,
         5: step_5_train_gv_nle,
         5.5: step_5b_finalize_subgraph_nle,         ***REMOVED*** Chord callback for Step 5 subgraphs
+        5.7: step_5c_graph_spectral_analysis,       ***REMOVED*** Graph & spectral analysis (non-fatal)
+        5.8: step_5d_temporal_drift,                ***REMOVED*** Temporal drift (conditional: >=2 snapshots)
         6: step_6_mark_search_ready,
     }
 
@@ -390,7 +394,10 @@ def _run_eager(cfg, run, steps) -> None:
         pipeline_run_id=cfg.pipeline_run_id,
     )
     ***REMOVED*** TODO: Reuse this pattern for the DAG implementation
-    tasks_list = [steps[1], steps[2], steps[3], steps[4], steps[5], steps[6]]
+    tasks_list = [
+        steps[1], steps[2], steps[3], steps[4], steps[5],
+        steps[5.7], steps[5.8], steps[6],
+    ]
     config_dict = cfg.to_dict()
 
     ***REMOVED*** Mark as RUNNING before starting (eager runs synchronously)
@@ -462,9 +469,15 @@ def _run_eager(cfg, run, steps) -> None:
         ***REMOVED*** has_subgraphs=True.
         step_name = _STEP_NAMES.get(5, 'step_5')
         config_dict = _run_sync_step(step_name, tasks_list[4], config_dict)
+        ***REMOVED*** Step 5c: graph & spectral analysis (non-fatal — failures logged,
+        ***REMOVED*** pipeline continues).  Step 5c is new (GRAPH_SPECTRAL_TEMPORAL_PLAN.md).
+        config_dict = _run_sync_step('graph_spectral_analysis', tasks_list[5], config_dict)
+        ***REMOVED*** Step 5d: temporal drift (conditional — only runs when >=2 snapshots
+        ***REMOVED*** exist for this country; the task body no-ops otherwise).
+        config_dict = _run_sync_step('temporal_drift', tasks_list[6], config_dict)
         ***REMOVED*** Step 6: mark search ready
         step_name = _STEP_NAMES.get(6, 'step_6')
-        config_dict = _run_sync_step(step_name, tasks_list[5], config_dict)
+        config_dict = _run_sync_step(step_name, tasks_list[7], config_dict)
 
         run.status = PipelineRun.PipelineStatus.COMPLETED
         run.completed_at = datetime.now(timezone.utc)
@@ -492,9 +505,15 @@ def _run_eager(cfg, run, steps) -> None:
 def _run_async(cfg, run, steps) -> None:
     """Execute pipeline steps via Celery Canvas (normal async mode).
 
-    Steps 1, 4, and 5 use chords for parallel subgraph processing when
+    Steps 1 and 4 use chords for parallel subgraph processing when
     subgraphs exist.  The chord callbacks aggregate results and pass the
     config dict downstream so the chain can continue.
+
+    Step 5 does NOT use a chord — it self-dispatches per-subgraph NLE
+    training inline (via rehydration from DB) because GPU training is
+    serialized by the GpuSlotLock anyway.  A redundant Step 5b chord here
+    would cause every subgraph to be trained twice (once by step_5's
+    self-dispatch, once by the chord header).
 
     For small territories (no subgraphs), the subgraph chords are skipped
     and the chain runs step_1 → step_2 → step_3 → step_4 → step_5 → step_6
@@ -510,6 +529,8 @@ def _run_async(cfg, run, steps) -> None:
     config_dict = _lightweight_config_dict(cfg)
 
     ***REMOVED*** ── Step 1 chord: subgraph embeddings ──
+    ***REMOVED*** Step 1 does NOT self-dispatch subgraph embeddings — the chord is the
+    ***REMOVED*** only mechanism that generates per-subgraph pickles.
     embed_header = _get_subgraph_embed_tasks(cfg)
     if embed_header:
         embed_callback = steps[1.5].s(config_dict)  ***REMOVED*** step_1b_finalize_subgraph_embeds
@@ -518,17 +539,19 @@ def _run_async(cfg, run, steps) -> None:
         step1_chord = None  ***REMOVED*** no subgraphs — step_1 returns env directly
 
     ***REMOVED*** ── Step 4 chord: subgraph USLP ──
+    ***REMOVED*** Step 4 is replaced by this chord in the async chain (the bare step_4
+    ***REMOVED*** task never runs in async), so the chord is the sole USLP executor —
+    ***REMOVED*** no double execution.
     uslp_header = _get_subgraph_uslp_tasks(cfg)
     uslp_callback = steps[4.5].s(config_dict)  ***REMOVED*** step_4b_finalize_subgraph_uslp
     uslp_chord = chord(uslp_header, uslp_callback)
 
-    ***REMOVED*** ── Step 5 chord: subgraph NLE training ──
-    nle_header = _get_subgraph_nle_tasks(cfg)
-    if nle_header:
-        nle_callback = steps[5.5].s(config_dict)  ***REMOVED*** step_5b_finalize_subgraph_nle
-        step5_chord = chord(nle_header, nle_callback)
-    else:
-        step5_chord = None  ***REMOVED*** no subgraphs — step_5 returns env directly
+    ***REMOVED*** ── Step 5: NO chord ──
+    ***REMOVED*** step_5 self-dispatches per-subgraph NLE training inline (via
+    ***REMOVED*** rehydration from DB).  A Step 5b chord here would re-train every
+    ***REMOVED*** subgraph a second time.  GPU training is serialized by GpuSlotLock
+    ***REMOVED*** so the chord provides no parallelism benefit.  See the comment in
+    ***REMOVED*** step_5_nle.py's rehydrated branch.
 
     ***REMOVED*** Build chain — all tasks call _push_update internally,
     ***REMOVED*** which now sends via Redis ChannelLayer (cross-process).
@@ -545,8 +568,14 @@ def _run_async(cfg, run, steps) -> None:
         uslp_chord,
         steps[5].s(),
     ])
-    if step5_chord is not None:
-        canvas_parts.append(step5_chord)
+    ***REMOVED*** Step 5c (graph & spectral analysis) + Step 5d (temporal drift) run
+    ***REMOVED*** after Step 5 and before Step 6.  Both are non-fatal / conditional —
+    ***REMOVED*** their task bodies log warnings and no-op when prerequisites are missing
+    ***REMOVED*** (e.g. <2 snapshots for 5d).  See GRAPH_SPECTRAL_TEMPORAL_PLAN.md.
+    canvas_parts.extend([
+        steps[5.7].s(),   ***REMOVED*** step_5c_graph_spectral_analysis
+        steps[5.8].s(),   ***REMOVED*** step_5d_temporal_drift
+    ])
     canvas_parts.append(steps[6].s())
 
     canvas = chain(*canvas_parts)

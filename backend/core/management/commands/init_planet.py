@@ -229,6 +229,16 @@ class Command(BaseCommand):
         """Step 0m — generate OSM administrative boundaries for cartography."""
         call_command("generate_osm_boundaries")
 
+    def _compute_amenity_embeddings(self) -> None:
+        """Step 0n — precompute FastText embeddings for the amenity vocabulary.
+
+        Writes factor_amenity_embedding rows so the MapQA executor's
+        semantic fallback tier is a row lookup instead of a runtime
+        FastText call (FACTOR_NODE_RUNTIME_JOINS_PLAN.md §3.4).
+        Skips gracefully when the parser artifacts don't exist yet.
+        """
+        call_command("compute_amenity_embeddings")
+
     def _finalize(self) -> None:
         """Mark the PlanetSnapshot row as COMPLETED.
 
@@ -273,6 +283,7 @@ class Command(BaseCommand):
             ("rescan_embeddings", self._rescan_embeddings),
             ("enrich_worldkg_classes", self._enrich_worldkg_classes),
             ("generate_osm_boundaries", self._generate_osm_boundaries),
+            ("compute_amenity_embeddings", self._compute_amenity_embeddings),
             ("finalize", self._finalize),
         ]
 

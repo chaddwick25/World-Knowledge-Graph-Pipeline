@@ -5,8 +5,8 @@
 uslp:
   threshold: 0.7
   top_k: 50
-  limit: 200000
-  max_heads: 50000
+  limit: 1720000
+  max_heads: 4385000
   use_gpu: true
   gpu_device: "cuda:0"
 

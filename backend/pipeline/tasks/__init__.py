@@ -33,6 +33,12 @@ from pipeline.tasks.country_pipeline_steps.step_5_nle import (  ***REMOVED*** no
     _train_subgraph_gv_nle,
     step_5b_finalize_subgraph_nle,
 )
+from pipeline.tasks.country_pipeline_steps.step_5c_graph_spectral import (  ***REMOVED*** noqa: F401
+    step_5c_graph_spectral_analysis,
+)
+from pipeline.tasks.country_pipeline_steps.step_5d_temporal_drift import (  ***REMOVED*** noqa: F401
+    step_5d_temporal_drift,
+)
 from pipeline.tasks.country_pipeline_steps.step_6_ready import (  ***REMOVED*** noqa: F401
     step_6_mark_search_ready,
 )
