@@ -532,9 +532,9 @@ class GraphSpectralFingerprint(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     region = models.CharField(
-        max_length=10,
+        max_length=255,
         db_index=True,
-        help_text="ISO 3166-1 alpha-2 country code",
+        help_text="Country code or subgraph slug for subdivision-scoped analysis",
     )
     snapshot = models.ForeignKey(
         'osmsnapshot.Snapshot',
@@ -601,9 +601,9 @@ class GraphSpectralDrift(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     region = models.CharField(
-        max_length=10,
+        max_length=255,
         db_index=True,
-        help_text="ISO 3166-1 alpha-2 country code",
+        help_text="Country code or subgraph slug for subdivision-scoped analysis",
     )
     snapshot_from = models.ForeignKey(
         'osmsnapshot.Snapshot',
