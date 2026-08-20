@@ -66,7 +66,36 @@ def step_5d_temporal_drift(self, env: CountryEnvelope) -> CountryEnvelope:
 
 
 def _run_temporal_drift(env: CountryEnvelope) -> None:
-    """Compute + store the GraphSpectralDrift for ``env``."""
+    """Compute + store the GraphSpectralDrift for ``env``.
+
+    For countries with subgraphs: computes per-subgraph drift (each
+    subgraph has its own fingerprint with region=subgraph_slug).
+    For countries without subgraphs: computes country-level drift
+    (region=country_code) — unchanged.
+    """
+    import dataclasses
+    # Rehydrate subgraphs (same pattern as Step 5c)
+    if not env.has_subgraphs or not env.subgraphs:
+        try:
+            fresh = CountryEnvelope.from_db(env.iso, snapshot_date=env.snapshot_date)
+            if fresh.has_subgraphs and fresh.subgraphs:
+                env = dataclasses.replace(
+                    env,
+                    subgraphs=fresh.subgraphs,
+                    state=dataclasses.replace(env.state, has_subgraphs=True),
+                )
+        except Exception:
+            pass
+
+    if env.has_subgraphs and env.subgraphs:
+        for sg in env.subgraphs:
+            _run_drift_for_region(env, sg.slug)
+    else:
+        _run_drift_for_region(env, env.iso)
+
+
+def _run_drift_for_region(env: CountryEnvelope, region: str) -> None:
+    """Compute + store drift for a single region (subgraph slug or country code)."""
     from osmsnapshot.models import Snapshot
     from semantic_search.models import GraphSpectralFingerprint, GraphSpectralDrift
     from semantic_search.services.spectral_drift_service import SpectralDriftService
@@ -95,7 +124,7 @@ def _run_temporal_drift(env: CountryEnvelope) -> None:
     # Load the current fingerprint (just written by Step 5c)
     current_fp = (
         GraphSpectralFingerprint.objects
-        .filter(region=env.iso, snapshot=current_snapshot)
+        .filter(region=region, snapshot=current_snapshot)
         .order_by('-created_at')
         .first()
     )
@@ -105,6 +134,7 @@ def _run_temporal_drift(env: CountryEnvelope) -> None:
             "info",
             "Step 5d: No current GraphSpectralFingerprint — skipping drift",
             country=env.iso,
+            region=region,
             pipeline_run_id=env.pipeline_run_id,
         )
         return
@@ -124,13 +154,14 @@ def _run_temporal_drift(env: CountryEnvelope) -> None:
             "info",
             "Step 5d: No previous snapshot — skipping drift (first run)",
             country=env.iso,
+            region=region,
             pipeline_run_id=env.pipeline_run_id,
         )
         return
 
     previous_fp = (
         GraphSpectralFingerprint.objects
-        .filter(region=env.iso, snapshot=previous_snapshot)
+        .filter(region=region, snapshot=previous_snapshot)
         .order_by('-created_at')
         .first()
     )
@@ -140,6 +171,7 @@ def _run_temporal_drift(env: CountryEnvelope) -> None:
             "info",
             "Step 5d: Previous snapshot has no fingerprint — skipping drift",
             country=env.iso,
+            region=region,
             previous_snapshot=previous_snapshot.snapshot_date,
             pipeline_run_id=env.pipeline_run_id,
         )
@@ -165,14 +197,14 @@ def _run_temporal_drift(env: CountryEnvelope) -> None:
         spectral_drift["spectral_distance"]
     )
 
-    # Forecast (needs ≥2 fingerprints; uses all available for the country)
+    # Forecast (needs ≥2 fingerprints; uses all available for this region)
     forecast_eigenvalues = None
     forecast_confidence = None
     changepoint_detected = False
     try:
         all_fps = list(
             GraphSpectralFingerprint.objects
-            .filter(region=env.iso)
+            .filter(region=region)
             .select_related('snapshot')
             .order_by('snapshot__snapshot_date')
         )
@@ -209,19 +241,20 @@ def _run_temporal_drift(env: CountryEnvelope) -> None:
             "warning",
             "Step 5d: Forecast / change-point detection failed — continuing",
             country=env.iso,
+            region=region,
             error=str(exc),
             pipeline_run_id=env.pipeline_run_id,
         )
 
     # Idempotency: replace any existing drift row for this pair
     GraphSpectralDrift.objects.filter(
-        region=env.iso,
+        region=region,
         snapshot_from=previous_snapshot,
         snapshot_to=current_snapshot,
     ).delete()
 
     GraphSpectralDrift.objects.create(
-        region=env.iso,
+        region=region,
         snapshot_from=previous_snapshot,
         snapshot_to=current_snapshot,
         spectral_distance=spectral_drift["spectral_distance"],
@@ -240,6 +273,7 @@ def _run_temporal_drift(env: CountryEnvelope) -> None:
         "info",
         "Step 5d: Stored GraphSpectralDrift",
         country=env.iso,
+        region=region,
         spectral_distance=spectral_drift["spectral_distance"],
         connectivity_delta=spectral_drift["connectivity_delta"],
         fiedler_drift=spectral_drift["fiedler_drift"],
@@ -248,34 +282,36 @@ def _run_temporal_drift(env: CountryEnvelope) -> None:
         pipeline_run_id=env.pipeline_run_id,
     )
 
-    # ── 5d.2: Per-node drift factor rows (FACTOR_NODE_RUNTIME_JOINS_PLAN.md)
-    # Loads both snapshots' SpectralNodeMetric rows (written by Step 5c),
-    # sign-aligns the eigenbases, and writes per-node DriftNodeMetric rows.
-    # Non-fatal: the region-level drift row above is the primary output.
-    try:
-        from semantic_search.services.factor_node_writer import FactorNodeWriter
+    # ── 5d.2: Per-node drift factor rows ──
+    # Only run for country-level (subgraph_slug=None) — per-subgraph
+    # drift factor rows would need subgraph-scoped DriftNodeMetric rows,
+    # which is a future enhancement.  For now, subgraph drift is tracked
+    # at the fingerprint level only.
+    if region == env.iso:
+        try:
+            from semantic_search.services.factor_node_writer import FactorNodeWriter
 
-        n_rows = FactorNodeWriter().write_drift_nodes(
-            env.iso,
-            previous_snapshot.snapshot_date,
-            current_snapshot.snapshot_date,
-        )
-        _log(
-            logger,
-            "info",
-            "Step 5d: Wrote DriftNodeMetric factor rows",
-            country=env.iso,
-            snapshot_from=previous_snapshot.snapshot_date,
-            snapshot_to=current_snapshot.snapshot_date,
-            rows=n_rows,
-            pipeline_run_id=env.pipeline_run_id,
-        )
-    except Exception as exc:
-        _log(
-            logger,
-            "warning",
-            "Step 5d: Drift-node write failed — pipeline continues (non-fatal)",
-            country=env.iso,
-            error=str(exc),
-            pipeline_run_id=env.pipeline_run_id,
-        )
+            n_rows = FactorNodeWriter().write_drift_nodes(
+                env.iso,
+                previous_snapshot.snapshot_date,
+                current_snapshot.snapshot_date,
+            )
+            _log(
+                logger,
+                "info",
+                "Step 5d: Wrote DriftNodeMetric factor rows",
+                country=env.iso,
+                snapshot_from=previous_snapshot.snapshot_date,
+                snapshot_to=current_snapshot.snapshot_date,
+                rows=n_rows,
+                pipeline_run_id=env.pipeline_run_id,
+            )
+        except Exception as exc:
+            _log(
+                logger,
+                "warning",
+                "Step 5d: Drift-node write failed — pipeline continues (non-fatal)",
+                country=env.iso,
+                error=str(exc),
+                pipeline_run_id=env.pipeline_run_id,
+            )

@@ -47,17 +47,38 @@ class CommunityDetectionService:
     - Modularity Q ∈ [-0.5, 1] (typically [0, 0.5] for good partitions)
     """
 
-    def detect_communities(self, G: nx.Graph, resolution: float = 1.0) -> dict:
+    def detect_communities(self, G, resolution: float = 1.0) -> dict:
         """Detect communities using the Louvain method.
 
         Args:
-            G: k-NN graph (undirected)
+            G: k-NN graph (undirected) — ``networkx.Graph`` or
+               ``SparseGraph``
             resolution: higher values → smaller communities
 
         Returns:
             dict with ``communities`` (list of lists of node IDs),
             ``modularity``, ``node_to_community``, ``community_count``.
+
+        Solver selection:
+            - **networkit PLM** (parallel C++ Louvain) when networkit is
+              installed — ~2 GB / seconds-to-minutes for IE-scale graphs
+              (2.47M nodes), where the pure-Python NetworkX Louvain was
+              OOM-killed at ~61 GB RSS.
+            - **NetworkX Louvain** fallback when networkit is unavailable
+              (e.g. unit-test environments).
         """
+        from semantic_search.services.knn_graph_service import SparseGraph
+
+        if isinstance(G, SparseGraph):
+            if G.n_nodes == 0:
+                return {
+                    "communities": [],
+                    "modularity": 0.0,
+                    "node_to_community": {},
+                    "community_count": 0,
+                }
+            return self._detect_sparse(G, resolution)
+
         if G.is_directed():
             G = G.to_undirected()
 
@@ -69,6 +90,62 @@ class CommunityDetectionService:
                 "community_count": 0,
             }
 
+        return self._detect_nx(G, resolution)
+
+    # ── Solvers ────────────────────────────────────────────────────────
+
+    def _detect_sparse(self, G, resolution: float) -> dict:
+        """networkit PLM on a SparseGraph (large-graph path)."""
+        try:
+            import networkit as nk
+        except ImportError:
+            logger.warning(
+                "networkit not installed — falling back to NetworkX "
+                "Louvain (slow / memory-hungry for large graphs)",
+            )
+            return self._detect_nx(G.to_nx(), resolution)
+
+        node_ids = [int(o) for o in G.node_ids]
+        lo, hi, w = G._canonical_edges
+
+        nk_g = nk.Graph(G.n_nodes, weighted=True)
+        for i in range(len(w)):
+            nk_g.addEdge(int(lo[i]), int(hi[i]), float(w[i]))
+
+        plm = nk.community.PLM(nk_g, refine=False, gamma=resolution)
+        plm.run()
+        part = plm.getPartition()
+
+        try:
+            modularity = nk.community.Modularity().getQuality(part, nk_g)
+        except Exception:
+            modularity = 0.0
+
+        # networkit partition is keyed by internal index → map back to osm_id
+        node_to_community = {}
+        for i, osm_id in enumerate(node_ids):
+            node_to_community[osm_id] = int(part.subsetOf(i))
+
+        # Renumber community IDs densely (0..C-1) and build member lists
+        remap = {}
+        communities = []
+        for osm_id in node_ids:
+            cid = node_to_community[osm_id]
+            if cid not in remap:
+                remap[cid] = len(communities)
+                communities.append([])
+            node_to_community[osm_id] = remap[cid]
+            communities[remap[cid]].append(osm_id)
+
+        return {
+            "communities": communities,
+            "modularity": float(modularity),
+            "node_to_community": node_to_community,
+            "community_count": len(communities),
+        }
+
+    def _detect_nx(self, G, resolution: float) -> dict:
+        """NetworkX Louvain (small graphs / fallback)."""
         communities = nx.algorithms.community.louvain_communities(
             G, resolution=resolution
         )

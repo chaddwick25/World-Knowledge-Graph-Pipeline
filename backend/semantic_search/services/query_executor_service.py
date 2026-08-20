@@ -21,6 +21,8 @@ from django.contrib.gis.geos import Point
 from django.contrib.gis.measure import D
 from django.contrib.gis.db.models.functions import Distance as GisDistance
 from django.db import connection
+from django.db.models import FloatField
+from django.db.models.expressions import RawSQL
 
 from semantic_search.services.entity_geocoder import EntityGeocoder
 from worldkg_nca.models import OsmEntity
@@ -539,7 +541,21 @@ class QueryExecutorService:
             )
             return entities
 
-        # Anchor has no usable coordinates.
+        # 3. Multi-anchor fallback: the anchor text may be a generic
+        #    amenity category (e.g. "schools", "hospitals") rather than
+        #    a specific named place.  In that case, find all entities of
+        #    that category and search for the target amenity within
+        #    radius of ANY of them.
+        if radius_m and anchor and anchor["text"]:
+            multi_results = cls._multi_anchor_amenity_search(
+                amenity_text, anchor["text"],
+                country_code, snapshot_date,
+                radius_m=radius_m, top_k=200, trace=trace,
+            )
+            if multi_results is not None:
+                return multi_results
+
+        # Anchor has no usable coordinates and is not a category.
         # Returning all matching amenities would be misleading (the user
         # asked for a spatial filter), so surface a clear error instead.
         if radius_m and anchor:
@@ -556,6 +572,114 @@ class QueryExecutorService:
             amenity_text, country_code, snapshot_date, top_k=200, trace=trace,
         )
         return entities
+
+    @classmethod
+    def _multi_anchor_amenity_search(cls, amenity_text, anchor_text,
+                                      country_code, snapshot_date,
+                                      radius_m, top_k, trace):
+        """Search for ``amenity_text`` within ``radius_m`` of ANY entity
+        matching ``anchor_text`` as an amenity category.
+
+        This handles queries like "cafes within 3km of schools" where
+        "schools" is a category, not a specific named place.  Returns
+        ``None`` if the anchor text is not a recognisable amenity
+        category (so the caller can fall through to the error path).
+        """
+        # Resolve anchor_text to an amenity tag value via the same 3-tier
+        # fallback used for OBJECT concepts.
+        anchor_amenity = cls._resolve_amenity_tag(anchor_text)
+        if anchor_amenity is None:
+            return None
+
+        trace.append({
+            "step": "multi_anchor_resolve",
+            "input": anchor_text,
+            "resolved_amenity": anchor_amenity,
+        })
+
+        # Find all anchor entities (e.g. all schools) with coordinates
+        anchor_entities = cls._search_by_amenity(
+            anchor_amenity, country_code, snapshot_date,
+            top_k=500, trace=None,  # silent — logged above
+        )
+        if not anchor_entities:
+            trace.append({
+                "step": "multi_anchor_empty",
+                "warning": f"no entities found for category '{anchor_amenity}'",
+            })
+            return []
+
+        trace.append({
+            "step": "multi_anchor_anchors",
+            "anchor_count": len(anchor_entities),
+        })
+
+        # For each anchor, search for the target amenity within radius.
+        # Deduplicate by osm_id (a cafe near two schools should appear
+        # once, with the distance to the nearest school).
+        seen = {}
+        for anchor_ent in anchor_entities:
+            alat, alon = anchor_ent.get("lat"), anchor_ent.get("lon")
+            if alat is None or alon is None:
+                continue
+            anchor_point = Point(alon, alat, srid=4326)
+            hits = cls._search_by_amenity_spatial(
+                amenity_text, country_code, snapshot_date,
+                anchor_point=anchor_point,
+                radius_m=radius_m, top_k=top_k, trace=None,
+            )
+            for hit in hits:
+                osm_id = hit.get("osm_id")
+                dist = hit.get("distance_m", float("inf"))
+                if osm_id not in seen or dist < seen[osm_id]["distance_m"]:
+                    seen[osm_id] = hit
+                    seen[osm_id]["distance_m"] = dist
+
+        results = sorted(seen.values(), key=lambda r: r.get("distance_m", float("inf")))[:top_k]
+        trace.append({
+            "step": "multi_anchor_search",
+            "input": amenity_text,
+            "anchor_category": anchor_amenity,
+            "anchor_count": len(anchor_entities),
+            "radius_m": radius_m,
+            "output_count": len(results),
+        })
+        return results
+
+    @classmethod
+    def _resolve_amenity_tag(cls, text):
+        """Resolve a free-text phrase to an OSM amenity tag value.
+
+        Returns the amenity tag value (e.g. "school") if the text maps
+        to a known amenity, or ``None`` if it doesn't look like an
+        amenity category (so the caller can treat it as a place name).
+        """
+        if not text:
+            return None
+        key = text.lower().strip().rstrip("s")  # singularise
+        # Direct amenity tag match
+        from worldkg_nca.models import OsmEntity
+        from worldkg_nca.snapshot_utils import get_latest_snapshot_id
+        snapshot_id = cls._get_snapshot_id(None)
+        exists = OsmEntity.objects.using("vectors").filter(
+            snapshot_id=snapshot_id,
+            tags__amenity=key,
+        ).exists()
+        if exists:
+            return key
+        # Ontology class mapping
+        amenity_to_wkgs = {
+            "cafe": "wkgs:Cafe", "coffee_shop": "wkgs:Cafe",
+            "restaurant": "wkgs:Restaurant", "diner": "wkgs:Restaurant",
+            "hotel": "wkgs:Hotel", "resort": "wkgs:Hotel",
+            "hospital": "wkgs:Hospital", "clinic": "wkgs:Hospital",
+            "school": "wkgs:School", "university": "wkgs:School",
+            "shop": "wkgs:Shop", "store": "wkgs:Shop", "mall": "wkgs:Shop",
+            "bar": "wkgs:Amenity", "pub": "wkgs:Amenity",
+        }
+        if key in amenity_to_wkgs:
+            return key
+        return None
 
     # ── Template 3: PLACE-ATTRIBUTE-QUERY (#8) ──────────────────────────────
     # "What restaurant is near X?" / "italian food near a bus station"
@@ -982,9 +1106,21 @@ class QueryExecutorService:
             qs = qs.filter(country_code=country_code.upper())
 
         if radius_m is not None:
-            qs = qs.filter(geom__dwithin=(anchor_point, D(m=radius_m)))
+            # Use ST_DWithin with geography cast — supports meters on
+            # geographic (SRID 4326) columns, unlike D(m=) which requires
+            # degree units on geographic fields.
+            qs = qs.extra(
+                where=["ST_DWithin(geom::geography, ST_MakePoint(%s, %s)::geography, %s)"],
+                params=[float(anchor_point.x), float(anchor_point.y), float(radius_m)],
+            )
 
-        qs = qs.annotate(distance=GisDistance("geom", anchor_point)).order_by("distance")[:top_k]
+        qs = qs.annotate(
+            distance_m=RawSQL(
+                "ST_Distance(geom::geography, ST_MakePoint(%s, %s)::geography)",
+                (float(anchor_point.x), float(anchor_point.y)),
+                output_field=FloatField(),
+            )
+        ).order_by("distance_m")[:top_k]
 
         try:
             entities = list(qs)
@@ -996,8 +1132,8 @@ class QueryExecutorService:
             results = []
             for e in entities:
                 r = cls._entity_to_result(e)
-                if hasattr(e, "distance"):
-                    r["distance_m"] = round(e.distance.m, 1)
+                if hasattr(e, "distance_m"):
+                    r["distance_m"] = round(float(e.distance_m), 1)
                 results.append(r)
             if trace is not None:
                 trace.append({
@@ -1103,9 +1239,18 @@ class QueryExecutorService:
                 qs = qs.filter(**{f"tags__has_key": tag_key})
 
         if radius_m is not None:
-            qs = qs.filter(geom__dwithin=(anchor_point, D(m=radius_m)))
+            qs = qs.extra(
+                where=["ST_DWithin(geom::geography, ST_MakePoint(%s, %s)::geography, %s)"],
+                params=[float(anchor_point.x), float(anchor_point.y), float(radius_m)],
+            )
 
-        qs = qs.annotate(distance=GisDistance("geom", anchor_point)).order_by("distance")[:top_k]
+        qs = qs.annotate(
+            distance_m=RawSQL(
+                "ST_Distance(geom::geography, ST_MakePoint(%s, %s)::geography)",
+                (float(anchor_point.x), float(anchor_point.y)),
+                output_field=FloatField(),
+            )
+        ).order_by("distance_m")[:top_k]
         entities = list(qs)
         if not entities:
             return []
@@ -1113,8 +1258,8 @@ class QueryExecutorService:
         results = []
         for e in entities:
             r = cls._entity_to_result(e)
-            if hasattr(e, "distance"):
-                r["distance_m"] = round(e.distance.m, 1)
+            if hasattr(e, "distance_m"):
+                r["distance_m"] = round(float(e.distance_m), 1)
             results.append(r)
         if trace is not None:
             trace.append({

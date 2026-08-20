@@ -4,109 +4,269 @@ Productizing open-source models for geospatial reasoning via the [WorldKG Projec
 
 The pipeline transforms heterogeneous, noisy, unstructured OpenStreetMap data into homogeneous, clean, structured knowledge. It ingests OSM planet data, builds vector embeddings, aligns entities with Wikidata, and predicts spatial links — all orchestrated as a multi-stage ETL pipeline driven by a [Celery](https://docs.celeryq.dev/) canvas.
 
-The artifacts produced will be consumed by agents for geospatial reasoning. The current architectural direction is MapQA — a parser → executor → HITL pipeline that maps natural-language questions to 5 template-specific execution functions (see `docs/plans/MAPQA_TO_EXECUTION_PLAN.md`). The parser, executor, PostGIS spatial search, FastText fallback, MCP/HITL frontend, and test suite are all implemented (see `docs/plans/MAPQA_PARSER_IMPLEMENTED.md`).
+The artifacts produced will be consumed by agents for geospatial reasoning. The current architectural direction is MapQA — a parser → executor → HITL pipeline that maps natural-language questions to 5 template-specific execution functions. The parser, executor, PostGIS spatial search, FastText fallback, MCP/HITL frontend, and test suite are all implemented.
 
-## Artifacts
+---
 
-| Artifact | Description |
-|----------|-------------|
-| **GeoVectors Embeddings** | Semantic and spatial embeddings for OSM entities (GV-Tags 300D + GV-NLE 100D) |
-| **Wikidata Alignment** | Connects OSM entities to Wikidata entries via the WorldKG ontology and alignment models |
-| **Spatial Link Prediction** | Ground-truth style triplets for spatial relationships between entities |
-| **WorldKG Enrichment** | Enriches OSM entities with Wikidata metadata and ontology classes |
-| **Semantic Search** | Natural-language queries over enriched OSM entities, with optional subdivision filtering by Wikidata QID |
-| **Subdivision Search** | Filter search results by administrative subdivision (city/department/state) using Wikidata QIDs resolved via `SubgraphProfile` bbox records |
-| **MapQA (NL → Geo)** | Natural-language geospatial question answering: TF-IDF parser (9 templates, 98.6% zero-shot accuracy) → graph-grounded executor (heat kernel diffusion, Dijkstra shortest path, BFS) with PostGIS fallback → HITL confirmation modal via MCP. See `docs/plans/MAPQA_PARSER_IMPLEMENTED.md` |
-| **Graph Spectral Analysis** | Laplacian eigenvalues, Fiedler vector, algebraic connectivity, and signal smoothness on the k-NN graph. Louvain community detection. k-NN graph serialized to GraphML in Step 5c as a debug artifact. Stored as `GraphSpectralFingerprint` per region+snapshot. Step 5c also writes per-entity `factor_spectral_node_metric` rows (eigen-loadings as 128D pgvector, community, Dirichlet contribution, degree, clustering) for SQL-only runtime factor resolution |
-| **Temporal Drift** | Spectral drift between snapshots (‖λ_t - λ_{t-1}‖₂), ARIMA forecasting, CUSUM change-point detection. Stored as `GraphSpectralDrift` per region+snapshot pair. Step 5d also writes per-entity `factor_drift_node_metric` rows (sign-aligned Fiedler delta, loading drift, community change, degree delta) for runtime drift joins |
-| **Embedding Drift** | Sliced Wasserstein Distance between snapshot embeddings (semantic + spatial axes), freshness score. Management command: `compute_embedding_drift` |
-| **Factor-Node Tables** | Flat, join-friendly pgvector tables (`factor_spectral_node_metric`, `factor_drift_node_metric`, `factor_amenity_embedding`) on the vectors DB, colocated with `OsmEntity`. Batch-written by Steps 5c/5d + `compute_amenity_embeddings`. Runtime `FactorResolutionService` resolves SUPPORT/COND/factor nodes via SQL + pgvector `<#>` — no NetworkX/SciPy/sklearn at request time. The factor-table path is authoritative (`FACTOR_NODE_TABLES_ENABLED` defaults `true`); the legacy runtime graph path has been removed. See `docs/Schematics_V2/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md` |
+## WorldKG Project
 
-## Pipeline Types
+The WorldKG Project (DFG grant 424985896, 2019–2023) addressed the semantic
+gap between OpenStreetMap and knowledge graphs. This pipeline productizes
+that research into a running system that:
 
-Both are driven by Celery:
+1. **Closes the OSM↔Wikidata gap** — IGEA entity alignment links OSM
+   entities to Wikidata knowledge graph entries using cross-attention over
+   semantic and geo-spatial features.
+2. **Predicts spatial relationships** — USLP discovers spatial links between
+   entities using tri-space scoring (geographic + name + class similarity),
+   producing ground-truth-style triplets.
+3. **Learns graph representations** — GeoVectors embeddings (GV-Tags 300D
+   semantic + GV-NLE 100D spatial) and DeepWalk random-walk embeddings
+   capture entity similarity on the k-NN graph manifold.
 
-1. **Planet Initialization** — Runs once to initialize configs and primitives. Now a single `init_planet` management command (replaces the former Celery canvas of step_0a–step_0m tasks), invoked as a Docker entrypoint step after migrations. See [Planet Initialization Architecture](docs/Schematics/Planet_Initialization_Architecture.md) and [WorldKG Primitives](docs/Schematics/WorkKG_Primities.md). Run manually: `python manage.py init_planet` (idempotent — uses `PlanetSnapshot` as a soft lock).
-2. **Country Pipeline** — Produces the artifacts above for a specific country (or synthetic territory). Driven by a Celery canvas of Steps 1–6 plus Step 5c (graph spectral analysis) and Step 5d (temporal drift).
+---
 
-## Country Pipeline Stages
+## Artifacts and Application Functionality
 
-### 0. Pre-Flight Checks (OVID + Baseline)
+The pipeline produces artifacts that the GUI application layer consumes at
+runtime. Each pipeline operation creates data that flows into a specific
+frontend component, so the user sees the results of batch computation
+without any heavy processing at request time.
 
-**Vandalism Detection with OVID**
-- OVID is an attention-based model for OpenStreetMap vandalism detection.
-- Scores edits using changeset, user, and context information.
-- Used as a pre-flight check to flag or filter suspicious edits before starting a run.
+The graph spectral analysis and temporal drift operations are where the
+pipeline leverages the WorldKG Project's artifacts to deliver the
+geospatial reasoning capabilities described in Werner Kuhn's core concepts
+of spatial information and the Spatial-Agent framework. The spectral
+eigenbasis, community structure, and heat kernel diffusion provide the
+computational substrate for Kuhn's **Network** concept (connectivity,
+diffusion spread), **Event** concept (change detection via temporal drift),
+and **Field** concept (continuous attribute propagation via the Laplacian).
+These are materialized as factor-node tables that the GUI queries at
+request time through the MapQA templating system — no graph loading, no
+eigendecomposition, no SciPy at request time. Just SQL + pgvector lookups
+against precomputed results.
 
-**Embedding & Graph Baseline Validation**
-- BallTree produces a pickle from pre-trained model embeddings, converted into a k-NN graph that records a structural baseline (degree distributions, connected-component sizes, local clustering coefficients).
-- IDW (inverse-distance weighting) reconstructs vectors and checks for drift between original and interpolated embeddings via PCA neighborhood plots, t-SNE projections, and 1st/kth nearest-neighbor distance histograms.
-- Current snapshots are compared against the baseline using KL divergence on degree histograms and KS tests on degrees, clustering coefficients, and component sizes. A 3σ threshold on degree KL divergence flags anomalous structural drift.
-- These geometric and structural baselines catch embedding or graph drift before expensive graph-representation learning stages consume stale or corrupted inputs.
+### How Pipeline Operations Connect to the GUI
 
-### 1. GeoVectors Embeddings
+The frontend is a Vue 3 single-page application with a Leaflet map as the
+primary visual surface and a tabbed sidebar. Each tab maps to a pipeline
+operation and its artifacts:
 
-- GV-Tags (semantic, 300D) + GV-NLE (spatial, 100D) for every OSM entity.
-- TSV embedding files from the pre-trained model produce pickle files based on entity IDs and haversine distance.
-- OSM entity graph is constructed from the pickle file based on OSM IDs.
-- Source: https://geovectors.l3s.uni-hannover.de/data
+**WorldKG Map** — The central map renders country eligibility (supported
+countries are clickable, unsupported are transparent), pipeline results as
+map overlays, and MapQA query results as highlighted entities. The year
+selector at the top scopes all panels to the selected snapshot date. This
+is the canvas that all other panels paint onto — USLP link geometries,
+MapQA result highlights, and subgraph boundaries all render here.
 
-### 2. WorldKG Enrichment
+> **TODO: Add screenshot** — WorldKG map with country eligibility
+> highlighting, year selector, and a country selected showing pipeline
+> results as overlays.
 
-- Ontology-driven class assignment with hierarchical superclass inference.
-- Assigns WorldKG ontology classes to OSM entities from Step 1 — useful for NLP tasks.
-- Two modes: local prediction (default, O(1) tag→class lookup via Redis ontology cache) or SPARQL endpoint (online, per-entity `rdf:type` queries).
-- Wikidata candidate harvest (Step 2) uses batched SPARQL with retry+backoff on 429/502/503/Timeout via `SPARQLRetryMixin` (`semantic_search.utils.sparql_mixin`). Retries enabled (`SPARQL_MAX_RETRIES = 1`, 5s base backoff). Failed batches are logged and skipped; partial enrichment is preferred over blocking. Batch size 100 QIDs per POST request to avoid URL length limits.
-- Two services share the mixin: `semantic_search.services.WikidataCandidateService` (10s timeout) and `worldkg_nca.services.WikidataCandidateService` (30s timeout).
+**Pipeline Progress Panel** — This is the pipeline control surface. It
+shows the current run status (idle / running / completed / failed), a
+progress bar, the active step name, and a summary of results so far (total
+entities, aligned entities, spatial links). The Run Pipeline and Cancel
+buttons live here. During a run, WebSocket updates flow in real time —
+this is where the user watches Steps 1–6, 5c, and 5d execute and sees
+artifacts being produced.
 
-### 3. Wikidata Alignment
+> **TODO: Add screenshot** — Pipeline progress panel mid-run, showing
+> progress bar, current step, and summary stats (entities, aligned, spatial
+> links).
 
-- IGEA entity alignment connects OSM entities to Wikidata knowledge graph entries.
-- Iterative alignment with cross-attention links OSM entities to Wikidata using semantic + geo-spatial features.
-- USLP (Step 4) runs independently — no longer gated on IGEA acceptance count.
+**Query Tab** — The Semantic Search Panel is the entry point for both
+semantic triplet search and natural-language MapQA queries. The embeddings
+produced by Step 1 (GeoVectors) and the enrichment from Step 2 (WorldKG
+ontology classes) power this panel. A SubdivisionSelector lets the user
+filter by administrative subdivision using Wikidata QIDs. In NL mode, the
+user types a question, the parser classifies it into one of 9 templates
+with confidence scores, and the parsed concepts are displayed for review.
+The 3-tier amenity fallback (exact tag → ontology class → FastText
+semantic) traces each resolution step so the user sees exactly how a
+concept like "bar" was resolved.
 
-### 4. Spatial Link Prediction
+> **TODO: Add screenshot** — Query tab with a natural-language question
+> typed in, the parsed template name and confidence percentage shown
+> below, and the extracted concepts listed with their roles.
+>
+> **TODO: Add screenshot** — Query tab showing the 3-tier amenity fallback
+> trace for a concept resolution.
 
-- USLP discovers relationships between entities using tri-space scoring (geo + name + class).
-- Dashboard queries filter by `country_name`, `snapshot_id`, `predicted=True` — optimized by composite index `igea_triplet_csp_idx` on `SpatialTripletScore` (applied to `vectors` DB via `VectorDBRouter`).
-- Aggregation uses Django `aggregate()` + `Case/When` for geo/name/class dominance, histogram buckets, and avg confidence in a single SQL round-trip.
-- Augmented data sources include Google Places API and `toronto-data` (Django app in backend, currently disabled), or any appropriate open-source data.
+**Query Confirmation Modal (HITL)** — The parsed query is presented as an
+editable confirmation modal via an MCP bridge. The user can approve, edit
+concept slots, or reject. Only approved queries proceed to execution. This
+is the transparency layer — the user sees exactly what the parser
+understood before any computation runs.
 
-### 5. Learned Layer
+> **TODO: Add screenshot** — Query confirmation modal showing the editable
+> concept slots (amenity, location, radius, object) with Approve / Edit /
+> Reject buttons.
 
-- Embeddings saved for each entity are used to train graph representation learning models:
-  - **FastText**: 300D semantic embeddings via weighted average of tag embeddings (entity-local, no retraining).
-  - **DeepWalk**: 100D spatial embeddings via weighted random walks on k-NN graphs (IDW edge weights).
+**MapQA Results on Map** — After the executor resolves the approved query,
+results are rendered on the map as highlighted entities with popups showing
+entity metadata. This is where the spectral analysis (Step 5c) and temporal
+drift (Step 5d) artifacts become visible to the user — when a SPECTRAL-
+ANALYSIS, COMMUNITY-DETECT, TEMPORAL-DRIFT, or EVENT-DIFFUSION template is
+executed, the results come from precomputed factor tables resolved via
+pgvector at request time. No graph loading, no eigendecomposition at query
+time — just SQL lookups against batch-written results.
 
-### 5c. Graph Spectral Analysis
+> **TODO: Add screenshot** — MapQA results on the map with highlighted
+> entities, a popup showing entity metadata, and the execution trace
+> showing which factor tables were queried.
 
-- Computes Laplacian spectral features on the k-NN graph built in Step 5.
-- Top-k eigenvalues, Fiedler vector, algebraic connectivity (λ₂), spectral gap.
-- WorldKG classes encoded as graph signals; Dirichlet energy measures spatial clustering of semantic classes.
-- Louvain community detection on the same graph reveals local cluster structure.
-- **k-NN graph serialized to GraphML** as a debug artifact at `{GRAPH_ARTIFACT_DIR}/{country}_{snapshot}.graphml`. The legacy runtime graph path (GraphML → NetworkX → SciPy) has been removed; the factor-table path resolves spectral/diffusion/community queries via SQL + pgvector at request time. GraphML is retained for batch-side debugging only.
-- Stored as `GraphSpectralFingerprint` rows (one per region+snapshot).
-- **Factor-node writer**: `FactorNodeWriter.write_spectral_nodes()` writes per-entity rows to `factor_spectral_node_metric` (eigen-loadings as 128D pgvector, Fiedler component, Louvain community, Dirichlet contribution, degree, clustering coefficient, component ID/size). These rows enable the runtime `FactorResolutionService` to resolve factor nodes via SQL + pgvector without loading the graph. See `docs/Schematics_V2/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md`.
-- Non-fatal: failures are logged and the pipeline continues.
+**Metrics Tab** — The Pipeline Metrics Panel shows the per-step performance
+timeline for the latest pipeline run. Each pipeline stage (Steps 1–6, 5c,
+5d) is listed with its status icon (pending / running / completed / failed),
+duration, and any step messages. The summary shows overall status, steps
+completed, and total duration. This is the post-run operational view — the
+user can see which steps succeeded, how long each took, and where failures
+occurred.
 
-### 5d. Temporal Drift
+> **TODO: Add screenshot** — Metrics tab showing a completed pipeline run
+> with all steps listed, their status icons, durations, and the summary
+> row (status, steps done, total duration).
 
-- Computes spectral drift between current and previous snapshot.
-- Metrics: spectral distance (‖λ_t - λ_{t-1}‖₂), connectivity delta, Fiedler drift (cosine distance), smoothness delta.
-- Drift magnitude classified as low/medium/high/extreme.
-- ARIMA(1,1,1) forecast of next-snapshot eigenvalues when ≥3 snapshots exist; exponential smoothing fallback otherwise.
-- CUSUM change-point detection on spectral distance time series.
-- Stored as `GraphSpectralDrift` rows (one per region+snapshot pair).
-- **Factor-node writer**: `FactorNodeWriter.write_drift_nodes()` writes per-entity rows to `factor_drift_node_metric` (sign-aligned Fiedler delta, loading drift cosine distance, community changed, degree delta). Eigenvector sign alignment is performed before per-node drift comparison. See `docs/Schematics_V2/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md`.
-- Conditional: only runs when ≥2 snapshots exist. Non-fatal.
+**Augmented Data Tab** — The Augmented Data Panel is the USLP visualization
+surface. The spatial link triplets produced by Step 4 become explorable
+here: accepted and rejected link counts, acceptance rate, total entities,
+and map toggles that render accepted and rejected link geometries directly
+on the WorldKG Map. The user can toggle accepted links (green) and rejected
+links (red) on the map to visually inspect where USLP predicted spatial
+relationships and how confident it was.
 
-### Embedding Drift (Management Command)
+> **TODO: Add screenshot** — Augmented data tab showing accepted/rejected
+> link counts, acceptance rate, and the map toggle buttons. Include a
+> second screenshot with link geometries rendered on the map (green
+> accepted, red rejected).
 
-- Sliced Wasserstein Distance (SWD) between snapshot embeddings — distribution shift detection.
-- Computes separate semantic (300D GV-Tags) and spatial (100D GV-NLE) drift.
-- Freshness score: `F = α·exp(-λ_sem·W_sem) + (1-α)·exp(-λ_spat·W_spat)` ∈ [0, 1].
-- Subdivision-level drift via `SubgraphProfile` bboxes.
-- Run: `python manage.py compute_embedding_drift --country BZ --snapshot-from 2025_12_31_baseline --snapshot-to 2025_12_31`
+**Spatial Layers Tab** — The Spatial Metrics Panel shows the subgraph
+profile inventory for the selected country. Each subgraph is displayed as a
+card with its name, slug, PBF/Poly/Pickle availability badges, node and way
+counts, and metadata status. A coverage summary shows total subgraphs,
+accepted and rejected entity counts, and the acceptance rate. This is
+where the user sees how a country has been split into administrative
+subdivisions for parallel processing — the same subdivision structure that
+drives the Step 5c spectral routing for large countries (≥ 5M nodes).
+
+> **TODO: Add screenshot** — Spatial layers tab showing the coverage
+> summary (subgraphs, accepted, rejected, rate) and the subgraph cards
+> with their availability badges and node/way counts.
+
+**System Summary Modal** — A modal accessible from the header that shows
+the overall system state across five tabs: overview (planet PBF size and
+availability), embeddings (GV-Tags / GV-NLE scan status), storage (database
+and partition status), paths (country and subgraph file paths), and history
+(pipeline run history). This is the operational dashboard for verifying
+that planet initialization completed and that all prerequisites are in
+place before running a country pipeline.
+
+> **TODO: Add screenshot** — System summary modal on the overview tab,
+> showing planet PBF size, embedding availability, and storage status.
+
+**Planet Init Panel** — The PlanetInitPanel shows the status of the
+`init_planet` command with a live terminal output feed. Each of the 14
+initialization steps is listed with its status. This is the operational
+view for the one-time planet setup — the user watches hierarchy resolution,
+embedding scans, ontology enrichment, and boundary generation complete in
+real time.
+
+> **TODO: Add screenshot** — Planet init panel with terminal output
+> scrolling and the step list showing completed and in-progress steps.
+
+### Precomputation Strategy
+
+The key design decision is that all expensive computation happens during
+the pipeline run, not at request time. The spectral eigendecomposition,
+community detection, drift computation, and amenity embeddings are all
+batch-written to factor-node tables during Steps 5c, 5d, and
+`init_planet`. At request time, the GUI queries these tables via SQL +
+pgvector — a heat kernel diffusion query becomes a single inner-product
+lookup, a community summary becomes a filtered aggregate, and a temporal
+drift query becomes a join between snapshot pairs.
+
+For large countries (≥ 5M nodes), the spectral solve is split across
+subdivisions, with functional-map transport matrices bridging adjacent
+subgraph eigenbases. This keeps each solve small enough to fit on a single
+GPU while preserving cross-subgraph diffusion at runtime. The routing is
+automatic — small countries get one global solve, large countries get
+subdivision-scoped solves with transport.
+
+---
+
+## MapQA — The Templating System
+
+MapQA (Map Question Answering) is the application's reasoning layer. It
+maps natural-language geospatial questions to structured execution plans
+through a cohesive three-stage pipeline grounded in Kuhn's core concepts
+of spatial information and the Spatial-Agent framework's GeoFlow Graph
+formalism.
+
+### Stage 1: Parser (NL → Structured Plan)
+
+A TF-IDF + MultinomialNB classifier assigns the question to one of 9
+templates. A one-vs-rest Logistic Regression concept extractor pulls out
+amenity, location, radius, and open-vocabulary OBJECT concepts. A Logistic
+Regression role assigner maps concepts to DAG roles (SUB_COND → COND →
+SUPPORT → MEASURE) following the precedence grammar. The output is a
+GeoFlow DAG — a directed acyclic graph where each node is a spatial concept
+transformation and each edge is a data dependency, directly mirroring the
+concept transformation formalism from the Spatial-Agent paper.
+
+### Stage 2: Executor (Plan → Answer)
+
+The executor walks the DAG in topological order and dispatches to
+template-specific execution functions. Each function uses the factor-table
+path as authoritative:
+
+- **Spectral/diffusion/community queries** resolve via SQL + pgvector `<#>`
+  against `factor_*` tables — no graph loading at request time.
+- **Distance/radius queries** fall back to PostGIS `ST_DWithin` and
+  `Distance` with GiST KNN operators.
+- **Amenity resolution** uses the 3-tier fallback (exact tag → ontology
+  class → FastText semantic), checking `factor_amenity_embedding` first.
+- **Cross-subgraph diffusion** loads transport matrices from
+  `factor_subgraph_transport` and transports eigen-loadings across
+  subgraph boundaries via matrix multiplication.
+
+### Stage 3: HITL (Human-in-the-Loop Confirmation)
+
+The parsed query is presented to the user as an editable confirmation modal
+via an MCP (Model Context Protocol) bridge. The user can approve, edit
+concept slots, or reject. Only approved queries proceed to execution. This
+ensures the parser's interpretation is transparent and correctable before
+any computation runs.
+
+### Template Coverage
+
+The 9 templates map directly to Kuhn's core concepts and the Spatial-Agent
+paper's operator categories:
+
+| Template | Core Concept | Execution Path | Example |
+|----------|-------------|---------------|---------|
+| FILTER-AGGREGATE-MEASURE | Object, Location | PostGIS `ST_DWithin` + `Distance` | "How many schools within 2km of this hospital?" |
+| GEOCODE-BATCH-COMPARE | Object, Neighbourhood | PostGIS distance ordering | "Which is closer to downtown: the park or the library?" |
+| PLACE-ATTRIBUTE-QUERY | Object, Field | Factor tables (spectral/community) + PostGIS | "What amenities cluster around this train station?" |
+| LOCATION-BEARING-CLASSIFY | Location, Neighbourhood | PostGIS `ST_DWithin` + bearing calc | "What's north of the river?" |
+| OBJECT-FIELD-MEASURE | Object, Field | PostGIS `ST_DWithin` (optional) | "How far is the nearest pharmacy?" |
+| SPECTRAL-ANALYSIS | Network | Factor tables (eigenvalues, λ₂, gap) | "What's the spectral structure of this region?" |
+| TEMPORAL-DRIFT | Event | Factor tables (drift metrics) | "How has this area changed between snapshots?" |
+| COMMUNITY-DETECT | Object, Network | Factor tables (Louvain communities) | "What communities exist in this district?" |
+| EVENT-DIFFUSION | Network, Event | Factor tables (heat kernel via pgvector) | "How would an event at this location spread?" |
+
+---
+
+## Planet Initialization
+
+A single `init_planet` management command runs once as a Docker entrypoint
+step after migrations. It is idempotent (gated by a `PlanetSnapshot` soft
+lock) and initializes: planet/continent PBFs, OSM-Wikidata hierarchy,
+country paths, subgraph profiles, Wikidata IDs, embedding scans, WorldKG
+ontology, and OSM boundaries. The backend container runs it automatically on
+startup; the worker skips it.
+
+---
 
 ## Quickstart
 
@@ -120,197 +280,41 @@ docker compose -f docker-compose.yml -f compose.override.yml up -d postgres-defa
 # Start backend API + Celery worker
 docker compose -f docker-compose.yml -f compose.override.yml up -d backend worker
 
-# Worker configuration:
-#   --pool=prefork --concurrency=4  (4 CPU workers for parallel upserts/IGEA/USLP)
-#   GPU tasks (GV-NLE training) use per-GPU slot locks (fcntl.flock) — all subgraphs
-#   go to cuda:0 (RTX 4070) with concurrency=1 by default. Configure via
-#   GV_NLE_GPU_DEVICES and GV_NLE_GPU_CONCURRENCY env vars.
-#   RUN_MIGRATIONS env var: backend runs migrations, worker waits for them
-#   RUN_INIT_PLANET env var: backend runs `init_planet` after migrations, worker skips it
-
 # Start frontend
 cd frontend-v3
 npx vite --port 5173 --host 0.0.0.0
 ```
 
-## ML System Design Principles
-
-The engineering decisions in this pipeline are grounded in the following reference texts.
-Citations use the `[KEY:Ch#]` convention (e.g. `[DMLS:Ch3]`) so that specific design
-choices can be traced back to the relevant chapter.
-
-### References
-
-| Key | Title | Author | Repo / Link |
-|-----|-------|--------|-------------|
-| `[COHEN]` | Linear Algebra: Theory, Intuition, Code | Mike X Cohen | https://github.com/mikexcohen/LinAlg4DataScience |
-| `[HOML]` | Hands-On Machine Learning with Scikit-Learn and PyTorch | Aurélien Géron | https://github.com/ageron/handson-mlp |
-| `[STATS]` | Practical Statistics for Data Scientists | Bruce, Bruce & Gedeck | https://github.com/gedeck/practical-statistics-for-data-scientists |
-| `[DMLS]` | Designing Machine Learning Systems | Chip Huyen | — |
-| `[GRAPH_REP]` | Graph Representation Learning | William Hamilton | — |
-| `[GEO_VEC]` | GeoVectors: A Linked Open Corpus of OpenStreetMap Embeddings | L3S Hannover | https://geovectors.l3s.uni-hannover.de/data |
+Worker configuration:
+- `--pool=prefork --concurrency=4` — 4 CPU workers for parallel upserts/IGEA/USLP
+- GPU tasks use per-GPU slot locks — all subgraphs go to cuda:0 with
+  concurrency=1 by default. Configure via `GV_NLE_GPU_DEVICES` and
+  `GV_NLE_GPU_CONCURRENCY` env vars.
+- `RUN_MIGRATIONS` env var: backend runs migrations, worker waits for them
+- `RUN_INIT_PLANET` env var: backend runs `init_planet` after migrations,
+  worker skips it
 
 ---
-
-### Designing Machine Learning Systems `[DMLS]`
-
-  Pre‑compute expensive steps `[DMLS:Ch3]`
-    -> Planet snapshots, continent extracts, and GeoVectors embeddings are computed once and reused.
-    -> This turns most workloads into read‑heavy operations instead of re‑processing the planet for each run.
-    -> Idempotency pattern for OSM PBF files produced via Osmium tool
-
-  Batch and parallel processing `[DMLS:Ch3]`
-    -> Work is batched per country and per subgraph.
-    -> Celery prefork pool (4 workers) parallelizes CPU-bound tasks: subgraph NLE pickle generation, IGEA, USLP.
-    -> GPU-bound tasks (GV-NLE training, Step 5) use per-GPU slot locks (fcntl.flock). All subgraphs go to cuda:0 (RTX 4070, 16 GB) with concurrency=1 by default — large IE subgraphs (847K–1M entities) cause CUDA OOM at concurrency=2. Configure via `GV_NLE_GPU_DEVICES` and `GV_NLE_GPU_CONCURRENCY` env vars.
-    -> Migration race prevention: `RUN_MIGRATIONS` env var in `docker-entrypoint.sh` — backend runs migrations, worker waits.
-    -> Planet init as Docker startup step: `RUN_INIT_PLANET` env var — backend runs `python manage.py init_planet` after migrations (idempotent, gated by `PlanetSnapshot` lock); worker skips it. Replaces the former Celery canvas of step_0a–step_0m tasks.
-    -> Per-country leaf partitions with right-sized HNSW indexes keep query latency low.
-
-  Structured logging and observability `[DMLS:Ch8]`
-    -> Each Celery task logs inputs, outputs, and timing.
-    -> Per‑stage metrics (counts, durations, basic quality checks) make it easier to understand where time and failures occur.
-
-  Config‑driven behavior `[DMLS:Ch6]`
-    -> OSM-Wikidata pipeline primitives are processed during the initialization phase based on configurations (e.g., country-specific overrides, embeddings available)
-    -> Paths, thresholds (e.g., USLP, entropy), and country‑specific overrides are defined in configuration and JSON files, not hard‑coded in the codebase.
-    -> OSM uses idomatic patterns and conventions to make the code more maintainable and easier to understand
-
-  Reproducibility `[DMLS:Ch6]`
-    -> A pipeline run is defined by code version + configuration + input paths.
-    -> You can repeat a run with the same settings to reproduce results.
-
-  Continual learning from rejected links `[DMLS:Ch9]`
-    -> USLP rejected links and IGEA low-confidence matches are retained for data augmentation.
-    -> Planned: feed rejected spatial links back into SSLP training as hard negatives.
-
-  MLOps: dev on RTX, deploy on K80 `[DMLS:Ch10]`
-    -> The pipeline is developed on RTX 4070 Ti SUPER (16GB) but designed to deploy on K80-class GPUs.
-    -> GPU memory-safe patterns (batched training, CUDA cache clearing) ensure portability.
-    -> HNSW index sizes are tuned per-country leaf so the system works on 48GB/64GB/128GB machines alike.
-
-  Clear interfaces between stages `[DMLS:Ch5]`
-    -> Stages communicate via well‑defined artifacts (snapshots, TSVs, database tables).
-    -> You can improve a model inside one stage as long as it respects the same input/output format.
-
-  Unified open‑source storage stack (PostgreSQL + pgvector + Redis)
-    ->  Postgres is used as the main database for application state + Enforce OSM-Wikidata Hierarchy constraints
-    ->  PostGIS‑enabled database for spatial data used in the stages of the pipeline
-    ->  pgvector‑backed database for embeddings and vector similarity search.
-    ->  Redis is used as the message broker and cache for Celery and the WebSocket channel layer.
-    ->  Redis is used to store the WorldKG Ontology and other metadata.
-
-  Vector Database Partitioning
-    ->  `semantic_search_osmentity` is partitioned: `PARTITION BY LIST (snapshot_id)` → `LIST (country_code)`.
-    ->  Each country gets its own leaf partition (e.g. `embeddings_2025_12_31_ni`).
-    ->  Step 1 creates leaf partitions with `skip_hnsw=True` — the leaf HNSW index is never built because no query path uses it (all queries use exact search `+ 0`, the materialized view's HNSW, or `static_embedding`). This eliminates per-INSERT HNSW maintenance during bulk upsert (~3x faster writes).
-    ->  Materialized views (`mv_embeddings_<snap>_<cc>`) with their own HNSW index are created in Step 6 and provide the query surface for search endpoints.
-    ->  Full details: `docs/plans/VECTOR_DATABASE_PARTITIONING.md`
-
----
-
-### Linear Algebra in the Pipeline `[COHEN]`
-
-  Vector Applications & pgvector `[COHEN:Ch4]`
-    -> pgvector uses L2/cosine distance for ANN search over GV-Tags (300D) and GV-NLE (100D) embeddings.
-    -> HNSW indexes on `static_embedding` and `gv_tags_embedding` columns enable sub-10ms similarity queries.
-    -> The partitioning scheme (per-country leaf partitions) keeps each HNSW index right-sized for the target machine's RAM.
-    -> During bulk upserts, the leaf HNSW index is not created at all (Step 1 passes `skip_hnsw=True`), eliminating per-INSERT HNSW graph maintenance. Upserts run at ~3.5s per 20K batch. The materialized view HNSW (created in Step 6) is the one queries use.
-
-  Covariance Matrix & OSM Data Analysis `[COHEN:Ch7]`
-    -> The covariance matrix of embedding dimensions reveals correlations in the noisy, heterogeneous OSM tag space.
-    -> Used in pre-flight checks to detect embedding drift between snapshots (see Statistical Analysis below).
-    -> Helps understand which tag dimensions carry redundant vs. independent information.
-
-  Eigendecomposition, PCA & SVD `[COHEN:Ch13, Ch15]`
-    -> PCA is used in pre-flight validation to project local neighborhoods into 2D/3D for visual drift inspection.
-    -> SVD underpins the dimensionality reduction used when comparing baseline vs. current snapshot embeddings.
-    -> Planned: agentic tool calls will use eigendecomposition to select the most informative embedding dimensions for query-time reasoning.
-
-  Database Partitioning as a Linear Algebra Problem
-    -> Partitioning `semantic_search_osmentity` by `country_code` is equivalent to block-diagonalizing the entity-entity similarity matrix.
-    -> Each leaf partition's HNSW index operates on a sub-matrix, reducing both memory footprint and query latency.
-    -> The partitioned table (`PARTITION BY LIST (snapshot_id)` → `LIST (country_code)`) is created automatically by the pipeline — no manual cutover needed on fresh DBs.
-
----
-
-### Statistical Analysis in ETL & Data Validation `[STATS]`
-
-  Pre-flight baseline validation `[STATS:Ch3]`
-    -> KL divergence on degree histograms compares the structural distribution of the current k-NN graph against the baseline.
-    -> KS tests (Kolmogorov-Smirnov) compare degree, clustering coefficient, and component size distributions.
-    -> A 3σ threshold on degree KL divergence flags anomalous structural drift before expensive downstream stages run.
-
-  Embedding drift detection `[STATS:Ch4]`
-    -> IDW (inverse-distance weighting) reconstructs embeddings from k-NN neighbors; residual error measures drift.
-    -> 1st-neighbor and k-th-neighbor distance distributions quantify sparsity and clustering changes.
-    -> t-SNE global projections provide qualitative macroscopic cluster inspection.
-
-  Data validation across pipeline stages `[STATS:Ch2]`
-    -> Row count assertions after each bulk upsert (e.g., 20K entities per batch in `vector_storage_service`).
-    -> Partition pruning verification — queries with `snapshot_id` + `country_code` hit only the target leaf partition.
-
----
-
-### Hands-On Machine Learning `[HOML]`
-
-  Validate the construction of the pickle files `[HOML:Ch3]`
-    -> BallTree indexing for efficient nearest neighbor queries in embedding space
-    -> IDW interpolation to reconstruct embeddings from neighbors (inverse-distance weighting)
-
-  Visualize the drift between the original embeddings from the pre-trained model vs the interpolated embeddings `[HOML:Ch8]`
-    -> PCA visualization of local neighborhoods to understand embedding structure
-    -> t-SNE global projection to identify macroscopic clusters in the embedding space
-    -> Distance distribution analysis (1st neighbor, k-th neighbor) to assess sparsity and clustering
-
-  Graph Structural Drift Analysis `[HOML:Ch8]`
-    -> k-NN graph construction from spatial embeddings via BallTree for structural analysis
-    -> Degree distribution tracking via histograms and KL divergence
-    -> Clustering coefficient monitoring to detect topological changes
-    -> Connected component size analysis for graph fragmentation detection
-    -> 3-sigma drift thresholds to flag anomalous snapshots automatically
-    -> KS tests for distributional comparison between baseline and current snapshots
-
-  Batch processing and pre‑compute `[HOML:Ch4]`
-    -> Pre‑compute configs and primitives - WorldKG primitives (see `docs/Schematics/WorkKG_Primities.md`) are generated once and reused.
-    -> Multi‑core processing with Osmium - Osmium‑tool is used to parallelize low‑level extraction work.
-    -> Batch processing - Vector generation and spatial link prediction are run in batches rather than one entity at a time.
-    -> Fan‑out processing for subgraphs(wikidata admin=2) - Large countries are split into subgraphs (administrative subdivisions) so work can be processed in parallel. Step 1 upserts all entities into the country leaf partition, then dispatches parallel subgraph tasks that generate NLE pickles (DeepWalk training data). Step 4 (USLP) and Step 5 (GV-NLE) rehydrate subgraphs from the DB at task start and self-dispatch per-subgraph work inline — this fixes under-prediction on fresh DBs where `has_subgraphs=False` at canvas dispatch time (subgraph poly files are generated during Step 1, after the canvas chord was already built). Step 5 trains GV-NLE per subgraph (serialized via per-GPU slot lock). Parallel encode + serial upsert (Approach B — in-process producer/consumer thread pool with N encoding threads and 1 upsert thread) is implemented and enabled by default via `PARALLEL_UPSERT_WORKERS` (default 8); set to 1 for the legacy single-threaded path; see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` and `docs/issues/PARALLEL_UPSERT_REGRESSION.md`. pgvector bulk upsert optimizations (reusable UNLOGGED staging table with TRUNCATE, `SET LOCAL synchronous_commit = off`, `ORDER BY` deterministic lock order) are documented in `docs/plans/completed/PGVECTOR_BULK_UPSERT_OPTIMIZATIONS.md`. WorldKG enrichment uses SQL-side `UPDATE...FROM` join (ontology loaded into a temp table, `jsonb_each_text` expands entity tags, deepest match selected via `ROW_NUMBER() OVER (PARTITION BY)`); ~10x faster than the previous Python `ThreadPoolExecutor` loop — Ireland (2.47M entities) enriched in 2 min 14 sec vs ~60 min with the old path. Chord completion uses a custom `PatchedDatabaseBackend` (`pipeline/celery_results_backend.py`) that replaces the buggy `ChordCounter` mechanism with Celery's standard `fallback_chord_unlock()` polling task — `TaskResult` rows are still written to Django's DB; see `docs/issues/CHORDCOUNTER_DOES_NOT_EXIST_BUG.md` and `docs/Schematics/CELERY_CHORD_ARCHITECTURE.md`.
-
-Next Steps:
-1. Make the project public
-   -> Create a GitHub repository
-   -> Complete the pre-release tasks(TODOs)
-   -> Publish the project
-   -> Fully transition to the Gitlab CI/CD pipeline and use their issues tracker(get rid of local TODOs)
-   -> Complete the post_release tasks(TODOs)
-   -> Update the Documentation (un-comment the docs after reviewing)
-2. MapQA parser + executor + MCP/HITL are implemented (see `docs/plans/completed/MAPQA_PARSER_IMPLEMENTED.md`). The executor uses the factor-table path as authoritative — spectral/diffusion/community queries resolve via SQL + pgvector `<#>` against `factor_*` tables, with PostGIS as the spatial fallback for distance/radius templates. **Factor-node runtime joins** are complete (see `docs/plans/FACTOR_NODE_RUNTIME_JOINS_PLAN.md` and `docs/Schematics_V2/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md`): per-entity spectral/drift/amenity metrics are batch-written to `factor_*` tables on the vectors DB, and `FactorResolutionService` resolves them at runtime via SQL + pgvector `<#>` — no NetworkX/SciPy/sklearn at request time. The legacy runtime graph path (GraphML → NetworkX → SciPy) has been removed; `FACTOR_NODE_TABLES_ENABLED` defaults `true`.
-3. Parallel upsert is enabled by default (`PARALLEL_UPSERT_WORKERS=8`) — tune in `.env` if needed (see `docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md` §7). GPU concurrency defaults to 1 on cuda:0 (`GV_NLE_GPU_CONCURRENCY=1,1`) — set to 2 only for countries with uniformly small subgraphs.
-4. Investigate how to add support for https://arxiv.org/pdf/2310.00583
-5. USLP threshold calibration command implemented (`calibrate_uslp_thresholds`) — validates hyperparameter limits against actual pipeline data without modifying YAML thresholds. See `backend/igea/management/commands/calibrate_uslp_thresholds.py`.
-6. Database indexes added (migration `0011_osmentity_parent_indexes`): B-tree on `wkg_class` and GIN on `tags` for the `OsmEntity` parent table. Verify with `EXPLAIN ANALYZE` after migration.
-7. Factor-node tables (migrations `0012`–`0014`): `factor_spectral_node_metric`, `factor_drift_node_metric`, `factor_amenity_embedding` on the vectors DB. Amenity embeddings (621 rows) are precomputed by `compute_amenity_embeddings` (an `init_planet` step). Runtime factor resolution is authoritative (`FACTOR_NODE_TABLES_ENABLED` defaults `true`); legacy runtime graph path removed. Test DBs need `vector` + `postgis` extensions in both `test_vector_db` and `test_django_db`.
 
 ## Fresh Database Setup
 
-After dropping and recreating both databases (e.g. after a schema refactor):
+After dropping and recreating both databases:
 
 ```bash
 # 1. Migrate both databases
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py migrate
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py migrate --database=vectors
 
-# 2. Initialize planet data (hierarchy, profiles, paths, embeddings scan, ontology, boundaries)
+# 2. Initialize planet data (hierarchy, profiles, paths, embeddings, ontology, boundaries)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py init_planet
-
-# Or with flags:
-#   --skip-continents   Skip continent PBF extraction (if already done)
-#   --skip-embeddings   Skip embedding scan/split/merge
-#   --step <name>       Run only a specific step
-#   --no-lock           Force re-run even if today's PlanetSnapshot is COMPLETED
 ```
 
-The backend container's entrypoint runs `init_planet` automatically on startup (`RUN_INIT_PLANET=true`), so simply restarting the backend after a DB reset will trigger it. The worker has `RUN_INIT_PLANET=false`.
+The backend container's entrypoint runs `init_planet` automatically on
+startup (`RUN_INIT_PLANET=true`), so simply restarting the backend after a
+DB reset will trigger it. The worker has `RUN_INIT_PLANET=false`.
 
-**Important**: On a fresh vectors DB, `semantic_search_osmentity` starts as a monolith table with a 3-column unique constraint `(osm_type, osm_id, gv_tags_version)`. The first country pipeline run's Step 1 calls `create_country_partitions` which detects the empty monolith, converts it to a partitioned table (`PARTITION BY LIST (snapshot_id)` → `LIST (country_code)`), and creates the per-country leaf partition with a 5-column unique constraint. The `vector_storage_service._bulk_upsert()` method checks `pg_partitioned_table` at runtime to select the correct ON CONFLICT target — no manual flag needed.
+On a fresh vectors DB, `semantic_search_osmentity` starts as a monolith
+table. The first country pipeline run's Step 1 detects the empty monolith,
+converts it to a partitioned table (`PARTITION BY LIST (snapshot_id)` →
+`LIST (country_code)`), and creates the per-country leaf partition
+automatically — no manual cutover needed.

@@ -288,7 +288,10 @@ def test_drift_nodes_detects_changes():
 def _patch_eigenvalues(features):
     return mock.patch.object(
         FactorResolutionService, "_get_eigenvalues",
-        staticmethod(lambda snapshot_id, country_code: features["eigenvalues"]),
+        staticmethod(
+            lambda snapshot_id, country_code, subgraph_slug=None:
+                features["eigenvalues"]
+        ),
     )
 
 

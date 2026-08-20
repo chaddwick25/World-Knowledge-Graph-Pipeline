@@ -81,6 +81,8 @@ TEMPLATE_ROLE_MAP = {
 # The 5 DAG skeletons — nodes ordered by role precedence.
 # Each node specifies a role and the concept type it binds to.
 # The MEASURE node is terminal (produces the answer).
+# TODO: move this to a yaml file
+# TODO: Generate the metrics for distribution of concepts across templates
 TEMPLATE_SPECS = {
     "FILTER-AGGREGATE-MEASURE (#1)": {
         "nodes": [
@@ -141,6 +143,9 @@ TEMPLATE_SPECS = {
 }
 
 # Signal-phrase vocabulary for concept detection heuristics
+# TODO: do some EDA to see if these are good enough or maybe they can be factorized
+# TODO: Double check the paper to gain any insights
+# TODO: Figure how to leverage WorldKG's arifacts(Classes, Predicted Links) (soft edges) as signals or let a LLM agent handle that
 AMOUNT_PATTERNS = [re.compile(r"\d+\s*m\b", re.I), re.compile(r"\d+\s*km\b", re.I)]
 OBJECT_SIGNALS = {"bar", "restaurant", "cafe", "hotel", "school", "hospital",
                   "shop", "amenity", "bar", "pub", "bank", "pharmacy",

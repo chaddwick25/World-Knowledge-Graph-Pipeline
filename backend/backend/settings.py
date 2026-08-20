@@ -190,6 +190,13 @@ MAPQA_PARSER_DATA_DIR = os.getenv('MAPQA_PARSER_DATA_DIR', _default_mapqa_parser
 _default_graph_artifact_dir = os.path.join(BASE_DIR, 'data', 'graph_artifacts')
 GRAPH_ARTIFACT_DIR = os.getenv('GRAPH_ARTIFACT_DIR', _default_graph_artifact_dir)
 
+# Step 5c run report directory — JSON reports capturing solver selection,
+# timing, graph dimensions, eigenvalue quality, and factor-row write status.
+# Layout:
+#   {SPECTRAL_REPORT_DIR}/step5c_{country}_{snapshot}_{run_id}.json
+_default_spectral_report_dir = os.path.join(BASE_DIR, 'data', 'spectral_reports')
+SPECTRAL_REPORT_DIR = os.getenv('SPECTRAL_REPORT_DIR', _default_spectral_report_dir)
+
 # Factor-node tables (docs/plans/FACTOR_NODE_RUNTIME_JOINS_PLAN.md).
 # The MapQA executor resolves SUPPORT/factor nodes via SQL joins against
 # the factor_* tables (written by Steps 5c/5d) instead of loading GraphML

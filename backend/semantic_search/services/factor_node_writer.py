@@ -42,19 +42,31 @@ class FactorNodeWriter:
 
     # ── Step 5c: spectral + structural ──────────────────────────────────
 
+    # Above this node count, per-node clustering coefficients are skipped
+    # (stored as NULL).  ``nx.clustering`` is O(Σ deg_i²) and requires the
+    # NetworkX graph; a sparse A² diagonal computation for k=50 k-NN
+    # graphs would need ~6B multiply-adds.  The field is nullable and not
+    # used by any runtime ranking query (FactorResolutionService fetches
+    # it for display only).
+    CLUSTERING_NODE_THRESHOLD = 200_000
+
     def write_spectral_nodes(
         self,
-        G: nx.Graph,
+        G,
         features: dict,
         country_code: str,
         snapshot_id: str,
         node_to_community: dict = None,
         signal: np.ndarray = None,
+        subgraph_slug: str = None,
+        core_ids: set = None,
     ) -> int:
         """Write one SpectralNodeMetric row per graph node.
 
         Args:
-            G: k-NN graph (undirected; node keyspace is osm_id)
+            G: k-NN graph (undirected; node keyspace is osm_id) —
+               ``networkx.Graph`` (small graphs/tests) or ``SparseGraph``
+               (large graphs — COO path, no NetworkX materialisation)
             features: return value of
                 ``SpectralAnalysisService.compute_spectral_features`` —
                 must include ``eigenvectors`` (N×K) and ``node_order``
@@ -65,14 +77,33 @@ class FactorNodeWriter:
             signal: optional class signal vector (N,) aligned with
                 ``node_order`` — used for per-node Dirichlet contributions
                 ``s_i·(Ls)_i`` on the normalized Laplacian
+            subgraph_slug: optional subgraph identifier for subdivision-
+                scoped spectral analysis.  None for country-level (small
+                territories).  When set, rows are scoped to
+                (snapshot_id, country_code, subgraph_slug, osm_id) and
+                the idempotency delete only touches rows for this subgraph.
+            core_ids: optional set of OSM IDs — when provided (Option A
+                from the functional maps plan), only entities in
+                ``core_ids`` get factor rows.  Buffer-only entities are
+                skipped.  This is used when the spectral solve ran on the
+                full buffered graph but factor rows should only cover
+                core entities.
 
         Returns:
             Number of rows written.
         """
-        if G.is_directed():
-            G = G.to_undirected()
+        from semantic_search.services.knn_graph_service import SparseGraph
 
-        node_order = features.get("node_order") or list(G.nodes())
+        sparse = isinstance(G, SparseGraph)
+        if not sparse:
+            if G.is_directed():
+                G = G.to_undirected()
+
+        node_order = features.get("node_order")
+        if not node_order:
+            node_order = (
+                [int(o) for o in G.node_ids] if sparse else list(G.nodes())
+            )
         eigenvectors = np.asarray(features.get("eigenvectors"))
         n = len(node_order)
         if n == 0:
@@ -85,23 +116,50 @@ class FactorNodeWriter:
         # GraphSignalService.signal_smoothness (Σᵢ sᵢ·(Ls)ᵢ = sᵀLs).
         dirichlet = None
         if signal is not None and len(signal) == n:
-            L = nx.laplacian_matrix(G, nodelist=node_order).astype(float)
+            if sparse:
+                L = G.laplacian()
+            else:
+                L = nx.laplacian_matrix(G, nodelist=node_order).astype(float)
             Ls = np.asarray(L @ signal).ravel()
             dirichlet = np.asarray(signal) * Ls
 
-        degree_map = dict(G.degree())
-        clustering = nx.clustering(G)
-        component_of, component_size_of = self._components(G)
+        if sparse:
+            degrees = G.degrees
+            degree_map = {
+                int(G.node_ids[i]): int(degrees[i]) for i in range(G.n_nodes)
+            }
+            component_of, component_size_of = G.components()
+            if G.n_nodes < self.CLUSTERING_NODE_THRESHOLD:
+                clustering = nx.clustering(G.to_nx())
+            else:
+                logger.info(
+                    "FactorNodeWriter: skipping clustering coefficients for "
+                    "%d-node graph (≥ %d — stored as NULL)",
+                    G.n_nodes, self.CLUSTERING_NODE_THRESHOLD,
+                )
+                clustering = {}
+        else:
+            degree_map = dict(G.degree())
+            clustering = nx.clustering(G)
+            component_of, component_size_of = self._components(G)
 
         country_code = country_code.upper()
 
-        # Idempotency: replace rows for this (snapshot, country)
-        SpectralNodeMetric.objects.using("vectors").filter(
+        # Idempotency: replace rows for this (snapshot, country, subgraph)
+        del_filter = dict(
             snapshot_id=snapshot_id, country_code=country_code,
-        ).delete()
+        )
+        if subgraph_slug is not None:
+            del_filter["subgraph_slug"] = subgraph_slug
+        else:
+            del_filter["subgraph_slug__isnull"] = True
+        SpectralNodeMetric.objects.using("vectors").filter(**del_filter).delete()
 
         rows = []
         for i, osm_id in enumerate(node_order):
+            # Option A: skip buffer-only entities when core_ids is provided
+            if core_ids is not None and int(osm_id) not in core_ids:
+                continue
             if k_actual:
                 loadings = np.zeros(EIGEN_LOADING_DIM)
                 take = min(k_actual, EIGEN_LOADING_DIM)
@@ -114,6 +172,7 @@ class FactorNodeWriter:
             rows.append(SpectralNodeMetric(
                 snapshot_id=snapshot_id,
                 country_code=country_code,
+                subgraph_slug=subgraph_slug,
                 osm_id=int(osm_id),
                 eigen_loadings=loadings.tolist() if loadings is not None else None,
                 fiedler_component=fiedler,
@@ -124,7 +183,9 @@ class FactorNodeWriter:
                     float(dirichlet[i]) if dirichlet is not None else None
                 ),
                 degree=int(degree_map.get(osm_id, 0)),
-                clustering_coeff=float(clustering.get(osm_id, 0.0)),
+                clustering_coeff=(
+                    float(clustering[osm_id]) if osm_id in clustering else None
+                ),
                 component_id=component_of.get(osm_id),
                 component_size=component_size_of.get(osm_id),
             ))
@@ -132,10 +193,11 @@ class FactorNodeWriter:
         SpectralNodeMetric.objects.using("vectors").bulk_create(
             rows, batch_size=BULK_BATCH_SIZE,
         )
+        scope = subgraph_slug or "country"
         logger.info(
-            "FactorNodeWriter: wrote %d SpectralNodeMetric rows for %s/%s "
+            "FactorNodeWriter: wrote %d SpectralNodeMetric rows for %s/%s/%s "
             "(K=%d eigen-loadings)",
-            len(rows), country_code, snapshot_id, k_actual,
+            len(rows), country_code, snapshot_id, scope, k_actual,
         )
         return len(rows)
 

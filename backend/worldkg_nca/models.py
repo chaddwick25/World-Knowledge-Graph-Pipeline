@@ -349,6 +349,11 @@ class SpectralNodeMetric(models.Model):
     osm_id = models.BigIntegerField(
         help_text="OSM element ID (k-NN graph node key)",
     )
+    subgraph_slug = models.CharField(
+        max_length=255, null=True, blank=True, db_index=True,
+        help_text="Subgraph slug for subdivision-scoped spectral analysis. "
+                  "Null for country-level (small territories).",
+    )
 
     eigen_loadings = VectorField(
         dimensions=EIGEN_LOADING_DIM,
@@ -392,10 +397,16 @@ class SpectralNodeMetric(models.Model):
 
     class Meta:
         db_table = 'factor_spectral_node_metric'
-        unique_together = [['snapshot_id', 'country_code', 'osm_id']]
+        unique_together = [['snapshot_id', 'country_code', 'subgraph_slug', 'osm_id']]
         indexes = [
             models.Index(fields=['snapshot_id', 'country_code', 'louvain_community'],
                          name='factor_spec_community_idx'),
+            # Composite index for subgraph-scoped pgvector <#> queries —
+            # lets the planner prune to the subgraph before the distance scan.
+            models.Index(
+                fields=['snapshot_id', 'country_code', 'subgraph_slug'],
+                name='factor_spec_subgraph_idx',
+            ),
         ]
         ordering = ['snapshot_id', 'country_code', 'osm_id']
 
@@ -518,4 +529,88 @@ class PrecomputedLinkCandidate(models.Model):
 
     def __str__(self):
         return f"{self.osm_type}/{self.osm_id} ({self.country_code})"
+
+
+class SubgraphTransport(models.Model):
+    """Functional map matrix between two adjacent subgraph eigenbases.
+
+    Computed at batch time (Step 5c Phase B) from shared buffer-zone
+    entities.  Used at runtime by ``FactorResolutionService.diffusion_rank``
+    to transport eigen-loadings across subgraph boundaries for cross-
+    subgraph spectral diffusion.
+
+    The k×k matrix C satisfies ``C = Φ_Bᵀ S Φ_A`` (Ovsjanikov et al. 2012),
+    where S is the node-to-node correspondence matrix on shared buffer-zone
+    entities, and Φ_A, Φ_B are the truncated eigenbases of subgraphs A and B.
+    Computed via regularized least squares with a Laplacian commutativity
+    regularizer (GRASP; Behmanesh et al. ICML 2026).
+
+    Grounded in:
+    - Ovsjanikov et al. 2012 — functional maps framework
+    - Pegoraro et al. 2023 — spectral maps for graphs/subgraphs
+    - See ``docs/plans/SUBGRAPH_FUNCTIONAL_MAPS_PLAN_v2.md``
+    """
+
+    id = models.BigAutoField(primary_key=True)
+
+    snapshot_id = models.CharField(
+        max_length=20, db_index=True,
+        help_text="Snapshot date (YYYY_MM_DD) — matches OsmEntity.snapshot_id",
+    )
+    country_code = models.CharField(
+        max_length=3, db_index=True,
+        help_text="ISO 3166-1 alpha-2 country code",
+    )
+    subgraph_from = models.CharField(
+        max_length=255, db_index=True,
+        help_text="Source subgraph slug (eigenbasis to transport FROM)",
+    )
+    subgraph_to = models.CharField(
+        max_length=255, db_index=True,
+        help_text="Target subgraph slug (eigenbasis to transport TO)",
+    )
+    transport_matrix = models.JSONField(
+        help_text="k×k matrix (list of lists).  Transports eigen-loadings "
+                  "from subgraph_from's eigenbasis to subgraph_to's "
+                  "eigenbasis: loadings_to = C · loadings_from."
+    )
+    k_dim = models.IntegerField(
+        help_text="Dimension of the transport matrix (k×k).",
+    )
+    shared_entity_count = models.IntegerField(
+        help_text="Number of shared buffer-zone entities used to fit C.",
+    )
+    fit_residual = models.FloatField(
+        null=True, blank=True,
+        help_text="Frobenius norm of the fit residual "
+                  "‖F_B - F_A Cᵀ‖_F / ‖F_B‖_F.",
+    )
+    commutativity_residual = models.FloatField(
+        null=True, blank=True,
+        help_text="Laplacian commutativity residual "
+                  "‖CΛ_A - Λ_B C‖_F / ‖Λ_A‖_F.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'factor_subgraph_transport'
+        unique_together = (
+            'snapshot_id', 'country_code', 'subgraph_from', 'subgraph_to',
+        )
+        indexes = [
+            models.Index(
+                fields=[
+                    'snapshot_id', 'country_code',
+                    'subgraph_from', 'subgraph_to',
+                ],
+                name='factor_transport_pair_idx',
+            ),
+        ]
+        ordering = [
+            'snapshot_id', 'country_code', 'subgraph_from', 'subgraph_to',
+        ]
+
+    def __str__(self):
+        return (f"SubgraphTransport({self.country_code}/"
+                f"{self.snapshot_id} {self.subgraph_from}→{self.subgraph_to})")
 

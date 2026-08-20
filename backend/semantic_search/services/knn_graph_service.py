@@ -12,11 +12,247 @@ This graph is used as input to weighted DeepWalk to generate GV-NLE spatial embe
 
 import numpy as np
 from typing import List, Dict, Tuple
+from dataclasses import dataclass, field
 from haversine import haversine, Unit
 from collections import defaultdict
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SparseGraph:
+    """PyG-style COO graph representation — memory-efficient alternative to
+    NetworkX for large graphs.
+
+    NetworkX stores graphs as dict-of-dicts (~15 GB for IE's 2.47M nodes /
+    73.8M edges).  ``SparseGraph`` stores just the COO arrays (~1.5 GB) and
+    builds scipy sparse matrices lazily.  This is the representation the
+    spectral / signal / community / factor-writer services consume in
+    Step 5c for large countries.
+
+    Attributes:
+        node_ids: (N,) int64 array of OSM IDs (row index → osm_id mapping)
+        edge_index: (2, E) int64 array of node *indices* (undirected edges
+            are stored once; ``to_csr(symmetrize=True)`` adds both
+            directions)
+        edge_weight: (E,) float64 array of k-NN edge weights
+        class_map: {osm_id: wkg_class} node attributes (optional)
+    """
+
+    node_ids: np.ndarray
+    edge_index: np.ndarray
+    edge_weight: np.ndarray
+    class_map: Dict = field(default_factory=dict)
+
+    # ------------------------------------------------------------------
+    # Basic properties
+    # ------------------------------------------------------------------
+
+    @property
+    def n_nodes(self) -> int:
+        return len(self.node_ids)
+
+    @property
+    def n_edges(self) -> int:
+        return self.edge_index.shape[1]
+
+    @property
+    def _node_index(self) -> Dict:
+        """osm_id → row index (built lazily, cached on the instance)."""
+        if getattr(self, "_node_index_cache", None) is None:
+            self._node_index_cache = {
+                int(osm_id): i for i, osm_id in enumerate(self.node_ids)
+            }
+        return self._node_index_cache
+
+    @property
+    def degrees(self) -> np.ndarray:
+        """(N,) int64 degree of each node in the undirected graph.
+
+        Counts **unique** neighbours (canonical deduplicated edges),
+        matching ``nx.Graph.degree`` semantics.
+        """
+        if getattr(self, "_degrees_cache", None) is None:
+            lo, hi, _ = self._canonical_edges
+            deg = (
+                np.bincount(lo, minlength=self.n_nodes)
+                + np.bincount(hi, minlength=self.n_nodes)
+            )
+            loops = lo == hi
+            if loops.any():
+                deg -= np.bincount(lo[loops], minlength=self.n_nodes)
+            self._degrees_cache = deg
+        return self._degrees_cache
+
+    # ------------------------------------------------------------------
+    # scipy sparse conversions
+    # ------------------------------------------------------------------
+
+    @property
+    def _canonical_edges(self):
+        """Undirected edges deduplicated with **max** weight.
+
+        k-NN is asymmetric — i's k nearest may include j without j's
+        including i — so both (i,j) and (j,i) can appear in
+        ``edge_index``.  The NetworkX path keeps ``max(weight)`` for such
+        parallel edges; CSR ``sum_duplicates`` would sum them instead.
+        This property canonicalises each pair to (min, max) and reduces
+        by max, matching the NetworkX semantics exactly.
+        """
+        if getattr(self, "_canonical_cache", None) is None:
+            n = self.n_nodes
+            lo = np.minimum(self.edge_index[0], self.edge_index[1])
+            hi = np.maximum(self.edge_index[0], self.edge_index[1])
+            if lo.size == 0:
+                self._canonical_cache = (
+                    lo.astype(np.int64), hi.astype(np.int64),
+                    self.edge_weight.astype(np.float64),
+                )
+                return self._canonical_cache
+            key = lo.astype(np.int64) * n + hi.astype(np.int64)
+            order = np.argsort(key, kind="stable")
+            key_s = key[order]
+            w_s = self.edge_weight[order]
+            # Segment boundaries → max-reduce within each duplicate run
+            starts = np.r_[0, np.flatnonzero(np.diff(key_s)) + 1]
+            uniq_key = key_s[starts]
+            uniq_w = np.maximum.reduceat(w_s, starts)
+            self._canonical_cache = (
+                (uniq_key // n).astype(np.int64),
+                (uniq_key % n).astype(np.int64),
+                uniq_w,
+            )
+        return self._canonical_cache
+
+    def to_csr(self, symmetrize: bool = True):
+        """Weighted adjacency matrix as CSR.
+
+        Args:
+            symmetrize: if True, store both (i,j) and (j,i) — the
+                undirected semantics of the NetworkX path (parallel k-NN
+                edges keep the max weight via ``_canonical_edges``).
+        """
+        import scipy.sparse as sp
+
+        n = self.n_nodes
+        lo, hi, w = self._canonical_edges
+        if symmetrize:
+            rows = np.concatenate([lo, hi])
+            cols = np.concatenate([hi, lo])
+            data = np.concatenate([w, w])
+        else:
+            rows, cols, data = lo, hi, w
+        return sp.csr_matrix(
+            (data, (rows, cols)), shape=(n, n),
+        ).asfptype().tocsr()
+
+    def normalized_laplacian(self):
+        """Normalized Laplacian ``L = I - D^{-1/2} W D^{-1/2}`` (CSR).
+
+        Matches ``nx.normalized_laplacian_matrix`` semantics for the
+        weighted undirected case — including the NetworkX convention
+        (since v1.11) that isolated nodes get a **zero** diagonal entry.
+        """
+        import scipy.sparse as sp
+
+        A = self.to_csr(symmetrize=True)
+        deg = np.asarray(A.sum(axis=1)).ravel()
+        isolated = deg == 0
+        deg[isolated] = 1.0  # avoid div-by-zero; zeroed out below
+        d_inv_sqrt = 1.0 / np.sqrt(deg)
+        D = sp.diags(d_inv_sqrt)
+        n = self.n_nodes
+        L = (sp.identity(n, format="csr") - D @ A @ D).tocsr()
+        if isolated.any():
+            # nx sets L[i,i] = 0 for isolated nodes
+            L = (L - sp.diags(isolated.astype(float))).tocsr()
+        return L
+
+    def laplacian(self):
+        """Combinatorial Laplacian ``L = D - W`` (CSR)."""
+        import scipy.sparse as sp
+
+        A = self.to_csr(symmetrize=True)
+        deg = np.asarray(A.sum(axis=1)).ravel()
+        return (sp.diags(deg) - A).tocsr()
+
+    def components(self):
+        """Connected components via scipy csgraph.
+
+        Returns:
+            (component_of, component_size_of) — both dicts keyed by
+            osm_id, matching the ``FactorNodeWriter`` contract.
+        """
+        from scipy.sparse.csgraph import connected_components
+
+        n_comp, labels = connected_components(
+            self.to_csr(symmetrize=True), directed=False,
+        )
+        sizes = np.bincount(labels, minlength=n_comp)
+        component_of = {
+            int(self.node_ids[i]): int(labels[i]) for i in range(self.n_nodes)
+        }
+        component_size_of = {
+            int(self.node_ids[i]): int(sizes[labels[i]])
+            for i in range(self.n_nodes)
+        }
+        return component_of, component_size_of
+
+    # ------------------------------------------------------------------
+    # Interop
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_nx(cls, G) -> "SparseGraph":
+        """Build a SparseGraph from a NetworkX graph (tests / small graphs).
+
+        Node attributes: only ``wkg_class`` is preserved (the only
+        attribute the Step 5c consumers read).
+        """
+        node_ids = np.array(sorted(G.nodes()), dtype=np.int64)
+        index = {int(osm_id): i for i, osm_id in enumerate(node_ids)}
+        edges, weights = [], []
+        for u, v, data in G.edges(data=True):
+            edges.append((index[int(u)], index[int(v)]))
+            weights.append(float(data.get("weight", 1.0)))
+        edge_index = (
+            np.array(edges, dtype=np.int64).T
+            if edges else np.zeros((2, 0), dtype=np.int64)
+        )
+        class_map = {
+            int(node): data.get("wkg_class")
+            for node, data in G.nodes(data=True)
+            if data.get("wkg_class")
+        }
+        return cls(
+            node_ids=node_ids,
+            edge_index=edge_index,
+            edge_weight=np.array(weights, dtype=np.float64),
+            class_map=class_map,
+        )
+
+    def to_nx(self):
+        """Convert to ``networkx.Graph`` (small graphs only — GraphML debug
+        artifact serialization, heat-kernel unit tests)."""
+        import networkx as nx
+
+        G = nx.Graph()
+        for osm_id in self.node_ids:
+            G.add_node(int(osm_id))
+        for i in range(self.n_edges):
+            # edge_index holds *row indices* into node_ids, not osm_ids
+            u = int(self.node_ids[self.edge_index[0, i]])
+            v = int(self.node_ids[self.edge_index[1, i]])
+            w = float(self.edge_weight[i])
+            if G.has_edge(u, v):
+                G[u][v]["weight"] = max(G[u][v]["weight"], w)
+            else:
+                G.add_edge(u, v, weight=w)
+        for osm_id, cls in self.class_map.items():
+            G.nodes[int(osm_id)]["wkg_class"] = cls
+        return G
+
 
 
 class KNNGraphService:
@@ -289,6 +525,13 @@ class KNNGraphService:
         available so callers (e.g. ``GraphSignalService``) can build the
         class signal without a second DB round-trip.
 
+        .. note::
+            For large countries this NetworkX representation costs ~15 GB
+            (IE: 2.47M nodes / 73.8M edges).  Use ``build_sparse_graph``
+            instead — it returns the PyG-style COO ``SparseGraph``
+            (~1.5 GB) and never materialises the dict-of-dicts.  This
+            method remains for backward compatibility and small graphs.
+
         Args:
             country_code: ISO 3166-1 alpha-2 code (e.g. "BZ")
             snapshot_id: ``YYYY_MM_DD`` snapshot partition key
@@ -300,7 +543,44 @@ class KNNGraphService:
             ``networkx.Graph`` — undirected, weighted, with ``wkg_class``
             node attributes where available.
         """
-        import networkx as nx
+        return self.build_sparse_graph(
+            country_code, snapshot_id, k=k, entity_limit=entity_limit,
+        ).to_nx()
+
+    def build_sparse_graph(
+        self,
+        country_code: str,
+        snapshot_id: str,
+        k: int = None,
+        entity_limit: int = None,
+    ):
+        """Build a PyG-style COO ``SparseGraph`` for a country snapshot.
+
+        Same DB load + BallTree k-NN adjacency as ``build_graph``, but
+        returns the memory-efficient COO representation (~1.5 GB for IE's
+        2.47M nodes / 73.8M edges, vs ~15 GB for the NetworkX graph) —
+        no NetworkX dict-of-dicts is ever materialised.
+
+        Node identifiers: ``node_ids`` (N,) holds the OSM IDs;
+        ``edge_index`` (2, E) holds node *indices* into ``node_ids``;
+        ``edge_weight`` (E,) holds the k-NN edge weights.  ``class_map``
+        maps osm_id → wkg_class (the only node attribute Step 5c
+        consumers read).
+
+        Duplicate directed k-NN pairs (i→j and j→i both present) are
+        *not* merged here — consumers go through
+        ``SparseGraph._canonical_edges`` which deduplicates with max
+        weight, matching the undirected NetworkX semantics.
+
+        Args:
+            country_code: ISO 3166-1 alpha-2 code (e.g. "BZ")
+            snapshot_id: ``YYYY_MM_DD`` snapshot partition key
+            k: Override the default neighbor count (default: ``self.k``)
+            entity_limit: Optional cap on the number of entities loaded
+
+        Returns:
+            ``SparseGraph``
+        """
         from worldkg_nca.models import OsmEntity
 
         if k is None:
@@ -328,31 +608,260 @@ class KNNGraphService:
                 class_map[entity.osm_id] = entity.wkg_class
 
         logger.info(
-            "build_graph: loaded %d entities for %s/%s (k=%d)",
+            "build_sparse_graph: loaded %d entities for %s/%s (k=%d)",
             len(entities), country_code, snapshot_id, k,
         )
 
         adj = self.build_knn_graph(entities)
 
-        G = nx.Graph()
-        for osm_id, cls in class_map.items():
-            G.add_node(osm_id, wkg_class=cls)
+        # Nodes: every osm_id that appears as a source or target
+        all_ids = set(adj.keys())
+        for neighbors in adj.values():
+            all_ids.update(t for t, _ in neighbors)
+        node_ids = np.array(sorted(all_ids), dtype=np.int64)
+        index = {int(osm_id): i for i, osm_id in enumerate(node_ids)}
+
+        src_list, dst_list, w_list = [], [], []
         for source, neighbors in adj.items():
-            if source not in G:
-                G.add_node(source)
+            i = index[int(source)]
             for target, weight in neighbors:
-                if target not in G:
-                    G.add_node(target)
-                # Undirected — keep the max weight if both directions exist
-                if G.has_edge(source, target):
-                    G[source][target]['weight'] = max(
-                        G[source][target]['weight'], weight
-                    )
-                else:
-                    G.add_edge(source, target, weight=weight)
+                src_list.append(i)
+                dst_list.append(index[int(target)])
+                w_list.append(weight)
+
+        edge_index = (
+            np.array([src_list, dst_list], dtype=np.int64)
+            if src_list else np.zeros((2, 0), dtype=np.int64)
+        )
+        sg = SparseGraph(
+            node_ids=node_ids,
+            edge_index=edge_index,
+            edge_weight=np.array(w_list, dtype=np.float64),
+            class_map=class_map,
+        )
+        logger.info(
+            "build_sparse_graph: %s/%s → %d nodes, %d edges (COO)",
+            country_code, snapshot_id, sg.n_nodes, sg.n_edges,
+        )
+        return sg
+
+    def build_sparse_graph_for_subgraph(
+        self,
+        country_code: str,
+        snapshot_id: str,
+        subgraph_slug: str,
+        poly_path: str = None,
+        bbox: tuple = None,
+        buffer_deg: float = 0.45,
+        k: int = None,
+        return_core_ids: bool = False,
+    ):
+        """Build a SparseGraph for a single subgraph (admin region).
+
+        Filters entities by the subgraph's polygon (preferred) or bbox,
+        with a buffer zone for correct k-NN neighbor assignment at
+        boundaries.  Mirrors the geo-fence logic from
+        ``train_gv_nle``'s subgraph path.
+
+        The buffer ensures border nodes have realistic spatial neighbors
+        (entities just outside the subgraph boundary), but only entities
+        strictly inside the polygon are included in the output graph.
+        This matches Step 5's write-back semantics.
+
+        With ``return_core_ids=True`` (Option A from the functional maps
+        plan), the returned ``SparseGraph`` includes **all** buffered
+        entities (core + buffer), and the ``core_ids`` set is returned
+        alongside so the caller can prune at factor-write time.  This
+        gives shared buffer entities exact eigen-loadings from the
+        spectral solve — needed for transport matrix computation.
+
+        Args:
+            country_code: ISO 3166-1 alpha-2 (e.g. "IE")
+            snapshot_id: ``YYYY_MM_DD`` partition key
+            subgraph_slug: Subgraph identifier (for logging)
+            poly_path: Path to .poly file for the subgraph boundary.
+                If None, bbox is used instead.
+            bbox: Tuple of (min_lon, min_lat, max_lon, max_lat).  Used
+                only when poly_path is None or fails to parse.
+            buffer_deg: Buffer in degrees around the polygon for k-NN
+                neighbor loading (default 0.45° ≈ 50 km).
+            k: Override the default neighbor count
+            return_core_ids: If True, return ``(SparseGraph, core_ids)``
+                where the graph includes all buffered entities (Option A).
+                If False (default, backward-compatible), return just the
+                core-pruned ``SparseGraph``.
+
+        Returns:
+            ``SparseGraph`` scoped to the subgraph's entities, or
+            ``(SparseGraph, core_ids)`` if ``return_core_ids=True``.
+        """
+        from worldkg_nca.models import OsmEntity
+        from worldkg_nca.services.wikidata_service import (
+            parse_poly_to_wkt, parse_poly_bbox, bbox_to_wkt,
+        )
+        from django.contrib.gis.geos import GEOSGeometry
+
+        if k is None:
+            k = self.k
+
+        # ── Resolve the subgraph boundary ──
+        strict_wkt = None
+        if poly_path:
+            strict_wkt = parse_poly_to_wkt(poly_path)
+            if strict_wkt is None:
+                logger.warning(
+                    "build_sparse_graph_for_subgraph: poly parse failed "
+                    "for %s, falling back to bbox", poly_path,
+                )
+                bbox = parse_poly_bbox(poly_path)
+                if bbox:
+                    strict_wkt = bbox_to_wkt(*bbox)
+
+        if strict_wkt is None and bbox is not None:
+            strict_wkt = bbox_to_wkt(*bbox)
+
+        if strict_wkt is None:
+            logger.warning(
+                "build_sparse_graph_for_subgraph: no boundary for %s — "
+                "falling back to country-level filter",
+                subgraph_slug,
+            )
+            return self.build_sparse_graph(
+                country_code, snapshot_id, k=k,
+            )
+
+        strict_geo = GEOSGeometry(strict_wkt, srid=4326)
+        buffer_geo = strict_geo.buffer(buffer_deg)
+        buffer_wkt = buffer_geo.wkt
+
+        # ── Load entities in the buffer zone (k-NN graph scope) ──
+        buffer_geom = GEOSGeometry(buffer_wkt, srid=4326)
+        qs = OsmEntity.objects.using('vectors').filter(
+            geom__isnull=False,
+            geom__within=buffer_geom,
+            country_code__iexact=country_code,
+            snapshot_id=snapshot_id,
+        ).order_by('osm_id').distinct('osm_id')
+
+        entities = []
+        class_map = {}
+        core_ids = set()  # entities strictly inside the polygon
+
+        for entity in qs.iterator():
+            if not entity.geom:
+                continue
+            entities.append({
+                'osm_id': entity.osm_id,
+                'lat': entity.geom.y,
+                'lon': entity.geom.x,
+            })
+            if entity.wkg_class:
+                class_map[entity.osm_id] = entity.wkg_class
+            if strict_geo.contains(entity.geom):
+                core_ids.add(entity.osm_id)
 
         logger.info(
-            "build_graph: %s/%s → %d nodes, %d edges",
-            country_code, snapshot_id, G.number_of_nodes(), G.number_of_edges(),
+            "build_sparse_graph_for_subgraph: %s/%s/%s — loaded %d entities "
+            "(%d core, %d buffer) (k=%d)",
+            country_code, snapshot_id, subgraph_slug,
+            len(entities), len(core_ids), len(entities) - len(core_ids), k,
         )
-        return G
+
+        if len(entities) < 2:
+            logger.warning(
+                "build_sparse_graph_for_subgraph: %s has < 2 entities — "
+                "returning empty graph",
+                subgraph_slug,
+            )
+            return SparseGraph(
+                node_ids=np.array([], dtype=np.int64),
+                edge_index=np.zeros((2, 0), dtype=np.int64),
+                edge_weight=np.array([], dtype=np.float64),
+                class_map={},
+            )
+
+        # ── Build k-NN adjacency on all buffer entities ──
+        adj = self.build_knn_graph(entities)
+
+        if return_core_ids:
+            # Option A (functional maps plan): return the FULL buffered
+            # graph (core + buffer entities).  The spectral solve runs on
+            # all buffered entities, giving shared buffer entities exact
+            # eigen-loadings for transport matrix computation.  The caller
+            # prunes to core at factor-write time using the returned
+            # ``core_ids`` set.
+            all_ids = set(adj.keys())
+            for neighbors in adj.values():
+                all_ids.update(t for t, _ in neighbors)
+            node_ids = np.array(sorted(all_ids), dtype=np.int64)
+            index = {int(osm_id): i for i, osm_id in enumerate(node_ids)}
+
+            src_list, dst_list, w_list = [], [], []
+            for source, neighbors in adj.items():
+                i = index[int(source)]
+                for target, weight in neighbors:
+                    src_list.append(i)
+                    dst_list.append(index[int(target)])
+                    w_list.append(weight)
+
+            edge_index = (
+                np.array([src_list, dst_list], dtype=np.int64)
+                if src_list else np.zeros((2, 0), dtype=np.int64)
+            )
+            sg = SparseGraph(
+                node_ids=node_ids,
+                edge_index=edge_index,
+                edge_weight=np.array(w_list, dtype=np.float64),
+                class_map=class_map,
+            )
+            logger.info(
+                "build_sparse_graph_for_subgraph: %s/%s → %d nodes, %d edges "
+                "(COO, Option A — full buffered graph, %d core)",
+                subgraph_slug, snapshot_id, sg.n_nodes, sg.n_edges,
+                len(core_ids),
+            )
+            return sg, core_ids
+
+        # ── Prune to core entities only (drop buffer-only nodes) ──
+        # Keep edges where BOTH endpoints are core entities.
+        # This ensures the spectral graph is the induced subgraph on
+        # core entities, with k-NN neighbors computed from the full
+        # buffer zone (correct boundary behavior).
+        core_adj = {}
+        for source, neighbors in adj.items():
+            if source not in core_ids:
+                continue
+            core_neighbors = [(t, w) for t, w in neighbors if t in core_ids]
+            if core_neighbors:
+                core_adj[source] = core_neighbors
+
+        # Build node_ids from core entities that appear in the adjacency
+        all_ids = set(core_adj.keys())
+        for neighbors in core_adj.values():
+            all_ids.update(t for t, _ in neighbors)
+        node_ids = np.array(sorted(all_ids), dtype=np.int64)
+        index = {int(osm_id): i for i, osm_id in enumerate(node_ids)}
+
+        src_list, dst_list, w_list = [], [], []
+        for source, neighbors in core_adj.items():
+            i = index[int(source)]
+            for target, weight in neighbors:
+                src_list.append(i)
+                dst_list.append(index[int(target)])
+                w_list.append(weight)
+
+        edge_index = (
+            np.array([src_list, dst_list], dtype=np.int64)
+            if src_list else np.zeros((2, 0), dtype=np.int64)
+        )
+        sg = SparseGraph(
+            node_ids=node_ids,
+            edge_index=edge_index,
+            edge_weight=np.array(w_list, dtype=np.float64),
+            class_map=class_map,
+        )
+        logger.info(
+            "build_sparse_graph_for_subgraph: %s/%s → %d nodes, %d edges (COO)",
+            subgraph_slug, snapshot_id, sg.n_nodes, sg.n_edges,
+        )
+        return sg
