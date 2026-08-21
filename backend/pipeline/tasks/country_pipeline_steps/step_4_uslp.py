@@ -14,6 +14,7 @@ This prevents under-prediction on the first pipeline run after a DB reset.
 from __future__ import annotations
 import dataclasses
 import logging
+import os
 from pathlib import Path
 from pipeline.tasks.helper import _log
 from pipeline.config import SubgraphConfig
@@ -25,6 +26,103 @@ from pipeline.celery_app import (
 )
 
 logger = logging.getLogger("pipeline")
+
+
+def _parse_gpu_config():
+    """Parse GPU device + concurrency config from env vars.
+
+    Shares the same env vars as Step 5 (GV_NLE_GPU_DEVICES,
+    GV_NLE_GPU_CONCURRENCY) so USLP and NLE use the same GPU scheduling.
+    """
+    devices_str = os.environ.get("GV_NLE_GPU_DEVICES", "cuda:0,cuda:1")
+    concurrency_str = os.environ.get("GV_NLE_GPU_CONCURRENCY", "1,1")
+    devices = [d.strip() for d in devices_str.split(",") if d.strip()]
+    concurrency = []
+    for c in concurrency_str.split(","):
+        try:
+            concurrency.append(int(c.strip()))
+        except ValueError:
+            concurrency.append(1)
+    while len(concurrency) < len(devices):
+        concurrency.append(1)
+    return devices, concurrency
+
+
+_GPU_DEVICES, _GPU_CONCURRENCY = _parse_gpu_config()
+
+
+def _gpu_concurrency_for(device: str) -> int:
+    """Get the concurrency limit for a given GPU device."""
+    for dev, conc in zip(_GPU_DEVICES, _GPU_CONCURRENCY):
+        if dev == device:
+            return conc
+    return 1
+
+
+class _GpuSlotLock:
+    """Cross-process counting semaphore using fcntl lock files.
+
+    Same implementation as step_5_nle.py's GpuSlotLock. Duplicated here
+    to avoid a cross-step import dependency. For a GPU with concurrency
+    N, creates N lock files. acquire() tries each in order until one is
+    available (non-blocking trylock); if all are held, blocks on the
+    first one. release() unlocks the held slot.
+
+    This works across prefork worker processes because fcntl locks are
+    per-file-descriptor at the OS level.
+    """
+
+    def __init__(self, device: str, concurrency: int):
+        import fcntl
+        import tempfile
+        self.device = device
+        self.concurrency = concurrency
+        dev_tag = device.replace(":", "_")
+        self._lock_dir = os.path.join(tempfile.gettempdir(), "gpu_slots")
+        os.makedirs(self._lock_dir, exist_ok=True)
+        self._lock_files = [
+            os.path.join(self._lock_dir, f"{dev_tag}_slot{i}.lock")
+            for i in range(concurrency)
+        ]
+        self._held_fd = None
+        self._held_index = None
+
+    def acquire(self) -> None:
+        import fcntl
+        while True:
+            for i, path in enumerate(self._lock_files):
+                fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self._held_fd = fd
+                    self._held_index = i
+                    return
+                except (BlockingIOError, OSError):
+                    os.close(fd)
+                    continue
+            fd = os.open(self._lock_files[0], os.O_CREAT | os.O_RDWR, 0o644)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                self._held_fd = fd
+                self._held_index = 0
+                return
+            except Exception:
+                os.close(fd)
+                continue
+
+    def release(self) -> None:
+        import fcntl
+        if self._held_fd is not None:
+            try:
+                fcntl.flock(self._held_fd, fcntl.LOCK_UN)
+            except Exception:
+                pass
+            try:
+                os.close(self._held_fd)
+            except Exception:
+                pass
+            self._held_fd = None
+            self._held_index = None
 
 @pipeline_task(
     bind=True, base=PipelineTask,
@@ -201,18 +299,41 @@ def _run_subgraph_uslp(
             pipeline_run_id=env.pipeline_run_id,
         )
 
-    call_command(
-        "predict_spatial_links",
-        country=env.iso,
-        poly_file=poly_file,
-        max_heads=env.uslp_max_heads,
-        limit=env.uslp_limit,
-        threshold=env.uslp_threshold,
-        top_k=env.uslp_top_k,
-        gpu=env.uslp_use_gpu,
-        gpu_device=env.uslp_gpu_device,
-        snapshot_date=env.snapshot_date,
-    )
+    # Acquire GPU slot lock to prevent concurrent subgraph USLP tasks
+    # from exhausting VRAM. Same pattern as step_5_nle.py — the chord
+    # fires all subgraph tasks in parallel, but GPU memory is finite.
+    # With concurrency=1 (default), subgraphs are serialized on the GPU.
+    slot_lock = None
+    if env.uslp_use_gpu and env.uslp_gpu_device:
+        concurrency = _gpu_concurrency_for(env.uslp_gpu_device)
+        slot_lock = _GpuSlotLock(env.uslp_gpu_device, concurrency)
+        _log(
+            logger,
+            "info",
+            "Acquiring GPU slot for subgraph USLP",
+            subgraph=sg.name,
+            gpu_device=env.uslp_gpu_device,
+            gpu_concurrency=concurrency,
+            pipeline_run_id=env.pipeline_run_id,
+        )
+        slot_lock.acquire()
+
+    try:
+        call_command(
+            "predict_spatial_links",
+            country=env.iso,
+            poly_file=poly_file,
+            max_heads=env.uslp_max_heads,
+            limit=env.uslp_limit,
+            threshold=env.uslp_threshold,
+            top_k=env.uslp_top_k,
+            gpu=env.uslp_use_gpu,
+            gpu_device=env.uslp_gpu_device,
+            snapshot_date=env.snapshot_date,
+        )
+    finally:
+        if slot_lock is not None:
+            slot_lock.release()
 
     return {"subgraph": sg.name, "status": "completed", "poly_file": poly_file}
 

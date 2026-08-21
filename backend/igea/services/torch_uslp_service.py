@@ -305,18 +305,33 @@ class TorchUSLP(GPUAcceleratedUSLP):
         return all_links
 
     def _adaptive_head_batch_size(self, requested: int) -> int:
-        """Reduce head batch size for large pools to avoid GPU OOM."""
+        """Reduce head batch size for large pools to avoid GPU OOM.
+
+        Uses torch.cuda.mem_get_info (free bytes on device) when available,
+        which accounts for allocations by OTHER processes on the same GPU
+        — important when multiple subgraph USLP tasks share the GPU.
+        Falls back to total - allocated for older PyTorch versions.
+        """
         N = len(self._pool) if self._pool else 0
         if not torch.cuda.is_available() or N == 0:
             return requested
 
-        free_bytes = (
-            torch.cuda.get_device_properties(self.device).total_memory
-            - torch.cuda.memory_allocated(self.device)
-        )
+        # torch.cuda.mem_get_info returns (free, total) — free accounts
+        # for other processes' allocations. Available in PyTorch >= 1.11.
+        try:
+            free_bytes, _total = torch.cuda.mem_get_info(self.device)
+        except AttributeError:
+            free_bytes = (
+                torch.cuda.get_device_properties(self.device).total_memory
+                - torch.cuda.memory_allocated(self.device)
+            )
+
         # Peak: ~6 simultaneous (H, N) float32 tensors during haversine
-        bytes_per_head = N * 4 * 6
-        safe = max(1, int(free_bytes * 0.70 / bytes_per_head))
+        # plus the radius mask computation (2 more H×N tensors).
+        # Use 0.50 multiplier for safety — concurrent tasks may allocate
+        # between our check and our tensor creation.
+        bytes_per_head = N * 4 * 8
+        safe = max(1, int(free_bytes * 0.50 / bytes_per_head))
 
         if safe < requested:
             logger.warning(
