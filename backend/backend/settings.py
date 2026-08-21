@@ -175,10 +175,11 @@ WIKIDATA_CACHE_DIR = os.getenv('WIKIDATA_CACHE_DIR', _default_wikidata_cache_dir
 
 # MapQA parser data directory — training data + model artifacts.
 # Layout (see docs/plans/MAPQA_PARSER_BUILD_ORDER.md §8):
-#   {MAPQA_PARSER_DATA_DIR}/raw/           — symlink to docs/Schematics/MapQA-dataset-main/
+#   {MAPQA_PARSER_DATA_DIR}/raw/           — MapQA dataset (mounted from host via MAPQA_DATASET_DIR)
 #   {MAPQA_PARSER_DATA_DIR}/training_data/ — mapqa_template_mapping.csv (generated)
 #   {MAPQA_PARSER_DATA_DIR}/artifacts/     — vectorizer.pkl, classifier.pkl, etc.
-_default_mapqa_parser_dir = os.path.join(BASE_DIR, 'data', 'mapqa_parser')
+# Env-driven: defaults to BASE_DATA_DIR/mapqa_parser (the /app/data mount in Docker).
+_default_mapqa_parser_dir = os.path.join(BASE_DATA_DIR, 'mapqa_parser') if BASE_DATA_DIR else None
 MAPQA_PARSER_DATA_DIR = os.getenv('MAPQA_PARSER_DATA_DIR', _default_mapqa_parser_dir)
 
 # k-NN graph artifact directory — serialized graphs from Step 5c.

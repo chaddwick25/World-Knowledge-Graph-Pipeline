@@ -30,6 +30,32 @@ from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 
 logger = logging.getLogger(__name__)
 
+# ── USLP geographic scoring (Mann et al. 2023 §3.3) ───────────────────────
+# The paper's geo_score uses geohash cluster centers at relation-specific
+# precision levels, with d_max = per-tail-cluster max distance to any other
+# cluster center at that precision (the per-column max of the distance matrix).
+#
+# Geohash precision cell widths (geohash2 reference):
+#   P1: ~5000 km  — country/continent level (isInCountry, capitalCity)
+#   P3: ~156 km   — state/county/district level (isInCounty, addrState)
+#   P4: ~39 km    — local level (addrSuburb, addrHamlet, addrCity)
+#
+# For MapQA templates, we use P4 (local) as the default precision since most
+# queries are local-scale. FILTER-AGGREGATE-MEASURE uses the user's explicit
+# radius as d_max with raw haversine (no geohash). OBJECT-FIELD-MEASURE has
+# no geo_score (distance IS the answer).
+#
+# d_max fallback when no pool is loaded: the geohash cell width at the
+# precision level (P4 ≈ 39 km). The paper computes d_max from the candidate
+# pool's cluster centers; at runtime without a precomputed pool, the cell
+# width is the closest approximation.
+USLP_GEOHASH_PRECISION = 4
+USLP_FALLBACK_D_MAX_KM = {
+    1: 5000.0,
+    3: 156.0,
+    4: 39.0,
+}
+
 
 class QueryExecutorService:
     """Execute a parsed query against the data plane.
@@ -697,9 +723,11 @@ class QueryExecutorService:
                                        snapshot_date, trace):
         object_concept = cls._get_concept(concepts, "OBJECT")
         location_concept = cls._get_concept(concepts, "LOCATION")
+        amount_concept = cls._get_concept(concepts, "AMOUNT")
 
         amenity_type = object_concept["text"] if object_concept else None
         anchor_name = location_concept["text"] if location_concept else None
+        radius_m = cls._parse_radius(amount_concept["text"]) if amount_concept else None
 
         if not amenity_type and not anchor_name:
             trace.append({"step": "place_search",
@@ -727,6 +755,35 @@ class QueryExecutorService:
                 anchor_osm_id, amenity_type, country_code, snapshot_date, trace,
             )
             if table_results is not None:
+                # Add geo_score + USLP boost to each result, then re-rank.
+                template = "PLACE-ATTRIBUTE-QUERY (#8)"
+                table_results = cls._enrich_with_geo_and_uslp(
+                    table_results, template, anchor_coords, radius_m,
+                    anchor_osm_id, country_code, snapshot_date, trace,
+                )
+                # Geographic radius guard — if an AMOUNT (radius) concept was
+                # parsed, filter heat-kernel results by haversine distance.
+                # Heat kernel diffusion respects graph connectivity, not
+                # geographic distance, so entities far away in km can still
+                # get high diffusion scores.
+                if radius_m and anchor_coords and anchor_coords.get("lat"):
+                    filtered = []
+                    for r in table_results:
+                        if r.get("lat") is not None and r.get("lon") is not None:
+                            dist_m = cls._haversine_m(
+                                anchor_coords["lat"], anchor_coords["lon"],
+                                r["lat"], r["lon"],
+                            )
+                            if dist_m <= radius_m:
+                                filtered.append(r)
+                    if trace is not None:
+                        trace.append({
+                            "step": "radius_guard",
+                            "radius_m": radius_m,
+                            "before": len(table_results),
+                            "after": len(filtered),
+                        })
+                    return filtered
                 return table_results
             if trace is not None:
                 trace.append({"step": "factor_join",
@@ -1413,6 +1470,120 @@ class QueryExecutorService:
 
         return {"error": "No diffusion data available (Step 5c not run)"}
 
+    # ── Geo + USLP enrichment ───────────────────────────────────────────────
+
+    @classmethod
+    def _enrich_with_geo_and_uslp(cls, results, template, anchor_coords,
+                                   radius_m, anchor_osm_id, country_code,
+                                   snapshot_date, trace):
+        """Add geo_score (template-aware) and USLP boost to results, re-rank.
+
+        geo_score uses the USLP geohash-based formula (Mann et al. 2023 §3.3):
+        encode anchor and candidate at P4 precision, compute haversine between
+        cluster centers, normalize by d_max. For FILTER-AGGREGATE-MEASURE with
+        an explicit radius, uses raw haversine with the user's radius as d_max.
+        USLP boost adds a small score for entities that appear as predicted
+        link tails from the anchor entity.
+
+        Modifies results in-place and re-sorts by combined_score.
+        """
+        if not results:
+            return results
+
+        # Compute geo_score for each result
+        anchor_lat = anchor_coords.get("lat") if anchor_coords else None
+        anchor_lon = anchor_coords.get("lon") if anchor_coords else None
+        has_geo = anchor_lat is not None and anchor_lon is not None
+
+        if has_geo:
+            for r in results:
+                r_lat = r.get("lat")
+                r_lon = r.get("lon")
+                if r_lat is not None and r_lon is not None:
+                    r["geo_score"] = round(
+                        cls._geo_score_uslp(
+                            anchor_lat, anchor_lon, r_lat, r_lon,
+                            template, radius_m,
+                        ), 4
+                    )
+                    # Also store raw distance for the radius guard
+                    r["distance_km"] = round(
+                        cls._haversine_km(anchor_lat, anchor_lon, r_lat, r_lon), 3
+                    )
+                else:
+                    r["distance_km"] = None
+                    r["geo_score"] = 0.0
+        else:
+            for r in results:
+                r["distance_km"] = None
+                r["geo_score"] = 0.0
+
+        # USLP signal boost — entities that appear as predicted link tails
+        # from the anchor get a small boost. This connects the link
+        # prediction layer to search ranking.
+        uslp_tail_ids = set()
+        if anchor_osm_id and country_code:
+            uslp_tail_ids = cls._get_uslp_predicted_tails(
+                anchor_osm_id, country_code, snapshot_date, trace,
+            )
+
+        if uslp_tail_ids:
+            boosted = 0
+            for r in results:
+                if r.get("osm_id") in uslp_tail_ids:
+                    r["uslp_boost"] = 0.5
+                    boosted += 1
+                else:
+                    r["uslp_boost"] = 0.0
+            if trace is not None:
+                trace.append({
+                    "step": "uslp_boost",
+                    "anchor_osm_id": anchor_osm_id,
+                    "predicted_tails": len(uslp_tail_ids),
+                    "boosted_results": boosted,
+                })
+        else:
+            for r in results:
+                r["uslp_boost"] = 0.0
+
+        # Re-rank by combined score: diffusion_score + geo_score + uslp_boost
+        for r in results:
+            diff = r.get("diffusion_score", 0.0)
+            geo = r.get("geo_score", 0.0)
+            uslp = r.get("uslp_boost", 0.0)
+            r["combined_score"] = round(diff + geo + uslp, 6)
+
+        results.sort(key=lambda r: r.get("combined_score", 0.0), reverse=True)
+        return results
+
+    @classmethod
+    def _get_uslp_predicted_tails(cls, head_osm_id, country_code,
+                                   snapshot_date, trace):
+        """Return set of tail osm_ids from accepted USLP links for this head.
+
+        Queries SpatialTripletScore on the vectors DB for predicted links
+        (normalized_score >= 0.7) where the head matches. Returns an empty
+        set if USLP hasn't been run or no links exist.
+        """
+        try:
+            from igea.models import SpatialTripletScore
+            snapshot_id = cls._get_snapshot_id(snapshot_date)
+            qs = SpatialTripletScore.objects.using("vectors").filter(
+                head_osm_id=head_osm_id,
+                predicted=True,
+            )
+            if snapshot_id:
+                qs = qs.filter(snapshot_id=snapshot_id)
+            tail_ids = set(qs.values_list("tail_osm_id", flat=True)[:200])
+            return tail_ids
+        except Exception as e:
+            if trace is not None:
+                trace.append({
+                    "step": "uslp_lookup",
+                    "warning": f"USLP lookup failed: {e}",
+                })
+            return set()
+
     # ── Geometric helpers ───────────────────────────────────────────────────
 
     @staticmethod
@@ -1431,6 +1602,53 @@ class QueryExecutorService:
     @classmethod
     def _haversine_m(cls, lat1, lon1, lat2, lon2) -> float:
         return cls._haversine_km(lat1, lon1, lat2, lon2) * 1000
+
+    @classmethod
+    def _geo_score_uslp(cls, head_lat: float, head_lon: float,
+                        tail_lat: float, tail_lon: float,
+                        template: str, radius_m: int = None) -> float:
+        """USLP geographic space score (Mann et al. 2023 §3.3).
+
+        Uses geohash cluster centers at the precision level appropriate for
+        the template, then normalizes by d_max:
+            geo_score = 1 - d_cluster / d_max
+
+        - OBJECT-FIELD-MEASURE: returns 0.0 (distance IS the answer)
+        - FILTER-AGGREGATE-MEASURE: uses raw haversine with the user's
+          explicit radius as d_max (no geohash quantization)
+        - All other templates: P4 geohash (~39km cells), d_max = P4 cell width
+
+        The paper computes d_max from the candidate pool's cluster-center
+        distance matrix. At runtime without a precomputed pool, we use the
+        geohash cell width as the fallback d_max (see USLP_FALLBACK_D_MAX_KM).
+        """
+        if template == "OBJECT-FIELD-MEASURE (#2)":
+            return 0.0
+
+        # FILTER-AGGREGATE-MEASURE: user specified an exact radius — use it
+        if template == "FILTER-AGGREGATE-MEASURE (#1)" and radius_m:
+            d_max = radius_m / 1000.0
+            dist_km = cls._haversine_km(head_lat, head_lon, tail_lat, tail_lon)
+            return max(0.0, min(1.0, 1.0 - (dist_km / d_max)))
+
+        # All other templates: USLP geohash-based scoring at P4
+        precision = USLP_GEOHASH_PRECISION
+        try:
+            import geohash2
+            gh_h = geohash2.encode(head_lat, head_lon, precision=precision)
+            gh_t = geohash2.encode(tail_lat, tail_lon, precision=precision)
+            # Decode to cluster centers
+            lat_h_str, lon_h_str = geohash2.decode(gh_h)
+            lat_t_str, lon_t_str = geohash2.decode(gh_t)
+            c_h = (float(lat_h_str), float(lon_h_str))
+            c_t = (float(lat_t_str), float(lon_t_str))
+            dist_km = cls._haversine_km(c_h[0], c_h[1], c_t[0], c_t[1])
+        except Exception:
+            # Fallback to raw haversine if geohash fails
+            dist_km = cls._haversine_km(head_lat, head_lon, tail_lat, tail_lon)
+
+        d_max = USLP_FALLBACK_D_MAX_KM.get(precision, 39.0)
+        return max(0.0, min(1.0, 1.0 - (dist_km / d_max)))
 
     # ── Answer synthesis ────────────────────────────────────────────────────
 

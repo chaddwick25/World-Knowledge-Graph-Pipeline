@@ -14,6 +14,11 @@ The TF-IDF vectorizer is fit on the California training split ONLY (fixing
 the §4.3 leakage caveat from the notebook). Illinois is held out as a
 zero-shot test set.
 
+If the training CSV (mapqa_template_mapping.csv) does not exist, it is
+auto-generated from the raw MapQA dataset mounted at
+{MAPQA_PARSER_DATA_DIR}/raw/MapQA-dataset-main/llm/. This makes the command
+self-contained for Docker startup (init_planet step).
+
 Artifacts are written to {MAPQA_PARSER_DATA_DIR}/artifacts/:
   vectorizer.pkl, template_classifier.pkl, label_encoder.pkl,
   concept_extractor.pkl, role_assigner.pkl, role_encoder.pkl,
@@ -28,6 +33,8 @@ import json
 import logging
 import pickle
 import re
+import shutil
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -158,6 +165,60 @@ DIRECTION_SIGNALS = {"north", "south", "east", "west", "northeast",
                      "northwest", "southeast", "southwest",
                      "n", "s", "e", "w", "ne", "nw", "se", "sw"}
 
+# ── Template mapping ──────────────────────────────────────────────────────
+# Each entry: (macro_template, concept_transformation, metric_produced)
+# Sourced from docs/plans/GEO_SPATIAL_AGENT_CELERY_PLAN_V3.md §1.5 and §3.5
+TEMPLATE_MAP = {
+    "amenities_dataset": (
+        "PLACE-ATTRIBUTE-QUERY (#8)",
+        "OBJECT → POI details → amenity attribute → MEASURE",
+        "Place amenity type (e.g. studio, fast_food)",
+    ),
+    "nearest_amenity": (
+        "GEOCODE-BATCH-COMPARE (#4)",
+        "OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(nearest) → MEASURE",
+        "Nearest entity of a given type around an anchor",
+    ),
+    "amenities_around": (
+        "FILTER-AGGREGATE-MEASURE (#1)",
+        "OBJECT(anchor) + SUB_COND(radius) → SUPPORT(within_radius) → MEASURE",
+        "List of amenities within a radius",
+    ),
+    "amenities-around-specific": (
+        "FILTER-AGGREGATE-MEASURE (#1)",
+        "SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE",
+        "List of specific amenity type within a radius",
+    ),
+    "adjacent": (
+        "PLACE-ATTRIBUTE-QUERY (#8)",
+        "OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE",
+        "Adjacent entity of a given type",
+    ),
+    "compare-closer": (
+        "GEOCODE-BATCH-COMPARE (#4)",
+        "LOCATIONs → coordinates → SUPPORT(distance) × 2 → MEASURE(argmin)",
+        "Which candidate is closest to the anchor",
+    ),
+    "direction_nearest": (
+        "LOCATION-BEARING-CLASSIFY (#5)",
+        "SUB_COND(direction) + SUPPORT(nearest in direction) → MEASURE",
+        "Nearest entity in a cardinal direction from anchor",
+    ),
+    "distance": (
+        "OBJECT-FIELD-MEASURE (#2)",
+        "OBJECT(a) + OBJECT(b) → FIELD(haversine distance) → MEASURE",
+        "Distance in meters between two entities",
+    ),
+    "intersection": (
+        "GEOCODE-BATCH-COMPARE (#4)",
+        "SUPPORT(geocode road intersection) + SUPPORT(nearest) → MEASURE",
+        "Nearest entity to a road intersection point",
+    ),
+}
+
+# MapQA dataset regions
+_DATASET_REGIONS = ["california_full", "illinois_test"]
+
 
 class Command(BaseCommand):
     help = "Train the MapQA TF-IDF parser and serialize model artifacts."
@@ -184,17 +245,37 @@ class Command(BaseCommand):
 
     def handle(self, *args, **opts):
         data_dir = Path(settings.MAPQA_PARSER_DATA_DIR)
+        training_dir = data_dir / "training_data"
+        training_dir.mkdir(parents=True, exist_ok=True)
         csv_path = Path(opts["csv_path"]) if opts["csv_path"] else (
-            data_dir / "training_data" / "mapqa_template_mapping.csv"
+            training_dir / "mapqa_template_mapping.csv"
         )
         artifacts_dir = data_dir / "artifacts"
         artifacts_dir.mkdir(parents=True, exist_ok=True)
 
+        # Auto-generate training CSV from raw dataset if missing
         if not csv_path.exists():
-            self.stderr.write(self.style.ERROR(
-                f"Training CSV not found: {csv_path}"
-            ))
-            return
+            self.stdout.write(
+                f"Training CSV not found at {csv_path} — "
+                f"attempting to generate from raw dataset..."
+            )
+            raw_dir = data_dir / "raw" / "MapQA-dataset-main" / "llm"
+            if not raw_dir.exists():
+                self.stderr.write(self.style.ERROR(
+                    f"Raw MapQA dataset not found at {raw_dir}. "
+                    f"Mount the dataset via MAPQA_DATASET_DIR env var."
+                ))
+                return
+            self._generate_training_csv(raw_dir, csv_path)
+            self.stdout.write(f"Generated {csv_path}")
+
+        # Copy bundled natural_language_qa_pairs.csv if not present
+        nl_csv = training_dir / "natural_language_qa_pairs.csv"
+        if not nl_csv.exists():
+            bundled_nl = Path(__file__).resolve().parent.parent.parent / "data" / "natural_language_qa_pairs.csv"
+            if bundled_nl.exists():
+                shutil.copy2(bundled_nl, nl_csv)
+                self.stdout.write(f"Copied bundled {bundled_nl.name} to {nl_csv}")
 
         self.stdout.write(f"Loading training data from {csv_path}...")
         rows = self._load_csv(csv_path)
@@ -386,6 +467,92 @@ class Command(BaseCommand):
     def _load_csv(csv_path: Path) -> list:
         with open(csv_path, "r", encoding="utf-8", newline="") as f:
             return list(csv.DictReader(f))
+
+    # ── Training CSV generation (from raw MapQA dataset) ───────────────────
+
+    @classmethod
+    def _generate_training_csv(cls, raw_llm_dir: Path, output_path: Path) -> None:
+        """Generate mapqa_template_mapping.csv from the raw MapQA dataset.
+
+        Reads all QA CSV files from california_full + illinois_test splits,
+        maps each question to its Spatial-Agent macro-template, and writes
+        the result. Env-driven and self-contained for Docker startup.
+        """
+        rows = []
+        unmapped_types = set()
+
+        for region in _DATASET_REGIONS:
+            qa_dir = raw_llm_dir / region / "question-answer"
+            if not qa_dir.exists():
+                logger.warning("MapQA %s/question-answer not found, skipping", region)
+                continue
+            for csv_file in sorted(qa_dir.glob("*.csv")):
+                question_type = csv_file.stem
+                if question_type in TEMPLATE_MAP:
+                    macro_template, concept_transform, metric = TEMPLATE_MAP[question_type]
+                else:
+                    alt_key = question_type.replace("_dataset", "")
+                    if alt_key in TEMPLATE_MAP:
+                        macro_template, concept_transform, metric = TEMPLATE_MAP[alt_key]
+                    else:
+                        unmapped_types.add(question_type)
+                        macro_template = "UNKNOWN"
+                        concept_transform = "UNKNOWN"
+                        metric = "UNKNOWN"
+
+                questions = cls._read_dataset_questions(csv_file)
+                for question, answer in questions:
+                    rows.append({
+                        "Macro-template": macro_template,
+                        "Concept transformation": concept_transform,
+                        "What metric it produces": metric,
+                        "MapQA question": question,
+                        "Question type": question_type,
+                        "Region": region,
+                        "Answer": answer,
+                    })
+
+        if unmapped_types:
+            logger.warning("Unmapped MapQA question types: %s", unmapped_types)
+
+        fieldnames = [
+            "Macro-template", "Concept transformation", "What metric it produces",
+            "MapQA question", "Question type", "Region", "Answer",
+        ]
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        self_stdout = f"Wrote {len(rows)} rows to {output_path}"
+        logger.info(self_stdout)
+
+    @staticmethod
+    def _read_dataset_questions(csv_path: Path) -> list:
+        """Read a MapQA dataset CSV and return list of (question, answer) tuples.
+
+        Handles both header formats:
+          - ID,Question,Answer  (most files)
+          - Question,Answer     (distance_dataset.csv — malformed header)
+        """
+        questions = []
+        with open(csv_path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            if len(header) == 2 and header[0].strip() == "Question":
+                for row in reader:
+                    if len(row) >= 3:
+                        questions.append((row[1].strip(), row[2].strip()))
+                    elif len(row) == 2:
+                        questions.append((row[0].strip(), row[1].strip()))
+            else:
+                for row in reader:
+                    if len(row) >= 3:
+                        questions.append((row[1].strip(), row[2].strip()))
+                    elif len(row) == 2:
+                        questions.append((row[0].strip(), row[1].strip()))
+        return questions
 
     @staticmethod
     def _load_amenity_vocab(amenities_path, data_dir: Path) -> list:

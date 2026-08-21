@@ -18,9 +18,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         base_dir = Path(options['dir'])
-        # Canonical location (host: backend/data, container: /app/data).
-        # BASE_DIR is /app inside the container, so BASE_DIR / 'data' is /app/data.
-        json_path = Path(settings.BASE_DIR) / 'data' / 'country_relations.json'
+        # Canonical location: BASE_DATA_DIR (env-driven, /app/data in Docker).
+        json_path = Path(settings.BASE_DATA_DIR) / 'country_relations.json'
         
         if not json_path.exists():
             self.stdout.write(self.style.ERROR(f"JSON not found at {json_path}"))

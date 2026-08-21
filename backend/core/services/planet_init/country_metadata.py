@@ -1273,7 +1273,7 @@ def get_country_relations_dict() -> Dict[str, dict]:
 
         json_relations_by_uri: Dict[str, dict] = {}
 
-        json_path = Path(settings.BASE_DIR) / "data" / "country_relations.json"
+        json_path = Path(settings.BASE_DATA_DIR) / "country_relations.json"
 
         if json_path.exists():
 

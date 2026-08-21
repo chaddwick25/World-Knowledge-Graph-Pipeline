@@ -288,10 +288,10 @@ class PlanetInitializationService:
         """
         self.logger.info("Syncing country relations (Wikidata SPARQL + Geofabrik Index)")
         
-        # Canonical output path: <BASE_DIR>/data/country_relations.json
-        #   Host:    backend/data/country_relations.json
+        # Canonical output path: <BASE_DATA_DIR>/country_relations.json
+        #   Host:    {BASE_DATA_DIR}/country_relations.json
         #   Container: /app/data/country_relations.json
-        output_path = Path(settings.BASE_DIR) / 'data' / 'country_relations.json'
+        output_path = Path(settings.BASE_DATA_DIR) / 'country_relations.json'
         resolver = CountryRelationResolver(output_path=str(output_path))
 
         try:
@@ -311,7 +311,7 @@ class PlanetInitializationService:
         """Initialize OSMWikiDataHierarchy entries from country_relations.json.
         Only creates entries for regions that can successfully generate pickle files.
         """
-        json_path = Path(settings.BASE_DIR) / 'data' / 'country_relations.json'
+        json_path = Path(settings.BASE_DATA_DIR) / 'country_relations.json'
         
         if not json_path.exists():
             self.logger.warning(f"country_relations.json not found: {json_path}")
@@ -375,7 +375,7 @@ class PlanetInitializationService:
         This creates one row per ISO code for the given PlanetSnapshot, giving a
         relational view of the legacy JSON for visualization and analysis.
         """
-        json_path = Path(settings.BASE_DIR) / 'data' / 'country_relations.json'
+        json_path = Path(settings.BASE_DATA_DIR) / 'country_relations.json'
         if not json_path.exists():
             self.logger.warning(f"snapshot_country_relations: country_relations.json not found at {json_path}")
             return

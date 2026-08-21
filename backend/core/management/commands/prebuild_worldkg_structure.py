@@ -197,7 +197,7 @@ class Command(BaseCommand):
             CountryPipelineProfile,
         )
 
-        relations_path = Path(settings.BASE_DIR) / 'data' / 'country_relations.json'
+        relations_path = Path(settings.BASE_DATA_DIR) / 'country_relations.json'
         if not relations_path.exists():
             self.stdout.write(self.style.WARNING(
                 f"  ⚠ country_relations.json not found at {relations_path}"

@@ -251,11 +251,16 @@ def worldkg_semantic_triplet_search(request):
     # if auto_inferred_rdf_type:
     #     qs = qs.filter(wkg_class=rdf_type)
 
-    # Exact tag matching filter
-    if exact_tag_match and query_tags:
+    # Tag filtering — always apply when query_tags has specific keys.
+    # When exact_tag_match=True: require exact key=value match.
+    # When exact_tag_match=False: require the tag key to be present (semantic
+    #   ranking handles value similarity). This prevents entities without the
+    #   tag at all from polluting results (e.g. querying {"cuisine": "jamaican"}
+    #   should not return entities with no cuisine tag).
+    if query_tags:
         tag_filters = Q()
         for key, value in query_tags.items():
-            if value:
+            if value and exact_tag_match:
                 tag_filters &= Q(**{f"tags__{key}": value})
             else:
                 tag_filters &= Q(tags__has_key=key)
@@ -345,7 +350,7 @@ def worldkg_semantic_triplet_search(request):
             if ann_distance > name_distance_threshold:
                 continue
 
-            # Geographic scoring
+            # USLP geographic score (geohash P4 cluster centers, d_max=39km)
             geo_score = 0.0
             if point is not None:
                 geo_value = getattr(entity, "geo_distance", None)
@@ -355,9 +360,18 @@ def worldkg_semantic_triplet_search(request):
                             dist_m = float(geo_value.m)
                         else:
                             dist_m = float(geo_value)
-                        dist_km = dist_m / 1000.0
-                        geo_score = 1.0 / (1.0 + dist_km)
-                    except (TypeError, ValueError):
+                        import geohash2
+                        gh_h = geohash2.encode(point.y, point.x, precision=4)
+                        gh_t = geohash2.encode(entity.geom.y, entity.geom.x, precision=4)
+                        lat_h, lon_h = geohash2.decode(gh_h)
+                        lat_t, lon_t = geohash2.decode(gh_t)
+                        cluster_dist_km = math.sqrt(
+                            (float(lat_h) - float(lat_t))**2 +
+                            (float(lon_h) - float(lon_t))**2
+                        ) * 111.0
+                        d_max = 39.0
+                        geo_score = max(0.0, min(1.0, 1.0 - (cluster_dist_km / d_max)))
+                    except (TypeError, ValueError, Exception):
                         geo_score = 0.0
 
             # Class scoring
@@ -368,14 +382,22 @@ def worldkg_semantic_triplet_search(request):
                 ):
                     class_score = 1.0
 
+            # Tag match boost (same logic as triple-space path)
+            tag_match_score = 0.0
+            if query_tags:
+                for qk, qv in query_tags.items():
+                    if qv and entity.tags.get(qk) == qv:
+                        tag_match_score += 1.0
+
             if use_learned_weights:
                 final_score = (
                     (w_name * name_score)
                     + (w_geo * geo_score)
                     + (w_class * class_score)
+                    + tag_match_score
                 )
             else:
-                final_score = name_score + geo_score + class_score
+                final_score = name_score + geo_score + class_score + tag_match_score
 
             results.append(
                 {
@@ -394,6 +416,7 @@ def worldkg_semantic_triplet_search(request):
                         "name_score": _safe_float(name_score),
                         "geo_score": _safe_float(geo_score),
                         "class_score": _safe_float(class_score),
+                        "tag_match_score": _safe_float(tag_match_score),
                         "final_score": _safe_float(final_score),
                         "ann_distance": _safe_float(ann_distance),
                     },
@@ -470,17 +493,31 @@ def worldkg_semantic_triplet_search(request):
 
         name_score = 1.0 - name_distance
 
+        # USLP geographic space score (Mann et al. 2023 §3.3):
+        # Geohash cluster centers at P4 (~39km cells), d_max = P4 cell width.
+        # The semantic search view has no template context, so P4 (local) is
+        # the default precision — appropriate for most tag-based queries.
         geo_score = 0.0
         geo_value = getattr(entity, "geo_distance", None)
-        if geo_value is not None:
+        if geo_value is not None and point is not None:
             try:
                 if hasattr(geo_value, "m"):
                     dist_m = float(geo_value.m)
                 else:
                     dist_m = float(geo_value)
-                dist_km = dist_m / 1000.0
-                geo_score = 1.0 / (1.0 + dist_km)
-            except (TypeError, ValueError):
+                # Use geohash cluster centers, not raw coordinates
+                import geohash2
+                gh_h = geohash2.encode(point.y, point.x, precision=4)
+                gh_t = geohash2.encode(entity.geom.y, entity.geom.x, precision=4)
+                lat_h, lon_h = geohash2.decode(gh_h)
+                lat_t, lon_t = geohash2.decode(gh_t)
+                cluster_dist_km = math.sqrt(
+                    (float(lat_h) - float(lat_t))**2 +
+                    (float(lon_h) - float(lon_t))**2
+                ) * 111.0  # rough km conversion
+                d_max = 39.0  # P4 cell width
+                geo_score = max(0.0, min(1.0, 1.0 - (cluster_dist_km / d_max)))
+            except (TypeError, ValueError, Exception):
                 geo_score = 0.0
 
         class_score = 0.0
@@ -490,14 +527,25 @@ def worldkg_semantic_triplet_search(request):
             ):
                 class_score = 1.0
 
+        # Tag match boost — when query_tags has specific values, boost
+        # entities whose tag value exactly matches. This ensures that
+        # {"cuisine": "jamaican"} ranks cuisine=jamaican above cuisine=indian
+        # even when their FastText embeddings are semantically similar.
+        tag_match_score = 0.0
+        if query_tags:
+            for qk, qv in query_tags.items():
+                if qv and entity.tags.get(qk) == qv:
+                    tag_match_score += 1.0
+
         if use_learned_weights:
             final_score = (
                 (w_name * name_score)
                 + (w_geo * geo_score)
                 + (w_class * class_score)
+                + tag_match_score
             )
         else:
-            final_score = name_score + geo_score + class_score
+            final_score = name_score + geo_score + class_score + tag_match_score
 
         results.append(
             {
@@ -516,6 +564,7 @@ def worldkg_semantic_triplet_search(request):
                     "name_score": _safe_float(name_score),
                     "geo_score": _safe_float(geo_score),
                     "class_score": _safe_float(class_score),
+                    "tag_match_score": _safe_float(tag_match_score),
                     "final_score": _safe_float(final_score),
                 },
             }

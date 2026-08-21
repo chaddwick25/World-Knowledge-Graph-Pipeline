@@ -45,7 +45,7 @@ class Command(BaseCommand):
         dry_run = options['dry_run']
 
         # ── Load Geofabrik index ──────────────────────────────────────
-        geofabrik_path = Path(settings.BASE_DIR) / 'data' / 'geofabrik_index.json'
+        geofabrik_path = Path(settings.BASE_DATA_DIR) / 'geofabrik_index.json'
         if not geofabrik_path.exists():
             self.stdout.write(self.style.ERROR("geofabrik_index.json not found"))
             return
@@ -64,7 +64,7 @@ class Command(BaseCommand):
             geo_names[gid] = props['name']
 
         # ── Load country_relations for slug -> Geofabrik mapping ──────
-        cr_path = Path(settings.BASE_DIR) / 'data' / 'country_relations.json'
+        cr_path = Path(settings.BASE_DATA_DIR) / 'country_relations.json'
         if not cr_path.exists():
             self.stdout.write(self.style.ERROR("country_relations.json not found"))
             return

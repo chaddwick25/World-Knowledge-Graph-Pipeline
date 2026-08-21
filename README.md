@@ -255,6 +255,63 @@ paper's operator categories:
 | COMMUNITY-DETECT | Object, Network | Factor tables (Louvain communities) | "What communities exist in this district?" |
 | EVENT-DIFFUSION | Network, Event | Factor tables (heat kernel via pgvector) | "How would an event at this location spread?" |
 
+### Geographic Scoring
+
+Both the MapQA executor and the semantic search view use the USLP geographic
+space score from Mann et al. 2023 §3.3. The formula encodes anchor and
+candidate coordinates to geohash at P4 precision (~39km cells), computes
+haversine distance between cluster centers, and normalizes by d_max:
+
+```
+geo_score = 1 - d_cluster / d_max
+```
+
+This replaces the old `1/(1+d_km)` decay, which treated all distances
+uniformly. The USLP formula is scale-aware — entities in the same geohash
+cell score 1.0, and scores decay linearly to 0.0 at d_max.
+
+Template-specific behavior:
+- **FILTER-AGGREGATE-MEASURE** with an explicit radius uses raw haversine
+  with the user's radius as d_max (no geohash quantization — the user gave
+  an exact distance).
+- **OBJECT-FIELD-MEASURE** returns 0.0 (distance IS the answer, not a
+  ranking signal).
+- All other templates use P4 geohash with d_max = 39km (P4 cell width).
+
+### USLP Signal Boost
+
+When the USLP pipeline has predicted spatial links for the anchor entity
+(`SpatialTripletScore.predicted=True`, normalized score >= 0.7), entities
+that appear as predicted link tails receive a +0.5 score boost. This
+connects the link prediction layer to search ranking -- if USLP predicts
+that the anchor has a spatial relationship with a candidate, that
+candidate gets a small ranking advantage. The boost is weighted low
+because USLP relations (isInCounty, addrSuburb) don't directly map to
+proximity queries like "find bars near a bus station."
+
+### Radius Query Routing
+
+Queries containing explicit radius language (`within Xkm of`, `within Xm
+of`) are deterministically routed to `FILTER-AGGREGATE-MEASURE` regardless
+of the TF-IDF classifier's prediction. This prevents radius-bearing
+queries from being misrouted to `PLACE-ATTRIBUTE-QUERY`, which uses heat
+kernel diffusion -- a graph connectivity measure that does not enforce
+geographic distance. A safety guard in the `PLACE-ATTRIBUTE-QUERY`
+executor also filters heat kernel results by haversine distance when an
+AMOUNT concept is present, so even if the parser misclassifies a radius
+query, geographically distant entities are excluded.
+
+### Tag Filtering
+
+The semantic search view filters the queryset to entities that have the
+queried tag keys present (`tags__has_key`), even when exact tag matching
+is disabled. This prevents entities without the tag from polluting
+results -- querying `{"cuisine": "jamaican"}` no longer returns cafes
+with no cuisine tag. A tag match boost of +1.0 is added to the final
+score for each query tag value that exactly matches the entity's tag
+value, ensuring `cuisine=jamaican` ranks above `cuisine=indian` even
+when their FastText embeddings are semantically similar.
+
 ---
 
 ## Planet Initialization
