@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import requests
 from pathlib import Path
 from typing import Dict, Optional, List
@@ -11,8 +12,11 @@ class GeofabrikIndexService:
     Fetches and parses the Geofabrik index-v1.json file to map ISO codes to slugs.
     """
     INDEX_URL = "https://download.geofabrik.de/index-v1.json"
-    
-    def __init__(self, cache_path: str = "data/geofabrik_index.json"):
+
+    def __init__(self, cache_path: str = None):
+        if cache_path is None:
+            base = os.getenv("BASE_DATA_DIR")
+            cache_path = str(Path(base) / "geofabrik_index.json") if base else "data/geofabrik_index.json"
         self.cache_path = Path(cache_path)
         self.data = None
 

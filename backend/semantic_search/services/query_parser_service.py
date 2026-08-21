@@ -90,6 +90,18 @@ class QueryParserService:
         template = self.label_encoder.inverse_transform([label_idx])[0]
         confidence = float(max(self.classifier.predict_proba(X)[0]))
 
+        ***REMOVED*** Stage 1b: deterministic override — "within X(km|m) of" is always
+        ***REMOVED*** FILTER-AGGREGATE-MEASURE regardless of what the TF-IDF classifier
+        ***REMOVED*** says. The classifier sometimes misclassifies these as
+        ***REMOVED*** PLACE-ATTRIBUTE-QUERY when the amenity word dominates the signal.
+        if re.search(r"\bwithin\s+\d+\s*(km|m)\b", question, re.IGNORECASE):
+            if template != "FILTER-AGGREGATE-MEASURE (***REMOVED***1)":
+                logger.info(
+                    "Template override: %s → FILTER-AGGREGATE-MEASURE (***REMOVED***1) "
+                    "(matched 'within Xkm' pattern)", template
+                )
+                template = "FILTER-AGGREGATE-MEASURE (***REMOVED***1)"
+
         ***REMOVED*** Stage 2: extract concepts
         concepts = self._extract_concepts(question, template)
 

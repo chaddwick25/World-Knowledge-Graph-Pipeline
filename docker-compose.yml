@@ -92,6 +92,7 @@ services:
       - OVERRIDES_JSON_PATH=${OVERRIDES_JSON_PATH}
       - PLANET_OSM_FILE_PATH=/app/data/OSM-PBF-FILES/planet/history-260209.osm.pbf
       - FASTTEXT_MODEL_PATH=/app/data/OSM-PBF-FILES/models/fasttext/cc.en.300.bin
+      - MAPQA_PARSER_DATA_DIR=/app/data/mapqa_parser
       - RUN_MIGRATIONS=true
       - RUN_INIT_PLANET=true
     ports:
@@ -102,6 +103,7 @@ services:
       - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
       - ${POLYGON_FILES_DIR}:/app/data/osm_polygon_files
       - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
+      - ${MAPQA_DATASET_DIR}:/app/data/mapqa_parser/raw/MapQA-dataset-main:ro
       - ./backend/data:/app/data
     depends_on:
       postgres-default:
@@ -140,6 +142,7 @@ services:
       - OVERRIDES_JSON_PATH=${OVERRIDES_JSON_PATH}
       - PLANET_OSM_FILE_PATH=/app/data/OSM-PBF-FILES/planet/history-260209.osm.pbf
       - FASTTEXT_MODEL_PATH=/app/data/OSM-PBF-FILES/models/fasttext/cc.en.300.bin
+      - MAPQA_PARSER_DATA_DIR=/app/data/mapqa_parser
       - NVIDIA_VISIBLE_DEVICES=all
       - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
       - RUN_MIGRATIONS=false
@@ -150,6 +153,7 @@ services:
       - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
       - ${POLYGON_FILES_DIR}:/app/data/osm_polygon_files
       - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
+      - ${MAPQA_DATASET_DIR}:/app/data/mapqa_parser/raw/MapQA-dataset-main:ro
       - ./backend/data:/app/data
     depends_on:
       backend:

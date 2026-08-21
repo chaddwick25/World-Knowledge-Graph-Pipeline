@@ -229,6 +229,18 @@ class Command(BaseCommand):
         """Step 0m — generate OSM administrative boundaries for cartography."""
         call_command("generate_osm_boundaries")
 
+    def _train_mapqa_parser(self) -> None:
+        """Step 0m.5 — train MapQA TF-IDF parser + serialize artifacts.
+
+        Trains the template classifier, concept extractor, and role assigner
+        on the MapQA dataset. Auto-generates the training CSV from the raw
+        dataset if it doesn't exist. Artifacts are written to
+        {MAPQA_PARSER_DATA_DIR}/artifacts/ and consumed by the next step
+        (compute_amenity_embeddings) and at runtime by the MapQA executor.
+        Skips gracefully if the raw dataset is not mounted.
+        """
+        call_command("train_mapqa_parser")
+
     def _compute_amenity_embeddings(self) -> None:
         """Step 0n — precompute FastText embeddings for the amenity vocabulary.
 
@@ -283,6 +295,7 @@ class Command(BaseCommand):
             ("rescan_embeddings", self._rescan_embeddings),
             ("enrich_worldkg_classes", self._enrich_worldkg_classes),
             ("generate_osm_boundaries", self._generate_osm_boundaries),
+            ("train_mapqa_parser", self._train_mapqa_parser),
             ("compute_amenity_embeddings", self._compute_amenity_embeddings),
             ("finalize", self._finalize),
         ]
