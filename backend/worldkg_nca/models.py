@@ -41,7 +41,20 @@ class OsmEntity(models.Model):
     tags = models.JSONField(
         help_text="OSM tags as key-value pairs, e.g., {'amenity': 'cafe', 'name': 'Starbucks'}"
     )
-    
+
+    # Romanized name for cross-script similarity search.
+    # Populated by the romanize_names management command using the
+    # RomanizerRegistry (auto-detects script from the text).  Used with
+    # PostgreSQL pg_trgm GIN index for indexed similarity matching.
+    # NULL for entities without a name= tag or before romanization.
+    name_romanized = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        help_text="Romanized name for cross-script similarity search. "
+                  "Populated by romanize_names command. NULL before romanization."
+    )
+
     # DUAL EMBEDDINGS: GV-Tags (semantic) + GV-NLE (spatial)
     # GV-Tags: 300D (FastText)  |  GV-NLE: 100D (GeoVectors-master implementation)
     

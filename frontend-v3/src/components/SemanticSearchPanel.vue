@@ -21,6 +21,14 @@
           >
             Natural language
           </button>
+          <button
+            type="button"
+            class="search-form__toggle-btn"
+            :class="{ 'search-form__toggle-btn--active': isTemplateMode }"
+            @click="queryMode = 'template'"
+          >
+            Kuhn's Template
+          </button>
         </div>
       </div>
 
@@ -30,30 +38,41 @@
         @subdivision-selected="subdivisionQid = $event"
       />
 
-      <!-- Tags input -->
+      <!-- Tags input (Structured JSON mode) -->
       <div v-if="isTagsMode" class="search-form__row">
         <label class="search-form__label">OSM Tag</label>
         <textarea
           v-model="queryTagsInput"
           class="search-form__textarea"
           rows="2"
-          placeholder='{"amenity": "cafe"}'
+          placeholder='{"amenity": "cafe"}  or  {"name": "파리바게뜨"}'
         ></textarea>
       </div>
 
-      <!-- Natural language input -->
+      <!-- Natural language name search input -->
       <div v-if="isNaturalMode" class="search-form__row">
-        <label class="search-form__label">Natural language query</label>
+        <label class="search-form__label">Name search (any language)</label>
         <textarea
           v-model="naturalQuery"
           class="search-form__textarea"
           rows="2"
-          placeholder="Find areas with many cafes and some residential buildings"
+          placeholder="paris bagueete  /  파리바게뜨  /  café  /  원탕"
         ></textarea>
       </div>
 
-      <!-- Filters -->
-      <div class="search-form__filters">
+      <!-- Natural language template input (MapQA parser) -->
+      <div v-if="isTemplateMode" class="search-form__row">
+        <label class="search-form__label">Geospatial question</label>
+        <textarea
+          v-model="templateQuery"
+          class="search-form__textarea"
+          rows="2"
+          placeholder="Which bars are within 50m of Hollywood Blvd?"
+        ></textarea>
+      </div>
+
+      <!-- Filters (hidden in NL Template mode — parser doesn't use them) -->
+      <div v-if="!isTemplateMode" class="search-form__filters">
         <div class="search-form__filter">
           <label class="search-form__label">Lat</label>
           <input v-model="lat" type="number" step="any" class="search-form__input" placeholder="Optional" />
@@ -89,7 +108,7 @@
     <!-- Error -->
     <p v-if="error" class="search-form__error">{{ error }}</p>
 
-    <!-- Parsed query (MapQA parser — natural language mode only) -->
+    <!-- Parsed query (MapQA parser — NL Template mode only) -->
     <div v-if="parsedQuery" class="parsed-query">
       <div class="parsed-query__header">
         <span class="parsed-query__template">{{ parsedQuery.template }}</span>
@@ -221,6 +240,7 @@ export default {
       queryMode: 'tags',
       queryTagsInput: '{"amenity": "cafe"}',
       naturalQuery: '',
+      templateQuery: '',
       lat: '',
       lon: '',
       rdfType: null,
@@ -230,7 +250,7 @@ export default {
       results: [],
       searched: false,
       subdivisionQid: null,
-      // MapQA parser state (natural language mode)
+      // MapQA parser state (NL Template mode)
       parsedQuery: null,
       executeAnswer: null,
       executeTrace: [],
@@ -252,6 +272,9 @@ export default {
     isNaturalMode() {
       return this.queryMode === 'natural'
     },
+    isTemplateMode() {
+      return this.queryMode === 'template'
+    },
     isValid() {
       if (this.isTagsMode) {
         try {
@@ -260,6 +283,9 @@ export default {
         } catch {
           return false
         }
+      }
+      if (this.isTemplateMode) {
+        return this.templateQuery.trim().length > 0
       }
       return this.naturalQuery.trim().length > 0
     },
@@ -280,6 +306,7 @@ export default {
       this.queryMode = 'tags'
       this.queryTagsInput = '{"amenity": "cafe"}'
       this.naturalQuery = ''
+      this.templateQuery = ''
       this.lat = ''
       this.lon = ''
       this.rdfType = null
@@ -304,13 +331,13 @@ export default {
       this.executeTrace = []
 
       try {
-        if (this.isNaturalMode) {
-          // Natural language mode: use the MapQA parser + executor pipeline
-          if (!this.naturalQuery.trim()) {
-            throw new Error('Please enter a natural language query')
+        if (this.isTemplateMode) {
+          // NL Template mode: MapQA parser + executor pipeline
+          if (!this.templateQuery.trim()) {
+            throw new Error('Please enter a geospatial question')
           }
           const payload = {
-            query: this.naturalQuery.trim(),
+            query: this.templateQuery.trim(),
           }
           if (this.countryName) payload.country_code = this.countryName
           if (this.snapshotDate) payload.snapshot_date = this.snapshotDate
@@ -349,19 +376,27 @@ export default {
           this.searched = true
           this.$emit('search-results', this.results)
         } else {
-          // Structured (JSON) mode: use the existing triplet search
+          // Structured (JSON) and Natural language modes both use triplet search
           const payload = {
             country_code: this.countryName,
             top_k: parseInt(this.topK) || 20,
           }
 
-          let queryTags = {}
-          try {
-            queryTags = JSON.parse(this.queryTagsInput)
-          } catch {
-            throw new Error('Invalid JSON in query tags')
+          if (this.isTagsMode) {
+            let queryTags = {}
+            try {
+              queryTags = JSON.parse(this.queryTagsInput)
+            } catch {
+              throw new Error('Invalid JSON in query tags')
+            }
+            payload.query_tags = queryTags
+          } else if (this.isNaturalMode) {
+            // Natural language name search: romanizer + FastText
+            if (!this.naturalQuery.trim()) {
+              throw new Error('Please enter a name to search')
+            }
+            payload.natural_query = this.naturalQuery.trim()
           }
-          payload.query_tags = queryTags
 
           if (this.lat) payload.lat = parseFloat(this.lat)
           if (this.lon) payload.lon = parseFloat(this.lon)

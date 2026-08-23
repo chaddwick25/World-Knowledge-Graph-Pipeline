@@ -479,6 +479,27 @@ SPATIAL_SEMANTICS_CONFIG = {
     'target_amenities': ['cafe', 'restaurant', 'fast_food', 'bar', 'pub'],
     'hnsw_m': 16,
     'hnsw_ef_construction': 64,
+    # ── Name-search noise filtering ──────────────────────────────────────
+    # OSM tag keys that assert an entity's type/identity.  Entities without
+    # ANY of these keys are treated as noise in name-based search (e.g. a
+    # node with only {"name": "벤치"} — a bench whose "name" is literally
+    # "bench", or traffic-sign text leaked into name=).  Requiring at least
+    # one type-asserting key eliminates the bulk of mis-tagged noise.
+    'type_asserting_keys': [
+        'amenity', 'shop', 'tourism', 'place', 'highway', 'building',
+        'office', 'leisure', 'natural', 'landuse', 'railway', 'aeroway',
+        'waterway', 'boundary', 'historic', 'military', 'man_made',
+        'public_transport', 'route', 'craft', 'healthcare', 'education',
+        'addr:housenumber', 'addr:street', 'contact:phone', 'ref',
+    ],
+    # Default cosine-distance threshold for semantic name matching.
+    # Lowered from 0.75 (which let FastText OOV-collapse noise through) to
+    # 0.5 — a tighter cutoff that still keeps genuine semantic matches.
+    'name_distance_threshold_default': 0.5,
+    # Score boost added when a query term appears as a substring of the
+    # entity's name= tag (case-insensitive).  Helps cross-script and
+    # misspelling cases where FastText embedding alone is insufficient.
+    'name_substring_boost': 1.0,
 }
 
 TIME_ZONE = 'America/Toronto'
