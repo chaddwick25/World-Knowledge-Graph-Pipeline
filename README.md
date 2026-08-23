@@ -75,16 +75,35 @@ artifacts being produced.
 > progress bar, current step, and summary stats (entities, aligned, spatial
 > links).
 
-**Query Tab** — The Semantic Search Panel is the entry point for both
-semantic triplet search and natural-language MapQA queries. The embeddings
-produced by Step 1 (GeoVectors) and the enrichment from Step 2 (WorldKG
-ontology classes) power this panel. A SubdivisionSelector lets the user
-filter by administrative subdivision using Wikidata QIDs. In NL mode, the
-user types a question, the parser classifies it into one of 9 templates
-with confidence scores, and the parsed concepts are displayed for review.
-The 3-tier amenity fallback (exact tag → ontology class → FastText
-semantic) traces each resolution step so the user sees exactly how a
-concept like "bar" was resolved.
+**Query Tab** — The Semantic Search Panel is the entry point for all
+query modes. The embeddings produced by Step 1 (GeoVectors) and the
+enrichment from Step 2 (WorldKG ontology classes) power this panel. A
+SubdivisionSelector lets the user filter by administrative subdivision
+using Wikidata QIDs.
+
+The Query Tab supports three query modes that can be tested independently:
+
+**Structured (JSON)** — The user enters OSM tags as JSON (e.g.
+`{"amenity": "cafe"}`) or a name in any language (e.g.
+`{"name": "파리바게뜨"}`). Uses FastText semantic embeddings + the
+romanizing framework for cross-script name matching (Hangul↔Latin,
+diacritic stripping for French/Spanish/Irish, etc.). The romanizer
+auto-detects the script from the text — no language selection needed.
+
+**Natural language** — The user types a name in any language or script
+(e.g. "paris bagueete", "파리바게뜨", "café", "원탕"). The romanizer
+activates for cross-script matching (e.g., English "paris bagueete"
+matching Korean "파리바게뜨"). FastText provides semantic type matching
+as a complementary signal.
+
+**Kuhn's Template** — The user types a full geospatial question (e.g.
+"Which bars are within 50m of Hollywood Blvd?"). The parser (TF-IDF +
+Naive Bayes) classifies it into one of 9 templates with confidence
+scores, and the parsed concepts are displayed for review. The 3-tier
+amenity fallback (exact tag → ontology class → FastText semantic) traces
+each resolution step so the user sees exactly how a concept like "bar"
+was resolved. This mode is completely separate from the other two — it
+uses its own parser and executor, and can be tested independently.
 
 > **TODO: Add screenshot** — Query tab with a natural-language question
 > typed in, the parsed template name and confidence percentage shown
