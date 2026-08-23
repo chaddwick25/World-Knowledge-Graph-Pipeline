@@ -664,35 +664,70 @@ class Command(BaseCommand):
 
     def _create_mview(self, cursor, leaf_table, mv_table, country, snapshot,
                       skip_hnsw):
-        """Create materialized view over the leaf with its own HNSW index.
+        """Create or refresh materialized view over the leaf with its own HNSW index.
+
+        Idempotent: if the MV already exists, it is refreshed concurrently
+        (preserving the HNSW index) instead of being dropped and recreated.
+        This prevents re-runs / retries from destroying a valid MV + index
+        and rebuilding from scratch (which caused OOM freezes on large
+        countries like IE with 9.7M rows / 16GB).
 
         For single-leaf countries the MV is ``SELECT * FROM leaf``.  For
         multi-leaf countries (subdivisions) this would be ``UNION ALL`` of
         all subdivision leaves — not needed today but the pattern is ready.
         """
-        cursor.execute(f"DROP MATERIALIZED VIEW IF EXISTS {mv_table};")
-        cursor.execute(f"""
-            CREATE MATERIALIZED VIEW {mv_table} AS
-            SELECT * FROM {leaf_table};
-        """)
-        # Unique index required for REFRESH CONCURRENTLY
-        cursor.execute(f"""
-            CREATE UNIQUE INDEX idx_{mv_table}_id
-            ON {mv_table} (id);
-        """)
-        if not skip_hnsw:
-            cursor.execute("SET max_parallel_maintenance_workers = 1;")
+        # Check if MV already exists
+        cursor.execute("""
+            SELECT 1 FROM pg_matviews WHERE matviewname = %s;
+        """, (mv_table,))
+        mv_exists = cursor.fetchone() is not None
+
+        if mv_exists:
+            self.stdout.write(f"    [mv] {mv_table} already exists — refreshing concurrently")
+            # Ensure unique index exists (required for REFRESH CONCURRENTLY)
             cursor.execute(f"""
-                CREATE INDEX IF NOT EXISTS idx_{mv_table}_hnsw
-                ON {mv_table}
-                USING hnsw (gv_tags_embedding vector_cosine_ops)
-                WITH (m = 16, ef_construction = 128);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_{mv_table}_id
+                ON {mv_table} (id);
             """)
-            cursor.execute(
-                f"SELECT pg_size_pretty(pg_relation_size('idx_{mv_table}_hnsw'));"
-            )
-            mv_hnsw_size = cursor.fetchone()[0]
-            self.stdout.write(f"    [mv] {mv_table} HNSW index (size={mv_hnsw_size})")
+            cursor.execute(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv_table};")
+        else:
+            cursor.execute(f"""
+                CREATE MATERIALIZED VIEW {mv_table} AS
+                SELECT * FROM {leaf_table};
+            """)
+            # Unique index required for REFRESH CONCURRENTLY on future runs
+            cursor.execute(f"""
+                CREATE UNIQUE INDEX idx_{mv_table}_id
+                ON {mv_table} (id);
+            """)
+
+        if not skip_hnsw:
+            # Check if HNSW index already exists — skip rebuild if so
+            cursor.execute("""
+                SELECT 1 FROM pg_indexes
+                WHERE indexname = %s AND schemaname = 'public';
+            """, (f"idx_{mv_table}_hnsw",))
+            hnsw_exists = cursor.fetchone() is not None
+            if hnsw_exists:
+                self.stdout.write(f"    [mv] {mv_table} HNSW index already exists — skipping build")
+            else:
+                # Cap maintenance_work_mem for HNSW builds.  The server default
+                # (32GB) is far too aggressive for index builds on large MVs
+                # and caused OOM freezes when combined with shared_buffers.
+                # 4GB is sufficient for HNSW on ~10M rows.
+                cursor.execute("SET maintenance_work_mem = '4GB';")
+                cursor.execute("SET max_parallel_maintenance_workers = 1;")
+                cursor.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{mv_table}_hnsw
+                    ON {mv_table}
+                    USING hnsw (gv_tags_embedding vector_cosine_ops)
+                    WITH (m = 16, ef_construction = 128);
+                """)
+                cursor.execute(
+                    f"SELECT pg_size_pretty(pg_relation_size('idx_{mv_table}_hnsw'));"
+                )
+                mv_hnsw_size = cursor.fetchone()[0]
+                self.stdout.write(f"    [mv] {mv_table} HNSW index (size={mv_hnsw_size})")
         cursor.execute(f"SELECT count(*) FROM {mv_table};")
         count = cursor.fetchone()[0]
         self.stdout.write(f"    [mv] {mv_table} ({count} rows)")

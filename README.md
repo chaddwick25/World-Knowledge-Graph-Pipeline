@@ -243,17 +243,64 @@ any computation runs.
 The 9 templates map directly to Kuhn's core concepts and the Spatial-Agent
 paper's operator categories:
 
-| Template | Core Concept | Execution Path | Example |
-|----------|-------------|---------------|---------|
-| FILTER-AGGREGATE-MEASURE | Object, Location | PostGIS `ST_DWithin` + `Distance` | "How many schools within 2km of this hospital?" |
-| GEOCODE-BATCH-COMPARE | Object, Neighbourhood | PostGIS distance ordering | "Which is closer to downtown: the park or the library?" |
-| PLACE-ATTRIBUTE-QUERY | Object, Field | Factor tables (spectral/community) + PostGIS | "What amenities cluster around this train station?" |
-| LOCATION-BEARING-CLASSIFY | Location, Neighbourhood | PostGIS `ST_DWithin` + bearing calc | "What's north of the river?" |
-| OBJECT-FIELD-MEASURE | Object, Field | PostGIS `ST_DWithin` (optional) | "How far is the nearest pharmacy?" |
-| SPECTRAL-ANALYSIS | Network | Factor tables (eigenvalues, λ₂, gap) | "What's the spectral structure of this region?" |
-| TEMPORAL-DRIFT | Event | Factor tables (drift metrics) | "How has this area changed between snapshots?" |
-| COMMUNITY-DETECT | Object, Network | Factor tables (Louvain communities) | "What communities exist in this district?" |
-| EVENT-DIFFUSION | Network, Event | Factor tables (heat kernel via pgvector) | "How would an event at this location spread?" |
+```
+┌──────────────────────────────────┬─────────────────────────┐
+│                     TEMPLATE COVERAGE                      │
+├──────────────────────────────────┼─────────────────────────┤
+│ Template                         │ Core Concept            │
+├──────────────────────────────────┼─────────────────────────┤
+│ FILTER-AGGREGATE-MEASURE (#1)    │ Object, Location        │
+│ GEOCODE-BATCH-COMPARE (#4)       │ Object, Neighbourhood   │
+│ PLACE-ATTRIBUTE-QUERY (#8)       │ Object, Field           │
+│ LOCATION-BEARING-CLASSIFY (#5)   │ Location, Neighbourhood │
+│ OBJECT-FIELD-MEASURE (#2)        │ Object, Field           │
+│ SPECTRAL-ANALYSIS (#11)          │ Network                 │
+│ TEMPORAL-DRIFT (#12)             │ Event                   │
+│ COMMUNITY-DETECT (#13)           │ Object, Network         │
+│ EVENT-DIFFUSION (#14)            │ Network, Event          │
+└──────────────────────────────────┴─────────────────────────┘
+```
+
+#### Training Data Distribution
+
+The parser is trained on the MapQA LLM dataset (California + Illinois
+splits) plus a hand-curated augmentation CSV. The raw MapQA dataset
+covers 5 of the 9 templates — the 4 graph-powered templates
+(SPECTRAL-ANALYSIS, TEMPORAL-DRIFT, COMMUNITY-DETECT, EVENT-DIFFUSION)
+have no training data in the source dataset and are currently exposed
+only via dedicated API endpoints that bypass the classifier.
+
+```
+┌──────────────────────────────────┬───────────────────────────────────────────────────────┬───────┬───────┬────────────┐
+│                                            MAPQA TRAINING DATA DISTRIBUTION                                           │
+├──────────────────────────────────┼───────────────────────────────────────────────────────┼───────┼───────┼────────────┤
+│ Template                         │ Example Question                                      │  Count│      %│ Status     │
+├──────────────────────────────────┼───────────────────────────────────────────────────────┼───────┼───────┼────────────┤
+│ GEOCODE-BATCH-COMPARE (#4)       │ "Which is closer to downtown: the park or library?"   │  1,198│  37.5%│ Trained    │
+│ FILTER-AGGREGATE-MEASURE (#1)    │ "Which schools are within 3km of hospitals ?"       │    767│  24.0%│ Trained    │
+│ PLACE-ATTRIBUTE-QUERY (#8)       │ "What amenities cluster around this train station?"   │    630│  19.7%│ Trained    │
+│ LOCATION-BEARING-CLASSIFY (#5)   │ "What's north of the river?"                          │    300│   9.4%│ Trained    │
+│ OBJECT-FIELD-MEASURE (#2)        │ "How far is the nearest pharmacy?"                    │    300│   9.4%│ Trained    │
+├──────────────────────────────────┼───────────────────────────────────────────────────────┼───────┼───────┼────────────┤
+│ SPECTRAL-ANALYSIS (#11)          │ "What's the spectral structure of this region?"       │      0│   0.0%│ API-only   │
+│ TEMPORAL-DRIFT (#12)             │ "How has this area changed between snapshots?"        │      0│   0.0%│ API-only   │
+│ COMMUNITY-DETECT (#13)           │ "What communities exist in this district?"            │      0│   0.0%│ API-only   │
+│ EVENT-DIFFUSION (#14)            │ "How would an event at this location spread?"         │      0│   0.0%│ API-only   │
+├──────────────────────────────────┼───────────────────────────────────────────────────────┼───────┼───────┼────────────┤
+│ TOTAL                            │                                                       │  3,195│       │            │
+└──────────────────────────────────┴───────────────────────────────────────────────────────┴───────┴───────┴────────────┘
+```
+
+To close this gap, a self-supervised question generator (planned — see
+`docs/plans/MAPQA_SELF_SUPERVISED_TEMPLATE_EXPANSION_PLAN.md`) will mine
+factor tables produced by Step 5c to create synthetic Q&A pairs for the
+4 zero-coverage templates. The pipeline's spectral decomposition,
+community detection, and heat-kernel diffusion outputs serve as exact
+ground truth — stronger than the heuristic annotation used in the
+original MapQA dataset. The generator runs as a new Step 5e after 5c
+completes, appends to the augmentation CSV, and retrains the parser
+automatically. Run `python manage.py mapqa_dataset_metrics` to
+regenerate the distribution report.
 
 ### Geographic Scoring
 

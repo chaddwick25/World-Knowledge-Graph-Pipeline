@@ -81,18 +81,6 @@
               </div>
             </div>
 
-            <!-- Options -->
-            <div class="search-form__options">
-              <label class="search-form__checkbox">
-                <input v-model="useLearnedWeights" type="checkbox" />
-                <span>Use learned projection weights</span>
-              </label>
-              <label class="search-form__checkbox">
-                <input v-model="useAnn" type="checkbox" />
-                <span>Use ANN (400D static embedding)</span>
-              </label>
-            </div>
-
             <button
               type="submit"
               class="search-form__submit"
@@ -109,6 +97,7 @@
           <div v-if="results.length > 0" class="search-results">
             <h4 class="search-results__title">Results ({{ results.length }})</h4>
 
+           <div class="search-results__scroll">
             <table class="search-results__table">
               <thead>
                 <tr>
@@ -149,6 +138,7 @@
                 </tr>
               </tbody>
             </table>
+           </div>
           </div>
 
           <div v-else-if="searched" class="search-results__empty">
@@ -198,8 +188,6 @@ export default {
       lon: '',
       rdfType: null,
       topK: 20,
-      useLearnedWeights: false,
-      useAnn: false,
       loading: false,
       error: null,
       results: [],
@@ -260,8 +248,6 @@ export default {
       this.error = null
       this.results = []
       this.searched = false
-      this.useLearnedWeights = false
-      this.useAnn = false
     },
 
     async performSearch() {
@@ -274,11 +260,6 @@ export default {
         const payload = {
           country_code: this.countryName,
           top_k: parseInt(this.topK) || 20,
-          use_learned_weights: this.useLearnedWeights,
-        }
-
-        if (this.useAnn) {
-          payload.use_ann = true
         }
 
         if (this.isNaturalMode) {
@@ -513,6 +494,13 @@ export default {
 /* ── Results ── */
 .search-results {
   margin-top: 0.75rem;
+}
+
+.search-results__scroll {
+  max-height: 480px;
+  overflow-y: auto;
+  border-radius: 0.4rem;
+  border: 1px solid #1f2937;
 }
 
 .search-results__title {

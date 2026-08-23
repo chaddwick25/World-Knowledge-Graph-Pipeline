@@ -77,26 +77,6 @@
         </div>
       </div>
 
-      <!-- Options -->
-      <div class="search-form__options">
-        <div class="search-form__filter">
-          <label class="search-form__label">Encoder</label>
-          <select v-model="encoder" class="search-form__input">
-            <option v-for="opt in encoderOptions" :key="opt.value" :value="opt.value">
-              {{ opt.text }}
-            </option>
-          </select>
-        </div>
-        <label class="search-form__checkbox">
-          <input v-model="useLearnedWeights" type="checkbox" />
-          <span>Learned weights</span>
-        </label>
-        <label class="search-form__checkbox">
-          <input v-model="useAnn" type="checkbox" />
-          <span>ANN (400D)</span>
-        </label>
-      </div>
-
       <button
         type="submit"
         class="search-form__submit"
@@ -245,9 +225,6 @@ export default {
       lon: '',
       rdfType: null,
       topK: 20,
-      useLearnedWeights: false,
-      useAnn: false,
-      encoder: 'fasttext',
       loading: false,
       error: null,
       results: [],
@@ -265,9 +242,6 @@ export default {
         { value: 'wkgs:School', text: 'School' },
         { value: 'wkgs:Shop', text: 'Shop' },
         { value: 'wkgs:Amenity', text: 'Amenity (general)' },
-      ],
-      encoderOptions: [
-        { value: 'fasttext', text: 'FastText (CPU)' },
       ],
     }
   },
@@ -314,9 +288,6 @@ export default {
       this.error = null
       this.results = []
       this.searched = false
-      this.useLearnedWeights = false
-      this.useAnn = false
-      this.encoder = 'fasttext'
       this.subdivisionQid = null
       this.parsedQuery = null
       this.executeAnswer = null
@@ -382,12 +353,6 @@ export default {
           const payload = {
             country_code: this.countryName,
             top_k: parseInt(this.topK) || 20,
-            use_learned_weights: this.useLearnedWeights,
-            encoder: this.encoder,
-          }
-
-          if (this.useAnn) {
-            payload.use_ann = true
           }
 
           let queryTags = {}
@@ -571,7 +536,7 @@ export default {
 }
 
 .search-results__scroll {
-  max-height: 220px;
+  max-height: 480px;
   overflow-y: auto;
   border-radius: 0.4rem;
   border: 1px solid #1f2937;

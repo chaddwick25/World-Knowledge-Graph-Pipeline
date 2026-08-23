@@ -252,6 +252,14 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 
+# Ack tasks on completion (not receipt) so they survive worker death/crash.
+# Without this, a worker freeze/kill silently loses the in-flight task —
+# Celery never re-delivers it.  This caused Step 6 to vanish during the
+# 2026-08-21 IE freeze, requiring manual re-dispatch.
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
 
 
 
