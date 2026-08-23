@@ -111,11 +111,20 @@
               <div class="summary-section">
                 <h3 class="summary-section__title">Embeddings by Continent</h3>
                 <p class="summary-section__description">
-                  TSV Location
+                  The pipeline produces two orthogonal embeddings per OSM entity:
+                  300D
+                  <a href="https://github.com/NicolasTe/GeoVectors/blob/master/Encoder.py" target="_blank" rel="noopener noreferrer">GV-Tags</a>
+                  (semantic, "what something is") via FastText encoding of OSM tags
+                  during Step 1, and 100D
+                  <a href="https://github.com/NicolasTe/GeoVectors/blob/master/Encoder.py" target="_blank" rel="noopener noreferrer">GV-NLE</a>
+                  (spatial, "where something is") via DeepWalk node2vec training on the
+                  k-NN graph (k=50 geographic neighbors) during Step 5. For entities in
+                  new snapshots that haven't been through DeepWalk, an inductive BallTree
+                  + IDW bridge computes provisional GV-NLE from the k=50 nearest trained
+                  entities. Both axes are fused into a 400D static_embedding for unified
+                  ANN search. Reference
                   <a href="https://geovectors.l3s.uni-hannover.de/data" target="_blank" rel="noopener noreferrer">Embeddings</a>
-                  are used by the Ball-Tree Algorithm to produce pickles used in the
-                  <a href="https://github.com/NicolasTe/GeoVectors/blob/master/Encoder.py" target="_blank" rel="noopener noreferrer">GeoVectors</a>
-                  encoder to give a fresh projection per country snapshot.
+                  dataset.
                 </p>
                 <div class="summary-availability-banner">
                   <span class="summary-availability-banner__count">{{ countriesWithEmbeddings }}/{{ totalCountries }}</span>
