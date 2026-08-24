@@ -258,19 +258,27 @@ class SparseGraph:
 class KNNGraphService:
     """
     Builds k-NN graphs for spatial embedding generation.
-    
+
     The graph structure captures geographic relationships:
     - Nodes: OSM entities (identified by osm_id)
     - Edges: k nearest neighbors
-    - Weights: Logarithmically damped inverse distance
-    
-    Formula from GeoVectors paper:
-        w(o1, o2) = ln(1 + 1/dist_km(o1, o2))
-    
-    This weighting scheme:
-    - Gives higher weights to closer entities
-    - Prevents extreme weights for very close entities (log damping)
-    - Ensures all weights > 0
+    - Weights: Logarithmically damped inverse distance (IDW damped weight)
+
+    Training formula (GeoVectors paper §3.2, WeightedDeepWalkGraph._damp_and_row_norm):
+        w'(o1, o2) = max(1 / ln(max(dist_km(o1, o2), 1.1)), e)
+
+    Note: This is the graph-construction (training) formula, distinct from the NLE
+    inference formula used in NLEModel.encode_coords() (paper §3.4):
+        w_enc(o, oj) = ln(1 + 1/dist_km(o, oj))
+    The two are not interchangeable — the training formula's `max(..., e)` floor
+    ensures graph connectivity for the stochastic transition matrix; the inference
+    formula computes a normalized weighted mean that does not require a floor.
+
+    IMPORTANT: build_knn_graph() already applies the training formula. Do NOT
+    apply damping a second time in WeightedDeepWalkService — pass apply_damping=False
+    to avoid double-damping, which collapses all edge weights to e (≈ 2.718) and
+    destroys distance information. The train_gv_nle management command enforces
+    this with apply_damping=False at the call site (line 561).
     """
     
     def __init__(self, k: int = 50):
@@ -300,36 +308,45 @@ class KNNGraphService:
     @staticmethod
     def calculate_edge_weight(distance_km: float, epsilon: float = 1e-6) -> float:
         """
-        Calculate edge weight from distance using GeoVectors TRAINING formula.
-        
-        Formula (from WeightedDeepWalkGraph.py lines 32-33):
-            w'(d) = max(1/ln(max(d, 1.1)), e)
-        
+        Calculate edge weight from distance using the GeoVectors TRAINING formula.
+
+        Formula (GeoVectors paper §3.2, reference: WeightedDeepWalkGraph._damp_and_row_norm
+        lines 32-33 — Numba JIT path):
+            w'(d) = max(1 / ln(max(d, 1.1)), e)
+
         Where:
-        - d: haversine distance in kilometers
-        - Minimum distance clamped to 1.1 km (avoids ln(1) = 0)
-        - Result clamped to e ≈ 2.718 as minimum weight
-        - Effect: Closer entities get exponentially higher weights
-        
-        For very close entities (distance ≈ 0), we use max(epsilon, 1.1) to prevent
-        both division by zero and ln(1) = 0. This handles OSM entities with 
-        identical coordinates.
-        
+        - d:   haversine distance in kilometers
+        - 1.1: minimum-distance clamp — avoids ln(1) = 0 (division by zero);
+               entities closer than 1.1 km all receive the same maximum weight.
+        - e:   Euler's number (~2.718) — weight floor that keeps the graph fully
+               connected (no zero-weight edges break the random walk probability).
+        - Effect: weight decreases monotonically with distance; very close entities
+               get high weights, distant ones are floored at e.
+
+        This is the TRAINING formula only — used to build the CSR transition matrix
+        for DeepWalk. It is NOT the same as the NLE inference formula (paper §3.4):
+            w_enc = ln(1 + 1/dist_km)   ← used only in NLEModel.encode_coords()
+
+        IMPORTANT: the returned weight is already fully damped. Do not pass it
+        through WeightedDeepWalkService.apply_damped_weights() again (double-damping
+        collapses all weights to e, destroying distance information).
+
         Args:
-            distance_km: Distance in kilometers
-            epsilon: Safety minimum distance (default: 1e-6 km = 1mm)
-            
+            distance_km: Haversine distance in kilometers.
+            epsilon:     Safety minimum distance (default: 1e-6 km = 1 mm) used only
+                         for entities with identical coordinates where haversine = 0.
+
         Returns:
-            Edge weight (higher = closer), minimum value of e ≈ 2.718
+            Edge weight ≥ e ≈ 2.718 (higher = closer).
         """
-        # Clamp distance to minimum 1.1 km (GeoVectors paper requirement)
-        # Also handle duplicate coordinates with epsilon
+        # Clamp distance to minimum 1.1 km (GeoVectors training formula requirement).
+        # epsilon guard handles identical-coordinate entities (haversine = 0).
         distance_km = max(distance_km, max(epsilon, 1.1))
-        
+
         # GeoVectors training formula: w' = max(1/ln(d), e)
         weight = 1.0 / np.log(distance_km)
-        
-        # Clamp to minimum e ≈ 2.718
+
+        # Floor at e ≈ 2.718 to ensure all edges have non-zero transition probability.
         return max(weight, np.e)
     
     def build_knn_graph(self, entities: List[Dict]) -> Dict[int, List[Tuple[int, float]]]:

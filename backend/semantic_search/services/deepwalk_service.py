@@ -82,6 +82,15 @@ class WeightedDeepWalkService:
     - Learning rate scheduling
     - Loss monitoring
     - Damped edge weights (GeoVectors formula)
+
+    IMPORTANT — double-damping guard:
+    ``KNNGraphService.calculate_edge_weight()`` already applies the GeoVectors
+    training formula ``max(1/ln(max(d,1.1)), e)`` and returns pre-damped weights
+    in the range [e, ~10.5].  If you pass such weights to ``apply_damped_weights``
+    a second time, the formula ``max(1/ln(max(w,1.1)), e)`` collapses *all*
+    weights to e (≈ 2.718) because 1/ln(≥e) ≤ 1 < e — distance information is
+    destroyed.  Always set ``apply_damping=False`` (the default) when the graph
+    originates from ``KNNGraphService.build_knn_graph()``.
     """
     
     def __init__(self,
@@ -101,30 +110,37 @@ class WeightedDeepWalkService:
                  epochs: int = 1,                # Single pass (walks provide diversity)
                  
                  # Advanced options
-                 apply_damping: bool = True,     # Apply GeoVectors damped weights
+                 apply_damping: bool = False,    # False: weights from KNNGraphService are pre-damped
                  compute_loss: bool = True,      # Monitor training loss
                  seed: int = 42):
         """
         Initialize enhanced DeepWalk trainer.
-        
+
         Args:
-            embedding_dim: Output embedding dimension (100 per GeoVectors-master)
-            walk_length: Number of nodes per walk (80 per paper)
-            num_walks: Walks per starting node (10 per paper)
-            window_size: Skip-gram context window (5 per paper)
-            workers: Parallel workers
-            min_count: Minimum node frequency
-            
-            negative: Number of negative samples per positive
-            alpha: Initial learning rate
-            min_alpha: Final learning rate (linear decay)
-            sample: High-frequency subsampling threshold
-            ns_exponent: Negative sampling distribution power (0.75 = standard)
-            epochs: Training epochs
-            
-            apply_damping: Apply damped weights w' = max(1/ln(w), e)
-            compute_loss: Track training loss per epoch
-            seed: Random seed for reproducibility
+            embedding_dim:  Output embedding dimension (100 per GeoVectors-master).
+            walk_length:    Number of nodes per walk (80 per paper).
+            num_walks:      Walks per starting node (10 per paper).
+            window_size:    Skip-gram context window (5 per paper).
+            workers:        Parallel workers.
+            min_count:      Minimum node frequency.
+
+            negative:       Number of negative samples per positive.
+            alpha:          Initial learning rate.
+            min_alpha:      Final learning rate (linear decay).
+            sample:         High-frequency subsampling threshold.
+            ns_exponent:    Negative sampling distribution power (0.75 = standard).
+            epochs:         Training epochs.
+
+            apply_damping:  Apply ``max(1/ln(max(w,1.1)), e)`` damping inside
+                            ``apply_damped_weights()``.  Set to ``True`` only
+                            when the graph holds *raw haversine distances* as
+                            weights.  Leave ``False`` (default) when the graph
+                            comes from ``KNNGraphService.build_knn_graph()``
+                            whose weights are already damped — re-applying
+                            collapses all weights to e and destroys distance
+                            information.
+            compute_loss:   Track training loss per epoch.
+            seed:           Random seed for reproducibility.
         """
         self.embedding_dim = embedding_dim
         self.walk_length = walk_length
@@ -168,34 +184,66 @@ class WeightedDeepWalkService:
     
     def apply_damped_weights(self, graph: Dict[int, List[Tuple[int, float]]]) -> Dict[int, List[Tuple[int, float]]]:
         """
-        Apply damped edge weights from GeoVectors paper.
-        
-        Formula: w' = max(1/ln(w), e) where e ≈ 2.718
-        
-        This prevents over-weighting very close neighbors.
-        
+        Apply the GeoVectors damped-weight formula to a graph whose edge weights
+        are **raw haversine distances in kilometres**.
+
+        Formula (GeoVectors paper §3.2 / WeightedDeepWalkGraph._damp_and_row_norm):
+            w' = max(1 / ln(max(w, 1.1)), e)   where e ≈ 2.718
+        The 1.1 km clamp gives every sub-1.1 km distance the same maximum weight
+        (1/ln(1.1) ≈ 10.49); the e floor keeps every edge's transition probability
+        non-zero for the random walk.
+
+        WARNING — pre-damped input:
+        If the graph was built by ``KNNGraphService.build_knn_graph()``, its weights
+        are already in the range [e, ~10.5] (output of ``calculate_edge_weight``).
+        Applying this formula a second time maps every weight to
+        ``max(1/ln(≥e), e) = max(≤1, e) = e``, collapsing the entire distribution
+        to a constant and destroying all distance information.  Do not call this
+        method on pre-damped graphs — keep ``apply_damping=False`` (the default).
+
         Args:
-            graph: k-NN graph with raw weights
-            
+            graph: k-NN graph whose edge weights are raw haversine distances (km).
+
         Returns:
-            Graph with damped weights
+            Graph with damped weights (same structure).
+
+        Raises:
+            ValueError: If any weight is already ≥ e, indicating the graph is
+                pre-damped and calling this method would be incorrect.
         """
+        # Guard: detect pre-damped weights using the hard floor signature.
+        # calculate_edge_weight() always floors at exactly np.e, so the minimum
+        # weight in a pre-damped graph is np.e (within float precision).
+        # Raw haversine distances hitting np.e exactly is astronomically unlikely
+        # and their minimum will typically be << e for any graph with close neighbors.
+        # Full scan (O(E), O(1) memory) — a partial sample could miss the floor.
+        min_weight = min(
+            (w for neighbors in graph.values() for _, w in neighbors),
+            default=None,
+        )
+        if min_weight is not None and abs(min_weight - np.e) < 1e-9:
+            raise ValueError(
+                "apply_damped_weights received a graph whose minimum edge weight "
+                f"equals e ({np.e:.6f}), the hard floor set by "
+                "KNNGraphService.calculate_edge_weight — indicating the graph is "
+                "pre-damped. Re-applying damping collapses all weights to e and "
+                "destroys distance information. Set apply_damping=False when using "
+                "KNNGraphService output."
+            )
+
         damped_graph = {}
-        
         for node, neighbors in graph.items():
             damped_neighbors = []
             for neighbor_id, weight in neighbors:
-                # Damped weight: max(1/ln(w), e)
-                if weight > 0:
-                    damped_w = max(1.0 / np.log(weight + 1e-10), np.e)
-                else:
-                    damped_w = np.e
-                
+                # Damped weight: max(1/ln(max(w, 1.1)), e) — matches the reference
+                # WeightedDeepWalkGraph._damp_and_row_norm clamp semantics exactly:
+                # sub-1.1 km distances get the maximum weight 1/ln(1.1), not a
+                # lower value, and zero/negative weights cannot divide by ln(0).
+                damped_w = max(1.0 / np.log(max(weight, 1.1)), np.e)
                 damped_neighbors.append((neighbor_id, damped_w))
-            
             damped_graph[node] = damped_neighbors
-        
-        logger.info("Applied damped edge weights (GeoVectors formula)")
+
+        logger.info("Applied damped edge weights (GeoVectors §3.2 training formula)")
         return damped_graph
     
     def generate_weighted_walk(self, 

@@ -8,11 +8,24 @@ using the USLP inductive principle from:
 
 Core idea: new entities inherit a spatially coherent embedding by taking the
 proximity-weighted mean of the k=50 nearest *already-embedded* entities' GV-NLE
-vectors, using the same damped-weight formula as the original GeoVectors paper.
+vectors.
 
-GV-NLE inductive formula (derived from GeoVectors Section 3.2):
+Weight formula (in-tree inductive path — uses the GeoVectors TRAINING formula):
     GV-NLE_inductive(o) = Σ w(o,oᵢ)·GV-NLE(oᵢ) / Σ w(o,oᵢ)
-    where w(o,oᵢ) = max(1/ln(dist_km(o,oᵢ)), e)
+    where w(o,oᵢ) = max(1/ln(max(dist_km(o,oᵢ), 1.1)), e)   ← §3.2 training formula
+
+Note on paper alignment:
+    The GeoVectors paper (§3.4) uses a different formula for NLE encoding/inference:
+        w_enc(o, oj) = ln(1 + 1/dist_km(o, oj))              ← §3.4 inference formula
+    This is the formula used in NLEModel.encode_coords() (the PostGIS 50-NN path).
+    The in-tree inductive service deliberately uses the training formula instead,
+    for two reasons:
+      1. The `max(..., e)` floor preserves the same weight-range distribution as
+         the DeepWalk-trained embedding space, improving embedding consistency.
+      2. The normalized weighted mean normalises away any scale bias, so the floor
+         does not distort the direction of the aggregate embedding.
+    Both formulas produce monotonically-decreasing-with-distance weights; this is
+    a deliberate in-tree design choice, not an error.
 
 This lets every new temporal-snapshot entity get a spatial embedding immediately,
 without full graph retraining.  Full DeepWalk retraining remains the authoritative
@@ -108,7 +121,21 @@ def _geohash_center(gh: str) -> Tuple[float, float]:
 # ---------------------------------------------------------------------------
 
 def _damped_weight(dist_km: float) -> float:
-    """w' = max(1/ln(max(d, 1.1)), e)  —  GeoVectors training formula."""
+    """Damped weight for the inductive embedding path.
+
+    Formula: w' = max(1/ln(max(d, 1.1)), e)
+
+    This is the GeoVectors graph-construction (training) formula from §3.2
+    (WeightedDeepWalkGraph._damp_and_row_norm), deliberately chosen over the
+    §3.4 inference formula ``ln(1+1/d)`` used in NLEModel.encode_coords().
+    See module docstring for the rationale.
+
+    Args:
+        dist_km: Haversine distance in kilometres.
+
+    Returns:
+        Weight ≥ e ≈ 2.718 (higher = closer).
+    """
     d = max(dist_km, 1.1)
     return max(1.0 / np.log(d), np.e)
 
