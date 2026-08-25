@@ -57,6 +57,14 @@ USLP_FALLBACK_D_MAX_KM = {
     4: 39.0,
 }
 
+# Semantic cutoff for the FastText amenity fallback: keep only entities whose
+# gv_tags embedding is within this cosine distance of the amenity phrase.
+# Without it the tier returns the NEAREST entities of whatever pool the phrase
+# retrieved — e.g. for "bus_station" it surfaced shops near the anchor instead
+# of admitting there were no bus stations in range. 0.5 matches the
+# name-search default (worldkg_nca.views.search name_distance_threshold).
+_FASTTEXT_AMENITY_DISTANCE_THRESHOLD = 0.5
+
 
 class QueryExecutorService:
     """Execute a parsed query against the data plane.
@@ -977,6 +985,12 @@ class QueryExecutorService:
         then pgvector for step 3.
         """
         if not amenity_type:
+            if trace is not None:
+                trace.append({
+                    "step": "place_search_skipped",
+                    "reason": "no OBJECT concept extracted by the parser",
+                    "output_count": 0,
+                })
             return []
 
         snapshot_id = cls._get_snapshot_id(snapshot_date)
@@ -1145,10 +1159,20 @@ class QueryExecutorService:
                 r["embedding_distance"] = round(float(e.embedding_distance), 4)
             results.append(r)
 
+        # Semantic cutoff — drop pool members whose tags embed is too far
+        # from the amenity phrase. The remaining tier logic (radius filter,
+        # distance ranking) then operates on a semantically-tight pool
+        # instead of whatever the phrase happened to retrieve.
+        results = [
+            r for r in results
+            if r.get("embedding_distance", 0.0) <= _FASTTEXT_AMENITY_DISTANCE_THRESHOLD
+        ]
+
         if trace is not None:
             trace.append({"step": "place_search",
                           "input": amenity_type,
                           "match_type": "fasttext",
+                          "threshold": _FASTTEXT_AMENITY_DISTANCE_THRESHOLD,
                           "output_count": len(results)})
         return results
 
@@ -1187,6 +1211,12 @@ class QueryExecutorService:
             trace: Optional execution trace list
         """
         if not amenity_type:
+            if trace is not None:
+                trace.append({
+                    "step": "place_search_skipped",
+                    "reason": "no OBJECT concept extracted by the parser",
+                    "output_count": 0,
+                })
             return []
 
         snapshot_id = cls._get_snapshot_id(snapshot_date)

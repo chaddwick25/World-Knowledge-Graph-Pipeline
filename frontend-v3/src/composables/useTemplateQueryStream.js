@@ -88,6 +88,7 @@ export function useTemplateQueryStream() {
       store.setExecuteAnswer(result?.answer || null)
       store.setEnrichment(result?.enrichment || null)
       store.setResults(result?.results || [])
+      store.setTrace(result?.trace || [])
       store.setStreamingPhase('done')
       store.setLoading(false)
       // Keep liveAnswer visible after completion — it's the streamed answer.

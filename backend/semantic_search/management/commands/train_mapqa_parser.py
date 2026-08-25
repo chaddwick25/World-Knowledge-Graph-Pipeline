@@ -157,7 +157,12 @@ AMOUNT_PATTERNS = [re.compile(r"\d+\s*m\b", re.I), re.compile(r"\d+\s*km\b", re.
 OBJECT_SIGNALS = {"bar", "restaurant", "cafe", "hotel", "school", "hospital",
                   "shop", "amenity", "bar", "pub", "bank", "pharmacy",
                   "park", "church", "library", "cinema", "theatre",
-                  "gas", "fuel", "parking", "toilet", "atm"}
+                  "gas", "fuel", "parking", "toilet", "atm",
+                  # Transit amenities — without these, rows like
+                  # "What charging_station is close to Howdy's?" get NO
+                  # OBJECT label and the concept model learns "station" is
+                  # always a LOCATION (see the bus-station bug report).
+                  "bus", "station", "train", "taxi", "airport", "ferry"}
 LOCATION_SIGNALS = {"near", "of", "from", "to", "around", "by", "beside",
                     "next to", "close to"}
 FIELD_SIGNALS = {"amenity", "available", "present", "attribute", "type"}

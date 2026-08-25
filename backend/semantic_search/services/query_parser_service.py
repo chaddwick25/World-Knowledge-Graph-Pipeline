@@ -155,6 +155,16 @@ class QueryParserService:
             X = self.vectorizer.transform([question])
             concept_vec = self.concept_extractor.predict(X)[0]
             concept_probs = self.concept_extractor.predict_proba(X)[0]
+            # Safety net: the trained multi-label classifier misses rare
+            # amenity vocabulary — e.g. "bus station within 50km of X" gets
+            # OBJECT prob 0.4963, just under the 0.5 decision threshold,
+            # because "station" is dominated by LOCATION usage in the MapQA
+            # training data. OR the deterministic heuristic presence back in
+            # so a near-threshold miss is recovered. Span extraction is
+            # open-vocabulary, so extracting a concept is always safe.
+            heuristic_vec, heuristic_probs = self._heuristic_concepts(question, template)
+            concept_vec = [int(a or b) for a, b in zip(concept_vec, heuristic_vec)]
+            concept_probs = [max(a, b) for a, b in zip(concept_probs, heuristic_probs)]
         else:
             # Fallback: heuristic concept detection
             concept_vec, concept_probs = self._heuristic_concepts(question, template)
@@ -184,7 +194,8 @@ class QueryParserService:
             probs[idx] = 0.9
         if any(sig in q_lower for sig in
                ("bar", "restaurant", "cafe", "hotel", "school", "hospital",
-                "shop", "amenity", "pub", "bank", "pharmacy")):
+                "shop", "amenity", "pub", "bank", "pharmacy",
+                "bus", "station", "train", "taxi", "airport", "ferry")):
             idx = CONCEPT_TYPES.index("OBJECT")
             present[idx] = 1
             probs[idx] = 0.85
@@ -241,9 +252,14 @@ class QueryParserService:
             # Closed-vocabulary slot match: try amenity_vocab first.
             # This handles "restaurant", "cafe", "bus_station", etc.
             # ([MAPQA_BUILD:§3.2] — closed-vocab slots are exact-match)
+            # Vocab entries use underscores ("bus_station") while the
+            # extracted span is space-separated ("bus station") — compare
+            # normalized forms so multi-word amenities match, and return the
+            # canonical vocab form so the executor's exact-tag tier hits the
+            # real OSM tag value.
             best = None
             for amenity in self.amenity_vocab:
-                if amenity.lower() in object_part:
+                if amenity.lower().replace("_", " ") in object_part:
                     if best is None or len(amenity) > len(best):
                         best = amenity
             if best is not None:

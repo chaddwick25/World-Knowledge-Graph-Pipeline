@@ -1,6 +1,7 @@
 import { createApp } from "vue"
 import "bootstrap/dist/css/bootstrap.css"
 import "bootstrap-vue-next/dist/bootstrap-vue-next.css"
+import "bootstrap-icons/font/bootstrap-icons.css"
 import "./styles/theme.css"
 import "./style.css"
 import App from "./App.vue"

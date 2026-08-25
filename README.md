@@ -134,8 +134,10 @@ panels to the selected snapshot date.
 > **TODO: Add screenshot** — System summary modal on the overview tab,
 > showing planet PBF size, embedding availability, and storage status.
 
-> **TODO: Add screenshot** — Planet init panel with terminal output
-> scrolling and the step list showing completed and in-progress steps.
+> **TODO: Add screenshot** — Planet init status card (shown when the
+> backend isn't initialized). It's read-only — planet init runs as a
+> Docker startup step (`python manage.py init_planet`) — with a Refresh
+> button that re-pings `GET /api/system/status/`.
 
 ### System Summary
 

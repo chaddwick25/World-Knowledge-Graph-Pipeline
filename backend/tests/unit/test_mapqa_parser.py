@@ -96,6 +96,21 @@ class TestConceptExtraction:
         assert len(locations) >= 1
         assert locations[0]["text"] == "Union Station"
 
+    def test_bus_station_amenity_extraction(self, parser):
+        """Rare transit amenity vocab must still extract OBJECT.
+
+        Regression: the trained concept model gives OBJECT prob ~0.4963
+        (just under the 0.5 threshold) for "bus station" because "station"
+        is dominated by LOCATION usage in the MapQA training data. The
+        heuristic safety net must recover it, and the closed-vocab matcher
+        must return the canonical underscore form ("bus_station") so the
+        executor's exact-tag tier hits the real OSM tag value.
+        """
+        result = parser.parse("bus station within 50km of Le Petit Parisien")
+        objects = [c for c in result["concepts"] if c["type"] == "OBJECT"]
+        assert len(objects) == 1
+        assert objects[0]["text"] == "bus_station"
+
 
 # ── DAG validation ───────────────────────────────────────────────────
 

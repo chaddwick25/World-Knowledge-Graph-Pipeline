@@ -87,9 +87,38 @@ function getRelationColor(relation) {
   return RELATION_COLORS[relation] || DEFAULT_RELATION_COLOR
 }
 
+// ── Query-graph (anchor/entity) markers ─────────────────────────────────
+// Bootstrap Icons in a colored circular badge. Inline styles because
+// Leaflet-injected divIcon HTML is outside the component's scoped DOM.
+function makeQueryIcon({ bg, color, iconClass, size }) {
+  const s = size || 26
+  return L.divIcon({
+    className: 'worldkg-query-icon',
+    html:
+      `<div style="width:${s}px;height:${s}px;border-radius:50%;background:${bg};` +
+      `display:flex;align-items:center;justify-content:center;border:2px solid #fff;` +
+      `box-shadow:0 1px 5px rgba(0,0,0,.5);color:${color};font-size:${Math.round(s * 0.6)}px">` +
+      `<i class="bi ${iconClass}"></i></div>`,
+    iconSize: [s, s],
+    iconAnchor: [s / 2, s / 2],
+  })
+}
+const ANCHOR_ICON = makeQueryIcon({ bg: '#6366f1', color: '#fff', iconClass: 'bi-geo-alt-fill', size: 30 })
+const ENTITY_ICON = makeQueryIcon({ bg: '#f97316', color: '#fff', iconClass: 'bi-building', size: 24 })
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
 let mapInstance = null
 let geoJsonLayer = null
 let searchMarkersLayer = null
+let queryGraphLayer = null
 let agentOverlayLayer = null
 let augmentedAcceptedLayer = null
 let augmentedRejectedLayer = null
@@ -106,6 +135,13 @@ export default {
     searchResults: {
       type: Array,
       default: () => [],
+    },
+    // Anchor/entity graph from SemanticSearchPanel:
+    // { anchors: [{name, lat, lon}], entities: [{..., geom}],
+    //   links: [{anchorIdx, entityIdx}], showAnchors, showEntities, showLinks }
+    queryGraph: {
+      type: Object,
+      default: null,
     },
     augmentedLinks: {
       type: Object,
@@ -187,6 +223,7 @@ export default {
       mapInstance.remove()
       mapInstance = null
       searchMarkersLayer = null
+      queryGraphLayer = null
       agentOverlayLayer = null
       augmentedAcceptedLayer = null
       augmentedRejectedLayer = null
@@ -202,6 +239,12 @@ export default {
     searchResults: {
       handler() {
         this.renderSearchResults()
+      },
+      deep: true,
+    },
+    queryGraph: {
+      handler() {
+        this.renderQueryGraph()
       },
       deep: true,
     },
@@ -266,6 +309,7 @@ export default {
         .addTo(mapInstance)
 
       searchMarkersLayer = L.layerGroup().addTo(mapInstance)
+      queryGraphLayer = L.layerGroup().addTo(mapInstance)
       agentOverlayLayer = L.layerGroup().addTo(mapInstance)
       augmentedAcceptedLayer = L.layerGroup().addTo(mapInstance)
       augmentedRejectedLayer = L.layerGroup().addTo(mapInstance)
@@ -363,6 +407,11 @@ export default {
       if (!mapInstance || !searchMarkersLayer) return
       searchMarkersLayer.clearLayers()
 
+      // The anchor/entity graph supersedes the plain-circle fallback.
+      if (this.queryGraph && (this.queryGraph.entities?.length || this.queryGraph.anchors?.length)) {
+        return
+      }
+
       if (!this.searchResults || !this.searchResults.length) return
 
       const bounds = []
@@ -390,6 +439,80 @@ export default {
 
       if (bounds.length) {
         mapInstance.fitBounds(bounds, { padding: [100, 100] })
+      }
+    },
+
+    // ── Anchor/entity graph rendering ──────────────────────────────────
+    // Anchors (named query locations, indigo pins) + entities (top-k
+    // results, orange building icons) + dashed links entity→nearest anchor.
+    renderQueryGraph() {
+      if (!mapInstance || !queryGraphLayer) return
+      queryGraphLayer.clearLayers()
+
+      const graph = this.queryGraph
+      if (!graph) return
+
+      const bounds = []
+
+      if (graph.showAnchors !== false) {
+        for (const a of graph.anchors || []) {
+          if (a.lat == null || a.lon == null) continue
+          const marker = L.marker([a.lat, a.lon], { icon: ANCHOR_ICON })
+          marker.bindPopup(
+            `<strong>${escapeHtml(a.name || 'Anchor')}</strong><br/>` +
+            `<span class="text-secondary">anchor</span><br/>` +
+            `${Number(a.lat).toFixed(4)}, ${Number(a.lon).toFixed(4)}`
+          )
+          marker.addTo(queryGraphLayer)
+          bounds.push([a.lat, a.lon])
+        }
+      }
+
+      if (graph.showEntities !== false) {
+        for (const e of graph.entities || []) {
+          if (!e.geom || e.geom.lat == null) continue
+          const marker = L.marker([e.geom.lat, e.geom.lon], { icon: ENTITY_ICON })
+          const popup = [
+            `<strong>${escapeHtml(e.tags?.name || e.name || `${e.osm_type} ${e.osm_id}`)}</strong>`,
+          ]
+          if (e.wkg_class) popup.push(`<span>${escapeHtml(e.wkg_class)}</span>`)
+          if (e.scores?.final_score != null) {
+            popup.push(`<span>score: ${Number(e.scores.final_score).toFixed(3)}</span>`)
+          }
+          if (e.distance_m != null) {
+            popup.push(`<span>${Math.round(e.distance_m)} m from anchor</span>`)
+          }
+          if (e.osm_type && e.osm_id) {
+            popup.push(
+              `<a href="https://www.openstreetmap.org/${e.osm_type}/${e.osm_id}" target="_blank">` +
+              `OSM ${e.osm_type}/${e.osm_id}</a>`
+            )
+          }
+          marker.bindPopup(popup.join('<br/>'))
+          marker.addTo(queryGraphLayer)
+          bounds.push([e.geom.lat, e.geom.lon])
+        }
+      }
+
+      if (graph.showLinks !== false) {
+        for (const link of graph.links || []) {
+          const anchor = graph.anchors?.[link.anchorIdx]
+          const entity = graph.entities?.[link.entityIdx]
+          if (!anchor || anchor.lat == null || !entity?.geom) continue
+          L.polyline(
+            [[anchor.lat, anchor.lon], [entity.geom.lat, entity.geom.lon]],
+            {
+              color: '#a5b4fc',
+              weight: 1.5,
+              opacity: 0.55,
+              dashArray: '4 4',
+            }
+          ).addTo(queryGraphLayer)
+        }
+      }
+
+      if (bounds.length) {
+        mapInstance.fitBounds(bounds, { padding: [60, 60], maxZoom: 14 })
       }
     },
 
