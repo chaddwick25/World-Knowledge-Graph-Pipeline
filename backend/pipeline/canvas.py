@@ -393,7 +393,6 @@ def _run_eager(cfg, run, steps) -> None:
         country=cfg.iso,
         pipeline_run_id=cfg.pipeline_run_id,
     )
-    # TODO: Reuse this pattern for the DAG implementation
     tasks_list = [
         steps[1], steps[2], steps[3], steps[4], steps[5],
         steps[5.7], steps[5.8], steps[6],
@@ -696,7 +695,6 @@ def run_pipeline_stage(
     is tracked in the DB and visible in the frontend, consistent with
     ``run_worldkg_pipeline``.
     """
-    # TODO: might need to pass the config dict instead to support Agentic related envelopes(new type)
     from pipeline.envelopes import CountryEnvelope
     from core.models import PipelineRun
 

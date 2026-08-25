@@ -71,6 +71,77 @@ class InitialStatusView(APIView):
                 self._prepare_availability_context(node.children.all(), context, parent_available=children_are_available)
 
 
+class SystemStatusView(APIView):
+    """GET /api/system/status/ — planet-init readiness + home-page hydration.
+
+    Readiness is derived from a *finalized* ``PlanetSnapshot`` row — the
+    ``finalize`` step of the ``init_planet`` Docker startup command writes
+    ``snapshot_date_str`` + ``COMPLETED`` (mirroring ``init_planet``'s own
+    ``_acquire_lock`` semantics). A COMPLETED planet ``PbfFile`` row is NOT
+    a readiness signal: ``register_planet`` (the first init step) creates
+    one before the rest of init has run.
+
+    Returns everything the home page needs to hydrate in one request:
+    readiness, latest snapshot info, suggested planet path, extraction /
+    embedding counts, and the snapshot-date range for the year selector.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        from core.models import PlanetSnapshot, CountryPipelineProfile, PbfFile
+        from api.views.pipeline_status import build_snapshot_dates_payload
+
+        # register_planet rows leave snapshot_date_str NULL; finalize rows
+        # set it — so this selects the most recent *finalized* snapshot.
+        latest = (
+            PlanetSnapshot.objects.exclude(snapshot_date_str__isnull=True)
+            .order_by("-snapshot_date", "-created_at")
+            .first()
+        )
+
+        ready = (
+            latest is not None
+            and latest.status == PlanetSnapshot.SnapshotStatus.COMPLETED
+        )
+
+        snapshot = None
+        if latest is not None:
+            snapshot = {
+                "status": latest.status,
+                "snapshot_date": latest.snapshot_date_str,
+                "planet_osm_path": latest.planet_osm_path,
+                "created_at": (
+                    latest.created_at.isoformat() if latest.created_at else None
+                ),
+                "completed_at": (
+                    latest.completed_at.isoformat() if latest.completed_at else None
+                ),
+            }
+
+        continents_extracted = PbfFile.objects.filter(
+            pbf_file_type=PbfFile.PbfType.CONTINENT,
+            status=PbfFile.PbfStatus.COMPLETED,
+        ).count()
+
+        total_countries = CountryPipelineProfile.objects.count()
+        countries_with_embeddings = CountryPipelineProfile.objects.filter(
+            has_embeddings=True
+        ).count()
+
+        data = {
+            "ready": ready,
+            "snapshot": snapshot,
+            "suggested_planet_file_path": getattr(
+                settings, "PLANET_OSM_FILE_PATH", None
+            ),
+            "continents_extracted": continents_extracted,
+            "countries_with_embeddings": countries_with_embeddings,
+            "total_countries": total_countries,
+        }
+        data.update(build_snapshot_dates_payload())
+        return Response(data)
+
+
 # --- PBF File and Task Management Views ---
 
 

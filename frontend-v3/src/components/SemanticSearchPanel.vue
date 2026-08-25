@@ -1,30 +1,30 @@
 <template>
-  <div class="search-panel">
-    <form class="search-form" @submit.prevent="performSearch">
-      <!-- Query mode toggle -->
-      <div class="search-form__row">
-        <label class="search-form__label">Query mode</label>
-        <div class="search-form__toggle">
+  <div class="d-flex flex-column gap-2">
+    <form class="d-flex flex-column gap-2" @submit.prevent="performSearch">
+      <!-- Query mode toggle (hidden in agent mode — template only) -->
+      <div v-if="!agentMode" class="d-flex flex-column gap-1">
+        <label class="form-label small text-secondary mb-0">Query mode</label>
+        <div class="d-flex gap-1">
           <button
             type="button"
-            class="search-form__toggle-btn"
-            :class="{ 'search-form__toggle-btn--active': isTagsMode }"
+            class="btn btn-sm rounded-pill"
+            :class="isTagsMode ? 'btn-primary' : 'btn-outline-secondary'"
             @click="queryMode = 'tags'"
           >
             Structured (JSON)
           </button>
           <button
             type="button"
-            class="search-form__toggle-btn"
-            :class="{ 'search-form__toggle-btn--active': isNaturalMode }"
+            class="btn btn-sm rounded-pill"
+            :class="isNaturalMode ? 'btn-primary' : 'btn-outline-secondary'"
             @click="queryMode = 'natural'"
           >
             Natural language
           </button>
           <button
             type="button"
-            class="search-form__toggle-btn"
-            :class="{ 'search-form__toggle-btn--active': isTemplateMode }"
+            class="btn btn-sm rounded-pill"
+            :class="isTemplateMode ? 'btn-primary' : 'btn-outline-secondary'"
             @click="queryMode = 'template'"
           >
             Kuhn's Template
@@ -32,132 +32,171 @@
         </div>
       </div>
 
-      <!-- Subdivision selector -->
+      <!-- Subdivision selector (hidden in agent mode) -->
       <SubdivisionSelector
+        v-if="!agentMode"
         :country-name="countryName"
         @subdivision-selected="subdivisionQid = $event"
       />
 
-      <!-- Tags input (Structured JSON mode) -->
-      <div v-if="isTagsMode" class="search-form__row">
-        <label class="search-form__label">OSM Tag</label>
+      <!-- Tags input (Structured JSON mode — human only) -->
+      <div v-if="isTagsMode" class="d-flex flex-column gap-1">
+        <label class="form-label small text-secondary mb-0">OSM Tag</label>
         <textarea
           v-model="queryTagsInput"
-          class="search-form__textarea"
+          class="form-control form-control-sm font-monospace"
           rows="2"
           placeholder='{"amenity": "cafe"}  or  {"name": "파리바게뜨"}'
         ></textarea>
       </div>
 
-      <!-- Natural language name search input -->
-      <div v-if="isNaturalMode" class="search-form__row">
-        <label class="search-form__label">Name search (any language)</label>
+      <!-- Natural language name search input (human only) -->
+      <div v-if="isNaturalMode" class="d-flex flex-column gap-1">
+        <label class="form-label small text-secondary mb-0">Name search (any language)</label>
         <textarea
           v-model="naturalQuery"
-          class="search-form__textarea"
+          class="form-control form-control-sm font-monospace"
           rows="2"
           placeholder="paris bagueete  /  파리바게뜨  /  café  /  원탕"
         ></textarea>
       </div>
 
       <!-- Natural language template input (MapQA parser) -->
-      <div v-if="isTemplateMode" class="search-form__row">
-        <label class="search-form__label">Geospatial question</label>
+      <div v-if="isTemplateMode" class="d-flex flex-column gap-1">
+        <label class="form-label small text-secondary mb-0">
+          {{ agentMode ? 'Ask a geospatial question' : 'Geospatial question' }}
+        </label>
         <textarea
-          v-model="templateQuery"
-          class="search-form__textarea"
+          v-model="effectiveTemplateQuery"
+          class="form-control form-control-sm font-monospace"
           rows="2"
           placeholder="Which bars are within 50m of Hollywood Blvd?"
+          @input="agentMode && store.setTemplateQuery($event.target.value)"
         ></textarea>
       </div>
 
-      <!-- Filters (hidden in NL Template mode — parser doesn't use them) -->
-      <div v-if="!isTemplateMode" class="search-form__filters">
-        <div class="search-form__filter">
-          <label class="search-form__label">Lat</label>
-          <input v-model="lat" type="number" step="any" class="search-form__input" placeholder="Optional" />
+      <!-- Filters (hidden in NL Template mode and agent mode) -->
+      <div v-if="!isTemplateMode && !agentMode" class="row g-2">
+        <div class="col-6">
+          <label class="form-label small text-secondary mb-0">Lat</label>
+          <input v-model="lat" type="number" step="any" class="form-control form-control-sm" placeholder="Optional" />
         </div>
-        <div class="search-form__filter">
-          <label class="search-form__label">Lon</label>
-          <input v-model="lon" type="number" step="any" class="search-form__input" placeholder="Optional" />
+        <div class="col-6">
+          <label class="form-label small text-secondary mb-0">Lon</label>
+          <input v-model="lon" type="number" step="any" class="form-control form-control-sm" placeholder="Optional" />
         </div>
-        <div class="search-form__filter">
-          <label class="search-form__label">Class</label>
-          <select v-model="rdfType" class="search-form__input">
+        <div class="col-6">
+          <label class="form-label small text-secondary mb-0">Class</label>
+          <select v-model="rdfType" class="form-select form-select-sm">
             <option :value="null">Any class</option>
             <option v-for="opt in classOptions" :key="opt.value" :value="opt.value">
               {{ opt.text }}
             </option>
           </select>
         </div>
-        <div class="search-form__filter">
-          <label class="search-form__label">Top K</label>
-          <input v-model="topK" type="number" min="1" max="100" class="search-form__input" />
+        <div class="col-6">
+          <label class="form-label small text-secondary mb-0">Top K</label>
+          <input v-model="topK" type="number" min="1" max="100" class="form-control form-control-sm" />
         </div>
       </div>
 
       <button
         type="submit"
-        class="search-form__submit"
-        :disabled="loading || !isValid"
+        class="btn btn-primary btn-sm"
+        :disabled="isLoading || !isValid"
       >
-        {{ loading ? 'Searching\u2026' : 'Search' }}
+        <span v-if="isLoading" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+        {{ isLoading ? 'Searching…' : (agentMode ? 'Run as agent' : 'Search') }}
       </button>
     </form>
 
     <!-- Error -->
-    <p v-if="error" class="search-form__error">{{ error }}</p>
+    <div v-if="displayError" class="alert alert-danger small py-1 px-2 mb-0">
+      {{ displayError }}
+    </div>
 
-    <!-- Parsed query (MapQA parser — NL Template mode only) -->
-    <div v-if="parsedQuery" class="parsed-query">
-      <div class="parsed-query__header">
-        <span class="parsed-query__template">{{ parsedQuery.template }}</span>
+    <!-- Streaming phase indicator (agent mode only) -->
+    <div v-if="agentMode && store.streamingPhase && store.streamingPhase !== 'done'" class="d-flex align-items-center gap-2 small text-secondary">
+      <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+      <span>{{ store.streamingPhase }}</span>
+    </div>
+
+    <!-- Parsed query (MapQA parser — template mode) -->
+    <div v-if="displayParsedQuery" class="card card-body p-2">
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <span class="small fw-semibold" style="color: var(--bs-primary-text-emphasis);">{{ displayParsedQuery.template }}</span>
         <span
-          class="parsed-query__confidence"
-          :class="confidenceClass"
+          class="badge rounded-pill"
+          :class="confidenceBadgeClass"
         >
-          {{ (parsedQuery.confidence * 100).toFixed(0) }}% confident
+          {{ (displayParsedQuery.confidence * 100).toFixed(0) }}% confident
         </span>
       </div>
-      <div class="parsed-query__concepts">
+      <div class="d-flex flex-wrap gap-1">
         <span
-          v-for="(concept, idx) in parsedQuery.concepts"
+          v-for="(concept, idx) in displayParsedQuery.concepts"
           :key="idx"
-          class="parsed-query__concept"
+          class="d-inline-flex align-items-center gap-1 small"
         >
-          <span class="parsed-query__concept-type">{{ concept.type }}</span>
-          <span class="parsed-query__concept-text">{{ concept.text || '—' }}</span>
+          <span class="badge text-bg-info">{{ concept.type }}</span>
+          <span class="text-secondary">{{ concept.text || '—' }}</span>
         </span>
       </div>
     </div>
 
     <!-- Answer summary (MapQA executor) -->
-    <div v-if="executeAnswer" class="execute-answer">
-      <strong>Answer:</strong> {{ executeAnswer }}
-      <div v-if="executeTrace.length > 0" class="execute-answer__trace">
+    <div v-if="displayAnswer" class="alert alert-success small py-1 px-2 mb-0">
+      <strong>Answer:</strong> {{ displayAnswer }}
+      <div v-if="displayTrace.length > 0" class="mt-1 small text-secondary">
         <details>
-          <summary>Execution trace ({{ executeTrace.length }} steps)</summary>
-          <ol>
-            <li v-for="(step, idx) in executeTrace" :key="idx">
+          <summary class="cursor-pointer">Execution trace ({{ displayTrace.length }} steps)</summary>
+          <ol class="mt-1 ms-3">
+            <li v-for="(step, idx) in displayTrace" :key="idx">
               <strong>{{ step.step }}</strong>
               <span v-if="step.input"> — in: {{ formatTraceValue(step.input) }}</span>
               <span v-if="step.output_count !== undefined"> — count: {{ step.output_count }}</span>
               <span v-if="step.output"> — out: {{ formatTraceValue(step.output) }}</span>
               <span v-if="step.output_km !== undefined"> — {{ step.output_km }} km</span>
               <span v-if="step.output_degrees !== undefined"> — {{ step.output_degrees }}°</span>
-              <span v-if="step.error" class="execute-answer__trace-error"> — ERROR: {{ step.error }}</span>
+              <span v-if="step.error" class="text-danger"> — ERROR: {{ step.error }}</span>
             </li>
           </ol>
         </details>
       </div>
     </div>
 
-    <!-- Results -->
-    <div v-if="results.length > 0" class="search-results">
-      <h4 class="search-results__title">Results ({{ results.length }})</h4>
-      <div class="search-results__scroll">
-        <table class="search-results__table">
-          <thead>
+    <!-- Live answer (agent streaming mode — token stream) -->
+    <div v-if="agentMode && store.liveAnswer && store.streamingPhase !== 'done'" class="card card-body p-2 small">
+      <strong class="text-secondary">Streaming answer:</strong>
+      <p class="mb-0 mt-1">{{ store.liveAnswer }}</p>
+    </div>
+
+    <!-- Enrichment display (agent mode only — LLM research loop) -->
+    <div v-if="agentMode && store.hasEnrichment" class="card card-body p-2">
+      <h6 class="card-title small fw-semibold text-secondary mb-1">Research</h6>
+      <div v-if="store.enrichment.actions?.length" class="d-flex flex-wrap gap-1 mb-1">
+        <span
+          v-for="action in store.enrichment.actions"
+          :key="action"
+          class="badge text-bg-primary"
+        >{{ action }}</span>
+      </div>
+      <div v-if="store.enrichment.action_outputs" class="small text-secondary mb-1">
+        <div v-for="(output, idx) in store.enrichment.action_outputs" :key="idx">
+          {{ output.tool || `action ${idx + 1}` }}: {{ Array.isArray(output.output) ? `${output.output.length} entities` : output.output }}
+        </div>
+      </div>
+      <div v-if="store.enrichment.enriched_answer" class="small">
+        <strong class="text-success">Enriched answer:</strong> {{ store.enrichment.enriched_answer }}
+      </div>
+    </div>
+
+    <!-- Results table (hidden in agent mode — map markers are primary) -->
+    <div v-if="!agentMode && displayResults.length > 0" class="d-flex flex-column gap-1">
+      <h6 class="small fw-semibold mb-0">Results ({{ displayResults.length }})</h6>
+      <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+        <table class="table table-sm table-borderless mb-0" style="font-size: 0.72rem;">
+          <thead class="table-dark">
             <tr>
               <th>OSM ID</th>
               <th>Tags</th>
@@ -167,26 +206,27 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in results" :key="`${item.osm_type}-${item.osm_id}`">
+            <tr v-for="item in displayResults" :key="`${item.osm_type}-${item.osm_id}`">
               <td>
                 <a
                   :href="`https://www.openstreetmap.org/${item.osm_type}/${item.osm_id}`"
                   target="_blank"
-                  class="search-results__link"
+                  class="text-decoration-none"
+                  style="color: var(--bs-info-text-emphasis);"
                 >
                   {{ item.osm_type }}/{{ item.osm_id }}
                 </a>
               </td>
               <td><small>{{ formatTags(item.tags) }}</small></td>
-              <td>{{ item.wkg_class || '\u2014' }}</td>
+              <td>{{ item.wkg_class || '—' }}</td>
               <td>
                 <template v-if="item.geom">
                   {{ item.geom.lat.toFixed(3) }}, {{ item.geom.lon.toFixed(3) }}
                 </template>
-                <span v-else class="search-results__muted">N/A</span>
+                <span v-else class="text-secondary">N/A</span>
               </td>
-              <td class="search-results__score-cell">
-                <strong>{{ item.scores?.final_score?.toFixed(3) || '\u2014' }}</strong>
+              <td class="text-end">
+                <strong>{{ item.scores?.final_score?.toFixed(3) || '—' }}</strong>
               </td>
             </tr>
           </tbody>
@@ -194,7 +234,7 @@
       </div>
     </div>
 
-    <div v-else-if="searched" class="search-results__empty">
+    <div v-else-if="!agentMode && searched" class="small text-secondary">
       No results found for this query.
     </div>
   </div>
@@ -213,6 +253,12 @@
  *   snapshotDate - Optional. Snapshot date string (e.g. "2025_12_31").
  *                  Forwarded to the backend so searches can be scoped to a
  *                  specific pipeline run once the data layer supports it.
+ *   agentMode    - Optional (default false). When true, the panel runs in
+ *                  agent mode: template-only (no mode toggle, filters, or
+ *                  subdivision), streaming via EventSource, enrichment
+ *                  display, and store-backed state (useAgentQueryStore).
+ *                  When false, full 3-mode controls, sync, component-local
+ *                  state (current behavior).
  *
  * Emits:
  *   search-results  - Array of result objects (for map markers)
@@ -220,6 +266,8 @@
 
 import axios from 'axios'
 import SubdivisionSelector from './SubdivisionSelector.vue'
+import { useAgentQueryStore } from '../stores/agentQueryStore'
+import { useTemplateQueryStream } from '../composables/useTemplateQueryStream'
 
 export default {
   name: 'SemanticSearchPanel',
@@ -233,10 +281,20 @@ export default {
       type: String,
       default: null,
     },
+    agentMode: {
+      type: Boolean,
+      default: false,
+    },
   },
   emits: ['search-results'],
+  setup() {
+    const store = useAgentQueryStore()
+    const stream = useTemplateQueryStream()
+    return { store, stream }
+  },
   data() {
     return {
+      // ── Human mode state (component-local) ──
       queryMode: 'tags',
       queryTagsInput: '{"amenity": "cafe"}',
       naturalQuery: '',
@@ -250,7 +308,7 @@ export default {
       results: [],
       searched: false,
       subdivisionQid: null,
-      // MapQA parser state (NL Template mode)
+      // MapQA parser state (sync template mode)
       parsedQuery: null,
       executeAnswer: null,
       executeTrace: [],
@@ -267,13 +325,13 @@ export default {
   },
   computed: {
     isTagsMode() {
-      return this.queryMode === 'tags'
+      return this.agentMode ? false : this.queryMode === 'tags'
     },
     isNaturalMode() {
-      return this.queryMode === 'natural'
+      return this.agentMode ? false : this.queryMode === 'natural'
     },
     isTemplateMode() {
-      return this.queryMode === 'template'
+      return this.agentMode ? true : this.queryMode === 'template'
     },
     isValid() {
       if (this.isTagsMode) {
@@ -285,24 +343,73 @@ export default {
         }
       }
       if (this.isTemplateMode) {
-        return this.templateQuery.trim().length > 0
+        const q = this.agentMode ? this.store.templateQuery : this.templateQuery
+        return q.trim().length > 0
       }
       return this.naturalQuery.trim().length > 0
     },
-    confidenceClass() {
-      const c = this.parsedQuery?.confidence || 0
-      if (c >= 0.8) return 'parsed-query__confidence--high'
-      if (c >= 0.6) return 'parsed-query__confidence--medium'
-      return 'parsed-query__confidence--low'
+    isLoading() {
+      return this.agentMode ? this.store.loading : this.loading
+    },
+    displayError() {
+      return this.agentMode ? this.store.error : this.error
+    },
+    displayParsedQuery() {
+      return this.agentMode ? this.store.parsedQuery : this.parsedQuery
+    },
+    displayAnswer() {
+      return this.agentMode ? this.store.executeAnswer : this.executeAnswer
+    },
+    displayTrace() {
+      return this.agentMode ? [] : this.executeTrace
+    },
+    displayResults() {
+      return this.agentMode ? this.store.results : this.results
+    },
+    confidenceBadgeClass() {
+      const c = this.displayParsedQuery?.confidence || 0
+      if (c >= 0.8) return 'text-bg-success'
+      if (c >= 0.6) return 'text-bg-warning'
+      return 'text-bg-danger'
+    },
+    /** In agent mode, the textarea binds to the store's templateQuery. */
+    effectiveTemplateQuery: {
+      get() {
+        return this.agentMode ? this.store.templateQuery : this.templateQuery
+      },
+      set(val) {
+        if (this.agentMode) {
+          this.store.setTemplateQuery(val)
+        } else {
+          this.templateQuery = val
+        }
+      },
     },
   },
   watch: {
     countryName() {
       this.reset()
     },
+    // In agent mode, emit search-results when the store's results change
+    // (streaming 'done' event populates store.results).
+    'store.results'(newResults) {
+      if (this.agentMode) {
+        this.$emit('search-results', newResults)
+      }
+    },
+  },
+  unmounted() {
+    if (this.agentMode) {
+      this.stream.cleanup()
+    }
   },
   methods: {
     reset() {
+      if (this.agentMode) {
+        this.store.reset()
+        this.stream.closeStream()
+        return
+      }
       this.queryMode = 'tags'
       this.queryTagsInput = '{"amenity": "cafe"}'
       this.naturalQuery = ''
@@ -322,6 +429,29 @@ export default {
     },
 
     async performSearch() {
+      if (this.agentMode) {
+        await this.executeStream()
+      } else {
+        await this.executeSync()
+      }
+    },
+
+    /** Agent mode: streaming via EventSource composable. */
+    async executeStream() {
+      const query = this.store.templateQuery?.trim()
+      if (!query) {
+        this.store.setError('Please enter a geospatial question')
+        return
+      }
+      this.stream.startStream({
+        query,
+        countryCode: this.countryName,
+        snapshotDate: this.snapshotDate,
+      })
+    },
+
+    /** Human mode: synchronous POST (current behavior, unchanged). */
+    async executeSync() {
       this.loading = true
       this.error = null
       this.results = []
@@ -442,289 +572,17 @@ export default {
 </script>
 
 <style scoped>
-.search-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.search-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.search-form__row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.search-form__label {
-  font-size: 0.75rem;
-  color: #9ca3af;
-}
-
-.search-form__toggle {
-  display: flex;
-  gap: 0.3rem;
-}
-
-.search-form__toggle-btn {
-  flex: 1;
-  padding: 0.25rem 0.4rem;
-  border-radius: 999px;
-  border: 1px solid #374151;
-  background: transparent;
-  color: #e5e7eb;
-  font-size: 0.75rem;
+/* Minimal residual CSS — Bootstrap utilities cover the rest.
+   Only keep the cursor-pointer helper for <summary> (Bootstrap doesn't
+   provide a utility for this). */
+.cursor-pointer {
   cursor: pointer;
 }
 
-.search-form__toggle-btn--active {
-  border-color: #4f46e5;
-  background: #111827;
-}
-
-.search-form__textarea {
-  width: 100%;
-  padding: 0.4rem 0.5rem;
-  border-radius: 0.4rem;
-  border: 1px solid #1f2937;
-  background: #020617;
-  color: #e5e7eb;
-  font-size: 0.8rem;
-  resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-}
-
-.search-form__filters {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.4rem;
-}
-
-.search-form__filter {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.search-form__input {
-  width: 100%;
-  padding: 0.35rem 0.5rem;
-  border-radius: 0.4rem;
-  border: 1px solid #1f2937;
-  background: #020617;
-  color: #e5e7eb;
-  font-size: 0.8rem;
-}
-
-.search-form__options {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.search-form__checkbox {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.75rem;
-  color: #e5e7eb;
-}
-
-.search-form__submit {
-  align-self: flex-start;
-  padding: 0.4rem 1rem;
-  border-radius: 0.5rem;
-  border: none;
-  background: #4f46e5;
-  color: #f9fafb;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.search-form__submit[disabled] {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.search-form__error {
-  color: #fecaca;
-  font-size: 0.8rem;
-  margin: 0;
-}
-
-/* ── Results ── */
-
-.search-results {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.search-results__title {
-  margin: 0;
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.search-results__scroll {
-  max-height: 480px;
-  overflow-y: auto;
-  border-radius: 0.4rem;
-  border: 1px solid #1f2937;
-}
-
-.search-results__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.72rem;
-}
-
-.search-results__table th,
-.search-results__table td {
-  padding: 0.25rem 0.35rem;
-  border-bottom: 1px solid #111827;
-}
-
-.search-results__table th {
-  text-align: left;
-  color: #9ca3af;
-  position: sticky;
-  top: 0;
-  background: #020617;
-}
-
-.search-results__link {
-  color: #60a5fa;
-  text-decoration: none;
-}
-
-.search-results__link:hover {
-  text-decoration: underline;
-}
-
-.search-results__score-cell {
-  text-align: right;
-}
-
-.search-results__muted {
-  color: #6b7280;
-}
-
-.search-results__empty {
-  color: #9ca3af;
-  font-size: 0.8rem;
-}
-
-/* ── Parsed query (MapQA parser) ── */
-
-.parsed-query {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.5rem 0.6rem;
-  border-radius: 0.4rem;
-  border: 1px solid #1f2937;
-  background: #020617;
-}
-
-.parsed-query__header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.parsed-query__template {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #a5b4fc;
-}
-
-.parsed-query__confidence {
-  font-size: 0.68rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 999px;
-}
-
-.parsed-query__confidence--high {
-  background: #064e3b;
-  color: #6ee7b7;
-}
-
-.parsed-query__confidence--medium {
-  background: #78350f;
-  color: #fcd34d;
-}
-
-.parsed-query__confidence--low {
-  background: #7f1d1d;
-  color: #fca5a5;
-}
-
-.parsed-query__concepts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-}
-
-.parsed-query__concept {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.72rem;
-}
-
-.parsed-query__concept-type {
-  padding: 0.1rem 0.3rem;
-  border-radius: 0.25rem;
-  background: #1e293b;
-  color: #93c5fd;
-  font-weight: 600;
-}
-
-.parsed-query__concept-text {
-  color: #d1d5db;
-}
-
-/* ── Answer summary (MapQA executor) ── */
-
-.execute-answer {
-  padding: 0.5rem 0.6rem;
-  border-radius: 0.4rem;
-  border: 1px solid #064e3b;
-  background: #022c22;
-  font-size: 0.8rem;
-  color: #d1fae5;
-}
-
-.execute-answer strong {
-  color: #6ee7b7;
-}
-
-.execute-answer__trace {
-  margin-top: 0.4rem;
-  font-size: 0.72rem;
-  color: #9ca3af;
-}
-
-.execute-answer__trace summary {
-  cursor: pointer;
-  color: #6b7280;
-}
-
-.execute-answer__trace ol {
-  margin: 0.3rem 0 0 1rem;
-  padding-left: 0.5rem;
-}
-
-.execute-answer__trace li {
-  margin-bottom: 0.15rem;
-}
-
-.execute-answer__trace-error {
-  color: #fca5a5;
+/* The font-monospace utility uses Bootstrap's --bs-font-monospace; ensure
+   the textarea inherits a readable mono stack in dark mode. */
+.font-monospace {
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo,
+    Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace) !important;
 }
 </style>

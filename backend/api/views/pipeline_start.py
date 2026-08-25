@@ -170,66 +170,10 @@ class WorldKGPipelineV2StartView(APIView):
         }, status=status.HTTP_202_ACCEPTED)
 
 
-class PlanetInitializeView(APIView):
-    """POST /api/planet/initialize/
-
-    Planet initialization is now a Docker entrypoint step
-    (``python manage.py init_planet``) rather than a Celery canvas — see
-    ``docs/plans/CORE_APP_CONSOLIDATION_PLAN.md``. This endpoint is kept
-    as a status-only facade: it refuses to dispatch a new run and instead
-    reports the latest ``PlanetSnapshot`` status so the frontend can
-    surface it. To re-run init manually, exec into the backend container
-    and run ``python manage.py init_planet``.
-    """
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        from core.models import PlanetSnapshot
-
-        latest = (
-            PlanetSnapshot.objects.order_by("-snapshot_date").first()
-        )
-        return Response(
-            {
-                'status': 'noop',
-                'message': (
-                    'Planet init is now a Docker startup step '
-                    '(python manage.py init_planet). POST is a no-op. '
-                    'GET /api/planet/status/ for the latest snapshot status.'
-                ),
-                'latest_snapshot_date': (
-                    latest.snapshot_date_str if latest else None
-                ),
-                'latest_snapshot_status': latest.status if latest else None,
-            },
-            status=status.HTTP_410_GONE,
-        )
-
-
-class PlanetInitStatusView(APIView):
-    """GET /api/planet/status/<pipeline_run_id>/
-
-    Planet init no longer creates a ``PipelineRun`` row — status is now
-    tracked on ``PlanetSnapshot``. The path param is kept for URL
-    backwards-compat but ignored; we return the latest snapshot's status.
-    """
-    permission_classes = [AllowAny]
-
-    def get(self, request, pipeline_run_id):
-        from core.models import PlanetSnapshot
-
-        latest = PlanetSnapshot.objects.order_by("-snapshot_date").first()
-        if not latest:
-            return Response(
-                {'error': 'No PlanetSnapshot rows found — init_planet has not run yet.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        return Response({
-            'pipeline_run_id': str(latest.id),
-            'snapshot_date': latest.snapshot_date_str,
-            'status': latest.status,
-            'started_at': latest.created_at.isoformat() if latest.created_at else None,
-            'completed_at': latest.completed_at.isoformat() if latest.completed_at else None,
-        })
+# NOTE: Planet initialization (formerly steps 0a–0m) is a Docker startup
+# step — ``python manage.py init_planet`` via docker-entrypoint.sh. The
+# legacy POST /planet/initialize/ and GET /planet/status/<uuid>/ facades
+# were removed; readiness is served by GET /api/system/status/
+# (SystemStatusView) and derived from the latest finalized PlanetSnapshot.
 
 

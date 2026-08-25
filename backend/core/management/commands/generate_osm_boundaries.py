@@ -370,7 +370,7 @@ class Command(BaseCommand):
                 geojson_geom = _clip_to_land(geojson_geom, land_polygon)
 
             bbox = _compute_bbox_from_geometry(geojson_geom)
-            # TODO: resolve this in the prebuild steps 
+            # TODO: investigate this logic
             # Try multiple name variants — RegionHierarchy.name uses underscores
             # (e.g. "bosnia_herzegovina") but country_relations slugs use hyphens
             # (e.g. "bosnia-herzegovina").  Also try spaces for safety.

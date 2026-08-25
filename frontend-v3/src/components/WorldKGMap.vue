@@ -123,6 +123,13 @@ export default {
       type: Array,
       default: null,
     },
+    // When true (agent mode), the selected country renders with the
+    // unselected style so result markers are more visible. Selection
+    // state (selectedIds) is unchanged — only the visual emphasis.
+    hideSelectedBorder: {
+      type: Boolean,
+      default: false,
+    },
   },
   emits: ['countries-loaded', 'country-toggled', 'country-center', 'error'],
   data() {
@@ -212,6 +219,9 @@ export default {
     },
     visibleRelations() {
       this.renderAugmentedLinks()
+    },
+    hideSelectedBorder() {
+      this.refreshStyles()
     },
   },
   methods: {
@@ -326,7 +336,7 @@ export default {
         }
       }
 
-      if (isSelected) {
+      if (isSelected && !this.hideSelectedBorder) {
         return {
           fillColor: '#6366f1',
           fillOpacity: 0.5,

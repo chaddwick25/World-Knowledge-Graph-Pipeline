@@ -1,6 +1,7 @@
 from api.views.system import (
     InitialStatusView,
     SystemInitializeView,
+    SystemStatusView,
     RegionMapDataView,
 )
 from api.views.pbf import (
@@ -19,8 +20,6 @@ from api.views.snapshot import (
 from api.views.pipeline_start import (
     WorldKGPipelineStartView,
     WorldKGPipelineV2StartView,
-    PlanetInitializeView,
-    PlanetInitStatusView,
 )
 from api.views.pipeline_status import (
     WorldKGPipelineStatusView,
@@ -36,6 +35,7 @@ from api.views.pipeline_status import (
 __all__ = [
     'InitialStatusView',
     'SystemInitializeView',
+    'SystemStatusView',
     'RegionMapDataView',
     'PolygonFileListView',
     'PbfFileListView',
@@ -48,8 +48,6 @@ __all__ = [
     'TemporalExtractView',
     'WorldKGPipelineStartView',
     'WorldKGPipelineV2StartView',
-    'PlanetInitializeView',
-    'PlanetInitStatusView',
     'WorldKGPipelineStatusView',
     'WorldKGPipelineSummaryView',
     'WorldKGPipelineCountryStateView',

@@ -24,7 +24,6 @@ class CountryRelationResolver:
     Merges WorldKG SPARQL data with Geofabrik Index data to create a 
     definitive regional mapping file.
     """
-    #  TODO: remove hard coded path
     def __init__(self, output_path: str = "data/country_relations.json"):
         self.output_path = Path(output_path)
 

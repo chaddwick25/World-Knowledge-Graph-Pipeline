@@ -129,7 +129,6 @@ class OSMWikiDataHierarchy(models.Model):
         ordering = ['admin_level', 'name']
     
     def get_pbf_type(self):
-        # TODO: add comment that talks about how this structure comes from the wikidata/SPARQL 
         """Map admin_level to PbfFile type."""
         admin_level_map = {
             None: PbfFile.ExtractionLevel.PLANET,

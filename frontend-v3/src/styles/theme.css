@@ -1,0 +1,162 @@
+/*
+ * Bootstrap 5.3 dark-theme variable overrides for the WorldKG dark palette.
+ *
+ * Imported in main.js AFTER bootstrap/dist/css/bootstrap.css and
+ * bootstrap-vue-next.css. Sets data-bs-theme="dark" semantics so Bootstrap
+ * components (btn, badge, card, nav-tabs, alert, form-control) render in the
+ * existing slate/indigo/green/red palette without per-component CSS.
+ *
+ * This sheet is additive — it does not break existing scoped styles in
+ * sibling components (CSS vars are additive; explicit hex literals in scoped
+ * blocks still win where they appear). Sibling components can adopt these
+ * vars incrementally during their own Bootstrap migration passes.
+ *
+ * Palette source: full scan of every .vue file in frontend-v3/src/ — see
+ * docs/plans/FRONTEND_BOOTSTRAP_THEME_MIGRATION_PLAN.md §2.
+ */
+
+[data-bs-theme="dark"] {
+  /* ── Surfaces (dark slate, lightest → darkest) ── */
+  --bs-body-bg: #0f172a;
+  --bs-body-color: #e5e7eb;
+  --bs-secondary-color: #9ca3af;
+  --bs-tertiary-color: #6b7280;
+  --bs-secondary-bg: #111827;
+  --bs-tertiary-bg: #1f2937;
+  --bs-emphasis-bg: #020617;
+  --bs-border-color: #1f2937;
+  --bs-border-color-translucent: rgba(31, 41, 55, 0.5);
+
+  /* Cards / panels */
+  --bs-card-bg: #0a0f1e;
+  --bs-card-border-color: #1f2937;
+  --bs-card-color: #e5e7eb;
+  --bs-card-cap-bg: #020617;
+  --bs-card-cap-color: #f3f4f6;
+
+  /* ── Primary = indigo ── */
+  --bs-primary: #6366f1;
+  --bs-primary-rgb: 99, 102, 241;
+  --bs-primary-bg-subtle: rgba(99, 102, 241, 0.15);
+  --bs-primary-border-subtle: #6366f1;
+  --bs-primary-text-emphasis: #a5b4fc;
+  --bs-link-color: #818cf8;
+  --bs-link-hover-color: #a5b4fc;
+  --bs-link-color-rgb: 129, 140, 248;
+  --bs-link-hover-color-rgb: 165, 180, 252;
+
+  /* ── Semantic (Bootstrap 5.3 native vars) ── */
+  --bs-success: #22c55e;
+  --bs-success-rgb: 34, 197, 94;
+  --bs-success-bg-subtle: rgba(34, 197, 94, 0.15);
+  --bs-success-border-subtle: #22c55e;
+  --bs-success-text-emphasis: #4ade80;
+  --bs-success-text: #6ee7b7;
+
+  --bs-danger: #ef4444;
+  --bs-danger-rgb: 239, 68, 68;
+  --bs-danger-bg-subtle: rgba(239, 68, 68, 0.15);
+  --bs-danger-border-subtle: #ef4444;
+  --bs-danger-text-emphasis: #fca5a5;
+  --bs-danger-text: #fecaca;
+
+  --bs-warning: #eab308;
+  --bs-warning-rgb: 234, 179, 8;
+  --bs-warning-bg-subtle: rgba(234, 179, 8, 0.15);
+  --bs-warning-border-subtle: #eab308;
+  --bs-warning-text-emphasis: #fcd34d;
+  --bs-warning-text: #fde68a;
+
+  --bs-info: #3b82f6;
+  --bs-info-rgb: 59, 130, 246;
+  --bs-info-bg-subtle: rgba(59, 130, 246, 0.15);
+  --bs-info-border-subtle: #60a5fa;
+  --bs-info-text-emphasis: #93c5fd;
+  --bs-info-text: #bfdbfe;
+
+  /* ── Form controls ── */
+  --bs-form-control-bg: #020617;
+  --bs-form-control-border-color: #1f2937;
+  --bs-form-control-color: #e5e7eb;
+  --bs-form-control-disabled-bg: #111827;
+  --bs-form-control-disabled-color: #6b7280;
+  --bs-form-control-placeholder-color: #475569;
+  --bs-form-label-color: #9ca3af;
+
+  /* ── Nav / tabs ── */
+  --bs-nav-link-color: #9ca3af;
+  --bs-nav-link-hover-color: #e5e7eb;
+  --bs-nav-tabs-border-color: #1f2937;
+  --bs-nav-tabs-link-active-color: #e5e7eb;
+  --bs-nav-tabs-link-active-bg: #1f2937;
+  --bs-nav-tabs-link-active-border-color: #6366f1;
+
+  /* ── Badges ── */
+  --bs-badge-color: #e5e7eb;
+
+  /* ── Buttons ── */
+  --bs-btn-color: #e5e7eb;
+  --bs-btn-bg: #1f2937;
+  --bs-btn-border-color: #374151;
+  --bs-btn-hover-bg: #111827;
+  --bs-btn-hover-border-color: #6366f1;
+  --bs-btn-hover-color: #e5e7eb;
+  --bs-btn-active-bg: #1f2937;
+  --bs-btn-active-border-color: #6366f1;
+  --bs-btn-active-color: #e5e7eb;
+  --bs-btn-disabled-color: #6b7280;
+  --bs-btn-disabled-bg: #1f2937;
+  --bs-btn-disabled-border-color: #374151;
+
+  /* Primary button — indigo */
+  --bs-btn-primary-bg: #4f46e5;
+  --bs-btn-primary-border-color: #6366f1;
+  --bs-btn-primary-color: #fff;
+  --bs-btn-primary-hover-bg: #4338ca;
+  --bs-btn-primary-hover-border-color: #6366f1;
+  --bs-btn-primary-hover-color: #fff;
+  --bs-btn-primary-active-bg: #4338ca;
+  --bs-btn-primary-active-border-color: #818cf8;
+  --bs-btn-primary-active-color: #fff;
+
+  /* Outline secondary button */
+  --bs-btn-outline-secondary-color: #9ca3af;
+  --bs-btn-outline-secondary-border-color: #374151;
+  --bs-btn-outline-secondary-hover-bg: #1f2937;
+  --bs-btn-outline-secondary-hover-color: #e5e7eb;
+  --bs-btn-outline-secondary-hover-border-color: #6366f1;
+  --bs-btn-outline-secondary-active-bg: #1f2937;
+  --bs-btn-outline-secondary-active-color: #e5e7eb;
+  --bs-btn-outline-secondary-active-border-color: #6366f1;
+
+  /* ── Alerts ── */
+  --bs-alert-bg: var(--bs-emphasis-bg);
+  --bs-alert-border-color: var(--bs-border-color);
+
+  /* ── List groups (search results) ── */
+  --bs-list-group-bg: #020617;
+  --bs-list-group-border-color: #1f2937;
+  --bs-list-group-color: #e5e7eb;
+  --bs-list-group-action-hover-color: #f3f4f6;
+  --bs-list-group-action-hover-bg: #111827;
+  --bs-list-group-active-bg: #1f2937;
+  --bs-list-group-active-color: #e5e7eb;
+  --bs-list-group-active-border-color: #6366f1;
+
+  /* ── Modal ── */
+  --bs-modal-bg: #020617;
+  --bs-modal-border-color: #1f2937;
+  --bs-modal-color: #e5e7eb;
+  --bs-modal-header-border-color: #111827;
+  --bs-modal-footer-border-color: #111827;
+
+  /* ── Spinner ── */
+  --bs-spinner-color: #6366f1;
+
+  /* ── Headings ── */
+  --bs-heading-color: #f3f4f6;
+
+  /* ── Code ── */
+  --bs-code-color: #a5b4fc;
+  --bs-code-bg: #111827;
+}

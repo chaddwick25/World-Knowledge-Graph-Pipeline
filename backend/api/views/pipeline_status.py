@@ -434,15 +434,12 @@ class ValidationCostEstimateView(APIView):
 # ══════════════════════════════════════════════════════════════════════════
 
 
-class SnapshotDatesView(APIView):
-    """
-    GET /api/planet/snapshot-dates/
+def build_snapshot_dates_payload() -> dict:
+    """Settings-derived snapshot-date range + completed SnapshotJob dates.
 
-    Returns the snapshot date range (derived from settings) plus the set of
-    dates that have at least one completed ``SnapshotJob``. Replaces the
-    legacy filesystem scan of the ``continents/`` directory.
-
-    Response shape::
+    Shared by ``SnapshotDatesView`` and ``SystemStatusView`` so the home
+    page can hydrate its year selector from a single ``/system/status/``
+    ping. Returns::
 
         {
             "snapshot_dates": ["2025_12_31", "2024_12_31", ...],
@@ -451,37 +448,48 @@ class SnapshotDatesView(APIView):
             "count": 5
         }
     """
+    from django.conf import settings
+    from osmsnapshot.models import SnapshotJob
+
+    start_year = getattr(settings, 'SNAPSHOT_START_YEAR',
+                         getattr(settings, 'WORLDKG_SNAPSHOT_START_YEAR', 2021))
+    end_year = getattr(settings, 'SNAPSHOT_END_YEAR',
+                       getattr(settings, 'WORLDKG_SNAPSHOT_END_YEAR', 2025))
+    all_dates = [f"{y}_12_31" for y in range(end_year, start_year - 1, -1)]
+
+    try:
+        completed = sorted(
+            set(
+                SnapshotJob.objects.filter(
+                    status=SnapshotJob.Status.COMPLETED,
+                ).values_list('snapshot_date', flat=True).distinct()
+            ),
+            reverse=True,
+        )
+    except Exception as e:
+        logger.error(f"Failed to query completed SnapshotJobs: {e}")
+        completed = []
+
+    return {
+        'snapshot_dates': all_dates,
+        'completed_dates': completed,
+        'default': getattr(settings, 'SINGLE_SNAPSHOT_DATE', '2025_12_31'),
+        'count': len(all_dates),
+    }
+
+
+class SnapshotDatesView(APIView):
+    """
+    GET /api/planet/snapshot-dates/
+
+    Returns the snapshot date range (derived from settings) plus the set of
+    dates that have at least one completed ``SnapshotJob``. Replaces the
+    legacy filesystem scan of the ``continents/`` directory.
+    """
     permission_classes = [AllowAny]
 
     def get(self, request):
-        from django.conf import settings
-        from osmsnapshot.models import SnapshotJob
-
-        start_year = getattr(settings, 'SNAPSHOT_START_YEAR',
-                             getattr(settings, 'WORLDKG_SNAPSHOT_START_YEAR', 2021))
-        end_year = getattr(settings, 'SNAPSHOT_END_YEAR',
-                           getattr(settings, 'WORLDKG_SNAPSHOT_END_YEAR', 2025))
-        all_dates = [f"{y}_12_31" for y in range(end_year, start_year - 1, -1)]
-
-        try:
-            completed = sorted(
-                set(
-                    SnapshotJob.objects.filter(
-                        status=SnapshotJob.Status.COMPLETED,
-                    ).values_list('snapshot_date', flat=True).distinct()
-                ),
-                reverse=True,
-            )
-        except Exception as e:
-            logger.error(f"Failed to query completed SnapshotJobs: {e}")
-            completed = []
-
-        return Response({
-            'snapshot_dates': all_dates,
-            'completed_dates': completed,
-            'default': getattr(settings, 'SINGLE_SNAPSHOT_DATE', '2025_12_31'),
-            'count': len(all_dates),
-        })
+        return Response(build_snapshot_dates_payload())
 
 
 class SnapshotJobStatusView(APIView):

@@ -48,7 +48,7 @@ class CountryArtifact(models.Model):
     file_size_mb = models.FloatField(null=True, blank=True)
     file_hash = models.CharField(max_length=64, null=True, blank=True)
     
-    # TODO: Implement and test Cloud Storage Backup metadata
+    # TODO: remove this legacy code
     google_drive_path = models.TextField(null=True, blank=True)
     backup_confirmed = models.BooleanField(default=False)
     

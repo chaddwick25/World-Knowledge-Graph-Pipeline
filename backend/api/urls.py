@@ -11,6 +11,7 @@ from .views import (
     InitialStatusView,
     RegisterPlanetPbfView,
     SystemInitializeView,
+    SystemStatusView,
     RegionMapDataView,
     ExtractionChainView,
     CreatePbfExtractTaskView,
@@ -31,6 +32,9 @@ urlpatterns = [
     
     # System Initialization
     path('system/initialize/', SystemInitializeView.as_view(), name='system_initialize'),
+
+    # System Status (planet-init readiness + home-page hydration)
+    path('system/status/', SystemStatusView.as_view(), name='system_status'),
     
     # Recipe Builder - Region Map Data
     path('recipes/regions-map-data/', RegionMapDataView.as_view(), name='region_map_data'),
@@ -91,9 +95,7 @@ urlpatterns = [
     # WorldKG Pipeline v2 (Celery Canvas) — Country-Level
     path("worldkg-pipeline-v2/start/", views.WorldKGPipelineV2StartView.as_view(), name="worldkg_pipeline_v2_start"),
 
-    # Planet Initialization (Celery Canvas async)
-    path("planet/initialize/", views.PlanetInitializeView.as_view(), name="planet_initialize"),
-    path("planet/status/<uuid:pipeline_run_id>/", views.PlanetInitStatusView.as_view(), name="planet_init_status"),
+    # Planet snapshots
     path("planet/snapshot-dates/", views.SnapshotDatesView.as_view(), name="snapshot_dates"),
 
     # Snapshot Jobs (DB ground truth — TEMPORAL_SNAPSHOT_REFACTOR.md Phases C/D/E)
