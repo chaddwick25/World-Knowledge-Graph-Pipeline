@@ -317,7 +317,7 @@ INSTALLED_APPS = [
     'api',
     'vectors',
     'backend',
-    # 'toronto_data',
+    'geodata',
     'semantic_search',
     'worldkg_nca',
     'igea',
@@ -451,18 +451,16 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Toronto CKAN Configuration
-TORONTO_CKAN_CONFIG = {
-    'base_url': os.getenv('TORONTO_CKAN_BASE_URL', 'https://ckan0.cf.opendata.inter.prod-toronto.ca'),
-    'api_version': os.getenv('TORONTO_CKAN_API_VERSION', '3'),
-    'ssl_verify': os.getenv('TORONTO_CKAN_SSL_VERIFY', 'false').lower() == 'true',
-    'timeout': int(os.getenv('TORONTO_CKAN_TIMEOUT', '30')),
-    'user_agent': os.getenv('TORONTO_CKAN_USER_AGENT', 'EDA-Vector-Search-Toolkit/1.0'),
+# Geodata Configuration (replaces the legacy TORONTO_CKAN_CONFIG /
+# TORONTO_DATA_DIR / TORONTO_BULK_INSERT_BATCH_SIZE settings)
+GEODATA_CONFIG = {
+    # Download dir lives under BASE_DIR/data (resolves to /app/data in
+    # containers — see docs/.devin rules §2.7).
+    'download_dir': os.getenv('GEODATA_DIR', os.path.join(BASE_DIR, 'data', 'geodata')),
+    'bulk_insert_batch_size': int(os.getenv('GEODATA_BULK_INSERT_BATCH_SIZE', '1000')),
+    'default_ssl_verify': os.getenv('GEODATA_SSL_VERIFY', 'false').lower() == 'true',
+    'default_timeout': int(os.getenv('GEODATA_TIMEOUT', '30')),
 }
-
-# Toronto Data Download Settings
-TORONTO_DATA_DIR = os.getenv('TORONTO_DATA_DIR', os.path.join(BASE_DIR, 'toronto_data', 'data'))
-TORONTO_BULK_INSERT_BATCH_SIZE = int(os.getenv('TORONTO_BULK_INSERT_BATCH_SIZE', '1000'))
 
 # Temporal Snapshot Configuration
 # Default maximum temporal range for PBF files without explicit max_timestamp

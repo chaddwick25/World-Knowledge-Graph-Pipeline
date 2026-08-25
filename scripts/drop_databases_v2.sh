@@ -141,7 +141,7 @@ echo "  - backend/extraction/migrations/"
 echo "  - backend/analysis/migrations/"
 echo "  - backend/orchestration/migrations/"
 echo "  - backend/vectors/migrations/"
-echo "  - backend/toronto_data/migrations/"
+echo "  - backend/geodata/migrations/"
 echo "  - backend/semantic_search/migrations/"
 echo ""
 read -p "Do you want to remove migration files too? (yes/no): " remove_migrations
@@ -151,7 +151,7 @@ if [ "$remove_migrations" = "yes" ] || [ "$remove_migrations" = "y" ]; then
     cd backend
     
     # List of all Django apps with migrations
-    APPS=("extraction" "analysis" "orchestration" "vectors" "toronto_data" "semantic_search")
+    APPS=("extraction" "analysis" "orchestration" "vectors" "geodata" "semantic_search")
     
     for app in "${APPS[@]}"; do
         if [ -d "$app/migrations" ]; then

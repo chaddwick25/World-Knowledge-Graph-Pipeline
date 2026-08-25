@@ -46,7 +46,7 @@ docs
 *.bk
 
 # docs
-backend/toronto_data/data
+backend/data/geodata
 backend/backend/data
 
 *__pycache__ 
