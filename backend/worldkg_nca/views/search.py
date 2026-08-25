@@ -31,6 +31,8 @@ from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
 from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 
 
+***REMOVED*** TODO: Refactor this monolithic file
+
 ***REMOVED*** ── Name-search noise filtering helpers ──────────────────────────────────
 ***REMOVED*** OSM tag keys that assert an entity's type/identity.  Entities lacking ALL
 ***REMOVED*** of these keys are treated as noise in name-based search (e.g. a node with
