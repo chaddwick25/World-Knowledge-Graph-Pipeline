@@ -47,6 +47,7 @@
           <WorldKGMap
             :selected-ids="selectedCountryIds"
             :search-results="searchResults"
+            :query-graph="queryGraph"
             :augmented-links="augmentedLinks"
             :show-accepted-links="showAcceptedLinks"
             :show-rejected-links="showRejectedLinks"
@@ -248,6 +249,7 @@
                 :country-name="singleCountry.name"
                 :snapshot-date="selectedSnapshotDate"
                 @search-results="onSearchResults"
+                @query-graph="onQueryGraph"
               />
 
               <!-- Metrics tab -->
@@ -281,6 +283,7 @@
             :snapshot-date="selectedSnapshotDate"
             :agent-mode="true"
             @search-results="onSearchResults"
+            @query-graph="onQueryGraph"
           />
         </div>
       </aside>
@@ -361,6 +364,7 @@ export default {
       // ── Sidebar tabs ──
       activeTab: 'query',
       searchResults: [],
+      queryGraph: null,
 
       // ── Augmented links map overlay ──
       augmentedLinks: null,
@@ -487,6 +491,7 @@ export default {
         this.pipelineDoneStatus = null
         this.isPipelineRunning = false
         this.searchResults = []
+        this.queryGraph = null
         this.augmentedLinks = null
         this.showAcceptedLinks = false
         this.showRejectedLinks = false
@@ -747,6 +752,9 @@ export default {
     },
     onSearchResults(results) {
       this.searchResults = results
+    },
+    onQueryGraph(graph) {
+      this.queryGraph = graph
     },
     onLinksToggle({ links, showAccepted, showRejected, visibleRelations }) {
       this.augmentedLinks = links

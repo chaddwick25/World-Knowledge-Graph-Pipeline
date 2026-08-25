@@ -25,6 +25,9 @@ export const useAgentQueryStore = defineStore('agentQuery', {
     enrichment: null,
     // Executor result entities (for map markers via search-results emit).
     results: [],
+    // Executor execution trace (geocode steps carry the query anchors'
+    // coordinates — used by the anchor/entity map visualization).
+    trace: [],
     // Streaming phase label for the live "agent thinking" UX.
     // '' | 'connecting…' | 'parsed: …' | 'executed: …' | 'researching: …' | 'done'
     streamingPhase: '',
@@ -60,6 +63,9 @@ export const useAgentQueryStore = defineStore('agentQuery', {
     setResults(r) {
       this.results = Array.isArray(r) ? r : []
     },
+    setTrace(t) {
+      this.trace = Array.isArray(t) ? t : []
+    },
     setStreamingPhase(p) {
       this.streamingPhase = p
     },
@@ -84,6 +90,7 @@ export const useAgentQueryStore = defineStore('agentQuery', {
       this.executeAnswer = null
       this.enrichment = null
       this.results = []
+      this.trace = []
       this.streamingPhase = ''
       this.liveAnswer = ''
       this.steps = []

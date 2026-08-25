@@ -94,9 +94,35 @@
             </option>
           </select>
         </div>
-        <div class="col-6">
+      </div>
+
+      <!-- Top K results limit + anchor/entity graph layer toggles -->
+      <div class="d-flex flex-column gap-1">
+        <div class="d-flex align-items-center gap-2">
           <label class="form-label small text-secondary mb-0">Top K</label>
-          <input v-model="topK" type="number" min="1" max="100" class="form-control form-control-sm" />
+          <input
+            v-model.number="topK"
+            type="number"
+            min="1"
+            max="100"
+            class="form-control form-control-sm"
+            style="max-width: 90px;"
+          />
+          <span class="small text-secondary">max results to show</span>
+        </div>
+        <div v-if="hasQueryGraph" class="d-flex flex-wrap gap-3 align-items-center small">
+          <div class="form-check form-switch form-check-inline mb-0">
+            <input id="qg-show-anchors" v-model="showAnchors" type="checkbox" class="form-check-input" role="switch" />
+            <label class="form-check-label" for="qg-show-anchors">Anchors</label>
+          </div>
+          <div class="form-check form-switch form-check-inline mb-0">
+            <input id="qg-show-entities" v-model="showEntities" type="checkbox" class="form-check-input" role="switch" />
+            <label class="form-check-label" for="qg-show-entities">Entities</label>
+          </div>
+          <div class="form-check form-switch form-check-inline mb-0">
+            <input id="qg-show-links" v-model="showLinks" type="checkbox" class="form-check-input" role="switch" />
+            <label class="form-check-label" for="qg-show-links">Links</label>
+          </div>
         </div>
       </div>
 
@@ -286,7 +312,7 @@ export default {
       default: false,
     },
   },
-  emits: ['search-results'],
+  emits: ['search-results', 'query-graph'],
   setup() {
     const store = useAgentQueryStore()
     const stream = useTemplateQueryStream()
@@ -303,6 +329,10 @@ export default {
       lon: '',
       rdfType: null,
       topK: 20,
+      // Query-graph layer visibility (anchors / entities / links)
+      showAnchors: true,
+      showEntities: true,
+      showLinks: true,
       loading: false,
       error: null,
       results: [],
@@ -363,8 +393,17 @@ export default {
     displayTrace() {
       return this.agentMode ? [] : this.executeTrace
     },
+    /** Top K clamped to the backend-supported 1–100 range. */
+    topKClamped() {
+      return Math.min(100, Math.max(1, parseInt(this.topK, 10) || 20))
+    },
+    /** Normalized + top-k-capped results (table rows and map entities). */
     displayResults() {
-      return this.agentMode ? this.store.results : this.results
+      const raw = this.agentMode ? this.store.results : this.results
+      return raw.map((r) => this.normalizeResult(r)).slice(0, this.topKClamped)
+    },
+    hasQueryGraph() {
+      return this.displayResults.length > 0 || this.extractAnchors().length > 0
     },
     confidenceBadgeClass() {
       const c = this.displayParsedQuery?.confidence || 0
@@ -390,12 +429,29 @@ export default {
     countryName() {
       this.reset()
     },
-    // In agent mode, emit search-results when the store's results change
-    // (streaming 'done' event populates store.results).
-    'store.results'(newResults) {
-      if (this.agentMode) {
-        this.$emit('search-results', newResults)
-      }
+    // Agent mode: re-publish the anchor/entity graph as the streamed data
+    // arrives (results → entities, parsedQuery/trace → anchors).
+    'store.results'() {
+      if (this.agentMode) this.publishResults()
+    },
+    'store.parsedQuery'() {
+      if (this.agentMode) this.publishResults()
+    },
+    'store.trace'() {
+      if (this.agentMode) this.publishResults()
+    },
+    // Live controls: re-slice / re-toggle the emitted graph without re-querying.
+    topK() {
+      this.publishResults()
+    },
+    showAnchors() {
+      this.publishResults()
+    },
+    showEntities() {
+      this.publishResults()
+    },
+    showLinks() {
+      this.publishResults()
     },
   },
   unmounted() {
@@ -405,6 +461,9 @@ export default {
   },
   methods: {
     reset() {
+      this.showAnchors = true
+      this.showEntities = true
+      this.showLinks = true
       if (this.agentMode) {
         this.store.reset()
         this.stream.closeStream()
@@ -484,19 +543,10 @@ export default {
           if (data.result) {
             this.executeAnswer = data.result.answer || null
             this.executeTrace = data.result.trace || []
-            // Results from the executor (entities with lat/lon)
+            // Results from the executor (entities with lat/lon). Kept in
+            // full — the Top K control caps display/markers via the graph.
             if (data.result.results && Array.isArray(data.result.results)) {
-              this.results = data.result.results.map(r => ({
-                osm_type: r.osm_type,
-                osm_id: r.osm_id,
-                tags: r.tags,
-                wkg_class: r.wkg_class,
-                geom: (r.lat != null && r.lon != null)
-                  ? { lat: r.lat, lon: r.lon }
-                  : null,
-                scores: { final_score: null },
-                distance_m: r.distance_m,
-              }))
+              this.results = data.result.results.map((r) => this.normalizeResult(r))
             }
             if (data.result.error) {
               this.error = data.result.error
@@ -504,12 +554,12 @@ export default {
           }
 
           this.searched = true
-          this.$emit('search-results', this.results)
+          this.publishResults()
         } else {
           // Structured (JSON) and Natural language modes both use triplet search
           const payload = {
             country_code: this.countryName,
-            top_k: parseInt(this.topK) || 20,
+            top_k: this.topKClamped,
           }
 
           if (this.isTagsMode) {
@@ -538,9 +588,9 @@ export default {
           }
 
           const response = await axios.post('/nca/semantic-triplet-search/', payload)
-          this.results = response.data.results || []
+          this.results = (response.data.results || []).map((r) => this.normalizeResult(r))
           this.searched = true
-          this.$emit('search-results', this.results)
+          this.publishResults()
         }
       } catch (err) {
         console.error('Semantic search failed:', err)
@@ -548,6 +598,99 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+
+    // ── Anchor/entity query graph ─────────────────────────────────────
+
+    /** Normalize backend result shapes (executor: top-level lat/lon; triplet: geom). */
+    normalizeResult(r) {
+      const lat = r.geom?.lat ?? r.lat
+      const lon = r.geom?.lon ?? r.lon
+      return {
+        osm_type: r.osm_type,
+        osm_id: r.osm_id,
+        name: r.name || '',
+        tags: r.tags || {},
+        wkg_class: r.wkg_class || null,
+        geom: lat != null && lon != null ? { lat: Number(lat), lon: Number(lon) } : null,
+        scores: r.scores || { final_score: null },
+        distance_m: r.distance_m ?? null,
+      }
+    },
+
+    /** Anchors = geocoded named locations from the executor trace (geocode steps). */
+    extractAnchors() {
+      const trace = this.agentMode ? this.store.trace : this.executeTrace
+      const seen = new Set()
+      const anchors = []
+      for (const step of trace || []) {
+        if (step?.step !== 'geocode') continue
+        const out = step.output
+        const lat = out?.lat
+        const lon = out?.lon
+        if (lat == null || lon == null) continue
+        const name = step.input || 'anchor'
+        if (seen.has(name)) continue
+        seen.add(name)
+        anchors.push({ name, lat: Number(lat), lon: Number(lon) })
+      }
+      return anchors
+    },
+
+    /** Haversine distance in meters (nearest-anchor link assignment). */
+    _haversineM(a, b) {
+      const R = 6371000
+      const toRad = (d) => (d * Math.PI) / 180
+      const dLat = toRad(b.lat - a.lat)
+      const dLon = toRad(b.lon - a.lon)
+      const s =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2
+      return 2 * R * Math.asin(Math.sqrt(s))
+    },
+
+    /** Index of the anchor nearest to an entity (links entities to their anchor set). */
+    nearestAnchorIndex(entity, anchors) {
+      let best = 0
+      let bestDist = Infinity
+      anchors.forEach((a, i) => {
+        const d = this._haversineM(entity.geom, a)
+        if (d < bestDist) {
+          bestDist = d
+          best = i
+        }
+      })
+      return best
+    },
+
+    /** Build the anchor/entity graph payload consumed by WorldKGMap. */
+    buildQueryGraph(entities) {
+      const anchors = this.extractAnchors()
+      const links = anchors.length
+        ? entities
+            .filter((e) => e.geom)
+            .map((e) => ({
+              anchorIdx: this.nearestAnchorIndex(e, anchors),
+              entityIdx: entities.indexOf(e),
+            }))
+        : []
+      return {
+        anchors,
+        entities,
+        links,
+        showAnchors: this.showAnchors,
+        showEntities: this.showEntities,
+        showLinks: this.showLinks,
+        topK: this.topKClamped,
+      }
+    },
+
+    /** Emit normalized, top-k-capped entities + the anchor/entity graph. */
+    publishResults() {
+      const entities = this.displayResults
+      // Map markers (+ backward-compat circle fallback) — only entities with coords.
+      this.$emit('search-results', entities.filter((e) => e.geom))
+      this.$emit('query-graph', this.buildQueryGraph(entities))
     },
 
     formatTags(tags) {
