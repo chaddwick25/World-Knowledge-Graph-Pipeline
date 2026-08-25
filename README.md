@@ -288,57 +288,149 @@ romanization, worker configuration, fresh-database resets), see
  - Baseline tests: Ovid and Drift Tests
  - Add support for more languages
  - CityFM Support
- - MCP Agentic Orchestration
+ - Named-entity anchor resolution (unique business names → OSM coordinates)
 
  ---
 
 ## Agent Orchestration
 
-A local agent (Qwen 2.5 14B, ~35 tok/s) orchestrates the toolset
-above. The agent reasons in natural language, makes tool calls, and
-synthesizes results — no fine-tuning, no function-calling API, just
-prompt + tools. The same GeoFlow DAG engine runs under the hood; the
-agent adds reasoning before and interpretation after.
+A local agent (Qwen3 14B on Ollama, ~35 tok/s, RTX 4070 Ti Super) runs as
+Goose in Docker and orchestrates the MCP toolset at `http://localhost:5173/__mcp`.
+The agent reasons in natural language, makes tool calls, and synthesizes
+results — no fine-tuning, no vendor function-calling API, just prompt +
+tools. Data tools run in the Vite dev server (Node — headless capable);
+overlay tools run in the browser so the user SEES every step.
+
+| Tool | Runs in | Purpose |
+|---|---|---|
+| `structuredSearch` | Node | OSM tag query → entities with scores |
+| `nameSearch` | Node | Name query, any language/script (romanizer) → entities |
+| `templateQuery` | Node | Full geospatial question → parsed template + answer + enrichment |
+| `renderToolOverlay` | Browser | Draw a tool's output on the map (markers / radius / scaled) |
+| `proposeQuery` / `getApprovalState` | Browser | HITL approval of agent proposals before execution |
+
+### Worked example — real query against Belize data
+
+The example uses a generic amenity anchor ("cafes" + the city of Belize
+City) — anchors that are specific business names (e.g. "Kat's Coffee")
+need an anchor-resolution preprocessing step (future work: resolve a
+unique name to an OSM entity via `nameSearch`, then pass its coordinates
+as the anchor).
 
 ```
-User types: "Find Paris Baguette in Korea and tell me what's nearby"
+User: "Which cafes are within 50km of Belize City?"
 
-┌──────────────────────────────────────────────────────────┐
-│  Step 1: REQUEST                                         │
-│  Agent reads the question                                │
-└──────────────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Step 1: TOOL CALL — templateQuery (Node)                    │
+│  → {query: "Which cafes are within 50km of Belize City?",    │
+│     countryCode: "Belize"}                                   │
+│  Parser → FILTER-AGGREGATE-MEASURE (#1)                      │
+│    concepts: OBJECT=cafes · AMOUNT=50km · LOCATION=Belize    │
+│  Executor → geocode Belize City ✓ → radius filter ✓          │
+│  ← 18 entities within 50km, each with distance_m             │
+└──────────────────────────┬───────────────────────────────────┘
                            ▼
-┌──────────────────────────────────────────────────────────┐
-│  Step 2: AGENT REASONING                                 │
-│  "I need to find a place by name, then find what's       │
-│   nearby."                                               │
-└──────────────────────────┬───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Step 2: TOOL CALL — renderToolOverlay (Browser)             │
+│  → green markers for the 18 entities + 50km circle around    │
+│    Belize City        ← user SEES the radius                 │
+└──────────────────────────┬───────────────────────────────────┘
                            ▼
-┌──────────────────────────────────────────────────────────┐
-│  Step 3: TOOL CALL — nameSearch                          │
-│  → "paris bagueete" in Korea                             │
-│  ← Paris Baguette (파리바게뜨) at 37.5°N, 127.0°E       │
-└──────────────────────────┬───────────────────────────────┘
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│  Step 4: AGENT REASONING                                 │
-│  "Found it. Now I'll ask what's within 500m."            │
-└──────────────────────────┬───────────────────────────────┘
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│  Step 5: GEOFLOW DAG                                     │
-│  → "Which amenities are within 500m of 37.5, 127.0?"     │
-│  Parser classifies → template match → execution          │
-│  against WorldKG artifacts                               │
-│  ← 7 amenities within 500m                               │
-└──────────────────────────┬───────────────────────────────┘
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│  Step 6: AGENT SYNTHESIS                                 │
-│  "Paris Baguette is in Seoul. Within 500m there are      │
-│   3 cafes, 1 pharmacy, 2 bus stops, and 1 park."         │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Step 3: AGENT SYNTHESIS                                     │
+│  "18 cafes are within 50km of Belize City. The nearest is    │
+│   [name] at [distance] — the map shows the radius and the    │
+│   results."                                                  │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+(LLM answer enrichment is live: after the template result, the local model
+picks research tools from the toolset — `nameSearch` / `structuredSearch` —
+which execute against the same endpoints, then it synthesizes a grounded
+enriched answer. Fail-soft: if the model is down, the deterministic answer
+is returned unchanged. See `docs/plans/MCP_AGENT_MVP_PLAN.md`.)
+
+Key properties:
+
+- **Tool choice is the agent's** — the LLM picks which tools to call and in
+  what order; execution stays deterministic (the same endpoints the human
+  UI uses).
+- **Every step is visible** — data tools return structured JSON the agent
+  reasons over; overlay tools render on the map so the user can verify each
+  step before the final synthesis.
+- **Fail-soft everywhere** — if the model is down, the deterministic
+  answer is returned unchanged.
+- **Swap the model, keep the tools** — the tool surface is plain MCP; point
+  the same agent at DeepSeek/cloud via `LLM_BASE_URL` and nothing else
+  changes. See `docs/plans/MCP_AGENT_MVP_PLAN.md`.
+
+---
+
+## Platform LLM & Local Agent Stack
+
+### Docker services
+
+| Service | Image | Purpose |
+|---|---|---|
+| `ollama` | `ollama/ollama` | Local LLM server (`qwen3:14b`, `runtime: nvidia`, :11434) |
+| `goose` | `ghcr.io/block/goose` | MCP-native agent (on-demand, host networking → localhost reaches Vite + Ollama) |
+
+```bash
+docker compose up -d ollama
+docker compose exec ollama ollama pull qwen3:14b
+docker compose run --rm goose session            # interactive agent TUI
+docker compose run --rm goose run -t "Which cafes are within 50km of Belize City?"
+```
+
+The goose config lives at `goose/config/config.yaml` (mounted as a directory —
+goose rewrites it on session start). The agent connects to the Vite MCP server
+at `http://localhost:5173/__mcp` and uses Ollama as its model provider.
+
+### LLMService — provider-abstracted LLM client
+
+`backend/core/services/llm_service.py` talks to Ollama (default, native
+`/api/chat` with `think: false` — qwen3's thinking mode otherwise eats the
+token budget and returns empty content) or any OpenAI-compatible `/v1`
+endpoint. Config:
+
+| Env | Default | Meaning |
+|---|---|---|
+| `LLM_ENABLED` | `1` | Master switch |
+| `LLM_BASE_URL` | `http://localhost:11434/v1` | Endpoint (`http://ollama:11434/v1` in Docker) |
+| `LLM_MODEL` | `qwen3:14b` | Model tag |
+| `LLM_API_STYLE` | `native` | `native` (Ollama `/api/*`) or `openai` (`/v1/*`) for cloud swap |
+| `LLM_TIMEOUT` | `60.0` | Read timeout — cold model reloads take 5–15s |
+
+Every method is fail-soft (`None`/`False`) — callers always fall back to
+deterministic paths. Built on `requests` (no SDK — backend is Python 3.8).
+
+### LLM-driven answer enrichment (research loop)
+
+After a `templateQuery` result (e.g. "Found 18 entities within 50km."), the
+local model selects 1–2 research tools from the toolset — `nameSearch` /
+`structuredSearch` — which execute deterministically against the real
+endpoints, then the model synthesizes a grounded enriched answer. If the
+model selects nothing, a default action is derived from the result set
+(dominant amenity → structuredSearch), so research is forced whenever the
+model is up. Implementation: `backend/semantic_search/services/query_enrichment_service.py`.
+Verified live on Belize: 18 cafes within 50km of Belize City → enriched with
+the top cafe names from a `structuredSearch` research call.
+
+### MVP demo page
+
+`/agent` (`frontend-v3/src/views/AgentPlayground.vue`) — runs the same tools
+the agent calls (structured / name / template tabs), logs each step in the
+goose format, and renders results on a map via the shared `overlayStore`
+(overlays also appear on the main map at `/`). On load it auto-runs the
+startup demo query (Belize cafes).
+
+### Tests
+
+`backend/tests/unit/test_llm_service.py` + `test_query_enrichment_service.py`
+(50 tests): native/openai client shapes, fail-soft paths, tool-decision
+validation, forced-default research, JSON extraction, availability caching.
+`frontend-v3/scripts/mcp-smoke-test.mjs` exercises the MCP wire path exactly
+as Goose does.
 
 ---
  

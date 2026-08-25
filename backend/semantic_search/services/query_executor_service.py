@@ -16,6 +16,7 @@ import logging
 import math
 import re
 import time
+from typing import Optional
 
 from django.contrib.gis.geos import Point
 from django.contrib.gis.measure import D
@@ -137,6 +138,24 @@ class QueryExecutorService:
                 results = cls._enrich_results(results, trace)
 
             answer = cls._synthesize_answer(template, concepts, results, trace)
+
+            # LLM-driven enrichment: the platform LLM selects enrichment
+            # actions (class breakdown, named highlights, amenity context),
+            # they execute deterministically, and the LLM synthesizes an
+            # enriched answer. Fail-soft — the templated answer is kept on
+            # any failure (see query_enrichment_service.py).
+            enrichment = None
+            if question:
+                from semantic_search.services.query_enrichment_service import (
+                    QueryEnrichmentService,
+                )
+                enrichment = QueryEnrichmentService.enrich(
+                    question, template, concepts, results,
+                    country_code, snapshot_date,
+                )
+                if enrichment and enrichment.get("enriched_answer"):
+                    answer = enrichment["enriched_answer"]
+
             latency_ms = (time.monotonic() - start) * 1000
 
             logger.info("mapqa_execute", extra={
@@ -144,6 +163,7 @@ class QueryExecutorService:
                 "country_code": country_code,
                 "result_count": len(results) if isinstance(results, list) else 1,
                 "latency_ms": round(latency_ms, 1),
+                "enriched": bool(enrichment),
             })
 
             return {
@@ -152,6 +172,7 @@ class QueryExecutorService:
                 "answer": answer,
                 "trace": trace,
                 "latency_ms": round(latency_ms, 1),
+                "enrichment": enrichment,
             }
         except Exception as exc:
             logger.exception("mapqa_execute_error", extra={
@@ -1657,9 +1678,19 @@ class QueryExecutorService:
                            results: list, trace: list) -> str:
         """Generate a grounded natural-language answer.
 
-        Template-driven formatter (not an LLM call) — the 5 templates have
-        deterministic answer formats. Following [SPATIAL_AGENT:§F.2].
+        LLM-first, template fallback: when the platform LLM (Ollama, see
+        core/services/llm_service.py) is available, it composes a grounded
+        answer from the results + trace ([SPATIAL_AGENT:§F.2] a = L_gen(q, Σ_M,
+        F)). Any failure — model down, timeout, empty LLM output — falls back
+        to the deterministic per-template formatter below, so answers never
+        break because the local model is unavailable.
         """
+        llm_answer = QueryExecutorService._llm_synthesize_answer(
+            template, concepts, results, trace,
+        )
+        if llm_answer:
+            return llm_answer
+
         if not results:
             return "No results found."
         if isinstance(results, dict) and "error" in results:
@@ -1738,3 +1769,78 @@ class QueryExecutorService:
                 )
 
         return f"Found {count} results."
+
+    @staticmethod
+    def _llm_synthesize_answer(template: str, concepts: list,
+                               results: list, trace: list) -> Optional[str]:
+        """LLM-grounded answer synthesis — fail-soft, returns None on any error.
+
+        Only fires when there is actual result content to ground on (an empty
+        or error result adds nothing an LLM can say). The prompt receives a
+        compact, fully-serialized context so the LLM cannot hallucinate
+        counts or distances beyond what the executor produced.
+        """
+        if not results or (isinstance(results, dict) and "error" in results):
+            return None
+        try:
+            from core.services.llm_service import LLMService
+            llm = LLMService.get_instance()
+            if not llm.is_available():
+                return None
+
+            concept_lines = []
+            for c in concepts:
+                if c.get("text"):
+                    concept_lines.append(f"{c.get('type')}: {c.get('text')}")
+                elif c.get("type"):
+                    concept_lines.append(f"{c.get('type')}: (none)")
+
+            result_lines = []
+            if isinstance(results, list):
+                for r in results[:8]:
+                    name = r.get("name") or (r.get("tags") or {}).get("name") or "N/A"
+                    bits = [str(name)]
+                    if r.get("distance_m") is not None:
+                        bits.append(f"{float(r['distance_m']):.0f}m")
+                    if r.get("distance_km") is not None:
+                        bits.append(f"{float(r['distance_km']):.2f}km")
+                    if r.get("score") is not None:
+                        bits.append(f"score={r['score']:.3f}")
+                    if r.get("wkg_class"):
+                        bits.append(str(r["wkg_class"]))
+                    result_lines.append(" | ".join(bits))
+            elif isinstance(results, dict):
+                for k, v in list(results.items())[:8]:
+                    result_lines.append(f"{k}: {v}")
+
+            trace_steps = [t.get("step") for t in (trace or []) if t.get("step")]
+
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a geospatial reasoning assistant grounded in "
+                        "WorldKG pipeline output. Answer concisely in 1-3 "
+                        "sentences using ONLY the provided template, concepts, "
+                        "results, and execution trace. Never invent entities, "
+                        "distances, counts, or scores. If the results are "
+                        "insufficient, say so."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Template: {template}\n"
+                        f"Concepts: {', '.join(concept_lines) or '(none)'}\n"
+                        f"Results:\n" + ("\n".join(result_lines) or "(none)") +
+                        f"\nExecution trace: {', '.join(trace_steps) or '(none)'}\n"
+                        "Write the natural-language answer."
+                    ),
+                },
+            ]
+            answer = llm.chat(messages, temperature=0.2, max_tokens=200)
+            answer = (answer or "").strip()
+            return answer or None
+        except Exception as exc:  # noqa: BLE001 — answer synthesis must never break execute
+            logger.warning("LLM answer synthesis failed; using template formatter: %s", exc)
+            return None

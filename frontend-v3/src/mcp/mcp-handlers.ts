@@ -27,6 +27,9 @@ export function createMcpHandlers(callClient: CallClient<ClientFunctions>) {
     async getQueryProposal() {
       return await callClient("getQueryProposal");
     },
+    async renderToolOverlay(overlay: Record<string, unknown>) {
+      return await callClient("renderToolOverlay", overlay);
+    },
   };
 }
 

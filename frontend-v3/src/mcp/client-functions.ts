@@ -92,6 +92,13 @@ export function createClientFunctions(devtools: Devtools) {
         executionResult: store.executionResult,
       };
     },
+
+    // ── Agent overlay (domain-specific) ──
+    async renderToolOverlay(overlay: Record<string, unknown>) {
+      const { useOverlayStore } = await import("../stores/overlayStore");
+      const store = useOverlayStore();
+      return store.renderOverlay(overlay);
+    },
   };
 }
 

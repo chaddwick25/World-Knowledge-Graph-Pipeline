@@ -57,6 +57,7 @@
 import axios from 'axios'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { useOverlayStore } from '../stores/overlayStore'
 
 // ── Relation type color map ──────────────────────────────────────────────
 // Harmonious palette (Tailwind 400-500 range) that complements the app's
@@ -75,6 +76,13 @@ const RELATION_COLORS = {
 }
 const DEFAULT_RELATION_COLOR = '#6b7280'  // gray-500 for unknown relations
 
+// ── Agent overlay tool colors (docs/plans/MCP_AGENT_MVP_PLAN.md §9.2) ──
+const TOOL_COLORS = {
+  structuredSearch: '#3b82f6',  // blue
+  nameSearch: '#ef4444',        // red
+  templateQuery: '#10b981',     // green
+}
+
 function getRelationColor(relation) {
   return RELATION_COLORS[relation] || DEFAULT_RELATION_COLOR
 }
@@ -82,6 +90,7 @@ function getRelationColor(relation) {
 let mapInstance = null
 let geoJsonLayer = null
 let searchMarkersLayer = null
+let agentOverlayLayer = null
 let augmentedAcceptedLayer = null
 let augmentedRejectedLayer = null
 let countryLookup = {}
@@ -119,6 +128,8 @@ export default {
   data() {
     return {
       isLoading: true,
+      overlayStore: null,
+      overlayUnsub: null,
     }
   },
   computed: {
@@ -153,12 +164,23 @@ export default {
   mounted() {
     this.initMap()
     this.loadCountries()
+    // Agent overlays (MCP renderToolOverlay → overlayStore → this renderer)
+    this.overlayStore = useOverlayStore()
+    this.renderAgentOverlays()
+    this.overlayUnsub = this.overlayStore.$subscribe(() => {
+      this.renderAgentOverlays()
+    })
   },
   beforeUnmount() {
+    if (this.overlayUnsub) {
+      this.overlayUnsub()
+      this.overlayUnsub = null
+    }
     if (mapInstance) {
       mapInstance.remove()
       mapInstance = null
       searchMarkersLayer = null
+      agentOverlayLayer = null
       augmentedAcceptedLayer = null
       augmentedRejectedLayer = null
     }
@@ -234,6 +256,7 @@ export default {
         .addTo(mapInstance)
 
       searchMarkersLayer = L.layerGroup().addTo(mapInstance)
+      agentOverlayLayer = L.layerGroup().addTo(mapInstance)
       augmentedAcceptedLayer = L.layerGroup().addTo(mapInstance)
       augmentedRejectedLayer = L.layerGroup().addTo(mapInstance)
     },
@@ -357,6 +380,102 @@ export default {
 
       if (bounds.length) {
         mapInstance.fitBounds(bounds, { padding: [100, 100] })
+      }
+    },
+
+    // ── Agent overlay rendering (MCP renderToolOverlay → overlayStore) ──
+    normalizeOverlayEntities(overlay) {
+      // Accept either a raw data-tool result or an explicit entities list.
+      const raw = overlay.result || overlay.entities || []
+      const source = Array.isArray(raw)
+        ? raw
+        : raw.results || (raw.result && raw.result.results) || []
+      return source
+        .map((e) => ({
+          lat: e.lat != null ? e.lat : e.geom && e.geom.lat,
+          lon: e.lon != null ? e.lon : e.geom && e.geom.lon,
+          name:
+            e.name ||
+            (e.tags && e.tags.name) ||
+            `${e.osm_type || 'osm'} ${e.osm_id || ''}`.trim(),
+          wkgClass: e.wkg_class || e.wkgClass || null,
+          score:
+            e.score ??
+            (e.scores && e.scores.final_score) ??
+            e.diffusion_score ??
+            null,
+          distanceM: e.distance_m != null ? e.distance_m : e.distanceM,
+        }))
+        .filter((e) => e.lat != null && e.lon != null)
+    },
+
+    renderAgentOverlays() {
+      if (!mapInstance || !agentOverlayLayer || !this.overlayStore) return
+      agentOverlayLayer.clearLayers()
+
+      const bounds = []
+      for (const overlay of this.overlayStore.overlays) {
+        const color = overlay.color || TOOL_COLORS[overlay.tool] || '#6366f1'
+        const kind = overlay.kind || 'markers'
+        const entities = this.normalizeOverlayEntities(overlay)
+        const anchor = overlay.anchor || null
+
+        for (const e of entities) {
+          let marker
+          if (kind === 'scaled-markers') {
+            const score = e.score == null ? 0.5 : Math.min(Math.max(e.score, 0), 1)
+            marker = L.circleMarker([e.lat, e.lon], {
+              radius: 4 + Math.round(score * 12),
+              color,
+              fillColor: color,
+              fillOpacity: 0.7,
+              weight: 1.5,
+            })
+          } else {
+            marker = L.circleMarker([e.lat, e.lon], {
+              radius: 6,
+              color,
+              fillColor: color,
+              fillOpacity: 0.75,
+              weight: 2,
+            })
+          }
+          const popup = [`<strong>${e.name || 'entity'}</strong>`]
+          if (e.wkgClass) popup.push(`<span>${e.wkgClass}</span>`)
+          if (e.score != null) popup.push(`<span>score: ${Number(e.score).toFixed(3)}</span>`)
+          if (e.distanceM != null) popup.push(`<span>${Math.round(e.distanceM)} m</span>`)
+          marker.bindPopup(popup.join('<br/>'))
+          marker.addTo(agentOverlayLayer)
+          bounds.push([e.lat, e.lon])
+        }
+
+        if (kind === 'radius' && anchor && overlay.radius != null) {
+          L.circle([anchor.lat, anchor.lon], {
+            radius: overlay.radius,
+            color,
+            fillColor: color,
+            fillOpacity: 0.12,
+            weight: 2,
+          }).addTo(agentOverlayLayer)
+          bounds.push([anchor.lat, anchor.lon])
+        }
+
+        if (kind === 'markers-line' && anchor) {
+          for (const e of entities) {
+            L.polyline(
+              [
+                [anchor.lat, anchor.lon],
+                [e.lat, e.lon],
+              ],
+              { color, weight: 2, opacity: 0.7 },
+            ).addTo(agentOverlayLayer)
+          }
+          bounds.push([anchor.lat, anchor.lon])
+        }
+      }
+
+      if (bounds.length) {
+        mapInstance.fitBounds(bounds, { padding: [80, 80] })
       }
     },
 

@@ -95,6 +95,8 @@ services:
       - MAPQA_PARSER_DATA_DIR=/app/data/mapqa_parser
       - RUN_MIGRATIONS=true
       - RUN_INIT_PLANET=true
+      - LLM_BASE_URL=http://ollama:11434/v1
+      - LLM_MODEL=qwen3:14b
     ports:
       - "8000:8000"
     volumes:
@@ -147,6 +149,8 @@ services:
       - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
       - RUN_MIGRATIONS=false
       - RUN_INIT_PLANET=false
+      - LLM_BASE_URL=http://ollama:11434/v1
+      - LLM_MODEL=qwen3:14b
     volumes:
       - ./backend:/app
       - backend_venv:/app/.venv
@@ -167,6 +171,67 @@ services:
     restart: unless-stopped
     command: celery -A pipeline.celery_app worker --loglevel=info --pool=prefork --concurrency=4 --max-memory-per-child=8589934592
 
+  # Local LLM server (RTX 4070 Ti) — OpenAI-compatible API on :11434.
+  # The MCP agent (goose) uses this for the reasoning model.
+  ollama:
+    image: ollama/ollama
+    container_name: eda-ollama
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      # 4070 Ti Super (16GB): qwen3:14b Q4 ≈ 9GB resident. One parallel slot,
+      # one resident model, and a short keep-alive so VRAM frees up shortly
+      # after agent use (eda-worker runs GPU pipeline jobs on the same card).
+      - OLLAMA_KEEP_ALIVE=10m
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_MAX_QUEUE=32
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Local MCP agent (Block Goose) — connects to the Vite MCP server at
+  # /__mcp and to Ollama. host networking: localhost reaches both the
+  # Vite dev server (:5173) and Ollama (:11434) directly on Linux.
+  #
+  # NOTE: this is an ON-DEMAND service, not a daemon — the goose image's
+  # default command (`goose --help`) exits immediately, so it must NOT have
+  # `restart: unless-stopped` (crash-loop). Use:
+  #   docker compose run --rm goose session            # interactive TUI
+  #   docker compose run --rm goose run -t "..."       # headless
+  #
+  # The config dir is mounted as a DIRECTORY (not a file): goose rewrites
+  # config.yaml on session start (telemetry choice, paths), and atomic
+  # renames fail against a single-file bind mount ("Device or resource
+  # busy").
+  goose:
+    image: ghcr.io/block/goose:latest
+    container_name: eda-goose
+    network_mode: host
+    environment:
+      - GOOSE_PROVIDER=ollama
+      - GOOSE_MODEL=qwen3:14b
+      - OLLAMA_HOST=http://localhost:11434
+      - GOOSE_TELEMETRY_OPT_IN=false
+    volumes:
+      - ./goose/config:/home/goose/.config/goose
+      - ./goose:/workspace/goose
+    working_dir: /workspace/goose
+    stdin_open: true
+    tty: true
+    depends_on:
+      ollama:
+        condition: service_started
+    restart: "no"
+
 volumes:
   backend_venv:
   polygon_files:
+  ollama_models:

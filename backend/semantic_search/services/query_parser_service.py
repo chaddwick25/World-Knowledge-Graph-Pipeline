@@ -17,6 +17,7 @@ Implements MAPQA_TO_EXECUTION_PLAN.md §1.2.2 and MAPQA_PARSER_BUILD_ORDER.md §
 
 import json
 import logging
+import os
 import pickle
 import re
 from pathlib import Path
@@ -104,6 +105,23 @@ class QueryParserService:
 
         # Stage 2: extract concepts
         concepts = self._extract_concepts(question, template)
+
+        # Stage 2b: LLM refinement for low-confidence parses. The trained
+        # TF-IDF/NB classifier is confident on template-bearing phrasings but
+        # degrades on novel wording; when its confidence is below the
+        # threshold, ask the platform LLM (Ollama — see
+        # core/services/llm_service.py) to re-classify template + concepts.
+        # Any failure, invalid output, or disabled model keeps the heuristic
+        # parse — the LLM is an accelerator, never a single point of failure.
+        if confidence < self._llm_fallback_threshold():
+            refined = self._llm_refine(question, template, concepts)
+            if refined is not None:
+                template, concepts = refined
+                # Re-apply the deterministic radius override invariant — the
+                # LLM must not route "within X of" away from
+                # FILTER-AGGREGATE-MEASURE (#1).
+                if re.search(r"\bwithin\s+\d+\s*(km|m)\b", question, re.IGNORECASE):
+                    template = "FILTER-AGGREGATE-MEASURE (#1)"
 
         # Stage 3: assign roles
         roles = self._assign_roles(question, template, concepts)
@@ -431,6 +449,101 @@ class QueryParserService:
             "constraints_checked": ["G2"],
             "constraints_satisfied_by_construction": ["G1", "G3", "G4", "G5"],
         }
+
+    # ── LLM refinement ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _llm_fallback_threshold() -> float:
+        """Confidence below which the LLM may refine a parse (env-tunable)."""
+        try:
+            return float(os.environ.get("MAPQA_LLM_FALLBACK_CONFIDENCE", 0.5))
+        except (TypeError, ValueError):
+            return 0.5
+
+    def _llm_refine(self, question: str, template: str, concepts: list):
+        """Ask the LLM to re-classify a low-confidence parse.
+
+        Returns (template, concepts) on success, None on any failure — the
+        heuristic parse is always retained as the fallback. The LLM's template
+        is validated against the trained classifier's label set, and concept
+        types against CONCEPT_TYPES, so garbage output cannot corrupt the DAG.
+        """
+        try:
+            from core.services.llm_service import LLMService
+            llm = LLMService.get_instance()
+            if not llm.is_available():
+                return None
+
+            # sklearn's classes_ are a numpy array — normalize to plain str so
+            # `not in` works, and check `is not None` (NOT truthiness, which
+            # raises "ambiguous truth value" on multi-element arrays).
+            classes = getattr(self.label_encoder, "classes_", None)
+            valid_templates = [str(t) for t in classes] if classes is not None else []
+            if not valid_templates:
+                valid_templates = [template]  # no label set → at least keep current
+
+            heuristic_summary = ", ".join(
+                f"{c.get('type')}: {c.get('text') or '(none)'}" for c in concepts
+            ) or "(none)"
+
+            data = llm.chat_json([
+                {
+                    "role": "system",
+                    "content": (
+                        "You classify geospatial questions for the MapQA "
+                        "parser. Respond with STRICT JSON only: "
+                        '{"template": "<exact template name>", '
+                        '"concepts": [{"type": "LOCATION|OBJECT|FIELD|EVENT|'
+                        'NETWORK|AMOUNT|PROPORTION", "text": "<span or null>"}]}. '
+                        "Use only the exact template names given. Do not add "
+                        "prose or markdown."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Question: {question}\n"
+                        f"Heuristic template: {template}\n"
+                        f"Heuristic concepts: {heuristic_summary}\n"
+                        f"Valid template names: {', '.join(valid_templates)}\n"
+                        "Re-classify the template and extract concepts."
+                    ),
+                },
+            ], temperature=0.0, max_tokens=300)
+            if not data or not isinstance(data, dict):
+                return None
+
+            new_template = data.get("template")
+            if new_template not in valid_templates:
+                logger.info(
+                    "LLM refine rejected: template %r not in label set", new_template
+                )
+                return None
+
+            new_concepts = []
+            for c in data.get("concepts") or []:
+                if not isinstance(c, dict):
+                    continue
+                ctype = c.get("type")
+                ctext = (c.get("text") or "").strip() or None
+                if ctype in CONCEPT_TYPES:
+                    new_concepts.append({
+                        "type": ctype,
+                        "text": ctext,
+                        "confidence": 1.0,
+                        "resolved_value": None,
+                    })
+            if not new_concepts:
+                return None
+
+            logger.info(
+                "LLM parser refinement applied: %s → %s (%d concepts)",
+                template, new_template, len(new_concepts),
+            )
+            return new_template, new_concepts
+        except Exception as exc:  # noqa: BLE001 — refinement must never break parse
+            logger.warning("LLM parser refinement failed; keeping heuristic parse: %s", exc)
+            return None
 
     # ── Loading helpers ─────────────────────────────────────────────────────
 
