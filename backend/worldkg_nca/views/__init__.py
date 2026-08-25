@@ -18,6 +18,8 @@ from worldkg_nca.views.search import (
     worldkg_semantic_query_plan,
     worldkg_subdivisions,
     execute_query,
+    execute_query_stream,
+    factor_availability,
 )
 from worldkg_nca.views.graph import (
     spectral_query,
@@ -44,6 +46,8 @@ __all__ = [
     'worldkg_semantic_query_plan',
     'worldkg_subdivisions',
     'execute_query',
+    'execute_query_stream',
+    'factor_availability',
     'spectral_query',
     'temporal_query',
     'community_query',
