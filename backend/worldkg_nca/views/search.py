@@ -1,6 +1,12 @@
+import json
+import queue
+import threading
+
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from django.http import JsonResponse, StreamingHttpResponse
+from django.views.decorators.http import require_GET
 from django.core.paginator import Paginator
 from django.db.models import FloatField, Q, Value, F
 from django.db.models.expressions import RawSQL, Func
@@ -1032,6 +1038,137 @@ def execute_query(request):
         "parsed": parsed,
         "result": result,
     })
+
+
+@api_view(["GET"])
+def factor_availability(request):
+    """Factor-table coverage for a (country, snapshot) — the G4 check.
+
+    GET /api/nca/factor-availability/?country_code=BZ&snapshot_date=2025_12_31
+
+    Returns booleans per latent-space table so an agent can verify data
+    availability BEFORE proposing a branch that would fail G4:
+        {country_code, snapshot_date,
+         spectral, drift, amenity_embeddings, entity_embeddings}
+    """
+    country_code = (request.GET.get("country_code") or "").upper().strip()
+    snapshot_date = request.GET.get("snapshot_date")
+    if not country_code:
+        return Response({"error": "country_code required"},
+                        status=status.HTTP_400_BAD_REQUEST)
+    if not snapshot_date:
+        snapshot_date = get_latest_snapshot_id()
+
+    from django.db import connections
+    cur = connections["vectors"].cursor()
+
+    def exists(table, where, params):
+        cur.execute(f"SELECT 1 FROM {table} WHERE {where} LIMIT 1", params)
+        return cur.fetchone() is not None
+
+    spectral = exists(
+        "factor_spectral_node_metric",
+        "country_code = %s AND snapshot_id = %s",
+        [country_code, snapshot_date],
+    )
+    # DriftNodeMetric keys on snapshot_to_id (no snapshot_id column).
+    drift = exists(
+        "factor_drift_node_metric",
+        "country_code = %s AND snapshot_to_id = %s",
+        [country_code, snapshot_date],
+    )
+    amenity_embeddings = exists(
+        "factor_amenity_embedding", "1 = 1", [],
+    )
+    entity_embeddings = exists(
+        "semantic_search_osmentity",
+        "country_code = %s AND snapshot_id = %s "
+        "AND gv_tags_embedding IS NOT NULL",
+        [country_code, snapshot_date],
+    )
+    return Response({
+        "country_code": country_code,
+        "snapshot_date": snapshot_date,
+        "spectral": spectral,
+        "drift": drift,
+        "amenity_embeddings": amenity_embeddings,
+        "entity_embeddings": entity_embeddings,
+    })
+
+
+@require_GET
+def execute_query_stream(request):
+    """Streaming execute-query over SSE (Server-Sent Events).
+
+    GET /api/nca/execute-query/stream/?query=...&country_code=...&snapshot_date=...
+
+    Emits progressive events so the frontend shows the agent working instead
+    of a spinner:
+        event: parsed        data: {parsed}
+        event: executed      data: {template, result_count, trace}
+        event: research      data: {tool, args}
+        event: research_out  data: {tool, output}
+        event: answer_delta  data: {delta}
+        event: done          data: {result}          (full result JSON)
+        event: error         data: {error}
+
+    The pipeline runs in a worker thread; events flow through a queue to the
+    response generator (StreamingHttpResponse). Same phases as
+    ``execute_query`` — parser → executor → LLM enrichment research loop.
+    """
+    query_text = (request.GET.get("query") or "").strip()
+    country_code = request.GET.get("country_code") or None
+    snapshot_date = request.GET.get("snapshot_date") or None
+
+    if not query_text:
+        return JsonResponse({"error": "query required"}, status=400)
+
+    def event_stream():
+        events = queue.Queue(maxsize=128)
+
+        def emit(event: str, **payload):
+            events.put({"event": event, **payload})
+
+        def run():
+            try:
+                from semantic_search.services.query_parser_service import QueryParserService
+                from semantic_search.services.query_executor_service import QueryExecutorService
+
+                # Local aliases — assigning to the closure vars would make
+                # them local to run() (UnboundLocalError on read).
+                cc = country_code
+                if cc:
+                    try:
+                        cc = resolve_iso_code(cc)
+                    except Exception:
+                        pass  # use as-is if resolution fails
+
+                parser = QueryParserService.get_instance()
+                parsed = parser.parse(query_text)
+                emit("parsed", parsed=parsed)
+
+                result = QueryExecutorService.execute(
+                    parsed, cc, snapshot_date,
+                    question=query_text, event_callback=emit,
+                )
+                emit("done", result=result)
+            except Exception as exc:  # noqa: BLE001 — surface errors as an SSE event
+                emit("error", error=str(exc))
+            finally:
+                events.put(None)  # sentinel
+
+        threading.Thread(target=run, daemon=True).start()
+
+        while True:
+            item = events.get()
+            if item is None:
+                break
+            yield f"event: {item['event']}\ndata: {json.dumps(item, default=str)}\n\n"
+
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
 
 @api_view(['GET'])

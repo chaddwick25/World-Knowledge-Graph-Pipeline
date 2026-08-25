@@ -102,9 +102,18 @@
             Run a query to see the agent's tool calls.
           </div>
           <ol class="agent-log__list">
-            <li v-for="(step, i) in steps" :key="i" class="agent-step">
-              <div class="agent-step__tool">▸ {{ step.tool }} worldkg-mcp</div>
+            <li
+              v-for="step in steps"
+              :key="step.id"
+              class="agent-step"
+              :class="{ 'agent-step--running': step.running }"
+            >
+              <div class="agent-step__tool">
+                ▸ {{ step.tool }} worldkg-mcp
+                <span v-if="step.running" class="agent-step__spinner">⠋ {{ streamingPhase }}</span>
+              </div>
               <pre class="agent-step__params">{{ step.paramsText }}</pre>
+              <pre v-if="step.live" class="agent-step__live">{{ step.live }}</pre>
               <div v-if="step.error" class="agent-step__error">✗ {{ step.error }}</div>
               <div v-else-if="step.summary" class="agent-step__result">{{ step.summary }}</div>
             </li>
@@ -151,6 +160,10 @@ export default {
       mode: 'structured',
       running: false,
       steps: [],
+      stepSeq: 0,
+      activeEs: null,
+      liveAnswer: '',
+      streamingPhase: '',
       structured: { countryCode: 'Belize', queryTags: '{"amenity": "cafe"}' },
       nameSearch: { countryCode: 'Belize', naturalQuery: "Kat's Coffee" },
       templateQuery: {
@@ -172,6 +185,10 @@ export default {
     this.runDemo()
   },
   beforeUnmount() {
+    if (this.activeEs) {
+      this.activeEs.close()
+      this.activeEs = null
+    }
     if (this.overlayUnsub) {
       this.overlayUnsub()
       this.overlayUnsub = null
@@ -294,33 +311,126 @@ export default {
     },
 
     async runTemplateQuery() {
-      const payload = { query: this.templateQuery.question }
-      if (this.templateQuery.countryCode) payload.country_code = this.templateQuery.countryCode
-      const resp = await axios.post('/nca/execute-query/', payload)
-      const data = resp.data
-      const parsed = data.parsed || {}
-      const result = data.result || {}
-      const enrichment = result.enrichment
-      let summary =
-        `template=${parsed.template} · ${result.answer || result.error || 'no answer'}`
-      if (enrichment && enrichment.actions && enrichment.actions.length) {
-        summary += ` · ✦ enriched via ${enrichment.actions.join(', ')}`
+      // Streaming path: EventSource over SSE — the user sees the agent work
+      // (parsed → executed → research → answer tokens) instead of a spinner.
+      this.liveAnswer = ''
+      this.streamingPhase = 'connecting…'
+      const params = {
+        query: this.templateQuery.question,
+        countryCode: this.templateQuery.countryCode || undefined,
       }
-      this.logStep(
-        'templateQuery',
-        { query: this.templateQuery.question, countryCode: this.templateQuery.countryCode || undefined },
-        summary,
-      )
-      this.pushOverlay('templateQuery', result)
-      return data
+      const stepId = ++this.stepSeq
+      this.steps.push({
+        id: stepId,
+        tool: 'templateQuery',
+        paramsText: JSON.stringify(params, null, 2),
+        summary: '',
+        running: true,
+        live: '',
+      })
+
+      if (this.activeEs) this.activeEs.close()
+
+      // EventSource is GET-only and can't use axios's baseURL — build the
+      // full backend URL explicitly (same base axios uses).
+      const base = axios.defaults.baseURL || 'http://localhost:8000/api'
+      const url = `${base}/nca/execute-query/stream/?` +
+        `query=${encodeURIComponent(this.templateQuery.question)}` +
+        (this.templateQuery.countryCode
+          ? `&country_code=${encodeURIComponent(this.templateQuery.countryCode)}`
+          : '')
+      const es = new EventSource(url)
+      this.activeEs = es
+
+      const step = () => this.steps.find((s) => s.id === stepId)
+
+      es.addEventListener('parsed', (e) => {
+        const parsed = JSON.parse(e.data).parsed || {}
+        this.streamingPhase = `parsed: ${parsed.template || '?'}`
+        const s = step()
+        if (s) s.live = `▸ template: ${parsed.template || '?'}`
+      })
+
+      es.addEventListener('executed', (e) => {
+        const d = JSON.parse(e.data)
+        this.streamingPhase = `executed: ${d.result_count} results`
+        const s = step()
+        if (s) s.live = `${s.live || ''}\n▸ ${d.result_count} results`
+      })
+
+      es.addEventListener('research', (e) => {
+        const d = JSON.parse(e.data)
+        this.streamingPhase = `researching: ${d.tool}`
+        const s = step()
+        if (s) s.live = `${s.live || ''}\n▸ research: ${d.tool}`
+      })
+
+      es.addEventListener('research_out', (e) => {
+        const d = JSON.parse(e.data)
+        const out = Array.isArray(d.output)
+          ? `${d.output.length} entities`
+          : 'no output'
+        const s = step()
+        if (s) s.live = `${s.live || ''}\n▸ ${d.tool} → ${out}`
+      })
+
+      es.addEventListener('answer_delta', (e) => {
+        const d = JSON.parse(e.data)
+        this.liveAnswer += d.delta || ''
+        const s = step()
+        if (s) s.live = `${s.live || ''}\n▸ ${this.liveAnswer}`
+      })
+
+      es.addEventListener('done', (e) => {
+        const result = (JSON.parse(e.data).result) || {}
+        const enrichment = result.enrichment
+        let summary =
+          `template=${result.template || '?'} · ${result.answer || result.error || 'no answer'}`
+        if (enrichment && enrichment.actions && enrichment.actions.length) {
+          summary += ` · ✦ enriched via ${enrichment.actions.join(', ')}`
+        }
+        const s = step()
+        if (s) {
+          s.summary = summary
+          s.running = false
+          s.live = ''
+        }
+        this.streamingPhase = ''
+        this.liveAnswer = ''
+        this.activeEs = null
+        es.close()
+        this.pushOverlay('templateQuery', result)
+      })
+
+      es.addEventListener('error', (e) => {
+        let msg = 'stream error'
+        try {
+          msg = JSON.parse(e.data).error || msg
+        } catch {
+          /* no data payload — network error */
+        }
+        const s = step()
+        if (s) {
+          s.error = msg
+          s.running = false
+          s.live = ''
+        }
+        this.streamingPhase = ''
+        this.liveAnswer = ''
+        this.activeEs = null
+        es.close()
+      })
     },
 
     logStep(tool, params, summary, error) {
       this.steps.push({
+        id: ++this.stepSeq,
         tool,
         paramsText: JSON.stringify(params, null, 2),
         summary: summary || '',
         error,
+        running: false,
+        live: '',
       })
     },
 
@@ -593,11 +703,31 @@ export default {
   background: #0b1424;
 }
 
+.agent-step--running {
+  border-color: #4f46e5;
+}
+
 .agent-step__tool {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.78rem;
   font-weight: 700;
   color: #a5b4fc;
+}
+
+.agent-step__spinner {
+  color: #818cf8;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-left: 0.4rem;
+}
+
+.agent-step__live {
+  margin: 0.4rem 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  color: #a5b4fc;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .agent-step__params {

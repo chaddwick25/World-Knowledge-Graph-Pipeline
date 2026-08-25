@@ -145,7 +145,11 @@ services:
       - PLANET_OSM_FILE_PATH=/app/data/OSM-PBF-FILES/planet/history-260209.osm.pbf
       - FASTTEXT_MODEL_PATH=/app/data/OSM-PBF-FILES/models/fasttext/cc.en.300.bin
       - MAPQA_PARSER_DATA_DIR=/app/data/mapqa_parser
-      - NVIDIA_VISIBLE_DEVICES=all
+      # GPU 0 = RTX 2070 (8 GB) — the pipeline's dedicated card. GPU 1
+      # (4070 Ti Super, 16 GB) is reserved for the application side
+      # (ollama LLM serving) to eliminate VRAM contention with serving.
+      - NVIDIA_VISIBLE_DEVICES=0
+      - GV_NLE_GPU_DEVICES=cuda:0
       - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
       - RUN_MIGRATIONS=false
       - RUN_INIT_PLANET=false
@@ -178,12 +182,12 @@ services:
     container_name: eda-ollama
     runtime: nvidia
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      # 4070 Ti Super (16GB): qwen3:14b Q4 ≈ 9GB resident. One parallel slot,
-      # one resident model, and a short keep-alive so VRAM frees up shortly
-      # after agent use (eda-worker runs GPU pipeline jobs on the same card).
-      - OLLAMA_KEEP_ALIVE=10m
-      - OLLAMA_NUM_PARALLEL=1
+      # Dedicated to the 4070 Ti Super (16 GB) — the application side.
+      # 14B Q4 ≈ 9 GB with headroom for 2 parallel KV caches; the model
+      # stays resident (keep_alive=-1) since the pipeline uses GPU 0.
+      - NVIDIA_VISIBLE_DEVICES=1
+      - OLLAMA_KEEP_ALIVE=-1
+      - OLLAMA_NUM_PARALLEL=2
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_MAX_QUEUE=32
     ports:

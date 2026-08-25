@@ -348,7 +348,7 @@ User: "Which cafes are within 50km of Belize City?"
 picks research tools from the toolset — `nameSearch` / `structuredSearch` —
 which execute against the same endpoints, then it synthesizes a grounded
 enriched answer. Fail-soft: if the model is down, the deterministic answer
-is returned unchanged. See `docs/plans/MCP_AGENT_MVP_PLAN.md`.)
+is returned unchanged. See `docs/plans/completed/MCP_AGENT_MVP_PLAN.md`.)
 
 Key properties:
 
@@ -362,7 +362,7 @@ Key properties:
   answer is returned unchanged.
 - **Swap the model, keep the tools** — the tool surface is plain MCP; point
   the same agent at DeepSeek/cloud via `LLM_BASE_URL` and nothing else
-  changes. See `docs/plans/MCP_AGENT_MVP_PLAN.md`.
+  changes. See `docs/plans/completed/MCP_AGENT_MVP_PLAN.md`.
 
 ---
 
@@ -400,6 +400,7 @@ endpoint. Config:
 | `LLM_MODEL` | `qwen3:14b` | Model tag |
 | `LLM_API_STYLE` | `native` | `native` (Ollama `/api/*`) or `openai` (`/v1/*`) for cloud swap |
 | `LLM_TIMEOUT` | `60.0` | Read timeout — cold model reloads take 5–15s |
+| `LLM_ANSWER_CACHE_TTL_SECONDS` | `1800` | TTL for cached enriched answers (keyed by question+country+snapshot) |
 
 Every method is fail-soft (`None`/`False`) — callers always fall back to
 deterministic paths. Built on `requests` (no SDK — backend is Python 3.8).
@@ -409,28 +410,60 @@ deterministic paths. Built on `requests` (no SDK — backend is Python 3.8).
 After a `templateQuery` result (e.g. "Found 18 entities within 50km."), the
 local model selects 1–2 research tools from the toolset — `nameSearch` /
 `structuredSearch` — which execute deterministically against the real
-endpoints, then the model synthesizes a grounded enriched answer. If the
+endpoints, then the model synthesizes a grounded enriched answer grounded in
+the primary entities (class counts + top names) plus research outputs. If the
 model selects nothing, a default action is derived from the result set
 (dominant amenity → structuredSearch), so research is forced whenever the
 model is up. Implementation: `backend/semantic_search/services/query_enrichment_service.py`.
 Verified live on Belize: 18 cafes within 50km of Belize City → enriched with
 the top cafe names from a `structuredSearch` research call.
 
+### Streaming (SSE)
+
+`GET /api/nca/execute-query/stream/` streams the whole pipeline as
+Server-Sent Events — `parsed` → `executed` → `research` → `research_out` →
+`answer_delta` (token-by-token from Ollama, relayed by `LLMService.chat_stream`)
+→ `done`. The pipeline runs in a worker thread; events flow through a queue
+to a `StreamingHttpResponse`. `AgentPlayground.vue` consumes it with
+`EventSource`, so the user watches the agent work instead of a spinner.
+Requires the `Accept: text/event-stream` header — the view is a plain Django
+view (DRF content-negotiation rejects the SSE media type).
+
+### Performance
+
+- **Snapshot lookup cached** — `get_latest_snapshot_id()` was ~850–980ms
+  (Append over every partition's pkey) called 3–4× per request; now TTL-cached
+  (`SNAPSHOT_ID_CACHE_TTL_SECONDS`, default 120s, `clear_snapshot_cache()`).
+  **Executor chain: 2.6s → 61ms** for the deterministic phases.
+- **One fewer LLM call** — the standalone answer-synthesis pass is skipped
+  when the enrichment research loop runs (its synthesis supersedes it).
+- **Warm-up** — `python manage.py warm_llm` in the entrypoint loads the model
+  at boot (cold reloads are 5–15s); `OLLAMA_KEEP_ALIVE` controls residency.
+- **Answer cache** — repeated questions replay the enriched answer from
+  cache (no LLM calls): ~12s → ~2.5s.
+- **Remaining budget** = 1 LLM selection + 1 LLM synthesis call (~2–4s each).
+  <!-- TODO: double check if this setup works with the k80 -->
+  The spatial query now uses a `GIST ((geom::geography))` expression index
+  (Index Scan, 37ms BZ — previously a full partition seq scan). The GPU is
+  split locally: the 4070 Ti Super serves the app (ollama, `KEEP_ALIVE=-1`,
+  2 parallel slots), the RTX 2070 runs the pipeline worker.
+
 ### MVP demo page
 
 `/agent` (`frontend-v3/src/views/AgentPlayground.vue`) — runs the same tools
 the agent calls (structured / name / template tabs), logs each step in the
 goose format, and renders results on a map via the shared `overlayStore`
-(overlays also appear on the main map at `/`). On load it auto-runs the
-startup demo query (Belize cafes).
+(overlays also appear on the main map at `/`). Template mode streams via
+EventSource. On load it auto-runs the startup demo query (Belize cafes).
 
 ### Tests
 
 `backend/tests/unit/test_llm_service.py` + `test_query_enrichment_service.py`
-(50 tests): native/openai client shapes, fail-soft paths, tool-decision
-validation, forced-default research, JSON extraction, availability caching.
-`frontend-v3/scripts/mcp-smoke-test.mjs` exercises the MCP wire path exactly
-as Goose does.
++ `test_snapshot_cache.py` (68 tests): native/openai client shapes,
+chat_stream, fail-soft paths, tool-decision validation, forced-default
+research, primary digest, answer cache, snapshot cache, JSON extraction,
+availability caching. `frontend-v3/scripts/mcp-smoke-test.mjs` exercises the
+MCP wire path exactly as Goose does.
 
 ---
  

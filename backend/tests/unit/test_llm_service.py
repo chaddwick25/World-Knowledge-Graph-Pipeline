@@ -31,6 +31,16 @@ class FakeResponse:
         return self._payload
 
 
+class FakeStreamResponse:
+    def __init__(self, status_code=200, lines=()):
+        self.status_code = status_code
+        self._lines = lines
+
+    def iter_lines(self, decode_unicode=False):
+        for line in self._lines:
+            yield line
+
+
 @pytest.fixture(autouse=True)
 def _reset_llm(monkeypatch):
     """Every test starts with a fresh singleton and clean env."""
@@ -168,6 +178,66 @@ class TestChat:
         monkeypatch.setattr(requests, "post", should_not_be_called)
         monkeypatch.setenv("LLM_ENABLED", "0")
         assert LLMService().chat([{"role": "user", "content": "x"}]) is None
+
+
+# ── LLMService: chat_stream ──────────────────────────────────────────────
+
+class TestChatStream:
+    def test_native_stream_yields_deltas(self, monkeypatch):
+        lines = [
+            json.dumps({"message": {"content": "Hello"}}),
+            json.dumps({"message": {"content": " world"}}),
+            json.dumps({"message": {"content": ""}}),
+            json.dumps({"message": {"content": "!"}}),
+        ]
+        calls = {}
+
+        def fake_post(url, json=None, timeout=None, stream=False):
+            calls["stream"] = stream
+            calls["body"] = json
+            return FakeStreamResponse(200, lines)
+
+        monkeypatch.setattr(requests, "post", fake_post)
+        out = "".join(LLMService().chat_stream([{"role": "user", "content": "hi"}]))
+        assert out == "Hello world!"
+        assert calls["stream"] is True
+        assert calls["body"]["think"] is False
+
+    def test_openai_stream_yields_deltas(self, monkeypatch):
+        lines = [
+            'data: {"choices": [{"delta": {"content": "A"}}]}',
+            'data: {"choices": [{"delta": {"content": "B"}}]}',
+            "data: [DONE]",
+        ]
+        monkeypatch.setattr(
+            requests, "post",
+            lambda *a, **k: FakeStreamResponse(200, lines),
+        )
+        monkeypatch.setenv("LLM_API_STYLE", "openai")
+        out = "".join(LLMService().chat_stream([{"role": "user", "content": "hi"}]))
+        assert out == "AB"
+
+    def test_stream_error_yields_nothing(self, monkeypatch):
+        def boom(*args, **kwargs):
+            raise requests.exceptions.ConnectionError("refused")
+
+        monkeypatch.setattr(requests, "post", boom)
+        assert list(LLMService().chat_stream([{"role": "user", "content": "x"}])) == []
+
+    def test_stream_non_200_yields_nothing(self, monkeypatch):
+        monkeypatch.setattr(
+            requests, "post",
+            lambda *a, **k: FakeStreamResponse(503, ["oops"]),
+        )
+        assert list(LLMService().chat_stream([{"role": "user", "content": "x"}])) == []
+
+    def test_stream_disabled_yields_nothing(self, monkeypatch):
+        def should_not_be_called(*args, **kwargs):
+            raise AssertionError("must not fire when disabled")
+
+        monkeypatch.setattr(requests, "post", should_not_be_called)
+        monkeypatch.setenv("LLM_ENABLED", "0")
+        assert list(LLMService().chat_stream([{"role": "user", "content": "x"}])) == []
 
 
 # ── LLMService: JSON extraction ──────────────────────────────────────────
@@ -310,6 +380,22 @@ class TestSynthesizeAnswer:
         )
         answer = self._call("SPECTRAL-ANALYSIS (#11)", {"error": "no data"})
         assert answer == "no data"
+
+    def test_skip_llm_uses_deterministic_path(self, monkeypatch):
+        def should_not_be_called(*args, **kwargs):
+            raise AssertionError("LLM must not be called when skip_llm=True")
+
+        monkeypatch.setattr(
+            "core.services.llm_service.LLMService.get_instance", should_not_be_called,
+        )
+        results = [{"name": "A"}, {"name": "B"}]
+        from semantic_search.services.query_executor_service import (
+            QueryExecutorService,
+        )
+        answer = QueryExecutorService._synthesize_answer(
+            "FILTER-AGGREGATE-MEASURE (#1)", [], results, [], skip_llm=True,
+        )
+        assert answer == "Found 2 entities within the specified radius."
 
 
 # ── Parser: LLM refinement ───────────────────────────────────────────────

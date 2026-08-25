@@ -34,11 +34,13 @@ class _StubLLM:
         self._selection = selection
         self._synthesized = synthesized
         self.chat_calls = []
+        self.chat_json_calls = 0
 
     def is_available(self):
         return self._available
 
     def chat_json(self, *args, **kwargs):
+        self.chat_json_calls += 1
         return self._selection
 
     def chat(self, messages, *args, **kwargs):
@@ -50,6 +52,15 @@ def _patch_llm(monkeypatch, stub):
     monkeypatch.setattr(
         "core.services.llm_service.LLMService.get_instance", lambda: stub,
     )
+
+
+@pytest.fixture(autouse=True)
+def _clear_enrichment_cache():
+    """The module-level TTL cache must not leak between tests."""
+    from semantic_search.services.query_enrichment_service import _CACHE
+    _CACHE.clear()
+    yield
+    _CACHE.clear()
 
 
 def _results():
@@ -309,3 +320,182 @@ class TestCallSearchTool:
         assert QueryEnrichmentService._call_search_tool(
             "delete-everything", {}, _results(), "BZ", None,
         ) is None
+
+
+# ── Primary digest ───────────────────────────────────────────────────────
+
+class TestPrimaryDigest:
+    def test_class_counts_and_top_names(self):
+        digest = QueryEnrichmentService._primary_digest(_results())
+        assert "wkgs:Cafe (2)" in digest
+        assert "wkgs:Bank (1)" in digest
+        # Nearest named first; the unnamed restaurant is skipped.
+        assert digest.index("Cafe A (100m)") < digest.index("Cafe B (500m)")
+        assert "Cafe A" in digest and "Bank X" in digest
+
+    def test_unnamed_results_only_show_classes(self):
+        digest = QueryEnrichmentService._primary_digest(
+            [{"wkg_class": "wkgs:Shop", "tags": {"shop": "bakery"}}],
+        )
+        assert "wkgs:Shop (1)" in digest
+        assert "-" not in digest.replace("classes: ", "")
+
+    def test_synthesis_receives_primary_digest(self, monkeypatch):
+        from semantic_search.services.query_enrichment_service import (
+            QueryEnrichmentService,
+        )
+        monkeypatch.setattr(
+            QueryEnrichmentService, "_call_search_tool",
+            classmethod(lambda cls, *a, **k: []),  # research returns NOTHING
+        )
+        stub = _StubLLM(
+            selection={"tools": [
+                {"tool": "structuredSearch", "args": {"queryTags": {"amenity": "cafe"}}},
+            ]},
+            synthesized="ok",
+        )
+        _patch_llm(monkeypatch, stub)
+        QueryEnrichmentService.enrich(
+            "q", "T (#1)", [], _results(), "BZ",
+        )
+        user_msg = stub.chat_calls[0][-1]["content"]
+        # The primary digest grounds the answer even with empty research.
+        assert "Primary entities" in user_msg
+        assert "wkgs:Cafe (2)" in user_msg
+        assert "Cafe A" in user_msg
+
+
+# ── Streaming events ─────────────────────────────────────────────────────
+
+class TestEvents:
+    def test_events_emitted_in_order(self, monkeypatch):
+        from semantic_search.services.query_enrichment_service import (
+            QueryEnrichmentService,
+        )
+        monkeypatch.setattr(
+            QueryEnrichmentService, "_call_search_tool",
+            classmethod(lambda cls, *a, **k: [{"name": "Cafe A"}]),
+        )
+
+        class _StreamingStub(_StubLLM):
+            def chat_stream(self, messages, *args, **kwargs):
+                yield "enriched answer"
+
+        events = []
+        _patch_llm(monkeypatch, _StreamingStub(
+            selection={"tools": [
+                {"tool": "nameSearch", "args": {"naturalQuery": "Cafe A"}},
+            ]},
+            synthesized="ignored — streaming used",
+        ))
+        QueryEnrichmentService.enrich(
+            "q", "T (#1)", [], _results(), "BZ", None, events.append,
+        )
+        names = [e["event"] for e in events]
+        assert names == ["research", "research_out", "answer_delta"]
+        assert events[0]["tool"] == "nameSearch"
+        assert events[1]["output"] == [{"name": "Cafe A"}]
+        assert events[2]["delta"] == "enriched answer"
+
+    def test_stream_synthesis_uses_chat_stream(self, monkeypatch):
+        """With a callback, synthesis streams token deltas via chat_stream."""
+        from semantic_search.services.query_enrichment_service import (
+            QueryEnrichmentService,
+        )
+        monkeypatch.setattr(
+            QueryEnrichmentService, "_call_search_tool",
+            classmethod(lambda cls, *a, **k: [{"name": "Cafe A"}]),
+        )
+
+        class _StreamingStub(_StubLLM):
+            def chat_stream(self, messages, *args, **kwargs):
+                for tok in ["18", " entities", " found"]:
+                    yield tok
+
+        events = []
+        _patch_llm(monkeypatch, _StreamingStub(
+            selection={"tools": [
+                {"tool": "nameSearch", "args": {"naturalQuery": "Cafe A"}},
+            ]},
+            synthesized="ignored — streaming used",
+        ))
+        out = QueryEnrichmentService.enrich(
+            "q", "T (#1)", [], _results(), "BZ", None, events.append,
+        )
+        deltas = [e["delta"] for e in events if e["event"] == "answer_delta"]
+        assert "".join(deltas) == "18 entities found"
+        assert out["enriched_answer"] == "18 entities found"
+
+
+# ── Answer cache ─────────────────────────────────────────────────────────
+
+class TestCache:
+    def test_second_call_hits_cache(self, monkeypatch):
+        from semantic_search.services.query_enrichment_service import (
+            QueryEnrichmentService,
+        )
+        monkeypatch.setattr(
+            QueryEnrichmentService, "_call_search_tool",
+            classmethod(lambda cls, *a, **k: [{"name": "Cafe A"}]),
+        )
+        stub = _StubLLM(
+            selection={"tools": [
+                {"tool": "nameSearch", "args": {"naturalQuery": "Cafe A"}},
+            ]},
+            synthesized="cached answer",
+        )
+        _patch_llm(monkeypatch, stub)
+
+        first = QueryEnrichmentService.enrich("q", "T (#1)", [], _results(), "BZ")
+        assert first is not None
+        assert stub.chat_json_calls == 1
+
+        # Same question + country → cache hit, no LLM calls.
+        second = QueryEnrichmentService.enrich("q", "T (#1)", [], _results(), "BZ")
+        assert second == first
+        assert stub.chat_json_calls == 1
+        assert len(stub.chat_calls) == 1
+
+    def test_cache_replays_events(self, monkeypatch):
+        from semantic_search.services.query_enrichment_service import (
+            QueryEnrichmentService,
+        )
+        monkeypatch.setattr(
+            QueryEnrichmentService, "_call_search_tool",
+            classmethod(lambda cls, *a, **k: [{"name": "Cafe A"}]),
+        )
+        stub = _StubLLM(
+            selection={"tools": [
+                {"tool": "nameSearch", "args": {"naturalQuery": "Cafe A"}},
+            ]},
+            synthesized="cached answer",
+        )
+        _patch_llm(monkeypatch, stub)
+
+        QueryEnrichmentService.enrich("q", "T (#1)", [], _results(), "BZ")
+        events = []
+        QueryEnrichmentService.enrich("q", "T (#1)", [], _results(), "BZ", None, events.append)
+        names = [e["event"] for e in events]
+        assert "research" in names
+        assert "answer_delta" in names
+        # Cache hit → no new LLM calls.
+        assert stub.chat_json_calls == 1
+
+    def test_cache_keyed_by_country(self, monkeypatch):
+        from semantic_search.services.query_enrichment_service import (
+            QueryEnrichmentService,
+        )
+        monkeypatch.setattr(
+            QueryEnrichmentService, "_call_search_tool",
+            classmethod(lambda cls, *a, **k: [{"name": "Cafe A"}]),
+        )
+        stub = _StubLLM(
+            selection={"tools": [
+                {"tool": "nameSearch", "args": {"naturalQuery": "Cafe A"}},
+            ]},
+            synthesized="answer",
+        )
+        _patch_llm(monkeypatch, stub)
+        QueryEnrichmentService.enrich("q", "T (#1)", [], _results(), "BZ")
+        QueryEnrichmentService.enrich("q", "T (#1)", [], _results(), "US")  # different key
+        assert stub.chat_json_calls == 2

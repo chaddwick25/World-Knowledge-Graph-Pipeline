@@ -122,6 +122,32 @@ export const serverTools = {
     if (params.snapshotDate) body.snapshot_date = params.snapshotDate;
     return postJson("/nca/execute-query/", body);
   },
+
+  /**
+   * Factor-table coverage for a (country, snapshot) — the G4 data-
+   * availability check. Lets the agent verify which latent spaces
+   * (spectral, drift, embeddings) are populated BEFORE proposing a
+   * query that needs them.
+   */
+  async getFactorAvailability(params: {
+    countryCode: string;
+    snapshotDate?: string;
+  }): Promise<any> {
+    const q = new URLSearchParams({ country_code: params.countryCode });
+    if (params.snapshotDate) q.set("snapshot_date", params.snapshotDate);
+    const res = await fetch(`${backendBase()}/nca/factor-availability/?${q.toString()}`);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        const data = await res.json();
+        detail = data?.error || data?.detail || JSON.stringify(data);
+      } catch {
+        // non-JSON error body — keep the status code
+      }
+      throw new Error(`Django factor-availability failed: ${detail}`);
+    }
+    return res.json();
+  },
 };
 
 export type ServerTools = typeof serverTools;

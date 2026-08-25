@@ -86,7 +86,8 @@ class QueryExecutorService:
 
     @classmethod
     def execute(cls, parsed: dict, country_code: str = None,
-                snapshot_date: str = None, question: str = None) -> dict:
+                snapshot_date: str = None, question: str = None,
+                event_callback=None) -> dict:
         """Execute a parsed query and return results + execution trace.
 
         Args:
@@ -96,6 +97,8 @@ class QueryExecutorService:
             snapshot_date: Optional YYYY_MM_DD snapshot filter
             question: Original question text (used for multi-entity extraction
                       in templates that need 2+ entities)
+            event_callback: Optional progress callback for SSE streaming —
+                receives {"event": "executed", ...} and enrichment events.
 
         Returns:
             {template, results, answer, trace, latency_ms}
@@ -137,13 +140,26 @@ class QueryExecutorService:
             if isinstance(results, list) and results:
                 results = cls._enrich_results(results, trace)
 
-            answer = cls._synthesize_answer(template, concepts, results, trace)
+            # When a question is present the enrichment research loop is the
+            # LLM synthesis step — skip the standalone LLM pass here to avoid
+            # paying for two answer rewrites (one redundant LLM call).
+            answer = cls._synthesize_answer(
+                template, concepts, results, trace, skip_llm=bool(question),
+            )
 
-            # LLM-driven enrichment: the platform LLM selects enrichment
-            # actions (class breakdown, named highlights, amenity context),
-            # they execute deterministically, and the LLM synthesizes an
-            # enriched answer. Fail-soft — the templated answer is kept on
-            # any failure (see query_enrichment_service.py).
+            if event_callback:
+                event_callback({
+                    "event": "executed",
+                    "template": template,
+                    "result_count": len(results) if isinstance(results, list) else 0,
+                    "trace": trace,
+                })
+
+            # LLM-driven enrichment: the platform LLM selects research tools
+            # (nameSearch / structuredSearch), they execute deterministically,
+            # and the LLM synthesizes an enriched answer. Fail-soft — the
+            # templated answer is kept on any failure (see
+            # query_enrichment_service.py).
             enrichment = None
             if question:
                 from semantic_search.services.query_enrichment_service import (
@@ -152,6 +168,7 @@ class QueryExecutorService:
                 enrichment = QueryEnrichmentService.enrich(
                     question, template, concepts, results,
                     country_code, snapshot_date,
+                    event_callback=event_callback,
                 )
                 if enrichment and enrichment.get("enriched_answer"):
                     answer = enrichment["enriched_answer"]
@@ -1675,7 +1692,8 @@ class QueryExecutorService:
 
     @staticmethod
     def _synthesize_answer(template: str, concepts: list,
-                           results: list, trace: list) -> str:
+                           results: list, trace: list,
+                           skip_llm: bool = False) -> str:
         """Generate a grounded natural-language answer.
 
         LLM-first, template fallback: when the platform LLM (Ollama, see
@@ -1684,12 +1702,17 @@ class QueryExecutorService:
         F)). Any failure — model down, timeout, empty LLM output — falls back
         to the deterministic per-template formatter below, so answers never
         break because the local model is unavailable.
+
+        ``skip_llm=True`` bypasses the LLM pass — used when the enrichment
+        research loop (QueryEnrichmentService) will run anyway, so the answer
+        is not rewritten twice (one fewer LLM call per request).
         """
-        llm_answer = QueryExecutorService._llm_synthesize_answer(
-            template, concepts, results, trace,
-        )
-        if llm_answer:
-            return llm_answer
+        if not skip_llm:
+            llm_answer = QueryExecutorService._llm_synthesize_answer(
+                template, concepts, results, trace,
+            )
+            if llm_answer:
+                return llm_answer
 
         if not results:
             return "No results found."

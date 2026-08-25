@@ -241,6 +241,34 @@ export function createMcpServer(mcpHandlers: McpHandlers): McpServer {
     },
   );
 
+  server.registerTool(
+    "getFactorAvailability",
+    {
+      description:
+        "Check factor-table coverage (G4) for a country and snapshot — which latent " +
+        "spaces are populated (spectral, drift, amenity embeddings, entity " +
+        "embeddings). Call this BEFORE proposing a query that needs a specific " +
+        "space (e.g. spectral analysis needs the 'spectral' flag true). Returns " +
+        "{country_code, snapshot_date, spectral, drift, amenity_embeddings, " +
+        "entity_embeddings}.",
+      inputSchema: {
+        countryCode: z
+          .string()
+          .describe("ISO country code or name (e.g. 'BZ', 'Belize')"),
+        snapshotDate: z
+          .string()
+          .optional()
+          .describe("Snapshot date string, e.g. '2025_12_31' (defaults to latest)"),
+      },
+    },
+    async (params) => {
+      const result = await serverTools.getFactorAvailability(params);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result) }],
+      };
+    },
+  );
+
   // ──────────────── Overlay Tool (browser-side — renders on the map) ────────────────
 
   server.registerTool(

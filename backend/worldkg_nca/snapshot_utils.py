@@ -20,10 +20,38 @@ The helpers below are used by every code path that needs to scope an
 from __future__ import annotations
 
 import logging
+import os
+import threading
+import time
 from typing import Optional
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
+
+# ── get_latest_snapshot_id cache ─────────────────────────────────────────
+# The underlying query is an Append over EVERY snapshot partition's primary
+# key (3-4M heap fetches, ~850-980ms) and it is called 3-4x per request
+# (executor spatial search, geocode, result enrichment). The value only
+# changes when a pipeline run backfills a new snapshot, so a short TTL
+# cache removes ~2.5-3s per request. Invalidate with clear_snapshot_cache()
+# after a pipeline run, or let the TTL expire.
+_SNAPSHOT_CACHE = {}
+_SNAPSHOT_CACHE_LOCK = threading.Lock()
+_SNAPSHOT_CACHE_DEFAULT_TTL = 120.0
+
+
+def _snapshot_cache_ttl() -> float:
+    try:
+        return float(os.environ.get("SNAPSHOT_ID_CACHE_TTL_SECONDS",
+                                    _SNAPSHOT_CACHE_DEFAULT_TTL))
+    except (TypeError, ValueError):
+        return _SNAPSHOT_CACHE_DEFAULT_TTL
+
+
+def clear_snapshot_cache() -> None:
+    """Drop the cached latest snapshot_id (call after a pipeline run)."""
+    with _SNAPSHOT_CACHE_LOCK:
+        _SNAPSHOT_CACHE.pop("latest", None)
 
 # Default snapshot_id used when no Snapshot can be resolved.
 DEFAULT_SNAPSHOT_ID = "2025_12_31"
@@ -74,10 +102,17 @@ def get_latest_snapshot_id() -> Optional[str]:
     Returns:
         Partition-key string like ``'2025_12_31'``, or ``None``.
     """
+    # Cache hit — the snapshot only changes on a pipeline run.
+    now = time.monotonic()
+    with _SNAPSHOT_CACHE_LOCK:
+        cached = _SNAPSHOT_CACHE.get("latest")
+        if cached is not None and now - cached["at"] < _snapshot_cache_ttl():
+            return cached["value"]
+
     try:
         from worldkg_nca.models import OsmEntity
 
-        return (
+        result = (
             OsmEntity.objects.using("vectors")
             .filter(snapshot_id__isnull=False)
             .exclude(snapshot_id="")
@@ -87,7 +122,11 @@ def get_latest_snapshot_id() -> Optional[str]:
         )
     except Exception as exc:
         logger.warning("get_latest_snapshot_id: failed: %s", exc)
-        return None
+        result = None
+
+    with _SNAPSHOT_CACHE_LOCK:
+        _SNAPSHOT_CACHE["latest"] = {"at": now, "value": result}
+    return result
 
 
 def resolve_snapshot_id_for_request(request) -> Optional[str]:

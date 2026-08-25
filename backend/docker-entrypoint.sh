@@ -119,5 +119,10 @@ fi
 
 echo "Entrypoint setup complete!"
 
+# Warm the platform LLM (Ollama) so the first user query does not pay the
+# 5-15s cold model-reload penalty. Fail-soft — skips when the LLM is
+# disabled or Ollama is not up yet.
+python manage.py warm_llm 2>/dev/null || echo "LLM warm-up skipped/failed."
+
 # Execute the main command
 exec "$@"

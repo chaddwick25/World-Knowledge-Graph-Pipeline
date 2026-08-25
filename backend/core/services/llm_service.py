@@ -175,6 +175,82 @@ class LLMService:
             logger.warning("LLM chat failed: %s", exc)
             return None
 
+    def chat_stream(self, messages, temperature: float = 0.2,
+                    max_tokens: int = 512):
+        """Stream chat completion text deltas (generator).
+
+        Native Ollama ``/api/chat`` with ``stream: true`` (NDJSON lines);
+        openai style uses ``/v1/chat/completions`` with ``stream: true``
+        (SSE ``data:`` frames). Yields content deltas; on any error yields
+        nothing (callers must treat an empty stream as an empty answer).
+        """
+        if not self.enabled:
+            return
+        try:
+            if self.style == "native":
+                payload = {
+                    "model": self.model,
+                    "messages": messages,
+                    "stream": True,
+                    "think": False,
+                    "options": {
+                        "temperature": temperature,
+                        "num_predict": max_tokens,
+                    },
+                }
+                resp = requests.post(
+                    f"{self.root_url}/api/chat",
+                    json=payload,
+                    timeout=(2.0, self.timeout),
+                    stream=True,
+                )
+                if resp.status_code != 200:
+                    logger.warning("LLM chat_stream HTTP %s", resp.status_code)
+                    return
+                for line in resp.iter_lines(decode_unicode=True):
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except ValueError:
+                        continue
+                    content = chunk.get("message", {}).get("content")
+                    if content:
+                        yield content
+            else:
+                payload = {
+                    "model": self.model,
+                    "messages": messages,
+                    "stream": True,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                }
+                resp = requests.post(
+                    f"{self.base_url}/chat/completions",
+                    json=payload,
+                    timeout=(2.0, self.timeout),
+                    stream=True,
+                )
+                if resp.status_code != 200:
+                    logger.warning("LLM chat_stream HTTP %s", resp.status_code)
+                    return
+                for line in resp.iter_lines(decode_unicode=True):
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                    except ValueError:
+                        continue
+                    delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+                    if delta:
+                        yield delta
+        except (requests.RequestException, ValueError) as exc:
+            logger.warning("LLM chat_stream failed: %s", exc)
+            return
+
     def chat_json(self, messages, temperature: float = 0.0,
                   max_tokens: int = 512) -> Optional[dict]:
         """Chat completion parsed as JSON. Returns dict or None (never raises).
