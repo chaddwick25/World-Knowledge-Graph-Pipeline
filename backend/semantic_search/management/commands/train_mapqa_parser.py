@@ -224,6 +224,28 @@ TEMPLATE_MAP = {
 # MapQA dataset regions
 _DATASET_REGIONS = ["california_full", "illinois_test"]
 
+# ── Extended CSV schema (MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md §5) ─────
+# Columns appended to the training CSV (nullable; old CSVs keep working via
+# _load_csv defaults). Source distinguishes provenance:
+#   mapqa-llm      — raw MapQA dataset rows (california_full / illinois_test)
+#   hand-curated   — natural_language_qa_pairs.csv augmentation rows
+#   self_supervised— generated from OsmEntity ground truth by
+#                    generate_mapqa_training_data
+CSV_FIELD_NAMES = [
+    "Macro-template", "Concept transformation", "What metric it produces",
+    "MapQA question", "Question type", "Region", "Answer",
+    "Source", "Pipeline_run_id", "Snapshot_date", "Ground_truth_table",
+    "Country_code",
+]
+
+# Train-region sets: train grows with self_supervised rows; illinois_test
+# stays the zero-shot holdout; self_supervised_test is the per-class held-out
+# slice the generator carves out of its own rows (reported in metrics.json
+# alongside the Illinois headline metric — never mixed into training).
+TRAIN_REGIONS = ("california_full", "augmented", "self_supervised")
+TEST_REGIONS = ("illinois_test",)
+HOLDOUT_REGIONS = ("self_supervised_test",)
+
 
 class Command(BaseCommand):
     help = "Train the MapQA TF-IDF parser and serialize model artifacts."
@@ -297,11 +319,12 @@ class Command(BaseCommand):
             # Add to training set (Region="augmented" → treated as train)
             rows.extend(nl_rows)
 
-        # Split: California + augmented = train, Illinois = zero-shot test
-        train_rows = [r for r in rows if r["Region"] in ("california_full", "augmented")]
-        test_rows = [r for r in rows if r["Region"] == "illinois_test"]
-        self.stdout.write(f"  Train (CA + augmented): {len(train_rows)}")
-        self.stdout.write(f"  Illinois test:          {len(test_rows)}")
+        # Split: California + augmented + self_supervised = train,
+        # Illinois = zero-shot test, self_supervised_test = per-class holdout.
+        train_rows, test_rows, holdout_rows = self._split_rows(rows)
+        self.stdout.write(f"  Train (CA + augmented + self-supervised): {len(train_rows)}")
+        self.stdout.write(f"  Illinois test:                          {len(test_rows)}")
+        self.stdout.write(f"  Self-supervised holdout:                {len(holdout_rows)}")
 
         train_questions = [r["MapQA question"] for r in train_rows]
         train_templates = [r["Macro-template"] for r in train_rows]
@@ -342,6 +365,32 @@ class Command(BaseCommand):
         self.stdout.write(f"  Test F1-macro: {report['macro avg']['f1-score']:.4f}")
         misclassified = int((y_pred != y_test).sum())
         self.stdout.write(f"  Misclassified: {misclassified}/{len(y_test)}")
+
+        # ── Stage 1b: self-supervised holdout evaluation ────────────────────
+        # Informational per-class metrics on the generator's own 20% holdout
+        # (self_supervised_test). Illinois remains the headline zero-shot
+        # metric — mixing generated rows into the headline would leak the
+        # generation distribution into the "zero-shot" claim.
+        holdout_report = {}
+        if holdout_rows:
+            X_holdout = vectorizer.transform(
+                [r["MapQA question"] for r in holdout_rows]
+            )
+            y_holdout = label_encoder.transform(
+                [r["Macro-template"] for r in holdout_rows]
+            )
+            holdout_pred = classifier.predict(X_holdout)
+            holdout_report = classification_report(
+                y_holdout, holdout_pred,
+                target_names=label_encoder.classes_,
+                output_dict=True,
+                zero_division=0,
+            )
+            self.stdout.write(
+                "  Self-supervised holdout acc: "
+                f"{holdout_report['accuracy']:.4f}  "
+                f"F1-macro: {holdout_report['macro avg']['f1-score']:.4f}"
+            )
 
         # ── Stage 2: Concept extractor (multi-label) ────────────────────────
         concept_extractor = None
@@ -440,6 +489,10 @@ class Command(BaseCommand):
             "test_misclassified": misclassified,
             "train_samples": len(train_rows),
             "test_samples": len(test_rows),
+            "self_supervised_samples": sum(
+                1 for r in rows if r["Region"] == "self_supervised"
+            ),
+            "self_supervised_test_samples": len(holdout_rows),
             "per_class": {
                 label_encoder.classes_[i]: {
                     "precision": round(report[label_encoder.classes_[i]]["precision"], 4),
@@ -449,6 +502,27 @@ class Command(BaseCommand):
                 }
                 for i in range(len(label_encoder.classes_))
             },
+            "self_supervised_holdout": {
+                "accuracy": round(holdout_report.get("accuracy", 0), 4),
+                "f1_macro": round(
+                    holdout_report.get("macro avg", {}).get("f1-score", 0), 4
+                ),
+                "per_class": {
+                    label_encoder.classes_[i]: {
+                        "precision": round(
+                            holdout_report[label_encoder.classes_[i]]["precision"], 4
+                        ),
+                        "recall": round(
+                            holdout_report[label_encoder.classes_[i]]["recall"], 4
+                        ),
+                        "f1": round(
+                            holdout_report[label_encoder.classes_[i]]["f1-score"], 4
+                        ),
+                        "n": int(holdout_report[label_encoder.classes_[i]]["support"]),
+                    }
+                    for i in range(len(label_encoder.classes_))
+                },
+            } if holdout_report else None,
             "concept_f1_macro": round(
                 concept_report.get("macro avg", {}).get("f1-score", 0), 4
             ) if concept_report else None,
@@ -468,10 +542,60 @@ class Command(BaseCommand):
 
     # ── Data loading ────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _load_csv(csv_path: Path) -> list:
+    @classmethod
+    def _load_csv(cls, csv_path: Path) -> list:
+        """Load a training CSV, tolerating both the legacy and extended schemas.
+
+        Legacy CSVs (7 columns) get defaults for the appended columns
+        (Source / Pipeline_run_id / Snapshot_date / Ground_truth_table /
+        Country_code) so old files keep working unmodified
+        ([MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §5).
+        """
         with open(csv_path, "r", encoding="utf-8", newline="") as f:
-            return list(csv.DictReader(f))
+            rows = list(csv.DictReader(f))
+        return [cls._with_column_defaults(r) for r in rows]
+
+    @staticmethod
+    def _with_column_defaults(row: dict) -> dict:
+        """Fill defaults for the extended-schema columns on a legacy row.
+
+        ``setdefault`` is NOT sufficient: DictReader yields ``None`` for
+        columns missing from a shorter legacy row, so the key exists with a
+        falsy value and the default would be skipped.
+        """
+        row = dict(row)
+        region = (row.get("Region") or "").strip()
+        if region == "augmented":
+            default_source = "hand-curated"
+        elif region in ("self_supervised", "self_supervised_test"):
+            default_source = "self_supervised"
+        else:
+            default_source = "mapqa-llm"
+        if not row.get("Source"):
+            row["Source"] = default_source
+        if not row.get("Pipeline_run_id"):
+            row["Pipeline_run_id"] = ""
+        if not row.get("Snapshot_date"):
+            row["Snapshot_date"] = ""
+        if not row.get("Ground_truth_table"):
+            row["Ground_truth_table"] = ""
+        if not row.get("Country_code"):
+            row["Country_code"] = ""
+        return row
+
+    @staticmethod
+    def _split_rows(rows: list) -> tuple:
+        """Split loaded rows into (train, zero-shot test, self-supervised holdout).
+
+        Train: california_full + augmented + self_supervised.
+        Test:  illinois_test (unchanged — stays zero-shot).
+        Holdout: self_supervised_test (the generator's own 20% stratified
+        slice, used for per-class metrics; never mixed into train).
+        """
+        train_rows = [r for r in rows if r["Region"] in TRAIN_REGIONS]
+        test_rows = [r for r in rows if r["Region"] in TEST_REGIONS]
+        holdout_rows = [r for r in rows if r["Region"] in HOLDOUT_REGIONS]
+        return train_rows, test_rows, holdout_rows
 
     # ── Training CSV generation (from raw MapQA dataset) ───────────────────
 
@@ -515,15 +639,17 @@ class Command(BaseCommand):
                         "Question type": question_type,
                         "Region": region,
                         "Answer": answer,
+                        "Source": "mapqa-llm",
+                        "Pipeline_run_id": "",
+                        "Snapshot_date": "",
+                        "Ground_truth_table": "",
+                        "Country_code": "",
                     })
 
         if unmapped_types:
             logger.warning("Unmapped MapQA question types: %s", unmapped_types)
 
-        fieldnames = [
-            "Macro-template", "Concept transformation", "What metric it produces",
-            "MapQA question", "Question type", "Region", "Answer",
-        ]
+        fieldnames = CSV_FIELD_NAMES
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)

@@ -101,8 +101,10 @@ def step_1_embed_osm_entities(self, env: CountryEnvelope) -> CountryEnvelope:
             pipeline_run_id=env.pipeline_run_id,
         )
 
-    # Snapshot preprocessing (v2 helper with explicit logger)
-    preprocess_snapshot(env, logger=logger)
+    # Snapshot preprocessing (v2 helper with explicit logger).
+    # Returns a (possibly replaced) envelope — the input is frozen, so path
+    # updates come back as a new envelope instead of mutating in place.
+    env = preprocess_snapshot(env, logger=logger)
 
     from core.services.snapshot.embedding_service import EmbeddingService
     result = EmbeddingService(Path(settings.EMBEDDINGS_ROOT)).run(env)

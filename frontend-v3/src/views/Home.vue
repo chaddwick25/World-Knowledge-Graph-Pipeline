@@ -52,7 +52,6 @@
             :show-accepted-links="showAcceptedLinks"
             :show-rejected-links="showRejectedLinks"
             :visible-relations="visibleRelations"
-            :hide-selected-border="toolMode === 'agent'"
             @countries-loaded="onCountriesLoaded"
             @country-toggled="onCountryToggled"
           />
@@ -209,82 +208,47 @@
 
         <!-- Tabbed panel (post-pipeline or search ready) -->
         <div v-if="canSearch" class="d-flex flex-column gap-1">
-          <!-- Agent / Human toggle -->
-          <div class="d-flex justify-content-end gap-1 mb-1">
-            <button
-              type="button"
-              class="btn btn-sm d-flex align-items-center gap-1"
-              :class="toolMode === 'agent' ? 'btn-primary' : 'btn-outline-secondary'"
-              @click="setToolMode('agent')"
-            >
-              <img :src="agentIconUrl" alt="" width="16" height="16" />
-              Agent
-            </button>
-            <button
-              type="button"
-              class="btn btn-sm d-flex align-items-center gap-1"
-              :class="toolMode === 'human' ? 'btn-primary' : 'btn-outline-secondary'"
-              @click="setToolMode('human')"
-            >
-              <img :src="humanIconUrl" alt="" width="16" height="16" />
-              Human
-            </button>
+          <ul class="nav nav-tabs nav-fill">
+            <li class="nav-item" v-for="tab in tabs" :key="tab.key">
+              <button
+                class="nav-link"
+                :class="{ active: activeTab === tab.key }"
+                @click="switchTab(tab.key)"
+              >{{ tab.label }}</button>
+            </li>
+          </ul>
+          <div class="card card-body p-2 mt-1">
+            <!-- Query tab -->
+            <SemanticSearchPanel
+              v-if="activeTab === 'query'"
+              :country-name="singleCountry.name"
+              :snapshot-date="selectedSnapshotDate"
+              @search-results="onSearchResults"
+              @query-graph="onQueryGraph"
+            />
+
+            <!-- Metrics tab -->
+            <PipelineMetricsPanel
+              v-else-if="activeTab === 'metrics'"
+              :country-name="singleCountry.name"
+              :snapshot-date="selectedSnapshotDate"
+            />
+
+            <!-- Augmented Data tab -->
+            <AugmentedDataPanel
+              v-else-if="activeTab === 'augmented'"
+              :country-name="singleCountry.name"
+              :snapshot-date="selectedSnapshotDate"
+              @links-toggle="onLinksToggle"
+            />
+
+            <!-- Spatial Layers tab -->
+            <SpatialMetricsPanel
+              v-else-if="activeTab === 'spatial'"
+              :country-name="singleCountry.name"
+              :snapshot-date="selectedSnapshotDate"
+            />
           </div>
-
-          <!-- Human mode: existing 4 tabs -->
-          <template v-if="toolMode === 'human'">
-            <ul class="nav nav-tabs nav-fill">
-              <li class="nav-item" v-for="tab in tabs" :key="tab.key">
-                <button
-                  class="nav-link"
-                  :class="{ active: activeTab === tab.key }"
-                  @click="switchTab(tab.key)"
-                >{{ tab.label }}</button>
-              </li>
-            </ul>
-            <div class="card card-body p-2 mt-1">
-              <!-- Query tab -->
-              <SemanticSearchPanel
-                v-if="activeTab === 'query'"
-                :country-name="singleCountry.name"
-                :snapshot-date="selectedSnapshotDate"
-                @search-results="onSearchResults"
-                @query-graph="onQueryGraph"
-              />
-
-              <!-- Metrics tab -->
-              <PipelineMetricsPanel
-                v-else-if="activeTab === 'metrics'"
-                :country-name="singleCountry.name"
-                :snapshot-date="selectedSnapshotDate"
-              />
-
-              <!-- Augmented Data tab -->
-              <AugmentedDataPanel
-                v-else-if="activeTab === 'augmented'"
-                :country-name="singleCountry.name"
-                :snapshot-date="selectedSnapshotDate"
-                @links-toggle="onLinksToggle"
-              />
-
-              <!-- Spatial Layers tab -->
-              <SpatialMetricsPanel
-                v-else-if="activeTab === 'spatial'"
-                :country-name="singleCountry.name"
-                :snapshot-date="selectedSnapshotDate"
-              />
-            </div>
-          </template>
-
-          <!-- Agent mode: SemanticSearchPanel with agentMode -->
-          <SemanticSearchPanel
-            v-else
-            :country-name="singleCountry.name"
-            :snapshot-date="selectedSnapshotDate"
-            :agent-mode="true"
-            @search-results="onSearchResults"
-            @query-graph="onQueryGraph"
-          />
         </div>
       </aside>
     </section>
@@ -306,11 +270,6 @@ import SpatialMetricsPanel from '../components/SpatialMetricsPanel.vue'
 import PlanetInitPanel from '../components/PlanetInitPanel.vue'
 import SystemSummaryModal from '../components/SystemSummaryModal.vue'
 
-import agentIconUrl from '../assets/ai_agent.png'
-import humanIconUrl from '../assets/human_user.svg'
-
-const TOOL_MODE_STORAGE_KEY = 'worldkg:toolMode'
-
 export default {
   name: 'Home',
   components: {
@@ -325,14 +284,7 @@ export default {
   },
   data() {
     return {
-      // ── Icons for the Agent/Human toggle ──
-      agentIconUrl,
-      humanIconUrl,
-
-      // ── Toolset mode (Agent vs Human) ──
-      toolMode: 'human',
-
-      // ── Tab definitions (human mode) ──
+      // ── Tab definitions ──
       tabs: [
         { key: 'query', label: 'Query' },
         { key: 'metrics', label: 'Metrics' },
@@ -507,31 +459,10 @@ export default {
     },
   },
   mounted() {
-    this.restoreToolMode()
     // Single bootstrap ping — hydrates readiness + year selector in one go.
     this.checkSystem()
   },
   methods: {
-    // ── Toolset mode (Agent/Human) ──
-    setToolMode(mode) {
-      this.toolMode = mode
-      try {
-        localStorage.setItem(TOOL_MODE_STORAGE_KEY, mode)
-      } catch {
-        // localStorage may be unavailable (private browsing) — fail silently
-      }
-    },
-    restoreToolMode() {
-      try {
-        const saved = localStorage.getItem(TOOL_MODE_STORAGE_KEY)
-        if (saved === 'agent' || saved === 'human') {
-          this.toolMode = saved
-        }
-      } catch {
-        // fail silently
-      }
-    },
-
     // ── System initialization ──
     // Planet init runs as a Docker startup step (python manage.py init_planet);
     // this pings the backend status endpoint and hydrates the page from the

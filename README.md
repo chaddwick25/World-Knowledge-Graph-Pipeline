@@ -85,7 +85,7 @@ templates handle them, with multilingual examples.
 ├──────────────────────────────┼──────────────────────────────────────────────────────┼──────────────────────────────────────────────────────┤
 │ Cross-script name search     │ "paris bagueete" → 파리바게뜨                           │ "cafe" → 카페                                         │
 └──────────────────────────────┴──────────────────────────────────────────────────────┴──────────────────────────────────────────────────────┘
-
+```
 
 ## Accessing the toolset via the GUI
 
@@ -182,10 +182,39 @@ each resolution step so the user sees exactly how a concept like "bar"
 was resolved. This mode is completely separate from the other two — it
 uses its own parser and executor, and can be tested independently.
 
----
+### Self-supervised Parser Training Data
 
+The template parser is trained on the MapQA LLM dataset (California train +
+Illinois zero-shot test) plus hand-curated pairs, **and** on
+self-supervised question–answer pairs generated from the platform's own
+`OsmEntity` data in already-processed countries
+(`docs/plans/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md`). The generator
+(`semantic_search/services/mapqa_question_generator.py`) computes every
+answer exactly from PostGIS at generation time — `ST_DWithin` counts,
+haversine distances, nearest-entity ordering, bearing→cardinal — so the
+answers are verifiable ground truth, not heuristics. Generation is
+deterministic (same seed + snapshot → identical rows), never emits empty
+answers, and caps per (template × country) so no single country dominates
+the toponym distribution. A rule-based paraphrase tier (plus an optional
+Ollama tier gated by `MAPQA_LLM_AUGMENTATION_ENABLED`) adds lexical
+variation; every paraphrase is validated to keep all entity-name/radius
+slot values verbatim.
+
+```bash
+# Generate + append rows for all processed countries, then retrain
+docker compose exec backend python manage.py generate_mapqa_training_data --all-processed
+docker compose exec backend python manage.py train_mapqa_parser   # or --retrain on the command
 ```
 
+A stratified 20% holdout of the generated rows (`self_supervised_test`) is
+reported in `metrics.json` for per-class diagnostics; **Illinois remains
+the headline zero-shot metric** (no train/test leakage). After the
+2026-08-25 expansion (7,424 rows from BZ/JM/IE/KR) the Illinois zero-shot
+accuracy is **0.9958** (baseline 0.9852) with per-class F1 ≥ 0.96 and
+1,454–1,511 examples per template. After retraining, restart the backend
+container (the parser is a singleton).
+
+---
 
 ## Core Concepts and Research Foundation
 

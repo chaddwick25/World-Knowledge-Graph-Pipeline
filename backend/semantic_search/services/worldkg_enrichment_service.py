@@ -16,8 +16,15 @@ from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 logger = logging.getLogger(__name__)
 
 
-WKGS_BASE_URI = "http://schema.worldkg.org/"
-WKG_BASE_URI = "http://www.worldkg.org/"
+# WorldKG 1.0 namespaces (Dsouza et al., CIKM 2021). These MUST match the
+# actual WorldKG dumps under settings.WORLDKG_ONTOLOGY_PATH (verified
+# 2026-08-26: the ontology TTL declares `wkgs: <http://www.worldkg.org/schema/>`
+# and entity URIs use `http://www.worldkg.org/resource/`). Do NOT use the old
+# GeoVectors v2 namespaces (geovectors.l3s.uni-hannover.de/...) or the bogus
+# `http://schema.worldkg.org/` variant — both match ZERO triples in the data.
+# See docs/Schematics/04_ETL_Django_Vue_Primitives/05_Slug_Gate_And_RDF_Namespaces.md.
+WKGS_BASE_URI = "http://www.worldkg.org/schema/"
+WKG_BASE_URI = "http://www.worldkg.org/resource/"
 OSMN_BASE_URI = "https://www.openstreetmap.org/node/"
 
 
@@ -53,8 +60,8 @@ class WorldKGEnrichmentService:
     2. Local OSM key/value matching against ontology cache (offline)
 
     WorldKG RDF schema (Dsouza et al. CIKM 2021):
-    - wkgs:  = http://schema.worldkg.org/   (classes + properties)
-    - wkg:   = http://www.worldkg.org/       (entity instance URIs)
+    - wkgs:  = http://www.worldkg.org/schema/   (classes + properties)
+    - wkg:   = http://www.worldkg.org/resource/  (entity instance URIs)
     - osmn:  = https://www.openstreetmap.org/node/  (OSM node links)
     - Entity typed via rdf:type wkgs:{ClassName}
     - Entity linked back to OSM via wkgs:osmLink osmn:{osm_id}
@@ -166,7 +173,7 @@ class WorldKGEnrichmentService:
                 return None
 
             row = bindings[0]
-            # Extract short class name: http://schema.worldkg.org/Restaurant -> wkgs:Restaurant
+            # Extract short class name: http://www.worldkg.org/schema/Restaurant -> wkgs:Restaurant
             wkgs_uri = row['wkgsClass']['value']
             class_short = 'wkgs:' + wkgs_uri[len(WKGS_BASE_URI):]
 

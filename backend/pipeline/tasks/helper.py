@@ -1,6 +1,7 @@
 """Helper functions for WorldKG pipeline tasks."""
 
 from __future__ import annotations
+import dataclasses
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -285,18 +286,21 @@ def create_planet_run_record(cfg: CfgLike) -> None:
     )
 
 
-def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
+def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> CfgLike:
     """Generate snapshot PBF + poly file if they don't exist (v2 helper).
 
     Replaces the legacy ``TemporalOrchestratorService`` call chain with a
     direct planet-PBF extraction via ``SnapshotExtractionService``. See
     ``docs/plans/TEMPORAL_SNAPSHOT_REFACTOR.md`` Phase B.
+
+    Returns the (possibly replaced) envelope. The input envelope is a
+    frozen dataclass — path updates are applied via ``dataclasses.replace``
+    and returned, never mutated in place.
     """
     from core.services.snapshot.snapshot_extraction_service import (
         SnapshotExtractionService,
     )
     from core.services.snapshot.regional_path_service import (
-        regional_path_service,
         normalize_continent_slug,
         normalize_country_slug,
     )
@@ -315,7 +319,7 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
                 country=cfg.iso,
                 pipeline_run_id=cfg.pipeline_run_id,
             )
-            return
+            return cfg
 
         _log(
             logger,
@@ -335,6 +339,13 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
             continent=cfg.continent,
             snapshot_date=cfg.snapshot_date,
             osm_relation_id=cfg.osm_relation_id,
+            # Pass the canonical_slug gate (identity.slug) so the extraction
+            # writes to the SAME directory the envelope's snapshot_pbf_path
+            # points at. Without this, countries whose canonical_name
+            # slugifies differently from canonical_slug (e.g. NL:
+            # "Kingdom of the Netherlands" vs "netherlands") extracted to a
+            # different directory and Step 1 crashed on a missing file.
+            country_slug=cfg.slug,
         )
 
         if not result.get("success"):
@@ -362,25 +373,20 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
             pipeline_run_id=cfg.pipeline_run_id,
         )
 
-        try:
-            cont_norm = normalize_continent_slug(cfg.continent)
-            default_slug = normalize_country_slug(cfg.name)
-            snapshot_slug = (
-                get_override_country_slug(cfg.iso, default_slug)
-                if cfg.iso
-                else default_slug
+        # The envelope is a frozen dataclass — rebuild it with the ACTUAL
+        # extraction paths instead of mutating in place (mutation previously
+        # raised AttributeError that was silently swallowed by a bare except).
+        snap_path = result.get("snapshot_pbf_path")
+        if snap_path:
+            new_paths = dataclasses.replace(
+                cfg.paths, snapshot_pbf_path=str(snap_path),
             )
-            ss_path = regional_path_service.get_single_snapshot_pbf_path(
-                cont_norm,
-                snapshot_slug,
-                cfg.snapshot_date,
-            )
-            cfg.snapshot_pbf_path = str(ss_path)
-            snapshot_exists = ss_path.exists()
             if result.get("poly_file_path"):
-                cfg.poly_path = result["poly_file_path"]
-        except Exception:
-            snapshot_exists = cfg.snapshot_pbf_path and Path(cfg.snapshot_pbf_path).exists()
+                new_paths = dataclasses.replace(
+                    new_paths, poly_path=result["poly_file_path"],
+                )
+            cfg = dataclasses.replace(cfg, paths=new_paths)
+            snapshot_exists = Path(cfg.snapshot_pbf_path).exists()
     else:
         _log(
             logger,
@@ -453,6 +459,8 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> None:
                 error=str(exc),
                 pipeline_run_id=cfg.pipeline_run_id,
             )
+
+    return cfg
 
 
 def sync_subgraph_profiles(

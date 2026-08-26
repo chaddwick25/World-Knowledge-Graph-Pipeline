@@ -71,6 +71,7 @@ class SnapshotExtractionService:
         snapshot_date: str,
         osm_relation_id: Optional[int] = None,
         poly_file_path: Optional[str] = None,
+        country_slug: Optional[str] = None,
     ) -> dict:
         """Extract a country snapshot PBF from the continent PBF.
 
@@ -84,6 +85,13 @@ class SnapshotExtractionService:
                 poly file must be generated from the planet PBF.
             poly_file_path: Optional pre-resolved ``.poly`` file path.
                 If supplied, skips ``OsmBoundary`` lookup.
+            country_slug: Optional pre-resolved country slug (the
+                ``CountryPipelineProfile.canonical_slug`` gate, e.g.
+                ``"netherlands"`` for NL). When supplied, it REPLACES the
+                ``normalize_country_slug(country_name)`` derivation and is
+                used as the base for ``get_country_slug`` (overrides.json
+                still applies on top). Without it, the legacy derivation
+                from ``country_name`` is kept for backward compatibility.
 
         Returns:
             Dict with keys: ``success``, ``snapshot_pbf_path``,
@@ -94,8 +102,8 @@ class SnapshotExtractionService:
 
         planet_pbf = getattr(settings, "PLANET_OSM_FILE_PATH", None)
         cont_norm = normalize_continent_slug(continent)
-        default_slug = normalize_country_slug(country_name)
-        country_slug = (
+        default_slug = country_slug or normalize_country_slug(country_name)
+        resolved_slug = (
             get_country_slug(country_code, default_slug)
             if country_code
             else default_slug
@@ -111,7 +119,7 @@ class SnapshotExtractionService:
 
         # ── 2. Resolve output paths ────────────────────────────────────
         snapshot_pbf_path = regional_path_service.get_single_snapshot_pbf_path(
-            cont_norm, country_slug, snapshot_date,
+            cont_norm, resolved_slug, snapshot_date,
         )
 
         # ── 3. Resolve poly file ───────────────────────────────────────
@@ -119,7 +127,7 @@ class SnapshotExtractionService:
             poly_file_path=poly_file_path,
             country_code=country_code,
             continent=cont_norm,
-            country_slug=country_slug,
+            country_slug=resolved_slug,
             osm_relation_id=osm_relation_id,
             planet_pbf=planet_pbf,
         )

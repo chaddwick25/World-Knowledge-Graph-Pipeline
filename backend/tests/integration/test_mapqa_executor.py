@@ -183,3 +183,109 @@ class TestSemanticQueryPlanEndpoint:
             content_type="application/json",
         )
         assert resp.status_code == 400
+
+
+# ── Self-supervised questions (MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md §8) ─
+
+# Controlled entity set seeded into the test vectors DB (same set as
+# tests/unit/test_mapqa_question_generator.py — keeps the generator hermetic
+# and lets the executor actually geocode the generated anchors).
+_ENTITY_ROWS = [
+    ("Belize Bank", "bank", 17.5045, -88.1856, 100001),
+    ("Cafe de Belice", "cafe", 17.5047, -88.1860, 100002),
+    ("Belize City Restaurant", "restaurant", 17.5060, -88.1865, 100003),
+    ("St. John's Cathedral", "place_of_worship", 17.4931, -88.1877, 100004),
+    ("Chicken Drop Bar", "bar", 17.5000, -88.1900, 100005),
+    ("Maya Island Air", "airport", 17.5071, -88.1921, 100006),
+    ("San Pedro Pharmacy", "pharmacy", 17.9242, -87.9719, 100007),
+    ("Caye Caulker Guesthouse", "hotel", 17.7400, -88.0290, 100008),
+    ("Placencia Airport", "airport", 16.5370, -88.3610, 100009),
+    ("Dangriga Clinic", "clinic", 16.9697, -88.2163, 100010),
+]
+
+
+@pytest.fixture(scope="module")
+def seed_entities(django_db_setup, django_db_blocker):
+    """Seed the test vectors DB with a controlled BZ entity set.
+
+    Depends on ``django_db_setup`` so writes go to the TEST databases (a
+    module-scoped fixture without it would hit the real DBs — see the BZ
+    restore note in AGENTS.md).
+    """
+    from django.contrib.gis.geos import Point
+    from worldkg_nca.models import OsmEntity
+
+    with django_db_blocker.unblock():
+        OsmEntity.objects.using("vectors").filter(
+            country_code="BZ", snapshot_id="2025_12_31"
+        ).delete()
+        for name, amenity, lat, lon, osm_id in _ENTITY_ROWS:
+            OsmEntity.objects.using("vectors").create(
+                osm_type="node",
+                osm_id=osm_id,
+                snapshot_id="2025_12_31",
+                country_code="BZ",
+                tags={"name": name, "amenity": amenity},
+                geom=Point(lon, lat, srid=4326),
+            )
+    yield
+
+
+@pytest.mark.django_db(transaction=False, databases=["default", "vectors"])
+class TestSelfSupervisedQuestionsExecute:
+    """Generated questions must survive parse→execute (endpoint 200s)."""
+
+    def test_generated_questions_endpoint_200(self, client, seed_entities):
+        """Every generated question returns 200 with parsed + result.
+
+        The executor side is untouched by the expansion plan — this proves
+        the retrained parser still drives the executor for the new lexical
+        patterns ([MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §8).
+        """
+        from semantic_search.services.mapqa_question_generator import (
+            MapQAQuestionGenerator,
+        )
+        rows = MapQAQuestionGenerator(seed=7).generate(
+            country_code="BZ", snapshot_id="2025_12_31", per_class=2
+        )
+        assert len(rows) >= 5, f"expected ≥5 generated rows, got {len(rows)}"
+        for row in rows:
+            resp = client.post(
+                "/api/nca/execute-query/",
+                data=json.dumps({
+                    "query": row["MapQA question"],
+                    "country_code": "BZ",
+                }),
+                content_type="application/json",
+            )
+            assert resp.status_code == 200, (
+                f"endpoint {resp.status_code} for generated question "
+                f"{row['MapQA question']!r} (answer {row['Answer']!r}): "
+                f"{resp.content[:300]}"
+            )
+            data = json.loads(resp.content)
+            assert "parsed" in data, f"no parsed for {row['MapQA question']!r}"
+            assert "result" in data, f"no result for {row['MapQA question']!r}"
+            assert data["parsed"].get("template"), "parsed template missing"
+
+    def test_generated_questions_parse(self, parser, seed_entities):
+        """Parser classifies every generated question into a known template."""
+        from semantic_search.services.mapqa_question_generator import (
+            MapQAQuestionGenerator,
+        )
+        rows = MapQAQuestionGenerator(seed=7).generate(
+            country_code="BZ", snapshot_id="2025_12_31", per_class=2
+        )
+        known_templates = {
+            "FILTER-AGGREGATE-MEASURE (#1)",
+            "OBJECT-FIELD-MEASURE (#2)",
+            "GEOCODE-BATCH-COMPARE (#4)",
+            "LOCATION-BEARING-CLASSIFY (#5)",
+            "PLACE-ATTRIBUTE-QUERY (#8)",
+        }
+        for row in rows:
+            parsed = parser.parse(row["MapQA question"])
+            assert parsed["template"] in known_templates, (
+                f"unknown template {parsed['template']!r} for "
+                f"{row['MapQA question']!r}"
+            )
