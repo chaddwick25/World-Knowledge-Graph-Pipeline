@@ -6,7 +6,13 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-WKGS_BASE_URI = "http://schema.worldkg.org/"
+***REMOVED*** WorldKG 1.0 schema namespace — MUST match the actual WorldKG TTL dumps
+***REMOVED*** (verified 2026-08-26: the ontology TTL declares
+***REMOVED*** `wkgs: <http://www.worldkg.org/schema/>`). The legacy
+***REMOVED*** `http://schema.worldkg.org/` variant and the GeoVectors v2 namespace
+***REMOVED*** (geovectors.l3s.uni-hannover.de/...) both match ZERO triples.
+***REMOVED*** See docs/Schematics/04_ETL_Django_Vue_Primitives/05_Slug_Gate_And_RDF_Namespaces.md.
+WKGS_BASE_URI = "http://www.worldkg.org/schema/"
 OSMN_BASE_URI = "https://www.openstreetmap.org/node/"
 
 WORLDKG_REPO_URL = "https://github.com/alishiba14/WorldKG-Knowledge-Graph"
