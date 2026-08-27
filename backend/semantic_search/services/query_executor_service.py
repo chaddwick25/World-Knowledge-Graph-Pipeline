@@ -124,10 +124,13 @@ class QueryExecutorService:
             from semantic_search.services.query_parser_service import QueryParserService
             all_entities = QueryParserService.extract_all_entities(question)
             existing_locations = cls._get_concepts_by_type(concepts, "LOCATION")
-            if len(all_entities) >= 2 and len(existing_locations) < 2:
+            # Filter out interrogative / non-entity tokens the regex fallback can emit.
+            stop_words = getattr(QueryParserService, "_QUESTION_WORDS", set())
+            clean_entities = [e for e in all_entities if e not in stop_words]
+            if len(clean_entities) >= 2 and len(existing_locations) < 2:
                 # Replace/augment LOCATION concepts with full extraction
                 concepts = [c for c in concepts if c["type"] != "LOCATION"]
-                for entity_name in all_entities:
+                for entity_name in clean_entities:
                     concepts.append({
                         "type": "LOCATION",
                         "text": entity_name,
@@ -142,7 +145,12 @@ class QueryExecutorService:
 
         trace = []
         try:
-            results = executor(concepts, country_code, snapshot_date, trace)
+            import inspect
+            sig = inspect.signature(executor)
+            if "question" in sig.parameters:
+                results = executor(concepts, country_code, snapshot_date, trace, question=question)
+            else:
+                results = executor(concepts, country_code, snapshot_date, trace)
 
             # Enrich results with augmented data (IGEA links, USLP predictions)
             if isinstance(results, list) and results:
@@ -879,50 +887,200 @@ class QueryExecutorService:
 
     @classmethod
     def _execute_location_bearing_classify(cls, concepts, country_code,
-                                            snapshot_date, trace):
+                                            snapshot_date, trace, question=None):
         from semantic_search.services.query_parser_service import QueryParserService
 
         locations = cls._get_concepts_by_type(concepts, "LOCATION")
-        # If only one LOCATION concept was extracted, try multi-entity extraction
+
+        # Determine if 5a (bearing pair) or 5b (cone search)
+        cardinal = None
         if len(locations) < 2:
-            # Re-extract from the first concept's source question
-            # (stored in concept text — we need the original question)
-            # Use the entity names we have + try to get more
+            # Parse cardinal direction from question or concept texts
+            if question:
+                m = re.search(
+                    r"\b(north|northeast|east|southeast|south|southwest|west|northwest)\b",
+                    question, re.IGNORECASE
+                )
+                if m:
+                    cardinal = m.group(1).lower()
+            if not cardinal:
+                # Try finding it in any concept text (e.g. if question is not passed)
+                for c in concepts:
+                    if c.get("text"):
+                        m = re.search(
+                            r"\b(north|northeast|east|southeast|south|southwest|west|northwest)\b",
+                            c["text"], re.IGNORECASE
+                        )
+                        if m:
+                            cardinal = m.group(1).lower()
+                            break
+
+        if len(locations) >= 2:
+            # ──── 5a: Bearing between two locations ────
+            a = EntityGeocoder.geocode(locations[0]["text"], country_code, snapshot_date)
+            b = EntityGeocoder.geocode(locations[1]["text"], country_code, snapshot_date)
+            trace.append({"step": "batch_geocode",
+                          "inputs": [locations[0]["text"], locations[1]["text"]],
+                          "outputs": [a, b]})
+
+            if not a or not b or not a.get("lat") or not b.get("lat"):
+                return [{"error": "Could not geocode one or both entities"}]
+
+            # Bearing ([SPATIAL_AGENT:§C.4] — Equation 8)
+            phi1, lam1 = math.radians(a["lat"]), math.radians(a["lon"])
+            phi2, lam2 = math.radians(b["lat"]), math.radians(b["lon"])
+            dlam = lam2 - lam1
+            y = math.sin(dlam) * math.cos(phi2)
+            x = (math.cos(phi1) * math.sin(phi2) -
+                 math.sin(phi1) * math.cos(phi2) * math.cos(dlam))
+            theta = (math.degrees(math.atan2(y, x)) + 360) % 360
+            trace.append({"step": "bearing", "output_degrees": round(theta, 1)})
+
+            directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+            direction = directions[round(theta / 45) % 8]
+            trace.append({"step": "bearing_to_direction",
+                          "input_degrees": round(theta, 1),
+                          "output": direction})
+
+            return [{"bearing_degrees": round(theta, 1), "direction": direction,
+                     "from": locations[0]["text"], "to": locations[1]["text"]}]
+
+        elif len(locations) == 1 and cardinal:
+            # ──── 5b: Cone search ────
+            anchor_name = locations[0]["text"]
+            anchor = EntityGeocoder.geocode(anchor_name, country_code, snapshot_date)
+            trace.append({"step": "geocode", "input": anchor_name, "output": anchor})
+
+            if not anchor or not anchor.get("lat"):
+                return [{"error": f"Could not geocode anchor: {anchor_name}"}]
+
+            # Map cardinal to angle
+            BEARING_BY_CARDINAL = {
+                "north": 0, "northeast": 45, "east": 90, "southeast": 135,
+                "south": 180, "southwest": 225, "west": 270, "northwest": 315
+            }
+            # Also support abbreviations
+            abbrev_map = {
+                "n": "north", "ne": "northeast", "e": "east", "se": "southeast",
+                "s": "south", "sw": "southwest", "w": "west", "nw": "northwest"
+            }
+            norm_cardinal = cardinal.lower()
+            if norm_cardinal in abbrev_map:
+                norm_cardinal = abbrev_map[norm_cardinal]
+            
+            center_bearing = BEARING_BY_CARDINAL[norm_cardinal]
+
+            # Determine amenity type if present
+            object_concept = cls._get_concept(concepts, "OBJECT")
+            amenity_type = None
+            if object_concept and object_concept.get("text"):
+                amenity_text = object_concept["text"].strip().lower()
+                # If the extracted OBJECT text is the cardinal itself, it's not a real amenity
+                if amenity_text != norm_cardinal and amenity_text not in abbrev_map:
+                    amenity_type = object_concept["text"]
+
+            # Fetch candidates within 20km radius (DIRECTION_NEAREST_RADIUS_M = 20000)
+            radius_m = 20000
+            anchor_point = Point(anchor["lon"], anchor["lat"], srid=4326)
+
+            if amenity_type:
+                candidates = cls._search_by_amenity_spatial(
+                    amenity_type, country_code, snapshot_date,
+                    anchor_point=anchor_point,
+                    radius_m=radius_m, top_k=200, trace=trace,
+                )
+            else:
+                snapshot_id = cls._get_snapshot_id(snapshot_date)
+                qs = OsmEntity.objects.using("vectors").filter(
+                    snapshot_id=snapshot_id,
+                    tags__name__isnull=False,
+                ).exclude(geom__isnull=True)
+                if country_code:
+                    qs = qs.filter(country_code=country_code.upper())
+                
+                qs = qs.extra(
+                    where=["ST_DWithin(geom::geography, ST_MakePoint(%s, %s)::geography, %s)"],
+                    params=[float(anchor_point.x), float(anchor_point.y), float(radius_m)],
+                )
+                qs = qs.annotate(
+                    distance_m=RawSQL(
+                        "ST_Distance(geom::geography, ST_MakePoint(%s, %s)::geography)",
+                        (float(anchor_point.x), float(anchor_point.y)),
+                        output_field=FloatField(),
+                    )
+                ).order_by("distance_m")[:200]
+                
+                try:
+                    entities = list(qs)
+                except Exception as exc:
+                    logger.warning("Spatial cone search entities query failed: %s", exc)
+                    entities = []
+                candidates = [cls._entity_to_result(e) for e in entities]
+
+            # Calculate bearing & filter by ±45° cone
+            def get_bearing(lat1, lon1, lat2, lon2):
+                phi1, lam1 = math.radians(lat1), math.radians(lon1)
+                phi2, lam2 = math.radians(lat2), math.radians(lon2)
+                dlam = lam2 - lam1
+                y = math.sin(dlam) * math.cos(phi2)
+                x = (math.cos(phi1) * math.sin(phi2) -
+                     math.sin(phi1) * math.cos(phi2) * math.cos(dlam))
+                return (math.degrees(math.atan2(y, x)) + 360) % 360
+
+            def angular_diff(a, b):
+                diff = abs(a - b) % 360
+                return diff if diff <= 180 else 360 - diff
+
+            valid_candidates = []
+            for c in candidates:
+                # Exclude anchor itself
+                if c.get("osm_id") == anchor.get("osm_id") and c.get("osm_type") == anchor.get("osm_type"):
+                    continue
+                c_lat = c.get("lat")
+                c_lon = c.get("lon")
+                if c_lat is None or c_lon is None:
+                    continue
+                
+                theta = get_bearing(anchor["lat"], anchor["lon"], c_lat, c_lon)
+                if angular_diff(theta, center_bearing) <= 45:
+                    c_copy = dict(c)
+                    c_copy["bearing_degrees"] = round(theta, 1)
+                    c_copy["direction"] = norm_cardinal
+                    c_copy["anchor_name"] = anchor_name
+                    c_copy["requested_amenity"] = amenity_type
+                    # Ensure distance_m is present and rounded
+                    if "distance_m" not in c_copy:
+                        dist_m = cls._haversine_m(anchor["lat"], anchor["lon"], c_lat, c_lon)
+                        c_copy["distance_m"] = round(dist_m, 1)
+                    valid_candidates.append(c_copy)
+
+            trace.append({
+                "step": "cone_search",
+                "direction": norm_cardinal,
+                "radius_m": radius_m,
+                "amenity": amenity_type,
+                "output_count": len(valid_candidates),
+            })
+
+            if not valid_candidates:
+                return []
+
+            # Sort by distance
+            valid_candidates.sort(key=lambda x: x.get("distance_m", float("inf")))
+            
+            trace.append({
+                "step": "rank_by_distance",
+                "top": valid_candidates[0].get("name"),
+            })
+
+            return valid_candidates[:1]
+
+        else:
             trace.append({"step": "batch_geocode",
                           "error": "need 2 LOCATION concepts, got %d" % len(locations)})
-            # Try extracting from the concept texts directly
             if len(locations) == 1 and locations[0]["text"]:
-                # Single entity — can't compute bearing without a second
                 return [{"error": "Need two locations to compute bearing"}]
             return []
-
-        a = EntityGeocoder.geocode(locations[0]["text"], country_code, snapshot_date)
-        b = EntityGeocoder.geocode(locations[1]["text"], country_code, snapshot_date)
-        trace.append({"step": "batch_geocode",
-                      "inputs": [locations[0]["text"], locations[1]["text"]],
-                      "outputs": [a, b]})
-
-        if not a or not b or not a.get("lat") or not b.get("lat"):
-            return [{"error": "Could not geocode one or both entities"}]
-
-        # Bearing ([SPATIAL_AGENT:§C.4] — Equation 8)
-        phi1, lam1 = math.radians(a["lat"]), math.radians(a["lon"])
-        phi2, lam2 = math.radians(b["lat"]), math.radians(b["lon"])
-        dlam = lam2 - lam1
-        y = math.sin(dlam) * math.cos(phi2)
-        x = (math.cos(phi1) * math.sin(phi2) -
-             math.sin(phi1) * math.cos(phi2) * math.cos(dlam))
-        theta = (math.degrees(math.atan2(y, x)) + 360) % 360
-        trace.append({"step": "bearing", "output_degrees": round(theta, 1)})
-
-        directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
-        direction = directions[round(theta / 45) % 8]
-        trace.append({"step": "bearing_to_direction",
-                      "input_degrees": round(theta, 1),
-                      "output": direction})
-
-        return [{"bearing_degrees": round(theta, 1), "direction": direction,
-                 "from": locations[0]["text"], "to": locations[1]["text"]}]
 
     # ── Template 5: OBJECT-FIELD-MEASURE (#2) ───────────────────────────────
     # "How far is X from Y?"
@@ -1748,6 +1906,8 @@ class QueryExecutorService:
             return "No results found."
         if isinstance(results, dict) and "error" in results:
             return results["error"]
+        if isinstance(results, list) and len(results) == 1 and isinstance(results[0], dict) and "error" in results[0]:
+            return results[0]["error"]
 
         count = len(results) if isinstance(results, list) else 1
 
@@ -1774,11 +1934,21 @@ class QueryExecutorService:
                        ("..." if count > 3 else ".")
 
         if template == "LOCATION-BEARING-CLASSIFY (#5)":
-            if results and isinstance(results, list) and "direction" in results[0]:
+            if results and isinstance(results, list):
                 r = results[0]
-                return (f"Direction: {r['direction']} "
-                        f"({r['bearing_degrees']:.0f}°) "
-                        f"from {r['from']} to {r['to']}.")
+                if "anchor_name" in r:
+                    # 5b Cone search
+                    amenity_str = f" {r['requested_amenity']}" if r.get("requested_amenity") else ""
+                    name = r.get("name") or (r.get("tags") or {}).get("name") or "unknown"
+                    dist = r.get("distance_m")
+                    dist_str = f" ({dist:.0f}m away)" if dist is not None else ""
+                    return (f"Nearest{amenity_str} {r['direction']} of {r['anchor_name']} is "
+                            f"{name}{dist_str}.")
+                elif "from" in r and "to" in r and "direction" in r:
+                    # 5a Bearing pair
+                    return (f"Direction: {r['direction']} "
+                            f"({r['bearing_degrees']:.0f}°) "
+                            f"from {r['from']} to {r['to']}.")
 
         if template == "OBJECT-FIELD-MEASURE (#2)":
             if results and isinstance(results, list) and "distance_km" in results[0]:

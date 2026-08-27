@@ -175,6 +175,37 @@ class TestMultiEntityExtraction:
         # Should extract at least "Union Station"
         assert "Union Station" in entities
 
+    # ── Cardinal direction exclusion (5b cone-search reachability) ──────
+    # Regression: capitalized cardinals ("West", "East", etc.) were being
+    # extracted as LOCATION entities by the fallback tokenizer, causing the
+    # multi-entity supplement to inflate locations to 2 and bypass the 5b
+    # cone-search branch in the executor.  See
+    # docs/issues/resolved/MAPQA_LOCATION_BEARING_5B_CONE_SEARCH_GAP.md
+
+    @pytest.mark.parametrize("cardinal", [
+        "North", "South", "East", "West",
+        "Northeast", "Southeast", "Southwest", "Northwest",
+    ])
+    def test_cardinal_not_extracted_as_entity(self, extractor, cardinal):
+        """Cardinal directions must never appear in extracted entities."""
+        entities = extractor(f"What is {cardinal} of Friar Tavern?")
+        assert cardinal not in entities, (
+            f"Cardinal '{cardinal}' was extracted as an entity: {entities}"
+        )
+        assert "Friar Tavern" in entities
+
+    def test_5b_question_yields_single_entity(self, extractor):
+        """'What is west of X?' should yield only X, not [West, X]."""
+        entities = extractor("What is west of Tullygally Tavern?")
+        assert "West" not in entities
+        assert entities == ["Tullygally Tavern"]
+
+    def test_5b_with_amenity_yields_anchor_only(self, extractor):
+        """'What is the nearest cafe east of X?' → only X (amenity is OBJECT, not LOCATION)."""
+        entities = extractor("What is the nearest cafe east of Union Station?")
+        assert "East" not in entities
+        assert "Union Station" in entities
+
 
 # ── Edge cases ───────────────────────────────────────────────────────
 

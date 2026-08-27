@@ -48,6 +48,25 @@ class QueryParserService:
 
     _instance = None
 
+    # Words that should never be treated as named entities in the regex fallback.
+    _QUESTION_WORDS = frozenset({
+        "Which", "What", "Where", "When", "Who", "Why", "How",
+        "Is", "Are", "Was", "Were", "Do", "Does", "Did", "Can", "Could",
+        "Would", "Will", "Shall", "There", "Their", "Then", "Than",
+        "Has", "Have", "Had",
+    })
+
+    # Cardinal directions must never be extracted as entity names — they are
+    # spatial modifiers in 5b cone-search queries ("What is west of X?").
+    # Without this exclusion, the multi-entity supplement steals the cardinal
+    # as a second LOCATION, bypassing the 5b cone-search branch and computing
+    # a meaningless bearing from a place that happens to be named "West"/"East".
+    _CARDINAL_DIRECTIONS = frozenset({
+        "North", "South", "East", "West",
+        "Northeast", "Southeast", "Southwest", "Northwest",
+        "N", "S", "E", "W", "NE", "SE", "SW", "NW",
+    })
+
     def __init__(self):
         data_dir = Path(settings.MAPQA_PARSER_DATA_DIR)
         art = data_dir / "artifacts"
@@ -347,13 +366,22 @@ class QueryParserService:
         if m:
             return [m.group(2).strip(), m.group(3).strip(), m.group(1).strip()]
 
-        # Fallback: extract capitalized token sequences
+        # Pattern 5: "Which X is nearest/closest to Y?"
+        m = re.match(r"which\s+(.+?)\s+is\s+(?:the\s+)?(?:nearest|closest)\s+to\s+(.+)$", q, re.I)
+        if m:
+            # The anchor (Y) is the only named place; X is the OBJECT concept.
+            return [m.group(2).strip()]
+
+        # Fallback: extract capitalized token sequences, skipping question words
+        # and cardinal directions (which are spatial modifiers, not place names).
+        _skip = QueryParserService._QUESTION_WORDS | QueryParserService._CARDINAL_DIRECTIONS
         tokens = q.split()
         entities = []
         current = []
         for t in tokens:
             stripped = t.strip(",.!?;:")
-            if stripped and stripped[0].isupper() and len(stripped) > 2:
+            if stripped and stripped[0].isupper() and len(stripped) > 2 \
+                    and stripped not in _skip:
                 current.append(stripped)
             else:
                 if current:
