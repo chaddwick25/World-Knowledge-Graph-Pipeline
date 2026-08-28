@@ -44,32 +44,39 @@ sidebar walks you through the flow:
 
 The Query tab supports three modes that can be tested independently:
 
-**Structured (JSON)**: The user enters OSM tags as JSON (e.g.
-`{"amenity": "cafe"}`) or a name in any language (e.g.
-`{"name": "파리바게뜨"}`). Uses FastText semantic embeddings + the
-romanizing framework for cross-script name matching (Hangul↔Latin,
-diacritic stripping for French/Spanish/Irish, etc.). The romanizer
-auto-detects the script from the text, no language selection needed.
+### 1. Structured (JSON)
+
+Enter OSM tags as JSON (e.g. `{"amenity": "cafe"}`) or a name in any
+language (e.g. `{"name": "파리바게뜨"}`).<br>
+The romanizer auto-detects the script for cross-script name matching. 
+FastText provides semantic type matching.
+
 ![Query by OSM Tag](frontend-v3/src/assets/Query_By_OSM_Tag.png)
 
-**Natural language**: The user types a name in any language or script
-(e.g. "paris bagueete", "파리바게뜨", "café", "원탕"). The romanizer
-activates for cross-script matching (e.g., English "paris bagueete"
-matching Korean "파리바게뜨"). FastText provides semantic type matching
-as a complementary signal.
-![Query by OSM Tag](frontend-v3/src/assets/Query_By_Natural_Language.png)
+### 2. Natural language
 
-**Kuhn's Template**: The user types a full geospatial question (e.g.
-"Which bars are within 50m of Hollywood Blvd?"). The parser (TF-IDF +
-Naive Bayes) classifies it into one of 9 templates with confidence
-scores, and the parsed concepts are displayed for review. The 3-tier
-amenity fallback (exact tag → ontology class → FastText semantic) traces
-each resolution step so the user sees exactly how a concept like "bar"
-was resolved. This mode is completely separate from the other two; it
-uses its own parser and executor, and can be tested independently.
+Type a name in any language or script (e.g. "paris bagueete",
+"파리바게뜨", "café", "원탕").<br>
+The romanizer handles cross-script matching; FastText adds semantic type
+matching.
+
+![Query by Natural Language](frontend-v3/src/assets/Query_By_Natural_Language.png)
+
+### 3. Kuhn's Template
+
+Type a full geospatial question (e.g. "Which bars are within 50m of
+Hollywood Blvd?"). The parser classifies it into one of 9 templates with
+confidence scores,<br>
+and the parsed concepts are displayed for review. This mode uses its own
+parser and executor, and can be tested independently.
+
 ![Kuhn's Template](frontend-v3/src/assets/Kuhns_Template.png)
 
+<br>
 
+<hr style="border: 2px solid #333;">
+
+<br>
 
 <!-- TODO add MapQA type to the GUI as key to the template number that is shown -->
 The parser is trained on the public MapQA
@@ -80,41 +87,14 @@ question through Kuhn's template mode, the result is summarized by an
 open-source AI agent (QwenAgent) that grounds its answer in the template
 output and the underlying entity data.
 
-<!-- TODO: replace this diagram with image-->
-```
-User types: "Which cafes are within 2km of a school?"
+![GeoFlow](frontend-v3/src/assets/GeoFlow.png)
 
-┌──────────────────────────────────────────────────────────┐
-│  Step 1: REQUEST                                         │
-│  Question enters the system                              │
-└──────────────────────────┬───────────────────────────────┘
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│  Step 2: PARSER                                          │
-│  Classifies the question → "find things near a place"    │
-└──────────────────────────┬───────────────────────────────┘
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│  Step 3: TEMPLATE MATCH                                  │
-│  Matches the question's classification to a template     │
-│  "filter-aggregate-measure" template                     │
-└──────────────────────────┬───────────────────────────────┘
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│  Step 4: EXECUTION                                       │
-│  Extracts: what (cafes), where (a school),               │
-│            how far (2km)                                 │
-│  Template executes against the WorldKG artifacts         │
-│  (entity types, spatial relationships, embeddings)       │
-│  ← 5 cafes within 2km of the school                      │
-└──────────────────────────┬───────────────────────────────┘
-                           ▼
-┌──────────────────────────────────────────────────────────┐
-│  Step 5: RESULTS                                         │
-│  Human receives the results, no interpretation           │
-└──────────────────────────────────────────────────────────┘
-```
-<!-- TODO: insert image here -->
+*Figure 2: Overview of Spatial-Agent: (A) Spatial information theory
+analysis extracts core concepts and assigns functional roles; (B) Concept
+transformation drafting composes templates from the library; (C) GeoFlow
+Graph construction produces an ordered and constrained graph; (D) Graph
+factorization maps to executable tools for execution and answer
+generation. (Source: [Spatial-Agent paper](papers/WernerKuhn/Spatial-Agent:%20Agentic%20Geo-spatial%20Reasoning%20with%20Scientific%20Core%20Concepts.pdf))*
 
 
 
@@ -132,31 +112,31 @@ each template has in the parser's training data.
 **Ireland: 2025_12_31**
 
 ```
-┌──────────────────────────────┬────────────────────────────────────────────────────────────────┬──────────────────────────────────┬──────────┐
-│ Question type                │ English                                                        │ Template Type                    │ Coverage │
-├──────────────────────────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ Find things near a place     │ "Which cafes are within 2km of a school?"                      │ FILTER-AGGREGATE-MEASURE         │ 21%      │
-├──────────────────────────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ Find the nearest X           │ "What is the nearest cafe to  ?"                   │ GEOCODE-BATCH-COMPARE            │ 25%      │
-├──────────────────────────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ Compare distances            │ "Which is closer to Dublin: Tully Mill or the Cliffs of Moher?" │ GEOCODE-BATCH-COMPARE         │ 25%      │
-├──────────────────────────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ What's around here           │ "What amenities are around Tully Mill?"                        │ PLACE-ATTRIBUTE-QUERY            │ 19%      │
-├──────────────────────────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ Direction from a place       │ "What is west of Tullygally Tavern?"                           │ LOCATION-BEARING-CLASSIFY        │ 17%      │
-├──────────────────────────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ How far is X from Y          │ "How far is Betelnut Cafe from Dublin?"                        │ OBJECT-FIELD-MEASURE             │ 17%      │
-├──────────────────────────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ Optimal visiting order       │ "What's the best order to visit these 5 cafes?"                │ ROUTE-OPTIMIZE                   │ 0%       │
-├──────────────────────────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ Navigation maneuvers         │ "What turns do I take to get to the pub?"                      │ ROUTE-STEP-EXTRACT               │ 0%       │
-├──────────────────────────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ Compare routes               │ "Which route to Dublin is faster: M1 or M7?"                   │ MULTI-ROUTE-COMPARE              │ 0%       │
-├──────────────────────────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ Multi-leg journey            │ "How long is the bus and train trip to Cork?"                  │ MULTI-SEGMENT-AGGREGATE          │ 0%       │
-├──────────────────────────────┼────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ Latest departure time        │ "What's the latest I can leave to arrive by 5pm?"              │ TIME-WINDOW-REVERSE              │ 0%       │
-└──────────────────────────────┴────────────────────────────────────────────────────────────────┴──────────────────────────────────┴──────────┘
+┌──────────────────────────────┬──────────────────────────────────────────────────────────────────┬──────────────────────────────────┬──────────┐
+│ Question type                │ English                                                          │ Template Type                    │ Coverage │
+├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
+│ Find things near a place     │ "Which cafes are within 2km of a school?"                        │ FILTER-AGGREGATE-MEASURE         │ 21%      │
+├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
+│ Find the nearest X           │ "What is the nearest cafe to Shandon Bells?"                     │ GEOCODE-BATCH-COMPARE            │ 25%      │
+├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
+│ Compare distances            │ "Which is closer to Dublin: Tully Mill or the Cliffs of Moher?"  │ GEOCODE-BATCH-COMPARE            │ 25%      │
+├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
+│ What's around here           │ "What amenities are around Tully Mill?"                          │ PLACE-ATTRIBUTE-QUERY            │ 19%      │
+├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
+│ Direction from a place       │ "What is west of Tullygally Tavern?"                             │ LOCATION-BEARING-CLASSIFY        │ 17%      │
+├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
+│ How far is X from Y          │ "How far is Betelnut Cafe from Dublin?"                          │ OBJECT-FIELD-MEASURE             │ 17%      │
+├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
+│ Optimal visiting order       │ "What's the best order to visit these 5 cafes?"                  │ ROUTE-OPTIMIZE                   │ 0%       │
+├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
+│ Navigation maneuvers         │ "What turns do I take to get to the pub?"                        │ ROUTE-STEP-EXTRACT               │ 0%       │
+├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
+│ Compare routes               │ "Which route to Dublin is faster: M1 or M7?"                     │ MULTI-ROUTE-COMPARE              │ 0%       │
+├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
+│ Multi-leg journey            │ "How long is the bus and train trip to Cork?"                    │ MULTI-SEGMENT-AGGREGATE          │ 0%       │
+├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
+│ Latest departure time        │ "What's the latest I can leave to arrive by 5pm?"                │ TIME-WINDOW-REVERSE              │ 0%       │
+└──────────────────────────────┴──────────────────────────────────────────────────────────────────┴──────────────────────────────────┴──────────┘
 ```
 
 
@@ -172,7 +152,7 @@ dashboard for verifying pipeline prerequisites. It shows the overall
 system state across five tabs:
 
 - **Overview**: planet PBF size and availability
-- **Embeddings**: GV-Tags / GV-NLE scan status/home/thanos/projects/world-knowledge-graph-pipeline/frontend-v3/src/assets/Query_By_Natural_Language.png
+- **Embeddings**: GV-Tags / GV-NLE scan status
 - **Storage**: database and partition status
 - **Paths**: country and subgraph file paths
 - **History**: pipeline run history
