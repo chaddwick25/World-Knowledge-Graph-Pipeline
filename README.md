@@ -202,9 +202,9 @@ commercial alternatives that are common in ML and geospatial systems.
 │                      │ HNSW indexes inside the same DB      │ managed services, vendor lock-in,            │
 │                      │ as the entity data, no sync          │ separate infrastructure to maintain          │
 ├──────────────────────┼──────────────────────────────────────┼──────────────────────────────────────────────┤
-│ LLM / agent          │ Qwen3 14B via Ollama (local GPU)     │ OpenAI GPT-4, Anthropic Claude               │
-│                      │ runs on-device, no data leaves,      │ API-only, per-call pricing, rate limits,     │
-│                      │ no per-call cost, no rate limits     │ data sent to third-party servers             │
+│ LLM / agent          │ Ollama via NVIDIA Container Toolkit  │ OpenAI GPT-4, Anthropic Claude               │
+│                      │ Qwen 14B, Goose MCP server           │ API-only, per-call pricing, rate limits,     │
+│                      │ in Vite, calls Django REST directly  │ data sent to third-party servers             │
 ├──────────────────────┼──────────────────────────────────────┼──────────────────────────────────────────────┤
 │ Language /           │ Custom romanizer (phonetic script    │ Google Translate API, DeepL                  │
 │ romanization         │ detection, Hangul↔Latin, diacritic   │ API-only, per-character pricing,             │
