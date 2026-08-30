@@ -173,7 +173,16 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    command: celery -A pipeline.celery_app worker --loglevel=info --pool=prefork --concurrency=4 --max-memory-per-child=8589934592
+    # --max-tasks-per-child=1: recycle each prefork process after one task so
+    # the OS reclaims ALL GPU memory (CUDA context, allocated tensors, cached
+    # reserved memory) when the process exits.  torch.cuda.empty_cache() only
+    # releases *cached* memory — it cannot free the CUDA context (~300-500MB)
+    # or memory held by surviving tensor references.  Without this, a worker
+    # process that ran a GPU-intensive task (GV-NLE training, spectral
+    # analysis LOBPCG) retains VRAM and starves the next pipeline run,
+    # causing CUDA OOM on the 8GB RTX 2070.  The ~2-5s process startup
+    # overhead per task is negligible vs. the 10-60+ minute pipeline runtime.
+    command: celery -A pipeline.celery_app worker --loglevel=info --pool=prefork --concurrency=4 --max-memory-per-child=8589934592 --max-tasks-per-child=1
 
   # Local LLM server (RTX 4070 Ti) — OpenAI-compatible API on :11434.
   # The MCP agent (goose) uses this for the reasoning model.

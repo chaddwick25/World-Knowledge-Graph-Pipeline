@@ -430,6 +430,18 @@ class Command(BaseCommand):
         if not graph:
             self.stdout.write(self.style.WARNING("  ⚠️ No graph nodes created. Stopping training pipeline."))
             return
+
+        # Guard: skip training for degenerate graphs (single node, no edges).
+        # Subgraphs like baja_california_sur can have only 1 entity in the
+        # buffer zone — Node2Vec cannot train on a graph with no edges.
+        total_edges = sum(len(neighbors) for neighbors in graph.values())
+        if len(graph) < 2 or total_edges == 0:
+            self.stdout.write(self.style.WARNING(
+                f"  ⚠️ Graph too small for training "
+                f"(nodes={len(graph)}, edges={total_edges}). "
+                f"Skipping GV-NLE for this subgraph."
+            ))
+            return
         
         # Show statistics
         stats = knn_service.get_graph_statistics(graph)
@@ -732,7 +744,11 @@ class Command(BaseCommand):
         # Ensure total VRAM cleanup for the Celery worker
         if use_gpu:
             import torch
+            import gc
+            gc.collect()
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
             self.stdout.write(self.style.SUCCESS("  ✓ Cleared PyTorch CUDA cache"))
 
     def _process_subgraphs(self, iso: str, options: dict):

@@ -444,7 +444,10 @@ def _eigsh_gpu(L, k_request, n):
     # Free GPU memory aggressively
     del L_torch, eigenvalues_t, eigenvectors_t
     torch.cuda.synchronize()
+    import gc
+    gc.collect()
     torch.cuda.empty_cache()
+    torch.cuda.ipc_collect()
 
     return eigenvalues, eigenvectors
 

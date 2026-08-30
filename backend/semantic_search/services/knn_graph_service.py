@@ -380,28 +380,37 @@ class KNNGraphService:
             k = max(1, n - 1)
         else:
             k = self.k
-        
+
+        # Edge case: single entity — no neighbors possible.
+        # Return a graph with the node but no edges.
+        if n == 1:
+            logger.warning(f"Only 1 entity provided — returning single-node graph with no edges.")
+            osm_id = entities[0]['osm_id']
+            return {osm_id: []}
+
         logger.info(f"Building k-NN graph for {n} entities (k={k}) using multi-threaded BallTree...")
-        
+
         # Convert coordinates to radians exactly for scikit-learn Haversine formula
         osm_ids = [entity['osm_id'] for entity in entities]
         coords_rad = np.radians([[e['lat'], e['lon']] for e in entities])
-        
+
         from sklearn.neighbors import NearestNeighbors
         import multiprocessing
-        
+
         # Avoid Loky-backed parallel loop warnings when running inside a child process
         # (e.g., inside a multiprocessing worker or Django management command)
         current_proc = multiprocessing.current_process()
         is_child = current_proc.name != 'MainProcess' and not current_proc.name.startswith('Process-')
         n_jobs = 1 if is_child else -1
-        
+
         # Build ultra-fast tree indexing mapping
         # k + 1 because the query will return the coordinate mapped strictly to itself at distance 0
+        # Cap at n to satisfy sklearn's n_neighbors <= n_samples constraint
+        n_neighbors = min(k + 1, n)
         nn = NearestNeighbors(
-            n_neighbors=k + 1, 
-            metric='haversine', 
-            n_jobs=n_jobs, 
+            n_neighbors=n_neighbors,
+            metric='haversine',
+            n_jobs=n_jobs,
             algorithm='ball_tree'
         )
         nn.fit(coords_rad)

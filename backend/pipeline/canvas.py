@@ -538,12 +538,26 @@ def _run_async(cfg, run, steps) -> None:
         step1_chord = None  # no subgraphs — step_1 returns env directly
 
     # ── Step 4 chord: subgraph USLP ──
-    # Step 4 is replaced by this chord in the async chain (the bare step_4
-    # task never runs in async), so the chord is the sole USLP executor —
-    # no double execution.
-    uslp_header = _get_subgraph_uslp_tasks(cfg)
-    uslp_callback = steps[4.5].s(config_dict)  # step_4b_finalize_subgraph_uslp
-    uslp_chord = chord(uslp_header, uslp_callback)
+    # When subgraphs are present at canvas build time, use a chord to fan
+    # out parallel _run_subgraph_uslp tasks per subgraph, with step_4b as
+    # the callback that aggregates results.
+    #
+    # When NO subgraphs are present (small territory or fresh DB), skip the
+    # chord entirely and chain step_4 directly.  step_4 rehydrates subgraphs
+    # from DB and self-dispatches per-subgraph USLP inline.  step_4b is a
+    # no-op in this case (no subgraph results to aggregate).
+    #
+    # Using a chord with a single header task (the old approach) is
+    # vulnerable to a stale-TaskResult race on re-runs: the patched backend's
+    # fallback_chord_unlock polling can see the previous run's SUCCESS
+    # TaskResult and fire the callback before step_4 finishes, causing
+    # Step 4 and Step 5 to run concurrently on the GPU → CUDA OOM.
+    if cfg.has_subgraphs and cfg.subgraphs:
+        uslp_header = _get_subgraph_uslp_tasks(cfg)
+        uslp_callback = steps[4.5].s(config_dict)  # step_4b_finalize_subgraph_uslp
+        uslp_chord = chord(uslp_header, uslp_callback)
+    else:
+        uslp_chord = None  # no subgraphs — step_4 runs inline, step_4b skipped
 
     # ── Step 5: NO chord ──
     # step_5 self-dispatches per-subgraph NLE training inline (via
@@ -564,9 +578,15 @@ def _run_async(cfg, run, steps) -> None:
     canvas_parts.extend([
         steps[2].s(),
         steps[3].s(),
-        uslp_chord,
-        steps[5].s(),
     ])
+    if uslp_chord is not None:
+        canvas_parts.append(uslp_chord)
+    else:
+        # No subgraphs at canvas build time — step_4 runs inline
+        # (rehydrates subgraphs from DB if generated during Step 1).
+        # step_4b is skipped (no-op without subgraph results).
+        canvas_parts.append(steps[4].s())
+    canvas_parts.append(steps[5].s())
     # Step 5c (graph & spectral analysis) + Step 5d (temporal drift) run
     # after Step 5 and before Step 6.  Both are non-fatal / conditional —
     # their task bodies log warnings and no-op when prerequisites are missing
@@ -578,6 +598,27 @@ def _run_async(cfg, run, steps) -> None:
     canvas_parts.append(steps[6].s())
 
     canvas = chain(*canvas_parts)
+
+    # Clean up stale TaskResult rows from any previous run with the same
+    # pipeline_run_id (re-runs).  The patched Celery backend uses
+    # fallback_chord_unlock polling, which checks TaskResult rows to detect
+    # chord header completion.  Stale SUCCESS rows from a previous run can
+    # cause the chord callback to fire prematurely, leading to concurrent
+    # GPU usage and CUDA OOM.
+    try:
+        from django_celery_results.models import TaskResult
+        deleted_count, _ = TaskResult.objects.filter(
+            task_id=cfg.pipeline_run_id
+        ).delete()
+        if deleted_count:
+            _log(logger, "info",
+                "Cleaned up stale TaskResult rows before dispatch",
+                country=cfg.iso,
+                deleted=deleted_count,
+                pipeline_run_id=cfg.pipeline_run_id,
+            )
+    except Exception:
+        pass  # non-fatal — dispatch proceeds regardless
 
     # Dispatch to Celery FIRST, then mark as RUNNING.
     # This eliminates the PENDING -> RUNNING race window where Celery
