@@ -317,17 +317,32 @@ class PyGDeepWalkService:
         }
     
     def cleanup(self):
-        """Free GPU memory used by the model."""
+        """Free GPU memory used by the model.
+
+        Deletes ALL tensor-holding attributes (not just ``self.model``) so
+        that ``gc.collect()`` + ``empty_cache()`` can actually release the
+        VRAM.  The Node2Vec model internally holds ``edge_index``; the
+        service holds ``edge_weight`` as a separate attribute.  Both must
+        be dereferenced before the CUDA cache is emptied.
+
+        Note: this is a best-effort defense — the primary GPU memory
+        guarantee comes from ``--max-tasks-per-child=1`` on the Celery
+        worker, which reclaims all VRAM (including the CUDA context) when
+        the process exits.
+        """
         if self.model is not None:
             del self.model
             self.model = None
-        if hasattr(self, 'edge_weight'):
-            del self.edge_weight
-            
+        for attr in ('edge_weight', 'edge_index', 'node_to_idx', 'idx_to_node'):
+            if hasattr(self, attr):
+                delattr(self, attr)
+
         import gc
         gc.collect()
         if torch.cuda.is_available() and self.device.type == 'cuda':
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
             
     def save_model(self, path: str):
         """Save trained model to disk."""

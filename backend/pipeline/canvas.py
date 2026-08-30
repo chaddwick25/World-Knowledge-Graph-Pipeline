@@ -538,12 +538,26 @@ def _run_async(cfg, run, steps) -> None:
         step1_chord = None  ***REMOVED*** no subgraphs — step_1 returns env directly
 
     ***REMOVED*** ── Step 4 chord: subgraph USLP ──
-    ***REMOVED*** Step 4 is replaced by this chord in the async chain (the bare step_4
-    ***REMOVED*** task never runs in async), so the chord is the sole USLP executor —
-    ***REMOVED*** no double execution.
-    uslp_header = _get_subgraph_uslp_tasks(cfg)
-    uslp_callback = steps[4.5].s(config_dict)  ***REMOVED*** step_4b_finalize_subgraph_uslp
-    uslp_chord = chord(uslp_header, uslp_callback)
+    ***REMOVED*** When subgraphs are present at canvas build time, use a chord to fan
+    ***REMOVED*** out parallel _run_subgraph_uslp tasks per subgraph, with step_4b as
+    ***REMOVED*** the callback that aggregates results.
+    ***REMOVED***
+    ***REMOVED*** When NO subgraphs are present (small territory or fresh DB), skip the
+    ***REMOVED*** chord entirely and chain step_4 directly.  step_4 rehydrates subgraphs
+    ***REMOVED*** from DB and self-dispatches per-subgraph USLP inline.  step_4b is a
+    ***REMOVED*** no-op in this case (no subgraph results to aggregate).
+    ***REMOVED***
+    ***REMOVED*** Using a chord with a single header task (the old approach) is
+    ***REMOVED*** vulnerable to a stale-TaskResult race on re-runs: the patched backend's
+    ***REMOVED*** fallback_chord_unlock polling can see the previous run's SUCCESS
+    ***REMOVED*** TaskResult and fire the callback before step_4 finishes, causing
+    ***REMOVED*** Step 4 and Step 5 to run concurrently on the GPU → CUDA OOM.
+    if cfg.has_subgraphs and cfg.subgraphs:
+        uslp_header = _get_subgraph_uslp_tasks(cfg)
+        uslp_callback = steps[4.5].s(config_dict)  ***REMOVED*** step_4b_finalize_subgraph_uslp
+        uslp_chord = chord(uslp_header, uslp_callback)
+    else:
+        uslp_chord = None  ***REMOVED*** no subgraphs — step_4 runs inline, step_4b skipped
 
     ***REMOVED*** ── Step 5: NO chord ──
     ***REMOVED*** step_5 self-dispatches per-subgraph NLE training inline (via
@@ -564,9 +578,15 @@ def _run_async(cfg, run, steps) -> None:
     canvas_parts.extend([
         steps[2].s(),
         steps[3].s(),
-        uslp_chord,
-        steps[5].s(),
     ])
+    if uslp_chord is not None:
+        canvas_parts.append(uslp_chord)
+    else:
+        ***REMOVED*** No subgraphs at canvas build time — step_4 runs inline
+        ***REMOVED*** (rehydrates subgraphs from DB if generated during Step 1).
+        ***REMOVED*** step_4b is skipped (no-op without subgraph results).
+        canvas_parts.append(steps[4].s())
+    canvas_parts.append(steps[5].s())
     ***REMOVED*** Step 5c (graph & spectral analysis) + Step 5d (temporal drift) run
     ***REMOVED*** after Step 5 and before Step 6.  Both are non-fatal / conditional —
     ***REMOVED*** their task bodies log warnings and no-op when prerequisites are missing
@@ -578,6 +598,27 @@ def _run_async(cfg, run, steps) -> None:
     canvas_parts.append(steps[6].s())
 
     canvas = chain(*canvas_parts)
+
+    ***REMOVED*** Clean up stale TaskResult rows from any previous run with the same
+    ***REMOVED*** pipeline_run_id (re-runs).  The patched Celery backend uses
+    ***REMOVED*** fallback_chord_unlock polling, which checks TaskResult rows to detect
+    ***REMOVED*** chord header completion.  Stale SUCCESS rows from a previous run can
+    ***REMOVED*** cause the chord callback to fire prematurely, leading to concurrent
+    ***REMOVED*** GPU usage and CUDA OOM.
+    try:
+        from django_celery_results.models import TaskResult
+        deleted_count, _ = TaskResult.objects.filter(
+            task_id=cfg.pipeline_run_id
+        ).delete()
+        if deleted_count:
+            _log(logger, "info",
+                "Cleaned up stale TaskResult rows before dispatch",
+                country=cfg.iso,
+                deleted=deleted_count,
+                pipeline_run_id=cfg.pipeline_run_id,
+            )
+    except Exception:
+        pass  ***REMOVED*** non-fatal — dispatch proceeds regardless
 
     ***REMOVED*** Dispatch to Celery FIRST, then mark as RUNNING.
     ***REMOVED*** This eliminates the PENDING -> RUNNING race window where Celery
