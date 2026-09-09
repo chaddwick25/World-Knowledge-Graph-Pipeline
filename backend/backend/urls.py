@@ -19,7 +19,6 @@ from django.urls import path, include
 
 urlpatterns = [ 
     path('admin/', admin.site.urls),
-    path('api/vectors/', include('vectors.urls')),
     path('api/geodata/', include('geodata.urls')),
     path('api/semantic-search/', include('semantic_search.urls')),
     path('api/nca/', include('worldkg_nca.urls')),

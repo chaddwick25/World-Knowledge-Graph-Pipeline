@@ -59,6 +59,27 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useOverlayStore } from '../stores/overlayStore'
 
+// ── Basemap configuration ─────────────────────────────────────────────────
+// CARTO basemaps now require an API key (free, request at
+// https://carto.com/basemaps/apikey). When VITE_CARTO_API_KEY is set, the
+// dark CARTO basemap is used with the key appended. When unset, we fall
+// back to standard OSM raster tiles (light theme, no key required) so the
+// map always renders.
+const CARTO_API_KEY = import.meta.env.VITE_CARTO_API_KEY || ''
+const USE_CARTO = CARTO_API_KEY.length > 0
+
+const BASEMAP_URL = USE_CARTO
+  ? `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`
+  : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+
+const BASEMAP_OPTIONS = USE_CARTO
+  ? { subdomains: 'abcd', maxZoom: 19 }
+  : { subdomains: 'abc', maxZoom: 19 }
+
+const BASEMAP_ATTRIBUTION = USE_CARTO
+  ? '© <a href="https://www.openstreetmap.org/copyright">OSM</a> · <a href="https://carto.com/">CARTO</a>'
+  : '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+
 // ── Relation type color map ──────────────────────────────────────────────
 // Harmonious palette (Tailwind 400-500 range) that complements the app's
 // dark theme (#0f172a backgrounds, #6366f1 indigo accent).
@@ -286,16 +307,11 @@ export default {
         maxBoundsViscosity: 1.0,
       })
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 19,
-      }).addTo(mapInstance)
+      L.tileLayer(BASEMAP_URL, BASEMAP_OPTIONS).addTo(mapInstance)
 
       L.control
         .attribution({ prefix: false, position: 'bottomright' })
-        .addAttribution(
-          '© <a href="https://www.openstreetmap.org/copyright">OSM</a> · <a href="https://carto.com/">CARTO</a>'
-        )
+        .addAttribution(BASEMAP_ATTRIBUTION)
         .addTo(mapInstance)
 
       searchMarkersLayer = L.layerGroup().addTo(mapInstance)

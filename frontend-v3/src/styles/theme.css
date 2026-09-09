@@ -15,6 +15,17 @@
  * docs/plans/FRONTEND_BOOTSTRAP_THEME_MIGRATION_PLAN.md §2.
  */
 
+/* Page-level reset (survived from the deleted src/style.css — Vite-template
+ * leftovers were removed 2026-09-09; this block is the only part the app
+ * depends on). */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
 [data-bs-theme="dark"] {
   /* ── Surfaces (dark slate, lightest → darkest) ── */
   --bs-body-bg: #0f172a;

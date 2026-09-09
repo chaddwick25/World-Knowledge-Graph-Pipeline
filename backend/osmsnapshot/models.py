@@ -3,10 +3,6 @@
 A **snapshot** is a history-flattened OSM extract pinned to a moment in time
 for a country. It is the unit of work for a pipeline run and the scoping key
 for all downstream graph and drift analysis.
-
-A **GraphExtract** is the graph substrate (nodes, edges, tags in Parquet)
-extracted from a snapshot's PBF. It is the raw material from which road
-network, spatial k-NN, and semantic graphs are derived.
 """
 
 import uuid
@@ -53,50 +49,6 @@ class Snapshot(models.Model):
 
     def __str__(self):
         return f"Snapshot({self.country_code}, {self.snapshot_date})"
-
-
-class GraphExtract(models.Model):
-    """Graph data (nodes, edges, tags) extracted from a snapshot's PBF.
-
-    Stored as Parquet files in ``extract_path``:
-    - ``nodes.parquet`` — ``(osm_id, lat, lon)``
-    - ``edges.parquet`` — ``(way_id, osm_id_a, osm_id_b)``
-    - ``tags.parquet``  — ``(osm_id, key, value)``
-
-    This is the substrate from which multiple graphs are derived:
-    - Road network graph (filter ``tags.key='highway'`` ∈ routable types)
-    - Spatial k-NN graph (compute haversine neighbors on nodes)
-    - Semantic graph (join ``wkg_class`` from enrichment)
-
-    One GraphExtract per snapshot.
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    snapshot = models.ForeignKey(
-        Snapshot,
-        on_delete=models.CASCADE,
-        related_name='graph_extracts',
-        help_text="The snapshot this graph data was extracted from.",
-    )
-    extract_path = models.CharField(
-        max_length=1024,
-        help_text="Directory path containing nodes.parquet, edges.parquet, tags.parquet.",
-    )
-    node_count = models.IntegerField(default=0)
-    way_count = models.IntegerField(default=0)
-    relation_count = models.IntegerField(default=0)
-    edge_count = models.IntegerField(default=0)
-    tag_count = models.IntegerField(default=0)
-    total_size_bytes = models.BigIntegerField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = 'graph_extracts'
-        unique_together = [('snapshot',)]
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"GraphExtract({self.snapshot.country_code}, {self.snapshot.snapshot_date})"
 
 
 class SnapshotJob(models.Model):

@@ -351,26 +351,6 @@ export const usePipelineStore = defineStore('pipeline', {
     },
 
     // ──────────────────────────────────────────────────────────
-    //  App State (delegates to appStateStore)
-    // ──────────────────────────────────────────────────────────
-
-    /**
-     * Fetch the consolidated app state for a country.
-     * Delegates to the appStateStore for caching.
-     * Returns the country state entry, or null on error.
-     */
-    async fetchAppState(countryName, { forceRefresh = false } = {}) {
-      try {
-        const { useAppStateStore } = await import('./appStateStore')
-        const appStore = useAppStateStore()
-        return await appStore.fetchCountryState(countryName, { forceRefresh })
-      } catch (err) {
-        console.error('[pipelineStore] fetchAppState error:', err)
-        return null
-      }
-    },
-
-    // ──────────────────────────────────────────────────────────
     //  Start / trigger pipelines
     // ──────────────────────────────────────────────────────────
 

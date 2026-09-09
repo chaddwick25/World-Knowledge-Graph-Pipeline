@@ -248,15 +248,15 @@ class AugmentedDataService:
     ) -> list[SubgraphLinkGroup]:
         """Build per-subgraph link groupings from SpatialTripletScore data.
 
-        Uses SQL-level aggregation instead of Python iteration. For each
-        subgraph, we issue ONE aggregate query that computes:
-          - accepted/rejected counts
-          - link type breakdown (geo/name/class/mixed dominant)
-          - score distribution histogram (5 buckets)
-          - average confidence
+        Each link is assigned to exactly ONE subgraph — the first subgraph
+        whose bbox contains its head entity (in subgraph-list order). Links
+        whose head falls outside every subgraph bbox roll into a residual
+        country-level group. This partitions the link set, so per-subgraph
+        counts sum exactly to ``total_accepted`` / ``total_rejected`` —
+        overlapping subgraph bboxes no longer double-count links.
 
-        This replaces the previous approach of iterating millions of rows
-        in Python with `qs.iterator(chunk_size=5000)` per metric.
+        Per-subgraph metrics (breakdown / histogram / avg confidence) are
+        computed with a single SQL aggregate over the assigned link set.
         """
         from django.db.models import Q
         from igea.models import SpatialTripletScore, SpatialTripletScoreRejected
@@ -267,44 +267,81 @@ class AugmentedDataService:
         subgraphs = self._get_subgraphs(iso)
         groups = []
 
-        if subgraphs:
-            for sg in subgraphs:
-                sg_slug = sg.slug if sg.slug else ''
-                sg_name = sg.name if sg.name else sg_slug
+        # ── Build per-subgraph head-entity scopes ─────────────────────
+        # Cross-database constraint: OsmEntity lives in the `vectors` DB
+        # while SpatialTripletScore lives in `default`, so we can't use a
+        # SQL subquery. We fetch entity IDs first, then map each head
+        # entity to its first matching subgraph via a Python dict
+        # (frozenset membership lookup per link).
+        subgraph_scopes = []  # [(slug, name, frozenset(entity_ids)), ...]
+        for sg in subgraphs:
+            entity_ids = self._get_subgraph_entity_ids(sg)
+            if not entity_ids:
+                continue
+            sg_slug = sg.slug if sg.slug else ''
+            subgraph_scopes.append((
+                sg_slug,
+                sg.name if sg.name else sg_slug,
+                frozenset(entity_ids),
+            ))
 
-                # Fetch head entity IDs within this subgraph's bbox.
-                # Cross-database constraint: OsmEntity lives in the `vectors`
-                # DB while SpatialTripletScore lives in `default`, so we
-                # can't use a SQL subquery. We fetch entity IDs first,
-                # then filter the link queryset by head_osm_id__in.
-                entity_ids = self._get_subgraph_entity_ids(sg)
-                if not entity_ids:
+        if subgraph_scopes:
+            # head_osm_id → first matching subgraph index (later bboxes
+            # only win when the earlier ones don't contain the head).
+            head_to_subgraph = {}
+            for idx, (_, _, entity_set) in enumerate(subgraph_scopes):
+                for osm_id in entity_set:
+                    head_to_subgraph.setdefault(osm_id, idx)
+
+            # Load the country+snapshot link set ONCE — this is the ground
+            # truth that the per-subgraph buckets must partition exactly.
+            accepted_links = list(
+                SpatialTripletScore.objects
+                .filter(country_filter & Q(predicted=True) & snapshot_filter)
+                .values_list('id', 'head_osm_id')
+            )
+            rejected_links = list(
+                SpatialTripletScoreRejected.objects
+                .filter(country_filter & snapshot_filter)
+                .values_list('id', 'head_osm_id')
+            )
+
+            accepted_buckets = [[] for _ in subgraph_scopes]
+            rejected_buckets = [[] for _ in subgraph_scopes]
+            unassigned_accepted = []
+            unassigned_rejected = []
+
+            for link_id, head_osm_id in accepted_links:
+                bucket = head_to_subgraph.get(head_osm_id)
+                if bucket is None:
+                    unassigned_accepted.append(link_id)
+                else:
+                    accepted_buckets[bucket].append(link_id)
+
+            for link_id, head_osm_id in rejected_links:
+                bucket = head_to_subgraph.get(head_osm_id)
+                if bucket is None:
+                    unassigned_rejected.append(link_id)
+                else:
+                    rejected_buckets[bucket].append(link_id)
+
+            for idx, (sg_slug, sg_name, _) in enumerate(subgraph_scopes):
+                acc_pks = accepted_buckets[idx]
+                rej_pks = rejected_buckets[idx]
+                if not acc_pks and not rej_pks:
                     continue
 
-                # Base querysets scoped to this subgraph's entities
-                accepted_qs = SpatialTripletScore.objects.filter(
-                    country_filter & Q(predicted=True) & snapshot_filter
-                    & Q(head_osm_id__in=entity_ids)
+                accepted_qs = (
+                    SpatialTripletScore.objects.filter(pk__in=acc_pks)
+                    if acc_pks else SpatialTripletScore.objects.none()
                 )
-                rejected_count = SpatialTripletScoreRejected.objects.filter(
-                    country_filter & snapshot_filter
-                    & Q(head_osm_id__in=entity_ids)
-                ).count()
-
-                accepted_count = accepted_qs.count()
-                if accepted_count == 0 and rejected_count == 0:
-                    continue
-
-                # Single aggregate query for all accepted-link metrics.
-                # This replaces 3 separate Python iterator loops
-                # (breakdown, score_dist, avg_conf) with one SQL pass.
                 agg = self._aggregate_accepted_metrics(accepted_qs)
 
                 groups.append(SubgraphLinkGroup(
                     subgraph_slug=sg_slug,
                     subgraph_name=sg_name,
-                    accepted_count=accepted_count,
-                    rejected_count=rejected_count,
+                    accepted_count=len(acc_pks),
+                    rejected_count=len(rej_pks),
                     link_type_breakdown=agg['breakdown'],
                     score_distribution=ScoreDistribution(
                         buckets=self.BUCKET_LABELS,
@@ -313,8 +350,31 @@ class AugmentedDataService:
                     avg_confidence=agg['avg_confidence'],
                 ))
 
-        # If no subgraph groups or no subgraph profiles found,
-        # return a single country-level group (no spatial filtering needed)
+            # Residual country-level group for links whose head falls
+            # outside every subgraph bbox — keeps the partition complete
+            # so total_accepted covers the full country+snapshot link set.
+            if unassigned_accepted or unassigned_rejected:
+                accepted_qs = (
+                    SpatialTripletScore.objects.filter(pk__in=unassigned_accepted)
+                    if unassigned_accepted else SpatialTripletScore.objects.none()
+                )
+                agg = self._aggregate_accepted_metrics(accepted_qs)
+
+                groups.append(SubgraphLinkGroup(
+                    subgraph_slug='country-level',
+                    subgraph_name=f'{country_name} (country-level)',
+                    accepted_count=len(unassigned_accepted),
+                    rejected_count=len(unassigned_rejected),
+                    link_type_breakdown=agg['breakdown'],
+                    score_distribution=ScoreDistribution(
+                        buckets=self.BUCKET_LABELS,
+                        counts=agg['score_counts'],
+                    ),
+                    avg_confidence=agg['avg_confidence'],
+                ))
+
+        # No subgraph scopes (no subgraphs, or all bboxes missing) →
+        # single country-level group (no spatial filtering needed).
         if not groups:
             accepted_qs = SpatialTripletScore.objects.filter(
                 country_filter & Q(predicted=True) & snapshot_filter
@@ -430,34 +490,57 @@ class AugmentedDataService:
     def _count_entities(country_name: str, iso: Optional[str], snapshot_date: Optional[str] = None) -> dict:
         """Count total entities and entities with WorldKG class.
 
-        When snapshot_date is provided, counts are filtered to that snapshot
-        via the OsmEntity.snapshot_id column (CharField, e.g. "2025_12_31").
+        Counts are scoped to BOTH the snapshot date (OsmEntity.snapshot_id,
+        CharField e.g. "2025_12_31") AND the country (OsmEntity.country_code)
+        so shared snapshots don't leak other countries' entities into the
+        per-country stats.
+
+        When snapshot_date is None, counts cover the whole table for the
+        country. When iso is None (unresolvable country), falls back to
+        snapshot-wide counts and logs a warning.
         """
         from django.db import connections
 
         result = {'total': 0, 'with_wkg_class': 0}
 
+        if not iso:
+            logger.warning(
+                "Entity count country filter unavailable for %s — counting snapshot-wide",
+                country_name,
+            )
+
         try:
             with connections['vectors'].cursor() as cursor:
+                # Partitioned table: pruning happens on (snapshot_id,
+                # country_code), so both keys keep the count on the leaf.
+                country_clause = " AND country_code = %s" if iso else ""
+                country_params = [iso.upper()] if iso else []
+
                 if snapshot_date:
-                    cursor.execute(
-                        "SELECT COUNT(*) FROM semantic_search_osmentity WHERE snapshot_id = %s",
-                        [snapshot_date],
-                    )
-                    result['total'] = cursor.fetchone()[0]
-                    cursor.execute(
+                    total_sql = (
                         "SELECT COUNT(*) FROM semantic_search_osmentity "
-                        "WHERE snapshot_id = %s AND wkg_class IS NOT NULL",
-                        [snapshot_date],
+                        "WHERE snapshot_id = %s" + country_clause
                     )
-                    result['with_wkg_class'] = cursor.fetchone()[0]
+                    wkg_sql = (
+                        "SELECT COUNT(*) FROM semantic_search_osmentity "
+                        "WHERE snapshot_id = %s AND wkg_class IS NOT NULL" + country_clause
+                    )
+                    params = [snapshot_date] + country_params
                 else:
-                    cursor.execute("SELECT COUNT(*) FROM semantic_search_osmentity")
-                    result['total'] = cursor.fetchone()[0]
-                    cursor.execute(
-                        "SELECT COUNT(*) FROM semantic_search_osmentity WHERE wkg_class IS NOT NULL"
+                    total_sql = (
+                        "SELECT COUNT(*) FROM semantic_search_osmentity "
+                        "WHERE TRUE" + country_clause
                     )
-                    result['with_wkg_class'] = cursor.fetchone()[0]
+                    wkg_sql = (
+                        "SELECT COUNT(*) FROM semantic_search_osmentity "
+                        "WHERE wkg_class IS NOT NULL" + country_clause
+                    )
+                    params = country_params
+
+                cursor.execute(total_sql, params)
+                result['total'] = cursor.fetchone()[0]
+                cursor.execute(wkg_sql, params)
+                result['with_wkg_class'] = cursor.fetchone()[0]
         except Exception as exc:
             logger.warning(f"Failed to count entities for {country_name}: {exc}")
 
