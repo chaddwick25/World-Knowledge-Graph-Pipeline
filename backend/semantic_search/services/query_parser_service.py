@@ -356,15 +356,25 @@ class QueryParserService:
         if m:
             return [m.group(1).strip(), m.group(2).strip()]
 
-        # Pattern 3: "Which is closer to Z: X or Y?"
-        m = re.match(r"which is closer to\s+(.+?):\s*(.+?)\s+or\s+(.+)$", q, re.I)
+        # Pattern 3: "Which/What is closer to Z: X or Y?" (or "X, Y or Z")
+        m = re.match(
+            r"(?:which|what)\s+is closer to\s+(.+?):\s*(.+?)\s+or\s+(.+)$",
+            q, re.I,
+        )
         if m:
-            return [m.group(2).strip(), m.group(3).strip(), m.group(1).strip()]
+            return QueryParserService._compare_candidates(
+                m.group(2), m.group(3), m.group(1),
+            )
 
-        # Pattern 4: "Which X is closer to Y: A or B?"
-        m = re.match(r"which .+? is closer to\s+(.+?):\s*(.+?)\s+or\s+(.+)$", q, re.I)
+        # Pattern 4: "Which/What X is closer to Y: A or B?"
+        m = re.match(
+            r"(?:which|what)\s+.+?\s+is closer to\s+(.+?):\s*(.+?)\s+or\s+(.+)$",
+            q, re.I,
+        )
         if m:
-            return [m.group(2).strip(), m.group(3).strip(), m.group(1).strip()]
+            return QueryParserService._compare_candidates(
+                m.group(2), m.group(3), m.group(1),
+            )
 
         # Pattern 5: "Which X is nearest/closest to Y?"
         m = re.match(r"which\s+(.+?)\s+is\s+(?:the\s+)?(?:nearest|closest)\s+to\s+(.+)$", q, re.I)
@@ -390,6 +400,20 @@ class QueryParserService:
         if current:
             entities.append(" ".join(current))
         return entities
+
+    @staticmethod
+    def _compare_candidates(group2: str, group3: str, anchor: str) -> list:
+        """Build [candidates..., anchor] for 'X: A or B' phrasings.
+
+        Splits comma lists in the first candidate group so
+        "X: A, B or C" yields three candidates.
+        """
+        candidates = [
+            c.strip() for c in re.split(r",|\s+or\s+", group2) if c.strip()
+        ]
+        candidates.append(group3.strip())
+        candidates.append(anchor.strip())
+        return candidates
 
     # ── Role assignment ─────────────────────────────────────────────────────
 

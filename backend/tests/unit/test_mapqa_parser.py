@@ -169,6 +169,32 @@ class TestMultiEntityExtraction:
         entities = extractor("Which is closer to Union Station: Starbucks or McDonalds?")
         assert entities == ["Starbucks", "McDonalds", "Union Station"]
 
+    def test_compare_closer_what_pattern(self, extractor):
+        """'What is closer to Z: X or Y?' → [X, Y, Z] (anchor last).
+
+        Regression: only "which" matched before, so the capitalization
+        fallback returned question order ([Z, X, Y]) and the anchor was
+        wrong when the parser's bogus OBJECT ("is closer") was ignored.
+        """
+        entities = extractor(
+            "What is closer to Heavens cafe: Roshan Cafe or Pipels Cafe ?",
+        )
+        assert entities == ["Roshan Cafe", "Pipels Cafe", "Heavens cafe"]
+
+    def test_compare_closer_comma_list(self, extractor):
+        """'Which is closer to Z: A, B or C?' → [A, B, C, Z]"""
+        entities = extractor("Which is closer to Dublin: Tully Mill, Betelnut or Moher?")
+        assert entities == ["Tully Mill", "Betelnut", "Moher", "Dublin"]
+
+    def test_compare_candidates_helper(self):
+        from semantic_search.services.query_parser_service import QueryParserService
+        assert QueryParserService._compare_candidates(
+            "A, B", "C", "Dublin",
+        ) == ["A", "B", "C", "Dublin"]
+        assert QueryParserService._compare_candidates(
+            "Tully Mill", "Moher", "Dublin",
+        ) == ["Tully Mill", "Moher", "Dublin"]
+
     def test_single_entity_fallback(self, extractor):
         """Single capitalized entity → [entity]"""
         entities = extractor("What amenity is available at Union Station?")

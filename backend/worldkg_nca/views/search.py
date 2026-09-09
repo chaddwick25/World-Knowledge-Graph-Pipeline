@@ -1053,11 +1053,21 @@ def factor_availability(request):
         {country_code, snapshot_date,
          spectral, drift, amenity_embeddings, entity_embeddings}
     """
-    country_code = (request.GET.get("country_code") or "").upper().strip()
+    country_code = (request.GET.get("country_code") or "").strip()
     snapshot_date = request.GET.get("snapshot_date")
     if not country_code:
         return Response({"error": "country_code required"},
                         status=status.HTTP_400_BAD_REQUEST)
+    # Normalize to ISO first (override-aware — handles region names like
+    # "Ireland And Northern Ireland" → IE) so the G4 booleans match the
+    # factor rows' ISO country_code.
+    try:
+        resolved = resolve_iso_code(country_code)
+        if resolved:
+            country_code = resolved
+    except Exception:
+        pass
+    country_code = country_code.upper()
     if not snapshot_date:
         snapshot_date = get_latest_snapshot_id()
 
@@ -1128,7 +1138,15 @@ def execute_query_stream(request):
     def event_stream():
         events = queue.Queue(maxsize=128)
 
-        def emit(event: str, **payload):
+        def emit(event, **payload):
+            # Accept both call forms: emit("name", key=val) from this view
+            # and event_callback({"event": "name", ...}) from the executor.
+            # The executor's dict form is the enrichment/executor contract —
+            # without normalization the whole dict lands in the SSE event
+            # name and EventSource named listeners never fire.
+            if isinstance(event, dict):
+                payload = {k: v for k, v in event.items() if k != "event"}
+                event = event.get("event") or "message"
             events.put({"event": event, **payload})
 
         def run():
@@ -1211,6 +1229,16 @@ def worldkg_subdivisions(request):
             {"error": "country_code query parameter required"},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+    # Normalize to ISO first (override-aware — handles Geofabrik region
+    # names like "Ireland And Northern Ireland" → IE), consistent with
+    # execute_query / execute_query_stream.
+    try:
+        resolved = resolve_iso_code(country_code)
+        if resolved:
+            country_code = resolved
+    except Exception:
+        pass  # fall through to the profile lookups below
 
     # Resolve to CountryPipelineProfile
     profile = (

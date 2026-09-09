@@ -36,6 +36,73 @@ from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 
 logger = logging.getLogger(__name__)
 
+# ── Amenity resolution maps ──────────────────────────────────────────────
+# Free-text phrase → canonical OSM amenity tag value. Checked BEFORE any
+# DB query so common categories never trigger a partition scan (an
+# unscoped `tags__amenity` exists() scans every snapshot partition —
+# ~52s on LK after multiple countries were processed).
+AMENITY_TAG_ALIASES = {
+    "police": "police",
+    "police_station": "police",
+    "fire_station": "fire_station",
+    "post_office": "post_office",
+    "post_box": "post_box",
+    "bank": "bank",
+    "atm": "atm",
+    "pharmacy": "pharmacy",
+    "kindergarten": "kindergarten",
+    "college": "college",
+    "library": "library",
+    "museum": "museum",
+    "theatre": "theatre",
+    "cinema": "cinema",
+    "fuel": "fuel",
+    "charging_station": "charging_station",
+    "parking": "parking",
+    "bus_station": "bus_station",
+    "train_station": "train_station",
+    "place_of_worship": "place_of_worship",
+    "marketplace": "marketplace",
+    "doctors": "doctors",
+    "dentist": "dentist",
+    "veterinary": "veterinary",
+    "community_centre": "community_centre",
+    "townhall": "townhall",
+}
+
+# Known amenity keys (values are wkgs classes — used as a set of valid
+# tag values; the resolved tag is the singularized key itself).
+AMENITY_TO_WKGS = {
+    "cafe": "wkgs:Cafe", "coffee_shop": "wkgs:Cafe",
+    "restaurant": "wkgs:Restaurant", "diner": "wkgs:Restaurant",
+    "hotel": "wkgs:Hotel", "resort": "wkgs:Hotel",
+    "hospital": "wkgs:Hospital", "clinic": "wkgs:Hospital",
+    "school": "wkgs:School", "university": "wkgs:School",
+    "shop": "wkgs:Shop", "store": "wkgs:Shop", "mall": "wkgs:Shop",
+    "bar": "wkgs:Amenity", "pub": "wkgs:Amenity",
+}
+
+# Generic plural phrases → "any entity asserting an amenity-type key".
+# Resolved via the GIN-indexed `tags ?|` operator — never an embedding scan.
+GENERIC_AMENITY_PHRASES = {
+    "amenities", "amenity", "places", "services", "facilities",
+    "shop", "shops", "store", "stores", "businesses",
+}
+GENERIC_AMENITY_KEYS = (
+    "amenity", "shop", "tourism", "leisure", "office", "craft",
+    "healthcare", "public_transport",
+)
+
+# ── Default spatial bounds for open-ended questions (no explicit AMOUNT) ──
+# "What X are near/around Y?" → walkable 2km (bounds the candidate pool
+# AND makes the answer spatially honest — the old no-radius path returned
+# country-wide pools). Direction (#5) cone default tightened 20km → 10km.
+DEFAULT_NEAR_RADIUS_M = 2000
+DIRECTION_NEAREST_RADIUS_M = 10000
+PROXIMITY_QUESTION_RE = re.compile(
+    r"\b(near|around|close to|nearby|beside|next to|outside)\b", re.I,
+)
+
 # ── USLP geographic scoring (Mann et al. 2023 §3.3) ───────────────────────
 # The paper's geo_score uses geohash cluster centers at relation-specific
 # precision levels, with d_max = per-tail-cluster max distance to any other
@@ -177,18 +244,32 @@ class QueryExecutorService:
                     "trace": trace,
                 })
 
-            # LLM-driven enrichment: the platform LLM selects research tools
-            # (nameSearch / structuredSearch), they execute deterministically,
-            # and the LLM synthesizes an enriched answer. Fail-soft — the
-            # templated answer is kept on any failure (see
-            # query_enrichment_service.py).
+            # Enrichment (direct path): fetch deterministic entity context
+            # (USLP links + communities + class distribution — no LLM
+            # selection step), then a single grounded synthesis call.
+            # Fail-soft — the templated answer is kept on any failure (see
+            # entity_context_service.py / query_enrichment_service.py).
             enrichment = None
-            if question:
+            if question and isinstance(results, list):
+                from semantic_search.services.entity_context_service import (
+                    EntityContextService,
+                )
                 from semantic_search.services.query_enrichment_service import (
                     QueryEnrichmentService,
                 )
-                enrichment = QueryEnrichmentService.enrich(
-                    question, template, concepts, results,
+
+                # Deterministic context — no LLM tool selection.
+                osm_ids = [r["osm_id"] for r in results if r.get("osm_id")]
+                context = EntityContextService.get_context(
+                    osm_ids, country_code, snapshot_date,
+                    template=template, trace=trace,
+                )
+                if event_callback:
+                    event_callback({"event": "context", "context": context})
+
+                # Single LLM call — synthesis with context.
+                enrichment = QueryEnrichmentService.synthesize(
+                    question, template, concepts, results, context,
                     country_code, snapshot_date,
                     event_callback=event_callback,
                 )
@@ -270,7 +351,7 @@ class QueryExecutorService:
         """
         qs = OsmEntity.objects.using("vectors").filter(
             snapshot_id=snapshot_id,
-            tags__amenity=amenity_type,
+            tags__contains={"amenity": amenity_type},
         )
         if country_code:
             qs = qs.filter(country_code=country_code.upper())
@@ -499,19 +580,26 @@ class QueryExecutorService:
 
     @classmethod
     def _execute_geocode_batch_compare(cls, concepts, country_code,
-                                       snapshot_date, trace):
+                                       snapshot_date, trace, question=None):
         amenity = cls._get_concept(concepts, "OBJECT")
         locations = cls._get_concepts_by_type(concepts, "LOCATION")
+        amenity_text = amenity["text"] if amenity else None
 
-        # ── Pattern 2: "Which is closer to Y: X1 or X2?" ──
-        if len(locations) >= 3 and not amenity:
+        # ── Pattern 2: "Which/What is closer to Y: X1 or X2?" ──
+        # The parser can emit a bogus OBJECT for this phrasing (e.g.
+        # "is closer" from "What is closer to X: A or B?"). Treat a
+        # non-amenity OBJECT as noise so the compare branch still fires
+        # when multi-entity extraction produced 3+ named locations.
+        if len(locations) >= 3 and (not amenity_text
+                                    or cls._resolve_amenity_tag(
+                                        amenity_text, country_code, snapshot_date,
+                                    ) is None):
             return cls._execute_compare_closer(
                 locations, country_code, snapshot_date, trace
             )
 
         # ── Pattern 1: "Which X is nearest to Y?" ──
         anchor = locations[0] if locations else None
-        amenity_text = amenity["text"] if amenity else None
 
         # 1. SUPPORT: geocode the anchor
         anchor_coords = None
@@ -528,10 +616,22 @@ class QueryExecutorService:
             anchor_point = Point(
                 anchor_coords["lon"], anchor_coords["lat"], srid=4326
             )
+            # Open-ended "X near Y" phrasings misrouted here by the parser
+            # get a default spatial bound — otherwise the unbounded pool
+            # (e.g. 535K shop-keyed entities on IE) is fully sorted by
+            # distance (~9s) and the "nearby" answer isn't spatially honest.
+            spatial_radius = None
+            if question and PROXIMITY_QUESTION_RE.search(question):
+                spatial_radius = DEFAULT_NEAR_RADIUS_M
+                trace.append({
+                    "step": "default_radius",
+                    "radius_m": DEFAULT_NEAR_RADIUS_M,
+                    "reason": "open-ended proximity question, no explicit radius",
+                })
             entities = cls._search_by_amenity_spatial(
                 amenity_text, country_code, snapshot_date,
                 anchor_point=anchor_point,
-                radius_m=None, top_k=50, trace=trace,
+                radius_m=spatial_radius, top_k=50, trace=trace,
             )
             if entities:
                 trace.append({"step": "rank_by_distance",
@@ -598,7 +698,7 @@ class QueryExecutorService:
 
     @classmethod
     def _execute_filter_aggregate_measure(cls, concepts, country_code,
-                                          snapshot_date, trace):
+                                          snapshot_date, trace, question=None):
         amenity = cls._get_concept(concepts, "OBJECT")
         radius_concept = cls._get_concept(concepts, "AMOUNT")
         anchor = cls._get_concept(concepts, "LOCATION")
@@ -606,14 +706,39 @@ class QueryExecutorService:
         radius_m = cls._parse_radius(radius_concept["text"] if radius_concept else None)
         amenity_text = amenity["text"] if amenity else None
 
-        # 1. SUPPORT: geocode the anchor
+        # 1. SUPPORT: geocode the anchor — unless it is a generic amenity
+        #    category ("police stations", "schools"), which the
+        #    multi-anchor path resolves instead. Geocoding a category as a
+        #    place name burns a full name-scan miss (~10-20s on LK).
         anchor_coords = None
+        anchor_is_category = False
         if anchor and anchor["text"]:
-            anchor_coords = EntityGeocoder.geocode(
-                anchor["text"], country_code, snapshot_date
+            anchor_is_category = (
+                cls._resolve_amenity_tag(
+                    anchor["text"], country_code, snapshot_date,
+                ) is not None
             )
-            trace.append({"step": "geocode", "input": anchor["text"],
-                          "output": anchor_coords})
+            if not anchor_is_category:
+                anchor_coords = EntityGeocoder.geocode(
+                    anchor["text"], country_code, snapshot_date
+                )
+                trace.append({"step": "geocode", "input": anchor["text"],
+                              "output": anchor_coords})
+
+        # Default spatial bound for open-ended proximity questions
+        # ("What X are near/around Y?") with no explicit AMOUNT. Bounds
+        # the candidate pool AND makes the answer spatially honest — the
+        # old no-radius path returned country-wide pools. Only fires when
+        # the question itself signals proximity, so "cafes in Dublin"
+        # keeps its unfiltered semantics. Explicit radii always win.
+        if radius_m is None and anchor and anchor["text"] and question \
+                and PROXIMITY_QUESTION_RE.search(question):
+            radius_m = DEFAULT_NEAR_RADIUS_M
+            trace.append({
+                "step": "default_radius",
+                "radius_m": DEFAULT_NEAR_RADIUS_M,
+                "reason": "open-ended proximity question, no explicit radius",
+            })
 
         # 2. PostGIS spatial search (graph path removed — factor tables
         #    don't cover this template; PostGIS is the primary path)
@@ -674,7 +799,9 @@ class QueryExecutorService:
         """
         # Resolve anchor_text to an amenity tag value via the same 3-tier
         # fallback used for OBJECT concepts.
-        anchor_amenity = cls._resolve_amenity_tag(anchor_text)
+        anchor_amenity = cls._resolve_amenity_tag(
+            anchor_text, country_code, snapshot_date,
+        )
         if anchor_amenity is None:
             return None
 
@@ -683,6 +810,22 @@ class QueryExecutorService:
             "input": anchor_text,
             "resolved_amenity": anchor_amenity,
         })
+
+        # Fast path: when the target amenity is an exact OSM tag, resolve
+        # "X within radius of ANY anchor" in ONE spatial self-join. The
+        # previous per-anchor loop issued an ST_DWithin query PER anchor —
+        # LK has 490 police stations → ~20s; the join is one query.
+        amenity_tag = cls._resolve_amenity_tag(
+            amenity_text, country_code, snapshot_date,
+        )
+        if amenity_tag:
+            join_results = cls._multi_anchor_spatial_join(
+                amenity_tag, anchor_amenity, country_code, snapshot_date,
+                radius_m, top_k, trace,
+            )
+            if join_results is not None:
+                return join_results
+            # Join failed — fall through to the per-anchor loop.
 
         # Find all anchor entities (e.g. all schools) with coordinates
         anchor_entities = cls._search_by_amenity(
@@ -734,38 +877,151 @@ class QueryExecutorService:
         return results
 
     @classmethod
-    def _resolve_amenity_tag(cls, text):
+    def _multi_anchor_spatial_join(cls, amenity_tag, anchor_tag, country_code,
+                                   snapshot_date, radius_m, top_k, trace):
+        """One spatial self-join: candidates within ``radius_m`` of ANY anchor.
+
+        ``semantic_search_osmentity`` is partitioned by (snapshot_id,
+        country_code), so both sides of the self-join land on the same
+        leaf; ST_DWithin uses the GiST geography index on the anchor side
+        (idx_osmentity_geom_geog).  ``distance_m`` = distance to the
+        NEAREST anchor (MIN over the join), matching the per-anchor loop
+        semantics.  Returns result dicts compatible with the loop, or
+        None when the query fails (caller falls back to the loop).
+        """
+        sql = """
+            WITH anchors AS (
+                SELECT ST_Collect(geom) AS g
+                FROM semantic_search_osmentity
+                WHERE snapshot_id = %s AND country_code = %s
+                  AND tags @> %s::jsonb AND geom IS NOT NULL
+            )
+            SELECT c.osm_id, c.osm_type, c.tags, c.wkg_class,
+                   ST_Y(c.geom) AS lat, ST_X(c.geom) AS lon,
+                   ST_Distance(c.geom::geography, a.g::geography) AS dist_m
+            FROM semantic_search_osmentity c
+            CROSS JOIN anchors a
+            WHERE c.snapshot_id = %s AND c.country_code = %s
+              AND c.tags @> %s::jsonb AND c.geom IS NOT NULL
+              AND ST_DWithin(c.geom::geography, a.g::geography, %s)
+            ORDER BY dist_m
+            LIMIT %s
+        """
+        import json as _json
+
+        from django.db import connections
+
+        snapshot_id = snapshot_date or cls._get_snapshot_id(None)
+
+        params = [
+            snapshot_id,
+            country_code.upper(),
+            _json.dumps({"amenity": anchor_tag}),
+            snapshot_id,
+            country_code.upper(),
+            _json.dumps({"amenity": amenity_tag}),
+            float(radius_m),
+            top_k,
+        ]
+        try:
+            with connections["vectors"].cursor() as cur:
+                cur.execute(sql, params)
+                cols = [d[0] for d in cur.description]
+                rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        except Exception as exc:  # noqa: BLE001 — fall back to the per-anchor loop
+            logger.warning("Multi-anchor spatial join failed (%s); using per-anchor loop", exc)
+            return None
+
+        results = []
+        for row in rows:
+            # psycopg2 returns jsonb as a JSON string on raw cursors.
+            tags = row["tags"] or {}
+            if isinstance(tags, str):
+                try:
+                    tags = _json.loads(tags or "{}")
+                except ValueError:
+                    tags = {}
+            results.append({
+                "osm_id": row["osm_id"],
+                "osm_type": row["osm_type"],
+                "name": tags.get("name", ""),
+                "tags": tags,
+                "lat": row["lat"],
+                "lon": row["lon"],
+                "wkg_class": row["wkg_class"],
+                "distance_m": round(float(row["dist_m"]), 1),
+            })
+        trace.append({
+            "step": "multi_anchor_search",
+            "input": amenity_tag,
+            "anchor_category": anchor_tag,
+            "radius_m": radius_m,
+            "output_count": len(results),
+        })
+        return results
+
+    @classmethod
+    def _resolve_amenity_tag(cls, text, country_code=None, snapshot_date=None):
         """Resolve a free-text phrase to an OSM amenity tag value.
 
-        Returns the amenity tag value (e.g. "school") if the text maps
-        to a known amenity, or ``None`` if it doesn't look like an
-        amenity category (so the caller can treat it as a place name).
+        Returns the canonical amenity tag value (e.g. "police", "school")
+        if the text maps to a known amenity, or ``None`` if it doesn't
+        look like an amenity category (so the caller can treat it as a
+        place name).
+
+        Order: canonical alias map (no DB) → ontology map (no DB) →
+        country-scoped DB existence check. The DB check is scoped by
+        ``country_code`` when given — the previous unscoped exists()
+        scanned EVERY partition of the snapshot (measured ~52s on LK
+        after multiple countries were processed).
         """
         if not text:
             return None
         key = text.lower().strip().rstrip("s")  # singularise
-        # Direct amenity tag match
+        # Canonical alias map first — no DB hit ("police stations" →
+        # "police_station" → the standard OSM tag value "police").
+        alias_key = key.replace(" ", "_")
+        if alias_key in AMENITY_TAG_ALIASES:
+            return AMENITY_TAG_ALIASES[alias_key]
+        # Ontology class map — the singularized key IS the tag value.
+        if key in AMENITY_TO_WKGS:
+            return key
+        # Direct amenity tag match — bounded by country when available.
+        # `tags__contains` renders the `@>` operator (GIN-accelerated);
+        # `tags__amenity=value` renders `->>` equality and full-scans.
         from worldkg_nca.models import OsmEntity
-        from worldkg_nca.snapshot_utils import get_latest_snapshot_id
-        snapshot_id = cls._get_snapshot_id(None)
-        exists = OsmEntity.objects.using("vectors").filter(
+        snapshot_id = snapshot_date or cls._get_snapshot_id(None)
+        qs = OsmEntity.objects.using("vectors").filter(
             snapshot_id=snapshot_id,
-            tags__amenity=key,
-        ).exists()
-        if exists:
+            tags__contains={"amenity": key},
+        )
+        if country_code:
+            qs = qs.filter(country_code=country_code.upper())
+        if qs.exists():
             return key
-        # Ontology class mapping
-        amenity_to_wkgs = {
-            "cafe": "wkgs:Cafe", "coffee_shop": "wkgs:Cafe",
-            "restaurant": "wkgs:Restaurant", "diner": "wkgs:Restaurant",
-            "hotel": "wkgs:Hotel", "resort": "wkgs:Hotel",
-            "hospital": "wkgs:Hospital", "clinic": "wkgs:Hospital",
-            "school": "wkgs:School", "university": "wkgs:School",
-            "shop": "wkgs:Shop", "store": "wkgs:Shop", "mall": "wkgs:Shop",
-            "bar": "wkgs:Amenity", "pub": "wkgs:Amenity",
-        }
-        if key in amenity_to_wkgs:
-            return key
+        return None
+
+    @staticmethod
+    def _generic_amenity_keys(text) -> Optional[tuple]:
+        """Normalize a phrase to generic-amenity OSM keys, or None.
+
+        "amenities are" / "amenities" / "places" → the OSM keys that
+        assert an amenity type. Strips trailing verb/copula fragments
+        (" are", " is", " near", ...) that the parser's open-vocabulary
+        OBJECT extraction tends to include. Returns None for specific
+        categories (handled by the tag/ontology/FastText tiers) so the
+        caller falls through.
+        """
+        if not text:
+            return None
+        phrase = text.lower().strip()
+        for frag in (" are", " is", " near", " around", " close", " nearby",
+                     " within", " in", " of", " at"):
+            if phrase.endswith(frag):
+                phrase = phrase[:-len(frag)].rstrip()
+                break
+        if phrase in GENERIC_AMENITY_PHRASES:
+            return GENERIC_AMENITY_KEYS
         return None
 
     # ── Template 3: PLACE-ATTRIBUTE-QUERY (#8) ──────────────────────────────
@@ -986,8 +1242,10 @@ class QueryExecutorService:
                 if amenity_text != norm_cardinal and amenity_text not in abbrev_map:
                     amenity_type = object_concept["text"]
 
-            # Fetch candidates within 20km radius (DIRECTION_NEAREST_RADIUS_M = 20000)
-            radius_m = 20000
+            # Fetch candidates within the direction cone radius. Default
+            # 10km — bounds the candidate pool for open-ended direction
+            # questions (was 20km → 60+ candidates per cone).
+            radius_m = DIRECTION_NEAREST_RADIUS_M
             anchor_point = Point(anchor["lon"], anchor["lat"], srid=4326)
 
             if amenity_type:
@@ -1161,9 +1419,11 @@ class QueryExecutorService:
         snapshot_id = cls._get_snapshot_id(snapshot_date)
 
         # ── Step 1: Exact amenity tag match ──
+        # `tags__contains` renders `@>` (GIN-accelerated); `tags__amenity=`
+        # renders `->>` equality and full-scans the partition.
         qs = OsmEntity.objects.using("vectors").filter(
             snapshot_id=snapshot_id,
-            tags__amenity=amenity_type,
+            tags__contains={"amenity": amenity_type},
         )
         if country_code:
             qs = qs.filter(country_code=country_code.upper())
@@ -1186,7 +1446,30 @@ class QueryExecutorService:
         if ontology_results:
             return ontology_results
 
-        # ── Step 3: FastText semantic search fallback ──
+        # ── Step 3: generic amenity phrases ("amenities are") → any entity
+        #    asserting an amenity-type key (GIN-indexed `tags ?|` — no
+        #    embedding scan).
+        generic_keys = cls._generic_amenity_keys(amenity_type)
+        if generic_keys:
+            qs = OsmEntity.objects.using("vectors").filter(
+                snapshot_id=snapshot_id,
+                tags__has_any_keys=generic_keys,
+            )
+            if country_code:
+                qs = qs.filter(country_code=country_code.upper())
+            qs = qs.exclude(geom__isnull=True)[:top_k]
+            entities = list(qs)
+            results = [cls._entity_to_result(e) for e in entities]
+            if trace is not None:
+                trace.append({
+                    "step": "place_search",
+                    "input": amenity_type,
+                    "match_type": "generic_amenity",
+                    "output_count": len(results),
+                })
+            return results
+
+        # ── Step 4: FastText semantic search fallback ──
         fasttext_results = cls._search_by_fasttext(
             amenity_type, country_code, snapshot_date, top_k, trace
         )
@@ -1235,10 +1518,11 @@ class QueryExecutorService:
             qs = qs.filter(country_code=country_code.upper())
         qs = qs.exclude(geom__isnull=True)
 
-        # Filter by each canonical tag
+        # Filter by each canonical tag. `tags__contains` renders `@>`
+        # (GIN-accelerated); `tags__key=value` renders `->>` and scans.
         for tag_key, tag_value in canonical_tags.items():
             if tag_value:
-                qs = qs.filter(**{f"tags__{tag_key}": tag_value})
+                qs = qs.filter(tags__contains={tag_key: tag_value})
             else:
                 qs = qs.filter(**{f"tags__has_key": tag_key})
 
@@ -1387,9 +1671,11 @@ class QueryExecutorService:
         snapshot_id = cls._get_snapshot_id(snapshot_date)
 
         # ── Step 1: Exact tag match with spatial filter ──
+        # `tags__contains` renders `@>` (GIN-accelerated); `tags__amenity=`
+        # renders `->>` equality and full-scans the partition.
         qs = OsmEntity.objects.using("vectors").filter(
             snapshot_id=snapshot_id,
-            tags__amenity=amenity_type,
+            tags__contains={"amenity": amenity_type},
         ).exclude(geom__isnull=True)
 
         if country_code:
@@ -1443,7 +1729,57 @@ class QueryExecutorService:
         if ontology_results:
             return ontology_results
 
-        # ── Step 3: FastText semantic search, then spatial filter in Python ──
+        # ── Step 3: generic amenity phrases → key-existence + ST_DWithin ──
+        #    (both GIN/GiST-indexed — no embedding scan). A missing radius
+        #    defaults to DEFAULT_NEAR_RADIUS_M: the unbounded `?|` pool
+        #    (535K rows on IE) would otherwise be fully sorted by distance
+        #    (~9s). The FastText tier below remains the unbounded-nearest
+        #    fallback (its pool is Python-sorted, capped at ~250).
+        generic_keys = cls._generic_amenity_keys(amenity_type)
+        if generic_keys:
+            if radius_m is None:
+                radius_m = DEFAULT_NEAR_RADIUS_M
+            qs = OsmEntity.objects.using("vectors").filter(
+                snapshot_id=snapshot_id,
+                tags__has_any_keys=generic_keys,
+            )
+            if country_code:
+                qs = qs.filter(country_code=country_code.upper())
+            qs = qs.exclude(geom__isnull=True)
+            qs = qs.extra(
+                where=["ST_DWithin(geom::geography, ST_MakePoint(%s, %s)::geography, %s)"],
+                params=[float(anchor_point.x), float(anchor_point.y), float(radius_m)],
+            )
+            qs = qs.annotate(
+                distance_m=RawSQL(
+                    "ST_Distance(geom::geography, ST_MakePoint(%s, %s)::geography)",
+                    (float(anchor_point.x), float(anchor_point.y)),
+                    output_field=FloatField(),
+                )
+            ).order_by("distance_m")[:top_k]
+            try:
+                entities = list(qs)
+            except Exception as exc:  # noqa: BLE001 — fall through to FastText
+                logger.warning("Generic amenity spatial query failed: %s", exc)
+                entities = []
+            if entities:
+                results = []
+                for e in entities:
+                    r = cls._entity_to_result(e)
+                    if hasattr(e, "distance_m"):
+                        r["distance_m"] = round(float(e.distance_m), 1)
+                    results.append(r)
+                if trace is not None:
+                    trace.append({
+                        "step": "place_search_spatial",
+                        "input": amenity_type,
+                        "match_type": "generic_amenity",
+                        "radius_m": radius_m,
+                        "output_count": len(results),
+                    })
+                return results
+
+        # ── Step 4: FastText semantic search, then spatial filter in Python ──
         # Can't combine pgvector <=> with ST_DWithin efficiently, so we
         # fetch a larger pool via FastText and filter by distance in Python.
         fasttext_pool = cls._search_by_fasttext(
@@ -1524,7 +1860,9 @@ class QueryExecutorService:
 
         for tag_key, tag_value in canonical_tags.items():
             if tag_value:
-                qs = qs.filter(**{f"tags__{tag_key}": tag_value})
+                # `tags__contains` renders `@>` (GIN-accelerated);
+                # `tags__key=value` renders `->>` and scans.
+                qs = qs.filter(tags__contains={tag_key: tag_value})
             else:
                 qs = qs.filter(**{f"tags__has_key": tag_key})
 
@@ -1899,7 +2237,7 @@ class QueryExecutorService:
         break because the local model is unavailable.
 
         ``skip_llm=True`` bypasses the LLM pass — used when the enrichment
-        research loop (QueryEnrichmentService) will run anyway, so the answer
+        synthesis (QueryEnrichmentService) will run anyway, so the answer
         is not rewritten twice (one fewer LLM call per request).
         """
         if not skip_llm:

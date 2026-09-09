@@ -160,6 +160,11 @@
       </div>
     </div>
 
+    <!-- Enriching indicator (SSE context event received, answer streaming) -->
+    <div v-if="enrichingContext && !displayAnswer" class="small text-secondary">
+      Enriching with entity context…
+    </div>
+
     <!-- Answer summary (MapQA executor) -->
     <div v-if="displayAnswer" class="alert alert-success small py-1 px-2 mb-0">
       <strong>Answer:</strong> {{ displayAnswer }}
@@ -289,6 +294,10 @@ export default {
       parsedQuery: null,
       executeAnswer: null,
       executeTrace: [],
+      // SSE streaming state (template mode — direct path, no agent)
+      eventSource: null,
+      enrichedAnswer: '',
+      enrichingContext: null,
       classOptions: [
         { value: 'wkgs:Cafe', text: 'Cafe' },
         { value: 'wkgs:Restaurant', text: 'Restaurant' },
@@ -334,7 +343,8 @@ export default {
       return this.parsedQuery
     },
     displayAnswer() {
-      return this.executeAnswer
+      // Prefer the live SSE token stream; fall back to the final answer.
+      return this.enrichedAnswer || this.executeAnswer
     },
     displayTrace() {
       return this.executeTrace
@@ -375,6 +385,11 @@ export default {
       this.publishResults()
     },
   },
+  // Lifecycle balance — close any open SSE stream (rules §1.2).
+  unmounted() {
+    this.eventSource?.close()
+    this.eventSource = null
+  },
   methods: {
     reset() {
       this.showAnchors = true
@@ -396,13 +411,17 @@ export default {
       this.parsedQuery = null
       this.executeAnswer = null
       this.executeTrace = []
+      this.eventSource?.close()
+      this.eventSource = null
+      this.enrichedAnswer = ''
+      this.enrichingContext = null
     },
 
     async performSearch() {
       await this.executeSync()
     },
 
-    /** Synchronous POST to the executor / triplet-search endpoints. */
+    /** Execute the query — SSE stream (template) or POST (triplet search). */
     async executeSync() {
       this.loading = true
       this.error = null
@@ -411,86 +430,135 @@ export default {
       this.parsedQuery = null
       this.executeAnswer = null
       this.executeTrace = []
+      this.enrichedAnswer = ''
+      this.enrichingContext = null
+      this.eventSource?.close()
+      this.eventSource = null
+
+      if (this.isTemplateMode) {
+        // NL Template mode: MapQA parser + executor over SSE (direct path).
+        if (!this.templateQuery.trim()) {
+          this.error = 'Please enter a geospatial question'
+          this.loading = false
+          return
+        }
+        this.openTemplateStream()
+        return  // loading is cleared by the stream's done/error events
+      }
 
       try {
-        if (this.isTemplateMode) {
-          // NL Template mode: MapQA parser + executor pipeline
-          if (!this.templateQuery.trim()) {
-            throw new Error('Please enter a geospatial question')
-          }
-          const payload = {
-            query: this.templateQuery.trim(),
-          }
-          if (this.countryName) payload.country_code = this.countryName
-          if (this.snapshotDate) payload.snapshot_date = this.snapshotDate
-
-          const response = await axios.post('/nca/execute-query/', payload)
-          const data = response.data
-
-          // Display parsed query (template + concepts)
-          if (data.parsed) {
-            this.parsedQuery = data.parsed
-          }
-
-          // Display executor results
-          if (data.result) {
-            this.executeAnswer = data.result.answer || null
-            this.executeTrace = data.result.trace || []
-            // Results from the executor (entities with lat/lon). Kept in
-            // full — the Top K control caps display/markers via the graph.
-            if (data.result.results && Array.isArray(data.result.results)) {
-              this.results = data.result.results.map((r) => this.normalizeResult(r))
-            }
-            if (data.result.error) {
-              this.error = data.result.error
-            }
-          }
-
-          this.searched = true
-          this.publishResults()
-        } else {
-          // Structured (JSON) and Natural language modes both use triplet search
-          const payload = {
-            country_code: this.countryName,
-            top_k: this.topKClamped,
-          }
-
-          if (this.isTagsMode) {
-            let queryTags = {}
-            try {
-              queryTags = JSON.parse(this.queryTagsInput)
-            } catch {
-              throw new Error('Invalid JSON in query tags')
-            }
-            payload.query_tags = queryTags
-          } else if (this.isNaturalMode) {
-            // Natural language name search: romanizer + FastText
-            if (!this.naturalQuery.trim()) {
-              throw new Error('Please enter a name to search')
-            }
-            payload.natural_query = this.naturalQuery.trim()
-          }
-
-          if (this.lat) payload.lat = parseFloat(this.lat)
-          if (this.lon) payload.lon = parseFloat(this.lon)
-          if (this.rdfType) payload.rdf_type = this.rdfType
-          if (this.subdivisionQid) payload.subdivision_qid = this.subdivisionQid
-
-          if (this.snapshotDate) {
-            payload.snapshot_date = this.snapshotDate
-          }
-
-          const response = await axios.post('/nca/semantic-triplet-search/', payload)
-          this.results = (response.data.results || []).map((r) => this.normalizeResult(r))
-          this.searched = true
-          this.publishResults()
+        // Structured (JSON) and Natural language modes both use triplet search
+        const payload = {
+          country_code: this.countryName,
+          top_k: this.topKClamped,
         }
+
+        if (this.isTagsMode) {
+          let queryTags = {}
+          try {
+            queryTags = JSON.parse(this.queryTagsInput)
+          } catch {
+            throw new Error('Invalid JSON in query tags')
+          }
+          payload.query_tags = queryTags
+        } else if (this.isNaturalMode) {
+          // Natural language name search: romanizer + FastText
+          if (!this.naturalQuery.trim()) {
+            throw new Error('Please enter a name to search')
+          }
+          payload.natural_query = this.naturalQuery.trim()
+        }
+
+        if (this.lat) payload.lat = parseFloat(this.lat)
+        if (this.lon) payload.lon = parseFloat(this.lon)
+        if (this.rdfType) payload.rdf_type = this.rdfType
+        if (this.subdivisionQid) payload.subdivision_qid = this.subdivisionQid
+
+        if (this.snapshotDate) {
+          payload.snapshot_date = this.snapshotDate
+        }
+
+        const response = await axios.post('/nca/semantic-triplet-search/', payload)
+        this.results = (response.data.results || []).map((r) => this.normalizeResult(r))
+        this.searched = true
+        this.publishResults()
       } catch (err) {
         console.error('Semantic search failed:', err)
         this.error = err.response?.data?.error || err.message || 'Search failed'
       } finally {
         this.loading = false
       }
+    },
+
+    // ── SSE stream (template mode — direct path) ───────────────────────
+
+    /**
+     * Open the streaming executor: GET /api/nca/execute-query/stream/.
+     * EventSource is GET-only, so the URL is built from
+     * axios.defaults.baseURL (http://localhost:8000/api from main.js) —
+     * a relative /nca/... path would hit Vite with no proxy.
+     */
+    openTemplateStream() {
+      const params = new URLSearchParams({ query: this.templateQuery.trim() })
+      if (this.countryName) params.set('country_code', this.countryName)
+      if (this.snapshotDate) params.set('snapshot_date', this.snapshotDate)
+
+      const base = axios.defaults.baseURL || ''
+      const url = `${base}/nca/execute-query/stream/?${params}`
+      const es = new EventSource(url)
+      this.eventSource = es
+
+      es.addEventListener('parsed', (e) => {
+        this.parsedQuery = JSON.parse(e.data).parsed || null
+      })
+
+      es.addEventListener('executed', (e) => {
+        // {template, result_count, trace} — render the trace/anchors early.
+        const d = JSON.parse(e.data)
+        this.executeTrace = d.trace || []
+      })
+
+      es.addEventListener('context', (e) => {
+        // Deterministic entity context is in — show an enriching indicator.
+        this.enrichingContext = JSON.parse(e.data).context || null
+      })
+
+      es.addEventListener('answer_delta', (e) => {
+        const delta = JSON.parse(e.data).delta
+        if (delta) this.enrichedAnswer += delta
+      })
+
+      es.addEventListener('done', (e) => {
+        const d = JSON.parse(e.data)
+        const result = d.result || {}
+        this.executeAnswer = result.answer || null
+        this.executeTrace = result.trace || this.executeTrace
+        if (Array.isArray(result.results)) {
+          // Full result set — the Top K control caps display/markers.
+          this.results = result.results.map((r) => this.normalizeResult(r))
+        }
+        if (result.error) this.error = result.error
+        this.enrichedAnswer = ''
+        this.searched = true
+        this.loading = false
+        this.publishResults()
+        this.closeTemplateStream()
+      })
+
+      es.addEventListener('error', () => {
+        // Fires on connection failure OR when the server closes the stream.
+        // After a clean `done` this is a no-op; otherwise surface an error.
+        if (es.readyState === EventSource.CLOSED && !this.searched) {
+          this.error = this.error || 'Stream error'
+          this.loading = false
+        }
+        this.closeTemplateStream()
+      })
+    },
+
+    closeTemplateStream() {
+      this.eventSource?.close()
+      this.eventSource = null
     },
 
     // ── Anchor/entity query graph ─────────────────────────────────────

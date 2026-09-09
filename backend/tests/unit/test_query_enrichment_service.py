@@ -1,10 +1,12 @@
-"""Unit tests for LLM-driven answer enrichment via tool research.
+"""Unit tests for LLM-driven answer enrichment.
 
 The LLM is stubbed throughout — no Ollama/network required. Verifies:
   - fail-soft behavior (LLM down / no results / synthesis fail)
-  - tool decision validation against the research-tool set
+  - tool decision validation against the research-tool set (enrich())
   - the FORCED default research action when the LLM selects nothing
-  - deterministic tool execution + the enrich() contract
+  - deterministic tool execution + the enrich() contract (agent path)
+  - synthesize() — direct-path, single-LLM-call synthesis from
+    pre-fetched entity context (no tool selection)
 """
 
 import json
@@ -499,3 +501,239 @@ class TestCache:
         QueryEnrichmentService.enrich("q", "T (#1)", [], _results(), "BZ")
         QueryEnrichmentService.enrich("q", "T (#1)", [], _results(), "US")  # different key
         assert stub.chat_json_calls == 2
+
+
+# ── synthesize() — direct-path context-based synthesis ───────────────────
+
+class TestSynthesize:
+    """synthesize() takes pre-fetched context — one LLM call, no selection."""
+
+    @staticmethod
+    def _context():
+        return {
+            "uslp_links": [{"head_osm_id": 1, "relation": "within_50m_of",
+                            "tail_osm_id": 9, "normalized_score": 0.9}],
+            "communities": {1: {"community": 3, "degree": 12}},
+            "class_distribution": [{"wkg_class": "wkgs:Cafe", "count": 2}],
+        }
+
+    def test_synthesize_returns_enrichment_dict(self, monkeypatch):
+        stub = _StubLLM(available=True, synthesized="18 cafes cluster into 3 communities.")
+        _patch_llm(monkeypatch, stub)
+        out = QueryEnrichmentService.synthesize(
+            "Which cafes are within 50km of Belize City?",
+            "FILTER-AGGREGATE-MEASURE (#1)",
+            [{"type": "AMOUNT", "text": "50km"}],
+            _results(), self._context(), "BZ",
+        )
+        assert out is not None
+        assert out["enriched_answer"] == "18 cafes cluster into 3 communities."
+        assert out["primary_answer"] == "Found 4 entities within 50km."
+        assert set(out["actions"]) == {"uslp_links", "communities", "class_distribution"}
+        assert out["action_outputs"]["communities"] == {1: {"community": 3, "degree": 12}}
+
+    def test_prompt_consumes_context(self, monkeypatch):
+        stub = _StubLLM(synthesized="ok")
+        _patch_llm(monkeypatch, stub)
+        QueryEnrichmentService.synthesize(
+            "q", "FILTER-AGGREGATE-MEASURE (#1)", [], _results(),
+            self._context(), "BZ",
+        )
+        user_msg = stub.chat_calls[0][-1]["content"]
+        assert "Entity context" in user_msg
+        assert "within_50m_of" in user_msg
+        assert "wkgs:Cafe" in user_msg
+        # No research-tool section on the direct path.
+        assert "Research tool outputs" not in user_msg
+
+    def test_no_results_returns_none(self, monkeypatch):
+        def boom(*a, **k):
+            raise AssertionError("LLM must not be called with no results")
+
+        _patch_llm(monkeypatch, boom)
+        assert QueryEnrichmentService.synthesize(
+            "q", "T (#1)", [], [], self._context(), "BZ",
+        ) is None
+
+    def test_dict_results_returns_none(self, monkeypatch):
+        _patch_llm(monkeypatch, _StubLLM())
+        assert QueryEnrichmentService.synthesize(
+            "q", "T (#11)", [], {"error": "no data"}, self._context(), "BZ",
+        ) is None
+
+    def test_llm_unavailable_returns_none(self, monkeypatch):
+        _patch_llm(monkeypatch, _StubLLM(available=False))
+        assert QueryEnrichmentService.synthesize(
+            "q", "T (#1)", [], _results(), self._context(), "BZ",
+        ) is None
+
+    def test_empty_synthesis_returns_none(self, monkeypatch):
+        _patch_llm(monkeypatch, _StubLLM(synthesized="   "))
+        assert QueryEnrichmentService.synthesize(
+            "q", "T (#1)", [], _results(), self._context(), "BZ",
+        ) is None
+
+    def test_empty_context_is_omitted_from_actions(self, monkeypatch):
+        stub = _StubLLM(synthesized="answer")
+        _patch_llm(monkeypatch, stub)
+        out = QueryEnrichmentService.synthesize(
+            "q", "T (#1)", [], _results(),
+            {"uslp_links": [], "communities": {}, "class_distribution": []}, "BZ",
+        )
+        assert out is not None
+        assert out["actions"] == []
+        assert out["action_outputs"] == {}
+
+    def test_streams_answer_deltas(self, monkeypatch):
+        class _StreamingStub(_StubLLM):
+            def chat_stream(self, messages, *args, **kwargs):
+                for tok in ["18", " cafes", " found"]:
+                    yield tok
+
+        events = []
+        _patch_llm(monkeypatch, _StreamingStub())
+        out = QueryEnrichmentService.synthesize(
+            "q", "T (#1)", [], _results(), self._context(), "BZ",
+            None, events.append,
+        )
+        deltas = [e["delta"] for e in events if e["event"] == "answer_delta"]
+        assert "".join(deltas) == "18 cafes found"
+        assert out["enriched_answer"] == "18 cafes found"
+
+    def test_second_call_hits_cache(self, monkeypatch):
+        stub = _StubLLM(synthesized="cached synthesis")
+        _patch_llm(monkeypatch, stub)
+        first = QueryEnrichmentService.synthesize(
+            "q", "T (#1)", [], _results(), self._context(), "BZ",
+        )
+        assert first is not None
+        assert len(stub.chat_calls) == 1
+
+        second = QueryEnrichmentService.synthesize(
+            "q", "T (#1)", [], _results(), self._context(), "BZ",
+        )
+        assert second == first
+        assert len(stub.chat_calls) == 1  # cache hit → no new LLM call
+
+    def test_cache_replays_answer_deltas(self, monkeypatch):
+        stub = _StubLLM(synthesized="cached replay answer")
+        _patch_llm(monkeypatch, stub)
+        QueryEnrichmentService.synthesize(
+            "q", "T (#1)", [], _results(), self._context(), "BZ",
+        )
+        events = []
+        QueryEnrichmentService.synthesize(
+            "q", "T (#1)", [], _results(), self._context(), "BZ",
+            None, events.append,
+        )
+        assert [e["event"] for e in events] == ["answer_delta"]
+        assert "".join(e["delta"] for e in events) == "cached replay answer"
+        assert len(stub.chat_calls) == 1
+
+    def test_cache_key_versioned_and_namespaced(self):
+        import hashlib
+        from semantic_search.services.query_enrichment_service import _cache_key
+
+        # v2 version bump: the key is md5("v2|" + old raw string).
+        assert _cache_key("q", "T (#1)", "BZ", "2025_12_31") == hashlib.md5(
+            "v2|q|T (#1)|BZ|2025_12_31".encode("utf-8"),
+        ).hexdigest()
+        # enrich() and synthesize() never share an entry for the same inputs.
+        assert _cache_key("q", "T (#1)", "BZ", "2025_12_31",
+                          namespace="enrich") != _cache_key(
+            "q", "T (#1)", "BZ", "2025_12_31", namespace="synthesize",
+        )
+
+
+# ── Context prompt formatting (prompt-size regression) ───────────────────
+
+class TestContextFormatting:
+    """The synthesis prompt must consume a compact context digest.
+
+    Regression: the raw context dict (50 USLP links + per-entity community
+    rows ≈ 1.5K tokens) inflated the LLM synthesis to 50-115s on fresh
+    queries. The prompt gets relation/community histograms instead.
+    """
+
+    @staticmethod
+    def _big_context():
+        return {
+            "uslp_links": [
+                {"head_osm_id": 1, "relation": "within_50m_of",
+                 "tail_osm_id": 9, "normalized_score": 0.9},
+            ] * 32,  # 32 links — the pre-fix cap
+            "communities": {
+                1: {"community": 3, "fiedler": 0.008, "degree": 53,
+                    "component_size": 35541, "subgraph_slug": None},
+                2: {"community": 5, "fiedler": 0.009, "degree": 12,
+                    "component_size": 35541, "subgraph_slug": None},
+                3: {"community": 3, "fiedler": 0.007, "degree": 20,
+                    "component_size": 35541, "subgraph_slug": None},
+            },
+            "class_distribution": [{"wkg_class": "wkgs:Cafe", "count": 2}],
+        }
+
+    def test_compact_histogram_format(self):
+        out = QueryEnrichmentService._format_context_for_prompt(
+            self._big_context(),
+        )
+        # Relation histogram, not 32 raw JSON rows.
+        assert "USLP links: 32 total" in out
+        assert "within_50m_of × 32" in out
+        assert out.count("--within_50m_of->") == 8  # capped examples
+        # Community histogram, not per-entity rows.
+        assert "Communities: 3 entities" in out
+        assert "community 3 × 2" in out
+        assert "community 5 × 1" in out
+        # Class mix.
+        assert "Classes: wkgs:Cafe × 2" in out
+        # Compact: a fraction of the raw ~4KB payload.
+        assert len(out) < 800
+
+    def test_empty_context(self):
+        out = QueryEnrichmentService._format_context_for_prompt(
+            {"uslp_links": [], "communities": {}, "class_distribution": []},
+        )
+        assert "USLP links: none" in out
+        assert "Communities: none" in out
+        assert "Classes: none" in out
+
+    def test_unfetched_sources_render_not_applicable(self):
+        """Template #5 (bearing) fetches only classes — the prompt must
+        not claim USLP/community data is absent, only not applicable."""
+        out = QueryEnrichmentService._format_context_for_prompt(
+            {"uslp_links": [], "communities": {},
+             "class_distribution": [{"wkg_class": "wkgs:Bar", "count": 1}]},
+            sources={"classes"},
+        )
+        assert "USLP links: (not applicable to this template)" in out
+        assert "Communities: (not applicable to this template)" in out
+        assert "Classes: wkgs:Bar × 1" in out
+        assert "USLP links: none" not in out
+
+    def test_template5_prompt_marks_unfetched_sources(self, monkeypatch):
+        stub = _StubLLM(synthesized="ok")
+        _patch_llm(monkeypatch, stub)
+        QueryEnrichmentService.synthesize(
+            "What is west of Tullygally Tavern?",
+            "LOCATION-BEARING-CLASSIFY (#5)", [],
+            [{"osm_id": 1, "name": "St Vincent de Paul"}],
+            {"uslp_links": [], "communities": {},
+             "class_distribution": [{"wkg_class": "wkgs:Amenity", "count": 1}]},
+            "IE",
+        )
+        user_msg = stub.chat_calls[0][-1]["content"]
+        assert "not applicable to this template" in user_msg
+        assert "USLP links: none" not in user_msg
+
+    def test_prompt_uses_compact_format(self, monkeypatch):
+        stub = _StubLLM(synthesized="ok")
+        _patch_llm(monkeypatch, stub)
+        QueryEnrichmentService.synthesize(
+            "q", "FILTER-AGGREGATE-MEASURE (#1)", [], _results(),
+            self._big_context(), "BZ",
+        )
+        user_msg = stub.chat_calls[0][-1]["content"]
+        assert "USLP links: 32 total" in user_msg
+        # No raw JSON dump of the links array in the prompt.
+        assert '"head_osm_id": 1, "relation"' not in user_msg
