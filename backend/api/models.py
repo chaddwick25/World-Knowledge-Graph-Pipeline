@@ -21,7 +21,6 @@ from core.models import (
 
 from osmsnapshot.models import (
     Snapshot,
-    GraphExtract,
     SnapshotJob,
     WorldKGClassDrift,
     WorldKGClassFingerprint,
@@ -43,7 +42,6 @@ __all__ = [
     'EmbeddingArtifact',
     'CountrySearchProcessing',
     'Snapshot',
-    'GraphExtract',
     'SnapshotJob',
     'WorldKGClassDrift',
     'WorldKGClassFingerprint',
