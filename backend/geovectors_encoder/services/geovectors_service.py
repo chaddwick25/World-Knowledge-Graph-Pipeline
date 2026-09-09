@@ -942,6 +942,9 @@ class GeoVectorsEncoderService:
             nle_model.load_indexes()
 
             nle_storage = VectorStorageService(model_type="nle", version=version_key)
+            ***REMOVED*** TODO(two-axis-removal): legacy single-pass two-axis writer — only
+            ***REMOVED*** active when a pickle exists (country-level or first subgraph).
+            ***REMOVED*** Dormant today (0 country-level pickles; see embedding_service gate).
             dual_writer = DualEncodingWriter(
                 tag_encoder=ft_model,
                 nle_encoder=nle_model,
@@ -1274,6 +1277,12 @@ class DBOnlyWriter:
         if vector is not None:
             self.storage.add(record, vector)
 
+***REMOVED*** TODO(two-axis-removal): dormant legacy — the Step-1 two-axis writer. Never
+***REMOVED*** constructed in production (no country-level wdw.pickle exists; verified
+***REMOVED*** 2026-08-31). "Dual" is a misnomer — this writer never fuses the axes; the
+***REMOVED*** fused 400D static_embedding (compute_static_embeddings) is the real
+***REMOVED*** "dual". Candidate for removal with
+***REMOVED*** embedding_service._build_dual_writer / _run_parallel_dual.
 class DualEncodingWriter:
 
     class _CombinedStorage:
