@@ -436,6 +436,22 @@ class Command(BaseCommand):
             CREATE UNIQUE INDEX IF NOT EXISTS idx_{ROOT_TABLE}_entity_unique
             ON {ROOT_TABLE} (osm_type, osm_id, gv_tags_version, snapshot_id, country_code);
         """)
+        ***REMOVED*** Tags GIN indexes (jsonb_path_ops declared in the OsmEntity model
+        ***REMOVED*** Meta; plain ops needed for `?`/`?|` key-existence queries). The
+        ***REMOVED*** cutover drops the monolith — and its migration-0011 GIN indexes
+        ***REMOVED*** with it — so the partitioned parent must recreate them or every
+        ***REMOVED*** `tags @>` / `tags ?|` query (amenity resolution, exact-tag
+        ***REMOVED*** tiers, multi-anchor joins, generic-amenity searches) falls back
+        ***REMOVED*** to a full partition scan (52s on LK, ~85s on CA). Created on
+        ***REMOVED*** the parent → cascades to all leaves.
+        cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS osmentity_tags_gin_idx
+            ON {ROOT_TABLE} USING GIN (tags jsonb_path_ops);
+        """)
+        cursor.execute(f"""
+            CREATE INDEX IF NOT EXISTS osmentity_tags_key_gin_idx
+            ON {ROOT_TABLE} USING GIN (tags);
+        """)
 
     ***REMOVED*** ── Per-country processing ───────────────────────────────────────────
 

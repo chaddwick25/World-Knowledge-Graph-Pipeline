@@ -85,7 +85,11 @@ own OSM data, so the templates learn the phrasings and toponyms of the
 countries the pipeline has actually processed. When a user submits a
 question through Kuhn's template mode, the result is summarized by an
 open-source AI agent (QwenAgent) that grounds its answer in the template
-output and the underlying entity data.
+output, the underlying entity data, and deterministic relational context
+(predicted spatial links, community structure, class distribution).
+Answers stream in progressively over SSE — parsed query → results →
+entity context → the summary appears token-by-token — so the query runs
+directly from the browser to the backend with no agent in the loop.
 
 ![GeoFlow](frontend-v3/src/assets/GeoFlow.png)
 

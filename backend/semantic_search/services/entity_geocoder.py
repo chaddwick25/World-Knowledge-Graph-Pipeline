@@ -50,11 +50,46 @@ class EntityGeocoder:
         if country_code:
             qs = qs.filter(country_code=country_code.upper())
 
-        ***REMOVED*** 1. Exact name match (case-insensitive) — check the 'name' tag
-        ***REMOVED***    Try the cleaned name first, then the original.
-        for name_variant in [clean_name, entity_name]:
-            if not name_variant:
-                continue
+        ***REMOVED*** The cleaned name usually equals the original — dedupe so we never
+        ***REMOVED*** run the same (potentially expensive) fallback query twice.
+        variants = [v for v in dict.fromkeys([clean_name, entity_name]) if v]
+
+        ***REMOVED*** 1. Fuzzy match via pg_trgm similarity on the romanized name
+        ***REMOVED***    (GIN trigram index — ~40ms even on misses, tolerant of typos:
+        ***REMOVED***    "Shannon Bells" → "Shandon Bells" at sim 0.65).  Runs FIRST:
+        ***REMOVED***    the unindexed tags->>'name' scans below cost ~4-9s on a miss
+        ***REMOVED***    (IE leaf ~9.7M rows), while an exact-match hit always has
+        ***REMOVED***    similarity 1.0, so the trigram ranking returns the same entity
+        ***REMOVED***    for correctly-spelled romanized names.
+        for name_variant in variants:
+            try:
+                ***REMOVED*** The `%` operator is index-assisted; Django's
+                ***REMOVED*** `__trigram_similar` lookup is TextField-only, so use the
+                ***REMOVED*** raw operator + similarity() ranking directly.  `%%` is
+                ***REMOVED*** psycopg2's escape for a literal `%` — a bare `%` collides
+                ***REMOVED*** with placeholder parsing (IndexError).  The explicit
+                ***REMOVED*** similarity >= 0.4 guard rejects junk matches (the default
+                ***REMOVED*** 0.3 threshold false-positives, e.g. "paranormal nonsense
+                ***REMOVED*** place" → "Paradise Place" at ~0.32).
+                from django.contrib.postgres.search import TrigramSimilarity
+                qs_fuzzy = (
+                    qs.extra(
+                        where=["name_romanized %% %s AND "
+                               "similarity(name_romanized, %s) >= 0.4"],
+                        params=[name_variant, name_variant],
+                    )
+                    .order_by(TrigramSimilarity("name_romanized", name_variant).desc())
+                )
+                entity = qs_fuzzy.first()
+                if entity:
+                    result = EntityGeocoder._entity_to_dict(entity)
+                    if result and result.get("lat") is not None:
+                        return result
+            except Exception:  ***REMOVED*** noqa: BLE001 — trigram unavailable → skip
+                break
+
+        ***REMOVED*** 2. Exact name match (case-insensitive) — check the 'name' tag
+        for name_variant in variants:
             qs_exact = qs.filter(tags__name__iexact=name_variant)
             entity = qs_exact.first()
             if entity:
@@ -64,10 +99,10 @@ class EntityGeocoder:
                 ***REMOVED*** Exact match but no coords — keep looking but remember as fallback
                 fallback = result
 
-        ***REMOVED*** 2. ILIKE contains match — prefer entities with valid coordinates
-        for name_variant in [clean_name, entity_name]:
-            if not name_variant:
-                continue
+        ***REMOVED*** 3. ILIKE contains match — prefer entities with valid coordinates.
+        ***REMOVED***    Unbounded scan on names not romanized (94% of IE) — only hit
+        ***REMOVED***    when both the indexed trigram and exact steps missed.
+        for name_variant in variants:
             qs_ilike = qs.filter(tags__name__icontains=name_variant)
             ***REMOVED*** Prefer nodes (which have valid Point geom) over ways
             for entity in qs_ilike[:20]:
@@ -76,7 +111,7 @@ class EntityGeocoder:
                     return result
                 fallback = result
 
-        ***REMOVED*** 3. Try with common abbreviations expanded
+        ***REMOVED*** 4. Try with common abbreviations expanded
         expanded = EntityGeocoder._expand_abbreviations(clean_name)
         if expanded != clean_name:
             qs_exp = qs.filter(tags__name__icontains=expanded)
@@ -86,7 +121,7 @@ class EntityGeocoder:
                     return result
                 fallback = result
 
-        ***REMOVED*** 4. Last resort: return the best match even without coordinates
+        ***REMOVED*** 5. Last resort: return the best match even without coordinates
         ***REMOVED***    (the executor may still use it as a graph node lookup)
         try:
             fallback
