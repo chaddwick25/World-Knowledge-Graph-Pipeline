@@ -21,6 +21,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# TODO(two-axis-removal): the two-axis Step-1 path (_build_dual_writer /
+# _run_parallel_dual / _PARALLEL_DUAL_ENABLED) is dormant legacy: zero
+# country-level wdw.pickle files exist on disk (verified 2026-08-31), so this
+# gate never routes to the dual path. GV-NLE is produced by Step 5 training +
+# the inductive query-time path. Candidate for removal — decide when the
+# pickle-provisioning question is settled. Note: "dual" properly refers to
+# the fused 400D static_embedding, not this writer (see
+# docs/Schematics/01_Encoder/01_Two_Axis_vs_Single_Axis_Encoding.md).
 # Phase gate for the dual-encoding (FastText + NLE) parallel path.
 # Phase 1 ships the FastText-only parallel path; Phase 2 enables dual after
 # the pickle-country parity test (PARALLEL_UPSERT_APPROACH_B_PLAN.md §5.2)
@@ -143,6 +151,8 @@ class EmbeddingService:
                 source_snapshot_id=source_snapshot_id,
             )
 
+            # TODO(two-axis-removal): legacy two-axis branch — unreachable in
+            # production (no country has pickle_path set). See gate note above.
             if cfg.has_pretrained_nle and cfg.pickle_path:
                 logger.info(
                     "Dual encoding mode (FastText + NLE from pickle) [pickle_path=%s country=%s]",
@@ -196,6 +206,9 @@ class EmbeddingService:
 
     def _build_dual_writer(self, cfg, ft_model, tags_storage):
         """Build a DualEncodingWriter for the FastText + NLE path.
+
+        TODO(two-axis-removal): dormant legacy — no country has pickle_path
+        set (verified 2026-08-31). Remove with the gate + _run_parallel_dual.
 
         Returns (writer, nle_storage).
         """
@@ -298,6 +311,9 @@ class EmbeddingService:
     def _run_parallel_dual(self, cfg: "CountryEnvelope", pbf_path: str,
                            workers: int, queue_depth: int) -> int:
         """Parallel FastText + NLE encode + upsert (dual encoding).
+
+        TODO(two-axis-removal): dormant legacy — only reachable when
+        pickle_path is set, which never happens today. Remove with the gate.
 
         Phase 2 path: ``cfg.has_pretrained_nle`` is True and a pickle exists.
         Shares one ``NLEModel`` across workers (read-only inference; each

@@ -111,18 +111,20 @@
               <div class="summary-section">
                 <h3 class="summary-section__title">Embeddings by Continent</h3>
                 <p class="summary-section__description">
-                  The pipeline produces two orthogonal embeddings per OSM entity:
+                  The pipeline produces two independent embedding models per OSM entity:
                   300D
                   <a href="https://github.com/NicolasTe/GeoVectors/blob/master/Encoder.py" target="_blank" rel="noopener noreferrer">GV-Tags</a>
                   (semantic, "what something is") via FastText encoding of OSM tags
                   during Step 1, and 100D
                   <a href="https://github.com/NicolasTe/GeoVectors/blob/master/Encoder.py" target="_blank" rel="noopener noreferrer">GV-NLE</a>
-                  (spatial, "where something is") via DeepWalk node2vec training on the
+                  (spatial, "where something is") via weighted DeepWalk training on the
                   k-NN graph (k=50 geographic neighbors) during Step 5. For entities in
                   new snapshots that haven't been through DeepWalk, an inductive BallTree
                   + IDW bridge computes provisional GV-NLE from the k=50 nearest trained
-                  entities. Both axes are fused into a 400D static_embedding for unified
-                  ANN search. Reference
+                  entities. The fused 400D static_embedding (GV-Tags | GV-NLE) is defined
+                  for unified ANN search but is only populated by the
+                  <code>compute_static_embeddings</code> command after Step 5 — it is
+                  currently pending. Reference
                   <a href="https://geovectors.l3s.uni-hannover.de/data" target="_blank" rel="noopener noreferrer">Embeddings</a>
                   dataset.
                 </p>

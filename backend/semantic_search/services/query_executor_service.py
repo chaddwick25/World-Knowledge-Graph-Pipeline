@@ -1,5 +1,10 @@
 """
-QueryExecutorService — execute parsed GeoFlow Graphs against the data plane.
+Aligns the values parsed form the natural language query to the correct
+template type associated with the GeoFlow Graphs. The DAG is formed by
+the template type and the values parsed from the natural language query.
+Then the DAG execution is implememented SQL math using the factor_* tables holding the
+result of batch computations performed in the WorldKG pipeline.
+
 
 Each of the 5 macro-templates has a dedicated execution function that:
   1. Resolves concept nodes (geocodes entity names → coordinates)
@@ -50,6 +55,7 @@ logger = logging.getLogger(__name__)
 # precision level (P4 ≈ 39 km). The paper computes d_max from the candidate
 # pool's cluster centers; at runtime without a precomputed pool, the cell
 # width is the closest approximation.
+# TODO: Add these to a yaml file
 USLP_GEOHASH_PRECISION = 4
 USLP_FALLBACK_D_MAX_KM = {
     1: 5000.0,
@@ -271,7 +277,8 @@ class QueryExecutorService:
         ids = list(qs.values_list('osm_id', flat=True)[:cap])
         if ids:
             return ids, "exact_tag"
-
+        
+        # TODO: do some EDA to see what other amenity types are available based (maybe look at the TTL file )
         amenity_to_wkgs = {
             "cafe": "wkgs:Cafe", "coffee_shop": "wkgs:Cafe",
             "restaurant": "wkgs:Restaurant", "diner": "wkgs:Restaurant",
