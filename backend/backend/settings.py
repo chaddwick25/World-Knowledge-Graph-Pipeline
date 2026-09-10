@@ -408,7 +408,7 @@ DATABASE_ROUTERS = [
 ]
 
 # MapQA self-supervised training-data generation
-# (docs/plans/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md §4 — paraphrase tiers).
+# (docs/plans/completed/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md §4 — paraphrase tiers).
 # The rule-based paraphrase tier is always on; this env var gates the optional
 # LLM tier (Ollama via LLMService — no external API). Default off: generation
 # must be deterministic and offline-safe.

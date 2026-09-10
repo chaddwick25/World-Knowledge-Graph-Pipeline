@@ -4,7 +4,7 @@ generate_mapqa_training_data — self-supervised MapQA training-data generation.
 Generates question–answer pairs for the 5 existing MapQA macro-templates
 (#1, #2, #4, #5, #8) from ``OsmEntity`` ground truth in already-processed
 countries (no graph/factor-table dependency — see
-docs/plans/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md).
+docs/plans/completed/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md).
 
 Answers are computed exactly from PostGIS at generation time and appended to
 ``training_data/natural_language_qa_pairs.csv`` (source-controlled), keyed by
