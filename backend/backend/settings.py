@@ -408,7 +408,7 @@ DATABASE_ROUTERS = [
 ]
 
 ***REMOVED*** MapQA self-supervised training-data generation
-***REMOVED*** (docs/plans/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md §4 — paraphrase tiers).
+***REMOVED*** (docs/plans/completed/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md §4 — paraphrase tiers).
 ***REMOVED*** The rule-based paraphrase tier is always on; this env var gates the optional
 ***REMOVED*** LLM tier (Ollama via LLMService — no external API). Default off: generation
 ***REMOVED*** must be deterministic and offline-safe.

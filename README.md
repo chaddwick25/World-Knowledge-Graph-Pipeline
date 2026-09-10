@@ -203,8 +203,9 @@ commercial alternatives that are common in ML and geospatial systems.
 │                      │ locally, no API costs                │ your infrastructure                          │
 ├──────────────────────┼──────────────────────────────────────┼──────────────────────────────────────────────┤
 │ Vector database      │ pgvector (PostgreSQL extension)      │ Pinecone, Weaviate Cloud                     │
-│                      │ HNSW indexes inside the same DB      │ managed services, vendor lock-in,            │
-│                      │ as the entity data, no sync          │ separate infrastructure to maintain          │
+│                      │ same DB as entity data, no sync;     │ managed services, vendor lock-in,            │
+│                      │ search is exact + USLP re-rank       │ separate infrastructure to maintain          │
+│                      │ (HNSW-ready; fused-400D ANN opt-in)  │                                             │
 ├──────────────────────┼──────────────────────────────────────┼──────────────────────────────────────────────┤
 │ LLM / agent          │ Ollama via NVIDIA Container Toolkit  │ OpenAI GPT-4, Anthropic Claude               │
 │                      │ Qwen 14B, Goose MCP server           │ API-only, per-call pricing, rate limits,     │
