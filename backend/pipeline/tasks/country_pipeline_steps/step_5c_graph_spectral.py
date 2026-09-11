@@ -539,7 +539,7 @@ def _run_subgraph_spectral_analysis(env: CountryEnvelope) -> None:
                 stride = len(fiedler) // 10_000
                 fiedler = fiedler[::stride][:10_000]
 
-            GraphSpectralFingerprint.objects.create(
+            fp = GraphSpectralFingerprint.objects.create(
                 region=sg_slug,
                 snapshot=snapshot,
                 eigenvalues=features["eigenvalues"],
@@ -553,14 +553,21 @@ def _run_subgraph_spectral_analysis(env: CountryEnvelope) -> None:
             )
 
             # ── Community detection + factor rows ──
-            # core_ids prunes buffer-only entities at write time (Option A)
+            # core_ids prunes buffer-only entities at write time (Option A).
+            # fingerprint_id links the loadings to THIS eigenbasis (Phase 1
+            # coherence check at runtime).  The fingerprint row gets the
+            # community fields persisted (0c backfill).
             communities = CommunityDetectionService().detect_communities(G)
+            fp.community_count = communities["community_count"]
+            fp.modularity = communities["modularity"]
+            fp.save(update_fields=["community_count", "modularity"])
             factor_rows = FactorNodeWriter().write_spectral_nodes(
                 G, features, env.iso, env.snapshot_date,
                 node_to_community=communities["node_to_community"],
                 signal=signal,
                 subgraph_slug=sg_slug,
                 core_ids=core_ids,
+                fingerprint_id=fp.id,
             )
             total_factor_rows += factor_rows
 
@@ -785,7 +792,7 @@ def _run_country_spectral_analysis(env: CountryEnvelope) -> None:
         stride = len(fiedler) // 10_000
         fiedler = fiedler[::stride][:10_000]
 
-    GraphSpectralFingerprint.objects.create(
+    fp = GraphSpectralFingerprint.objects.create(
         region=env.iso,
         snapshot=snapshot,
         eigenvalues=features["eigenvalues"],
@@ -825,10 +832,15 @@ def _run_country_spectral_analysis(env: CountryEnvelope) -> None:
         from semantic_search.services.factor_node_writer import FactorNodeWriter
 
         communities = CommunityDetectionService().detect_communities(G)
+        # 0c backfill: persist the community fields on the fingerprint row.
+        fp.community_count = communities["community_count"]
+        fp.modularity = communities["modularity"]
+        fp.save(update_fields=["community_count", "modularity"])
         factor_rows = FactorNodeWriter().write_spectral_nodes(
             G, features, env.iso, env.snapshot_date,
             node_to_community=communities["node_to_community"],
             signal=signal,
+            fingerprint_id=fp.id,
         )
         community_count = communities["community_count"]
         modularity = communities["modularity"]

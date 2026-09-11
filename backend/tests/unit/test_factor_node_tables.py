@@ -285,12 +285,17 @@ def test_drift_nodes_detects_changes():
 # ── FactorResolutionService ──────────────────────────────────────────────
 
 
-def _patch_eigenvalues(features):
+def _patch_eigenvalues(features, fingerprint_id=None):
+    """Patch _get_eigenvalues to return (eigenvalues, fingerprint_id).
+
+    Phase 1 hardening changed the return contract to a tuple; the default
+    ``fingerprint_id=None`` keeps the lenient path (NULL anchor rows).
+    """
     return mock.patch.object(
         FactorResolutionService, "_get_eigenvalues",
         staticmethod(
             lambda snapshot_id, country_code, subgraph_slug=None:
-                features["eigenvalues"]
+                (features["eigenvalues"], fingerprint_id)
         ),
     )
 
@@ -301,6 +306,99 @@ def test_check_availability(seeded_spectral):
     result = frs.check_availability(present + [999999999], SNAP_A, TEST_CC)
     assert all(result[o] for o in present)
     assert result[999999999] is False
+
+
+# ── Phase 1 hardening: eigenbasis coherence ──────────────────────────────
+
+
+def test_write_spectral_nodes_stamps_fingerprint_id():
+    """Rows written with a fingerprint_id carry it (coherence check input)."""
+    import uuid
+
+    _cleanup()
+    try:
+        fp_id = uuid.uuid4()
+        G = _weighted_path_graph()
+        features = _features(G)
+        n = FactorNodeWriter().write_spectral_nodes(
+            G, features, TEST_CC, SNAP_A,
+            node_to_community=_two_communities(G),
+            fingerprint_id=fp_id,
+        )
+        assert n == N_NODES
+        rows = SpectralNodeMetric.objects.using("vectors").filter(
+            country_code=TEST_CC, snapshot_id=SNAP_A,
+        )
+        assert rows.count() == N_NODES
+        assert all(str(r.fingerprint_id) == str(fp_id) for r in rows)
+    finally:
+        _cleanup()
+
+
+def test_diffusion_rank_eigenbasis_mismatch_falls_back():
+    """Anchor loadings stamped with a DIFFERENT fingerprint → None + trace
+    warning (PostGIS fallback, never wrong scores)."""
+    import uuid
+
+    _cleanup()
+    try:
+        fp_a = uuid.uuid4()
+        G = _weighted_path_graph()
+        features = _features(G)
+        FactorNodeWriter().write_spectral_nodes(
+            G, features, TEST_CC, SNAP_A,
+            node_to_community=_two_communities(G),
+            fingerprint_id=fp_a,
+        )
+        anchor = int(features["node_order"][3])
+        trace = []
+        other_fp = uuid.uuid4()
+        with _patch_eigenvalues(features, fingerprint_id=other_fp):
+            ranked = FactorResolutionService().diffusion_rank(
+                anchor, 1.0, SNAP_A, TEST_CC, trace=trace,
+            )
+        assert ranked is None
+        assert any(s.get("warning") == "eigenbasis_mismatch" for s in trace)
+    finally:
+        _cleanup()
+
+
+def test_diffusion_rank_null_fingerprint_lenient_then_strict():
+    """NULL fingerprint_id (pre-migration rows): proceeds in lenient mode
+    with a trace note; fails under FACTOR_EIGENBASIS_STRICT."""
+    import uuid
+
+    from django.conf import settings
+
+    _cleanup()
+    try:
+        G = _weighted_path_graph()
+        features = _features(G)
+        # Rows written WITHOUT fingerprint_id → NULL (pre-migration style)
+        FactorNodeWriter().write_spectral_nodes(
+            G, features, TEST_CC, SNAP_A,
+            node_to_community=_two_communities(G),
+        )
+        anchor = int(features["node_order"][3])
+        frs = FactorResolutionService()
+
+        with _patch_eigenvalues(features, fingerprint_id=uuid.uuid4()):
+            trace = []
+            ranked = frs.diffusion_rank(anchor, 1.0, SNAP_A, TEST_CC, trace=trace)
+            assert ranked is not None  # lenient: NULL proceeds
+            assert any(s.get("note") == "unverified_eigenbasis" for s in trace)
+
+            with mock.patch.object(settings, "FACTOR_EIGENBASIS_STRICT", True):
+                trace2 = []
+                ranked2 = frs.diffusion_rank(
+                    anchor, 1.0, SNAP_A, TEST_CC, trace=trace2,
+                )
+                assert ranked2 is None
+                assert any(
+                    s.get("warning") == "eigenbasis_mismatch" for s in trace2
+                )
+    finally:
+        _cleanup()
 
 
 def test_resolve_metrics(seeded_spectral):
@@ -531,3 +629,58 @@ def test_executor_event_diffusion_no_factor_rows(seeded_spectral):
         )
 
     assert "error" in result["results"]
+
+
+# ── 0c: persisted community modularity (Part 2 prerequisite) ─────────────
+
+
+def test_community_detect_reads_persisted_modularity(seeded_spectral):
+    """0c: _community_detect_via_tables reads modularity + community_count
+    from the GraphSpectralFingerprint row (default DB)."""
+    from core.models import PbfFile
+    from osmsnapshot.models import Snapshot
+    from semantic_search.models import GraphSpectralFingerprint
+    from semantic_search.services.query_executor_service import (
+        QueryExecutorService,
+    )
+
+    pbf = PbfFile.objects.create(status=PbfFile.PbfStatus.COMPLETED)
+    snapshot = Snapshot.objects.create(
+        country_code=TEST_CC, snapshot_date=SNAP_A, pbf_file=pbf,
+    )
+    fp = GraphSpectralFingerprint.objects.create(
+        region=TEST_CC,
+        snapshot=snapshot,
+        eigenvalues=[0.1, 0.2, 0.3],
+        fiedler_vector=[0.1, 0.2],
+        algebraic_connectivity=0.1,
+        spectral_gap=0.2,
+        signal_smoothness=1.5,
+        node_count=N_NODES,
+        edge_count=N_NODES - 1,
+        k_eigenvalues=3,
+        community_count=2,
+        modularity=0.42,
+    )
+    try:
+        result = QueryExecutorService._community_detect_via_tables(
+            [], TEST_CC, SNAP_A, [],
+        )
+        assert result is not None
+        assert result["community_count"] == 2
+        assert result["modularity"] == pytest.approx(0.42)
+
+        # No fingerprint row → modularity None, count still answers.
+        fp.delete()
+        result2 = QueryExecutorService._community_detect_via_tables(
+            [], TEST_CC, SNAP_A, [],
+        )
+        assert result2["modularity"] is None
+        assert result2["community_count"] == 2
+    finally:
+        # fp may already have been deleted above (pk set to None by
+        # Django's delete()); re-deleting then raises ValueError.
+        if fp.pk is not None:
+            fp.delete()
+        snapshot.delete()
+        pbf.delete()

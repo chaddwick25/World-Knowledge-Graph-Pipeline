@@ -737,3 +737,107 @@ class TestContextFormatting:
         assert "USLP links: 32 total" in user_msg
         # No raw JSON dump of the links array in the prompt.
         assert '"head_osm_id": 1, "relation"' not in user_msg
+
+
+# ── Executor-level guard: no entity context → no enrichment ──────────────
+
+
+class TestExecuteEnrichmentGuard:
+    """QueryExecutorService.execute must skip the direct-path enrichment
+    when the results carry no osm_id — there is no deterministic entity
+    context to ground the LLM on, and empty-context synthesis produced
+    answers contradicting the deterministic one ("distance not provided"
+    vs "Distance: 0.44 km")."""
+
+    def _execute(self, monkeypatch, template, results, executor_name):
+        from semantic_search.services.query_executor_service import (
+            QueryExecutorService,
+        )
+
+        # Patch the executor dispatch table directly — `_executors` is
+        # class-cached, so patching the method attribute alone is ignored
+        # once `_get_executors()` has been called by an earlier test.
+        # Plain callable (not classmethod): the dispatch invokes it as
+        # executor(concepts, cc, snap, trace, question=...).
+        monkeypatch.setattr(
+            QueryExecutorService, "_executors",
+            {template: (lambda *a, _r=results, **k: _r)},
+        )
+
+        def should_not_be_called(*a, **k):
+            raise AssertionError("enrichment must not run without entity context")
+
+        monkeypatch.setattr(
+            "semantic_search.services.entity_context_service."
+            "EntityContextService.get_context",
+            should_not_be_called,
+        )
+        monkeypatch.setattr(
+            "semantic_search.services.query_enrichment_service."
+            "QueryEnrichmentService.synthesize",
+            should_not_be_called,
+        )
+
+        parsed = {"template": template, "concepts": []}
+        return QueryExecutorService.execute(
+            parsed, "IE", None, question="How far is A from B?",
+        )
+
+    def test_distance_result_no_osm_id_skips_enrichment(self, monkeypatch):
+        out = self._execute(
+            monkeypatch, "OBJECT-FIELD-MEASURE (#2)",
+            [{"distance_km": 0.44, "distance_m": 440.4,
+              "from": "A", "to": "B"}],
+            "_execute_object_field_measure",
+        )
+        assert out["enrichment"] is None
+        assert out["results"][0]["distance_m"] == 440.4
+
+    def test_bearing_result_no_osm_id_skips_enrichment(self, monkeypatch):
+        out = self._execute(
+            monkeypatch, "LOCATION-BEARING-CLASSIFY (#5)",
+            [{"bearing_degrees": 90.0, "direction": "E",
+              "from": "A", "to": "B"}],
+            "_execute_location_bearing_classify",
+        )
+        assert out["enrichment"] is None
+
+    def test_entity_result_with_osm_id_runs_enrichment(self, monkeypatch):
+        from semantic_search.services.query_executor_service import (
+            QueryExecutorService,
+        )
+        from unittest.mock import MagicMock
+
+        results = [{"osm_id": 1, "name": "A", "lat": 1.0, "lon": 2.0}]
+        monkeypatch.setattr(
+            QueryExecutorService, "_executors",
+            {"PLACE-ATTRIBUTE-QUERY (#8)":
+             (lambda *a, _r=results, **k: _r)},
+        )
+        # Stubbed context + a stubbed synthesis — hermetic, no DB.
+        monkeypatch.setattr(
+            "semantic_search.services.entity_context_service."
+            "EntityContextService.get_context",
+            classmethod(
+                lambda cls, *a, **k: {
+                    "uslp_links": [], "communities": {},
+                    "class_distribution": [],
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            "semantic_search.services.query_enrichment_service."
+            "QueryEnrichmentService.synthesize",
+            classmethod(
+                lambda cls, *a, **k: {
+                    "enriched_answer": "A is near the anchor.",
+                    "primary_answer": "Found 1 place.",
+                }
+            ),
+        )
+        parsed = {"template": "PLACE-ATTRIBUTE-QUERY (#8)", "concepts": []}
+        out = QueryExecutorService.execute(
+            parsed, "IE", None, question="What is near A?",
+        )
+        assert out["enrichment"] is not None
+        assert out["enrichment"]["enriched_answer"] == "A is near the anchor."

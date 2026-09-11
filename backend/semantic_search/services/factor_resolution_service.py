@@ -31,11 +31,13 @@ import logging
 from typing import Optional
 
 import numpy as np
+from django.conf import settings
 from django.db.models import FloatField
 from django.db.models.expressions import RawSQL
 
 from worldkg_nca.models import (
     EIGEN_LOADING_DIM,
+    AmenityClassMapping,
     AmenityEmbedding,
     SpectralNodeMetric,
 )
@@ -156,7 +158,7 @@ class FactorResolutionService:
                 osm_id=anchor_osm_id,
                 eigen_loadings__isnull=False,
             )
-            .values("eigen_loadings", "subgraph_slug")
+            .values("eigen_loadings", "subgraph_slug", "fingerprint_id")
             .first()
         )
         if anchor is None:
@@ -173,7 +175,7 @@ class FactorResolutionService:
         # ── Get eigenvalues from the right fingerprint ──
         # Subgraph-scoped: region=subgraph_slug
         # Country-level: region=country_code
-        eigenvalues = self._get_eigenvalues(
+        eigenvalues, fingerprint_id = self._get_eigenvalues(
             snapshot_id, country_code, subgraph_slug=subgraph_slug,
         )
         if not eigenvalues:
@@ -184,6 +186,47 @@ class FactorResolutionService:
                     "warning": "no eigenvalues on GraphSpectralFingerprint",
                 })
             return None
+
+        # ── Phase 1 — eigenbasis coherence (hardening) ──
+        # The anchor's loadings must come from the same fingerprint whose
+        # eigenvalues we're about to use; otherwise a same-snapshot rerun
+        # that failed between the two writes pairs old loadings with a new
+        # fingerprint → wrong scores.  Mismatch → None → PostGIS fallback.
+        anchor_fingerprint_id = anchor.get("fingerprint_id")
+        if (
+            anchor_fingerprint_id is not None
+            and fingerprint_id is not None
+            and str(anchor_fingerprint_id) != str(fingerprint_id)
+        ):
+            if trace is not None:
+                trace.append({
+                    "step": "factor_join",
+                    "table": "factor_spectral_node_metric",
+                    "warning": "eigenbasis_mismatch",
+                    "anchor_fingerprint_id": str(anchor_fingerprint_id),
+                    "fingerprint_id": str(fingerprint_id),
+                })
+            return None
+        if anchor_fingerprint_id is None:
+            # Pre-migration row — lenient by default; strict setting
+            # (FACTOR_EIGENBASIS_STRICT) upgrades NULL to a mismatch.
+            if getattr(settings, "FACTOR_EIGENBASIS_STRICT", False):
+                if trace is not None:
+                    trace.append({
+                        "step": "factor_join",
+                        "table": "factor_spectral_node_metric",
+                        "warning": "eigenbasis_mismatch",
+                        "detail": "unverified anchor row (NULL fingerprint_id) "
+                                  "in strict mode",
+                    })
+                return None
+            if trace is not None:
+                trace.append({
+                    "step": "factor_join",
+                    "note": "unverified_eigenbasis",
+                    "detail": "anchor fingerprint_id is NULL (pre-migration "
+                              "row) — lenient mode",
+                })
 
         # Coefficient vector w_k = e^{-t·λ_k} · φ_k(anchor), zero-padded to
         # EIGEN_LOADING_DIM (padding matches the stored column padding).
@@ -364,7 +407,7 @@ class FactorResolutionService:
                 continue
 
             # Get target subgraph's eigenvalues
-            eigenvalues_target = self._get_eigenvalues(
+            eigenvalues_target, _target_fp_id = self._get_eigenvalues(
                 snapshot_id, country_code, subgraph_slug=target_slug,
             )
             if not eigenvalues_target:
@@ -504,6 +547,25 @@ class FactorResolutionService:
             return None
         return np.asarray(row["embedding"], dtype=float)
 
+    # ── Amenity → WorldKG class (DB-driven, rule 6.2 — Phase 5) ──────────
+
+    def amenity_class(self, amenity_text: str):
+        """Resolve an amenity string to a WorldKG class via the DB mapping.
+
+        Returns the ``wkg_class`` or None when unmapped (caller falls back
+        to PostGIS/FastText as today).  Populated by
+        ``compute_amenity_class_mappings`` (data + ontology tiers).
+        """
+        row = (
+            AmenityClassMapping.objects.using("vectors")
+            .filter(amenity_text=amenity_text.strip().lower().replace(" ", "_"))
+            .values("wkg_class")
+            .first()
+        )
+        if row is None:
+            return None
+        return row["wkg_class"]
+
     # ── internals ────────────────────────────────────────────────────────
 
     @staticmethod
@@ -516,7 +578,9 @@ class FactorResolutionService:
         fingerprint (region=subgraph_slug).  Otherwise falls back to the
         country-level fingerprint (region=country_code).
 
-        Returns a list of floats, or None when no fingerprint exists.
+        Returns ``(eigenvalues, fingerprint_id)`` — the fingerprint UUID
+        whose eigenbasis produced the loadings (Phase 1 coherence check) —
+        or ``(None, None)`` when no fingerprint exists.
         """
         from osmsnapshot.models import Snapshot
         from semantic_search.models import GraphSpectralFingerprint
@@ -528,7 +592,7 @@ class FactorResolutionService:
             .first()
         )
         if snapshot is None:
-            return None
+            return None, None
 
         # Try subgraph-scoped fingerprint first
         if subgraph_slug is not None:
@@ -539,7 +603,7 @@ class FactorResolutionService:
                 .first()
             )
             if fp is not None:
-                return fp.eigenvalues
+                return fp.eigenvalues, fp.id
 
         # Fall back to country-level fingerprint
         fp = (
@@ -549,5 +613,5 @@ class FactorResolutionService:
             .first()
         )
         if fp is None:
-            return None
-        return fp.eigenvalues
+            return None, None
+        return fp.eigenvalues, fp.id

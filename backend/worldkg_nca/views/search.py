@@ -1,5 +1,5 @@
 import json
-import queue
+import asyncio
 import threading
 
 from rest_framework import status
@@ -1135,8 +1135,16 @@ def execute_query_stream(request):
     if not query_text:
         return JsonResponse({"error": "query required"}, status=400)
 
-    def event_stream():
-        events = queue.Queue(maxsize=128)
+    async def event_stream():
+        # Async generator + asyncio.Queue: Django's ASGI handler BUFFERS
+        # sync streaming generators (verified empirically — chunks arrive in
+        # one burst when the response closes under both runserver and
+        # daphne), which flattened the answer-first UX and made
+        # client-measured retrieval times unreliable. Async generators
+        # stream chunk-by-chunk. The executor runs in a worker thread;
+        # events cross to the event loop via loop.call_soon_threadsafe.
+        loop = asyncio.get_running_loop()
+        events = asyncio.Queue(maxsize=512)
 
         def emit(event, **payload):
             # Accept both call forms: emit("name", key=val) from this view
@@ -1147,7 +1155,7 @@ def execute_query_stream(request):
             if isinstance(event, dict):
                 payload = {k: v for k, v in event.items() if k != "event"}
                 event = event.get("event") or "message"
-            events.put({"event": event, **payload})
+            loop.call_soon_threadsafe(events.put_nowait, {"event": event, **payload})
 
         def run():
             try:
@@ -1175,12 +1183,12 @@ def execute_query_stream(request):
             except Exception as exc:  # noqa: BLE001 — surface errors as an SSE event
                 emit("error", error=str(exc))
             finally:
-                events.put(None)  # sentinel
+                loop.call_soon_threadsafe(events.put_nowait, None)  # sentinel
 
         threading.Thread(target=run, daemon=True).start()
 
         while True:
-            item = events.get()
+            item = await events.get()
             if item is None:
                 break
             yield f"event: {item['event']}\ndata: {json.dumps(item, default=str)}\n\n"

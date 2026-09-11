@@ -188,10 +188,15 @@ class QueryExecutorService:
         template = parsed["template"]
         concepts = parsed["concepts"]
 
-        # For multi-entity templates, supplement concepts with full entity extraction
+        # For multi-entity templates, supplement concepts with full entity
+        # extraction. LOCATION-BEARING-CLASSIFY (#5) is intentionally NOT in
+        # this set: its cone path needs ONE anchor + a direction, and the
+        # regex extraction over-splits names ("the Spire of Dublin" →
+        # ["Spire", "Dublin"]) which hijacks cone questions into the
+        # two-location bearing path. The parser's own LOCATION concepts
+        # already cover the 5a bearing case ("Which direction is X from Y?").
         if question and template in (
             "OBJECT-FIELD-MEASURE (#2)",
-            "LOCATION-BEARING-CLASSIFY (#5)",
             "GEOCODE-BATCH-COMPARE (#4)",
         ):
             from semantic_search.services.query_parser_service import QueryParserService
@@ -257,7 +262,31 @@ class QueryExecutorService:
             # Fail-soft — the templated answer is kept on any failure (see
             # entity_context_service.py / query_enrichment_service.py).
             enrichment = None
-            if question and isinstance(results, list):
+            # Enrichment requires deterministic entity context — the context
+            # sources (uslp/communities/classes) are all keyed by osm_id.
+            # With none, the LLM synthesizes from empty context and
+            # contradicts the deterministic answer (observed twice:
+            # "no entities to the west" on an error result, and "distance
+            # not provided" vs "Distance: 0.44 km" on a distance result).
+            error_result = (
+                isinstance(results, list)
+                and results
+                and isinstance(results[0], dict)
+                and bool(results[0].get("error"))
+            )
+            has_entity_context = (
+                isinstance(results, list)
+                and any(
+                    isinstance(r, dict) and r.get("osm_id")
+                    for r in results
+                )
+            )
+            if (
+                question
+                and isinstance(results, list)
+                and not error_result
+                and has_entity_context
+            ):
                 from semantic_search.services.entity_context_service import (
                     EntityContextService,
                 )
@@ -366,15 +395,14 @@ class QueryExecutorService:
         if ids:
             return ids, "exact_tag"
         
-        # TODO: do some EDA to see what other amenity types are available based (maybe look at the TTL file )
-        amenity_to_wkgs = {
-            "cafe": "wkgs:Cafe", "coffee_shop": "wkgs:Cafe",
-            "restaurant": "wkgs:Restaurant", "diner": "wkgs:Restaurant",
-            "hotel": "wkgs:Hotel", "hospital": "wkgs:Hospital",
-            "school": "wkgs:School", "bar": "wkgs:Amenity",
-            "pub": "wkgs:Amenity", "fuel": "wkgs:Amenity",
-        }
-        wkg_class = amenity_to_wkgs.get(amenity_type.lower().replace(" ", "_"))
+        # DB-driven resolution (rule 6.2 — hardening Phase 5): the
+        # factor_amenity_class_mapping table, populated by
+        # compute_amenity_class_mappings (data + ontology tiers).
+        from semantic_search.services.factor_resolution_service import (
+            FactorResolutionService,
+        )
+
+        wkg_class = FactorResolutionService().amenity_class(amenity_type)
         if wkg_class:
             qs = OsmEntity.objects.using("vectors").filter(
                 snapshot_id=snapshot_id,
@@ -476,9 +504,12 @@ class QueryExecutorService:
                                      snapshot_date, trace):
         """Table-path community detection: GROUP BY over stored Louvain IDs.
 
-        Returns a result dict compatible with the graph path (modularity is
-        not stored in the factor tables and is reported as None), or None
-        when no factor rows exist (caller falls back).
+        Returns a result dict compatible with the graph path.  Modularity
+        and community_count come from the persisted GraphSpectralFingerprint
+        row (0c, 2026-09-11); modularity stays None when no fingerprint row
+        exists for the country (subdivision countries report None until the
+        region-resolution prerequisite lands).  Returns None when no factor
+        rows exist (caller falls back).
         """
         from semantic_search.services.factor_resolution_service import (
             FactorResolutionService,
@@ -498,9 +529,31 @@ class QueryExecutorService:
         if summary is None:
             return None
 
+        # 0c: persisted modularity from the country-level fingerprint (default
+        # DB). Subdivision countries without a country-level row keep None.
+        modularity = None
+        from osmsnapshot.models import Snapshot
+        from semantic_search.models import GraphSpectralFingerprint
+
+        snapshot = (
+            Snapshot.objects.using("default")
+            .filter(country_code__iexact=country_code, snapshot_date=snap)
+            .order_by("-created_at")
+            .first()
+        )
+        if snapshot is not None:
+            fp = (
+                GraphSpectralFingerprint.objects
+                .filter(region__iexact=country_code, snapshot=snapshot)
+                .order_by("-created_at")
+                .first()
+            )
+            if fp is not None:
+                modularity = fp.modularity
+
         result = {
             "community_count": summary["community_count"],
-            "modularity": None,
+            "modularity": modularity,
             "source": "factor_tables",
         }
         if wkg_class:
@@ -668,13 +721,18 @@ class QueryExecutorService:
         trace.append({"step": "geocode", "input": anchor_name,
                       "output": anchor})
 
-        if not anchor or not anchor.get("lat"):
+        if not anchor or not anchor.get("osm_id") or not anchor.get("lat"):
             trace.append({"step": "compare_closer",
                           "error": "could not geocode anchor"})
             return []
 
         anchor_point = Point(anchor["lon"], anchor["lat"], srid=4326)
         results = []
+        # Enriched candidates: input query + resolved entity (id, name,
+        # distance) so the trace can link each candidate to its OSM entity
+        # regardless of name matching. One entry per candidate, in input
+        # order — failed geocodes stay present with null entity fields.
+        enriched_candidates = []
         for name in candidate_names:
             entity = EntityGeocoder.geocode(name, country_code, snapshot_date)
             if entity and entity.get("lat"):
@@ -684,10 +742,19 @@ class QueryExecutorService:
                 )
                 entity["distance_m"] = round(dist_m, 1)
                 results.append(entity)
+            else:
+                entity = None
+            enriched_candidates.append({
+                "query": name,
+                "name": entity.get("name") if entity else None,
+                "osm_id": entity.get("osm_id") if entity else None,
+                "osm_type": entity.get("osm_type") if entity else None,
+                "distance_m": entity.get("distance_m") if entity else None,
+            })
 
         results.sort(key=lambda x: x.get("distance_m") or float("inf"))
         trace.append({"step": "compare_closer",
-                      "candidates": candidate_names,
+                      "candidates": enriched_candidates,
                       "anchor": anchor_name,
                       "output_count": len(results)})
         return results
@@ -1193,7 +1260,10 @@ class QueryExecutorService:
                           "inputs": [locations[0]["text"], locations[1]["text"]],
                           "outputs": [a, b]})
 
-            if not a or not b or not a.get("lat") or not b.get("lat"):
+            if not a or not b or not a.get("osm_id") or not b.get("osm_id") \
+                    or not a.get("lat") or not b.get("lat"):
+                if trace and trace[-1].get("step") == "batch_geocode":
+                    trace[-1]["error"] = "Could not geocode one or both entities"
                 return [{"error": "Could not geocode one or both entities"}]
 
             # Bearing ([SPATIAL_AGENT:§C.4] — Equation 8)
@@ -1221,7 +1291,13 @@ class QueryExecutorService:
             anchor = EntityGeocoder.geocode(anchor_name, country_code, snapshot_date)
             trace.append({"step": "geocode", "input": anchor_name, "output": anchor})
 
-            if not anchor or not anchor.get("lat"):
+            if not anchor or not anchor.get("osm_id") or not anchor.get("lat"):
+                # Fail fast: an anchor needs a usable OSM entity (id +
+                # coordinates). Flag the geocode step itself so the trace
+                # UI shows the error badge (the error would otherwise only
+                # live in the result dict and look like a clean step).
+                if trace and trace[-1].get("step") == "geocode":
+                    trace[-1]["error"] = f"Could not geocode anchor: {anchor_name}"
                 return [{"error": f"Could not geocode anchor: {anchor_name}"}]
 
             # Map cardinal to angle
@@ -1348,10 +1424,16 @@ class QueryExecutorService:
             return valid_candidates[:1]
 
         else:
-            trace.append({"step": "batch_geocode",
-                          "error": "need 2 LOCATION concepts, got %d" % len(locations)})
-            if len(locations) == 1 and locations[0]["text"]:
-                return [{"error": "Need two locations to compute bearing"}]
+            if len(locations) == 0:
+                trace.append({"step": "location_parse",
+                              "error": "no LOCATION concept found"})
+            elif len(locations) == 1:
+                trace.append({"step": "direction_parse",
+                              "error": "could not determine a cardinal direction "
+                                       "(north/east/south/west)"})
+            else:
+                trace.append({"step": "batch_geocode",
+                              "error": "need 2 LOCATION concepts, got %d" % len(locations)})
             return []
 
     # ── Template 5: OBJECT-FIELD-MEASURE (#2) ───────────────────────────────
@@ -1379,7 +1461,10 @@ class QueryExecutorService:
                       "inputs": [locations[0]["text"], locations[1]["text"]],
                       "outputs": [a, b]})
 
-        if not a or not b or not a.get("lat") or not b.get("lat"):
+        if not a or not b or not a.get("osm_id") or not b.get("osm_id") \
+                or not a.get("lat") or not b.get("lat"):
+            if trace and trace[-1].get("step") == "batch_geocode":
+                trace[-1]["error"] = "Could not geocode one or both entities"
             return [{"error": "Could not geocode one or both entities"}]
 
         # Geographic distance (haversine) — primary metric (graph path removed)
@@ -1497,18 +1582,14 @@ class QueryExecutorService:
         except Exception:
             return []
 
-        # Map amenity string to wkgs: class name
-        amenity_to_wkgs = {
-            "cafe": "wkgs:Cafe", "coffee_shop": "wkgs:Cafe",
-            "restaurant": "wkgs:Restaurant", "diner": "wkgs:Restaurant",
-            "hotel": "wkgs:Hotel", "resort": "wkgs:Hotel",
-            "hospital": "wkgs:Hospital", "clinic": "wkgs:Hospital",
-            "school": "wkgs:School", "university": "wkgs:School",
-            "shop": "wkgs:Shop", "store": "wkgs:Shop", "mall": "wkgs:Shop",
-            "bar": "wkgs:Amenity", "pub": "wkgs:Amenity",
-        }
-        key = amenity_type.lower().replace(" ", "_")
-        wkg_class = amenity_to_wkgs.get(key)
+        # DB-driven resolution (rule 6.2 — hardening Phase 5): the
+        # factor_amenity_class_mapping table, populated by
+        # compute_amenity_class_mappings (data + ontology tiers).
+        from semantic_search.services.factor_resolution_service import (
+            FactorResolutionService,
+        )
+
+        wkg_class = FactorResolutionService().amenity_class(amenity_type)
         if not wkg_class:
             return []
 
@@ -2329,10 +2410,13 @@ class QueryExecutorService:
 
         if template == "COMMUNITY-DETECT (#13)":
             if isinstance(results, dict) and "community_count" in results:
-                return (
-                    f"Detected {results['community_count']} communities "
-                    f"(modularity Q = {results.get('modularity', 0.0):.4f})."
-                )
+                q = results.get("modularity")
+                if q is not None:
+                    return (
+                        f"Detected {results['community_count']} communities "
+                        f"(modularity Q = {q:.4f})."
+                    )
+                return f"Detected {results['community_count']} communities."
 
         if template == "EVENT-DIFFUSION (#14)":
             if isinstance(results, dict) and "affected" in results:

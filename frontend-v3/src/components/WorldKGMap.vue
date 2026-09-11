@@ -517,6 +517,37 @@ export default {
         }
       }
 
+      // Distance/bearing lines between two geocoded anchors
+      // (OBJECT-FIELD-MEASURE distance, bearing): solid indigo line with a
+      // mid-point distance label.
+      for (const line of graph.anchorLines || []) {
+        const a = line.from
+        const b = line.to
+        if (!a || !b || a.lat == null || b.lat == null) continue
+        const latlngs = [[a.lat, a.lon], [b.lat, b.lon]]
+        L.polyline(latlngs, {
+          color: '#818cf8',
+          weight: 2,
+          opacity: 0.85,
+        }).addTo(queryGraphLayer)
+        if (line.label) {
+          const mid = L.latLngBounds(latlngs).getCenter()
+          L.marker(mid, {
+            interactive: false,
+            icon: L.divIcon({
+              className: 'trace-dist-label',
+              html:
+                `<span style="background: rgba(15,23,42,.9); color:#c7d2fe; ` +
+                `font-size:11px; padding:1px 6px; border-radius:4px; ` +
+                `border:1px solid #6366f1; white-space:nowrap;">` +
+                `${escapeHtml(line.label)}</span>`,
+              iconSize: [0, 0],
+            }),
+          }).addTo(queryGraphLayer)
+        }
+        bounds.push([a.lat, a.lon], [b.lat, b.lon])
+      }
+
       if (bounds.length) {
         mapInstance.fitBounds(bounds, { padding: [60, 60], maxZoom: 14 })
       }

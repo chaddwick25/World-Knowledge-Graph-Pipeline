@@ -367,6 +367,13 @@ class SpectralNodeMetric(models.Model):
         help_text="Subgraph slug for subdivision-scoped spectral analysis. "
                   "Null for country-level (small territories).",
     )
+    fingerprint_id = models.UUIDField(
+        null=True, blank=True, db_index=True,
+        help_text="GraphSpectralFingerprint.id whose eigenbasis produced "
+                  "these loadings (UUID, not FK — the fingerprint lives on "
+                  "the default DB). Runtime coherence check: NULL = "
+                  "unverified (pre-migration row, lenient mode).",
+    )
 
     eigen_loadings = VectorField(
         dimensions=EIGEN_LOADING_DIM,
@@ -521,6 +528,48 @@ class AmenityEmbedding(models.Model):
 
     def __str__(self):
         return f"AmenityEmbedding({self.amenity_text})"
+
+
+class AmenityClassMapping(models.Model):
+    """Amenity value → WorldKG class, DB-driven (rule 6.2, Phase 5).
+
+    Replaces the hardcoded 10–15 term ``amenity_to_wkgs`` dicts in the
+    executor's amenity-candidate path.  Populated by
+    ``python manage.py compute_amenity_class_mappings`` from two tiers:
+    data (most common ``wkg_class`` among ``OsmEntity`` rows carrying that
+    ``amenity`` value, with support count) and ontology (exact tag→class
+    mappings derived from the WorldKG ontology TTL).
+
+    Runtime: ``FactorResolutionService.amenity_class(amenity_text)``.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    amenity_text = models.CharField(
+        max_length=200, unique=True,
+        help_text="OSM amenity value (lowercased, spaces → underscores)",
+    )
+    wkg_class = models.CharField(
+        max_length=255,
+        help_text="WorldKG class (wkgs: namespace) the amenity resolves to",
+    )
+    support_count = models.IntegerField(
+        null=True, blank=True,
+        help_text="OsmEntity row count backing a 'data' mapping (None for "
+                  "'ontology' mappings)",
+    )
+    source = models.CharField(
+        max_length=20,
+        help_text="'data' (aggregated from OsmEntity) | 'ontology' (TTL-derived)",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'factor_amenity_class_mapping'
+        ordering = ['amenity_text']
+
+    def __str__(self):
+        return f"AmenityClassMapping({self.amenity_text} → {self.wkg_class})"
 
 
 class PrecomputedLinkCandidate(models.Model):

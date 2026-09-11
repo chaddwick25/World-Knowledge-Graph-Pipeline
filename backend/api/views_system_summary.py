@@ -97,6 +97,10 @@ class SystemSummaryView(APIView):
     def _get_embeddings_info(self):
         from core.models import CountryPipelineProfile, PipelineRun
         from core.models import OSMWikiDataHierarchy
+        from core.services.planet_init.continent_hierarchy import (
+            normalize_continent,
+            continent_name,
+        )
 
         total = CountryPipelineProfile.objects.count()
         with_embeddings = CountryPipelineProfile.objects.filter(has_embeddings=True).count()
@@ -113,7 +117,10 @@ class SystemSummaryView(APIView):
         hierarchy_parents = {}
         for h in OSMWikiDataHierarchy.objects.values("slug", "parent_slug"):
             slug = h["slug"]
-            parent = h["parent_slug"] or "other"
+            # Normalize to the canonical 7-continent set (continent_hierarchy
+            # is the ground truth; raw parent_slug may be a Geofabrik
+            # subregion like france/china/australia or a naming variant).
+            parent = normalize_continent(h["parent_slug"])
             if parent not in hierarchy_parents:
                 hierarchy_parents[parent] = {"total": 0, "with_emb": 0, "pipelines": 0}
 
@@ -126,7 +133,7 @@ class SystemSummaryView(APIView):
             for h in OSMWikiDataHierarchy.objects.filter(slug=slug).values("parent_slug"):
                 parent = h["parent_slug"]
                 break
-            parent = parent or "other"
+            parent = normalize_continent(parent)
             if parent not in hierarchy_parents:
                 hierarchy_parents[parent] = {"total": 0, "with_emb": 0, "pipelines": 0}
             hierarchy_parents[parent]["total"] += 1
@@ -146,13 +153,13 @@ class SystemSummaryView(APIView):
                 for h in OSMWikiDataHierarchy.objects.filter(slug=slug).values("parent_slug"):
                     parent = h["parent_slug"]
                     break
-                parent = parent or "other"
+                parent = normalize_continent(parent)
                 if parent in hierarchy_parents:
                     hierarchy_parents[parent]["pipelines"] += 1
 
         by_continent = [
             {
-                "name": parent,
+                "name": continent_name(parent),
                 "total": info["total"],
                 "with_embeddings": info["with_emb"],
                 "pipelines_completed": info["pipelines"],

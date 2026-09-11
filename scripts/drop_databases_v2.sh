@@ -20,6 +20,24 @@ fi
 # Use the same compose files the project actually runs with.
 DOCKER_COMPOSE="docker compose -f docker-compose.yml -f compose.override.yml"
 
+# Django apps that own migration directories (updated 2026-09-11 — the
+# old list targeted deleted apps: extraction, analysis, orchestration).
+# `vectors` is a dead leftover directory, not an installed app.
+MIGRATION_APPS=(
+    "api" "core" "geodata" "geovectors_encoder"
+    "igea" "osmsnapshot" "semantic_search" "worldkg_nca"
+)
+
+# Default keeps migration files (the fresh-DB E2E path needs the real
+# migration chain, including the latest semantic_search / worldkg_nca
+# migrations). Pass --wipe-migrations to delete them.
+WIPE_MIGRATIONS=0
+for arg in "$@"; do
+    if [ "$arg" = "--wipe-migrations" ]; then
+        WIPE_MIGRATIONS=1
+    fi
+done
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -134,26 +152,26 @@ else
 fi
 echo ""
 
-# Step 5: Remove migration files
+# Step 5: Remove migration files (nuclear option, off by default)
 echo -e "${YELLOW}Step 5: Migration files...${NC}"
 echo "Migration files present in:"
-echo "  - backend/extraction/migrations/"
-echo "  - backend/analysis/migrations/"
-echo "  - backend/orchestration/migrations/"
-echo "  - backend/vectors/migrations/"
-echo "  - backend/geodata/migrations/"
-echo "  - backend/semantic_search/migrations/"
+for app in "${MIGRATION_APPS[@]}"; do
+    echo "  - backend/$app/migrations/"
+done
 echo ""
-read -p "Do you want to remove migration files too? (yes/no): " remove_migrations
+
+if [ "$WIPE_MIGRATIONS" = "1" ]; then
+    read -p "You passed --wipe-migrations. Remove migration files? (yes/no): " remove_migrations
+else
+    remove_migrations="no"
+    echo -e "${BLUE}Migrations preserved (default). Pass --wipe-migrations to remove them.${NC}"
+fi
 
 if [ "$remove_migrations" = "yes" ] || [ "$remove_migrations" = "y" ]; then
     echo "Removing migration files (keeping __init__.py)..."
     cd backend
     
-    # List of all Django apps with migrations
-    APPS=("extraction" "analysis" "orchestration" "vectors" "geodata" "semantic_search")
-    
-    for app in "${APPS[@]}"; do
+    for app in "${MIGRATION_APPS[@]}"; do
         if [ -d "$app/migrations" ]; then
             echo "  Cleaning $app/migrations..."
             # Remove migration files except __init__.py
@@ -164,7 +182,7 @@ if [ "$remove_migrations" = "yes" ] || [ "$remove_migrations" = "y" ]; then
     done
     
     cd ..
-    echo -e "${GREEN}✓ Migration files removed from all apps${NC}"
+    echo -e "${GREEN}✓ Migration files removed from all ${#MIGRATION_APPS[@]} apps${NC}"
 else
     echo -e "${BLUE}Migration files preserved${NC}"
 fi
@@ -181,16 +199,17 @@ echo "  ✓ PostgreSQL data directories (default + vectors)"
 echo "  ✓ Redis data directory and keyspace (DBs 0, 1, 2)"
 echo "  ✓ Project Docker volumes"
 if [ "$remove_migrations" = "yes" ]; then
-    echo "  ✓ Migration files (all 6 apps)"
+    echo "  ✓ Migration files (all ${#MIGRATION_APPS[@]} apps)"
 fi
 echo ""
 echo "Next steps:"
 echo "  1. Run:  docker compose -f docker-compose.yml -f compose.override.yml up -d"
-echo "  2. Run:  cd backend && python manage.py makemigrations"
-echo "  3. Run:  cd backend && python manage.py migrate"
-echo "  4. Run:  cd backend && python manage.py migrate --database=vectors"
-echo "  5. Load WorldKG ontology: python manage.py enrich_worldkg_classes \\"
+echo "  2. Run:  cd backend && python manage.py migrate"
+echo "  3. Run:  cd backend && python manage.py migrate --database=vectors"
+echo "  4. Load WorldKG ontology: python manage.py enrich_worldkg_classes \\"
 echo "         --load-ontology ../data/worldkg_ontology_sample.json"
+echo "  5. Amenity class mappings: python manage.py compute_amenity_class_mappings"
+echo "  6. Country partitions: python manage.py create_country_partitions --country XX"
 echo ""
 echo "Note: If Redis is running, flush the WorldKG ontology cache too:"
 echo "  redis-cli -n 2 FLUSHDB  (DB 2 = WorldKG ontology; avoids flushing other DBs)"

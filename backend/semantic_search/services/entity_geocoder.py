@@ -161,6 +161,26 @@ class EntityGeocoder:
                     lon = x
             except Exception:
                 pass
+            if lat is None:
+                # Ways/relations have line/polygon geometries — .x/.y yield
+                # nothing, so derive a representative point. Without this,
+                # entities like "Spire of Dublin" (a way) geocode to
+                # lat=None and every coordinate-dependent executor path
+                # (cone search, distance, anchors) fails on them.
+                try:
+                    pt = entity.geom.point_on_surface
+                    if pt is not None:
+                        ly = pt.y
+                        lx = pt.x
+                        if (
+                            ly is not None and lx is not None
+                            and not (isinstance(ly, float) and math.isnan(ly))
+                            and not (isinstance(lx, float) and math.isnan(lx))
+                        ):
+                            lat = ly
+                            lon = lx
+                except Exception:
+                    pass
         return {
             "osm_id": entity.osm_id,
             "osm_type": entity.osm_type,

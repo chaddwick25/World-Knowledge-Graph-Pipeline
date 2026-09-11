@@ -174,7 +174,13 @@ class RegionalPathService:
         return path
 
     def get_continent_pbf_path(self, continent: str) -> Path:
-        return self.get_continent_dir(continent) / f"{continent}.pbf"
+        # Normalize the filename too (not just the dir) — callers pass raw
+        # names ("North America", "north-america"); the on-disk convention
+        # is underscores everywhere (north_america.pbf).
+        cont_slug = normalize_continent_slug(continent)
+        if not cont_slug:
+            cont_slug = continent
+        return self.get_continent_dir(cont_slug) / f"{cont_slug}.pbf"
 
     def get_country_pbf_path(self, continent: str, country: str) -> Path:
         return self.get_country_dir(continent, country) / f"{country}.pbf"

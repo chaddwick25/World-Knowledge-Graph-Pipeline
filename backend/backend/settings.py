@@ -206,6 +206,12 @@ SPECTRAL_REPORT_DIR = os.getenv('SPECTRAL_REPORT_DIR', _default_spectral_report_
 # spatial fallback for templates without factor-table coverage.
 FACTOR_NODE_TABLES_ENABLED = os.getenv('FACTOR_NODE_TABLES_ENABLED', 'true').lower() == 'true'
 
+# Eigenbasis coherence (GRAPH_SPECTRAL_FEEDBACK_HARDENING_PLAN Phase 1):
+# False (default) = lenient — NULL fingerprint_id (pre-migration rows) still
+# resolves with a trace note. True = strict — NULL is treated as a mismatch,
+# forcing the PostGIS fallback during the transition window.
+FACTOR_EIGENBASIS_STRICT = os.getenv('FACTOR_EIGENBASIS_STRICT', 'false').lower() == 'true'
+
 # Hot storage path (SSD/NVME working files)
 HOT_STORAGE_PATH = os.getenv('HOT_STORAGE_PATH', BASE_DATA_DIR)
 
