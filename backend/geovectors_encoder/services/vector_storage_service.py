@@ -173,9 +173,15 @@ class VectorStorageService:
         - Index on staging table built once after first COPY (survives TRUNCATE).
         - SET LOCAL synchronous_commit = off (eliminates per-commit fsync stall).
         - ORDER BY osm_type, osm_id in merge SELECT (deterministic lock order).
+        - Manual tab-join row building instead of csv.writer (2026-09-11,
+          measured ~3.7x faster: 0.37s -> 0.10s per 20K rows). Safe because
+          the only free-text field (tags) is JSON-escaped, so no field can
+          contain a literal tab or newline; the tags field is CSV-quoted
+          (wrap + double inner quotes) since JSON always contains double
+          quotes. Per-batch constants (version, partition keys,
+          source_snapshot_id) are hoisted out of the loop.
         """
         import io
-        import csv
 
         start_time = time.time()
         with connections['vectors'].cursor() as cursor:
@@ -191,14 +197,28 @@ class VectorStorageService:
             for item in self.buffer:
                 unique_items[(item['osm_type'], item['osm_id'])] = item
 
-            # Build CSV buffer
-            csv_buffer = io.StringIO()
-            writer = csv.writer(csv_buffer, delimiter='\t', quoting=csv.QUOTE_MINIMAL)
+            # Build the CSV body as one joined string.  Manual '\t'.join is
+            # used instead of csv.writer (see docstring); fields are emitted
+            # in the staging table's column order.
             col_name = "gv_tags_embedding" if self.model_type == 'tags' else "gv_nle_embedding"
 
+            # Phase 6 partition keys (NULL on monolith until backfilled) —
+            # constant for the whole batch, hoisted out of the row loop.
+            version = self.version
+            snap_id = self.snapshot_id if self.snapshot_id else "\\N"
+            cc = self.country_code if self.country_code else "\\N"
+            src_snap = str(self.source_snapshot_id) if self.source_snapshot_id else "\\N"
+
+            csv_parts = []
+            append = csv_parts.append
             for item in unique_items.values():
                 tags_dict = {str(k): str(v) for k, v in item['tags']}
                 tags_json = json.dumps(tags_dict)
+                # tags_json always contains double quotes (JSON keys/values),
+                # so it must be CSV-quoted (wrap + double inner quotes) or the
+                # COPY csv-format parser would strip them (csv.writer did this
+                # implicitly under QUOTE_MINIMAL).
+                tags_csv = '"' + tags_json.replace('"', '""') + '"'
                 geom_wkt = f"SRID=4326;POINT({item['geom'].x} {item['geom'].y})" if item['geom'] else "\\N"
 
                 embedding = item.get('gv_tags_embedding')
@@ -214,25 +234,13 @@ class VectorStorageService:
 
                 gv_nle_trained = 't' if item.get('gv_nle_trained') else 'f'
 
-                # Phase 6 partition keys (NULL on monolith until backfilled)
-                snap_id = self.snapshot_id if self.snapshot_id else "\\N"
-                cc = self.country_code if self.country_code else "\\N"
-                src_snap = str(self.source_snapshot_id) if self.source_snapshot_id else "\\N"
+                append(
+                    item['osm_type'] + "\t" + str(item['osm_id']) + "\t" + tags_csv + "\t" +
+                    geom_wkt + "\t" + vec_str + "\t" + version + "\t" + gv_nle_trained + "\t" +
+                    snap_id + "\t" + cc + "\t" + src_snap + "\n"
+                )
 
-                writer.writerow([
-                    item['osm_type'],
-                    item['osm_id'],
-                    tags_json,
-                    geom_wkt,
-                    vec_str,
-                    self.version,
-                    gv_nle_trained,
-                    snap_id,
-                    cc,
-                    src_snap
-                ])
-
-            csv_buffer.seek(0)
+            csv_buffer = io.StringIO("".join(csv_parts))
 
             # Opt 3: Reuse staging table across batches.
             # The table is created once (lazily), TRUNCATE'd before each

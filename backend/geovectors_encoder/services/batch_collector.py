@@ -10,9 +10,8 @@ Contract (do not break — ``read_from_snapshot`` and the
 on this):
 
 - ``BatchCollector`` exposes ``add_line(record)`` and ``storage`` (self),
-  so it is a drop-in replacement for ``DBOnlyWriter`` / ``DualEncodingWriter``
-  from the perspective of ``core/util.py:read_from_snapshot`` and the
-  post-dependency-pass loop.
+  so it is a drop-in replacement for ``DBOnlyWriter`` from the perspective
+  of ``core/util.py:read_from_snapshot`` and the post-dependency-pass loop.
 - ``storage.flush()`` is a no-op when the buffer is empty (``SampleHandler``
   calls it every ``chunk_size`` nodes — must not enqueue empty batches).
 - ``finish(n_workers)`` flushes any partial batch and enqueues one sentinel
@@ -22,18 +21,22 @@ on this):
 
 Thread-safety (verified against the code, see plan §2.3):
 
-- ``FastTextModel`` and ``NLEModel`` are shared across encoding threads.
-  FastText inference releases the GIL; ``NLEModel.encode_coords`` issues a
-  PostGIS KNN query via ``DjangoPostgresDB.get_pool_connection()`` which
-  returns the *calling thread's* Django connection — each worker gets its
-  own psycopg2 connection automatically.
+- ``FastTextModel`` is shared across encoding threads (inference releases
+  the GIL).  The optional ``nle_model`` argument is a generic capability of
+  this module and is currently unused — Step 1 passes ``nle_model=None``
+  (FastText-only since the two-axis Step-1 path was removed 2026-09-10, see
+  ``docs/issues/TICKET_REMOVE_DUAL_ENCODER.md``).  ``NLEModel.encode_coords``
+  issues a PostGIS KNN query via ``DjangoPostgresDB.get_pool_connection()``
+  which returns the *calling thread's* Django connection — each worker gets
+  its own psycopg2 connection automatically.
 - Encoding threads do **no** database I/O — they only encode and push
   encoded batches onto the ``upsert_queue``.
 - A single ``upsert_worker`` thread owns the only ``VectorStorageService``
-  instances (one for tags, one for NLE).  This eliminates PostgreSQL lock
-  contention on the leaf partition's unique index — the regression that
-  occurred when 8 workers each ran ``INSERT ... ON CONFLICT`` concurrently
-  (see ``docs/issues/PARALLEL_UPSERT_REGRESSION.md``).
+  instances (one for tags, one for NLE when ``has_nle=True``).  This
+  eliminates PostgreSQL lock contention on the leaf partition's unique
+  index — the regression that occurred when 8 workers each ran
+  ``INSERT ... ON CONFLICT`` concurrently (see
+  ``docs/issues/PARALLEL_UPSERT_REGRESSION.md``).
 - The upsert thread closes its Django connections in ``finally`` via
   ``connections.close_all()`` (no request lifecycle in Celery threads).
 """

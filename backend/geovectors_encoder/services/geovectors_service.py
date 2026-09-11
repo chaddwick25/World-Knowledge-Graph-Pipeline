@@ -16,11 +16,6 @@ from core.models import ProcessingSession, Task, CountryPipelineProfile, Subgrap
 from core.models import RegionHierarchy
 from core.services.snapshot.regional_path_service import regional_path_service, normalize_country_slug, normalize_continent_slug
 from core.services.planet_init.osm_wikidata_resolver import get_country_by_name, get_country_relations_dict
-# Internal imports from core
-from ..core.encoder import run_on_dump
-from ..core.db import DjangoPostgresDB
-from ..core.models.fasttext import FastTextModel
-from ..core.models.nle import NLEModel
 
 logger = logging.getLogger(__name__)
 
@@ -718,9 +713,7 @@ class GeoVectorsEncoderService:
             conn.close()
 
         from .vector_storage_service import VectorStorageService
-        from ..core.db import DjangoPostgresDB
         from ..core.models.fasttext import FastTextModel
-        from ..core.models.nle import NLEModel
         from ..core.util import read_from_snapshot
         import itertools
 
@@ -732,7 +725,6 @@ class GeoVectorsEncoderService:
         try:
             cont_norm = normalize_country_slug(continent)
             country_norm = normalize_country_slug(country_name)
-            pickle_dir = regional_path_service.get_pickle_dir(cont_norm, country_norm)
 
             from worldkg_nca.models import OsmEntity
 
@@ -747,21 +739,6 @@ class GeoVectorsEncoderService:
             else:
                 logger.info(f"[{version_key}] (single-pass) Force mode enabled - skipping duplicate check.")
 
-            pickle_file = pickle_dir / "wdw.pickle"
-            has_pickle = pickle_file.exists()
-
-            if not has_pickle:
-                pickles_dir = regional_path_service.get_country_dir(cont_norm, country_norm) / "pickles"
-                if pickles_dir.exists():
-                    for subgraph_path in pickles_dir.iterdir():
-                        if subgraph_path.is_dir():
-                            subgraph_pickle = subgraph_path / "wdw.pickle"
-                            if subgraph_pickle.exists():
-                                has_pickle = True
-                                logger.info(f"[{snap_date}] (single-pass) Found subgraph pickle at {subgraph_pickle}")
-                                pickle_file = subgraph_pickle
-                                break
-
             ft_load_start = time.time()
             ft_model = FastTextModel()
             ft_load_duration = time.time() - ft_load_start
@@ -769,53 +746,14 @@ class GeoVectorsEncoderService:
 
             tags_storage = VectorStorageService(model_type="tags", version=version_key)
 
-            if not has_pickle:
-                logger.warning(f"[{snap_date}] (single-pass) wdw.pickle not found; running FastText-only.")
-                tags_writer = DBOnlyWriter(ft_model, tags_storage)
-                snapshot_start = time.time()
-                n_data, w_data, r_data = read_from_snapshot(snap_path, writer=tags_writer, max_runs=2)
-                snapshot_duration = time.time() - snapshot_start
-                try:
-                    n_count = len(n_data) if n_data is not None else 0
-                except TypeError:
-                    n_count = 0
-                try:
-                    w_count = len(w_data) if w_data is not None else 0
-                except TypeError:
-                    w_count = 0
-                try:
-                    r_count = len(r_data) if r_data is not None else 0
-                except TypeError:
-                    r_count = 0
-                logger.info(
-                    f"[{snap_date}] (single-pass) FastText-only read_from_snapshot in {snapshot_duration:.2f}s "
-                    f"(nodes={n_count}, ways={w_count}, relations={r_count})"
-                )
-                for record in itertools.chain(w_data, r_data):
-                    tags_writer.add_line(record)
-                tags_storage.flush()
-                logger.info(f"[{snap_date}] (single-pass) FastText-only complete.")
-                return
-
-            logger.info(f"[{snap_date}] (single-pass) NLE location encoding using {pickle_file}...")
-            db_bridge = DjangoPostgresDB()
-            nle_model = NLEModel(str(pickle_file.parent), njobs=1, db=db_bridge)
-            nle_model.load_indexes()
-
-            nle_storage = VectorStorageService(model_type="nle", version=version_key)
-            # TODO(two-axis-removal): legacy single-pass two-axis writer — only
-            # active when a pickle exists (country-level or first subgraph).
-            # Dormant today (0 country-level pickles; see embedding_service gate).
-            dual_writer = DualEncodingWriter(
-                tag_encoder=ft_model,
-                nle_encoder=nle_model,
-                tag_storage=tags_storage,
-                nle_storage=nle_storage,
-                boundary=None,
-            )
-
+            # TODO(two-axis-removal): the NLE-from-pickle phase of this legacy
+            # single-pass path was removed with DualEncodingWriter 2026-09-10
+            # (docs/issues/TICKET_REMOVE_DUAL_ENCODER.md).  GV-NLE comes from
+            # Step 5 training + the inductive query-time path, so this endpoint
+            # is FastText-only regardless of pickle availability.
+            tags_writer = DBOnlyWriter(ft_model, tags_storage)
             snapshot_start = time.time()
-            n_data, w_data, r_data = read_from_snapshot(snap_path, writer=dual_writer, max_runs=2)
+            n_data, w_data, r_data = read_from_snapshot(snap_path, writer=tags_writer, max_runs=2)
             snapshot_duration = time.time() - snapshot_start
             try:
                 n_count = len(n_data) if n_data is not None else 0
@@ -830,15 +768,13 @@ class GeoVectorsEncoderService:
             except TypeError:
                 r_count = 0
             logger.info(
-                f"[{snap_date}] (single-pass) read_from_snapshot finished in {snapshot_duration:.2f}s "
+                f"[{snap_date}] (single-pass) FastText-only read_from_snapshot in {snapshot_duration:.2f}s "
                 f"(nodes={n_count}, ways={w_count}, relations={r_count})"
             )
             for record in itertools.chain(w_data, r_data):
-                dual_writer.add_line(record)
+                tags_writer.add_line(record)
             tags_storage.flush()
-            nle_storage.flush()
-            nle_model.destroy()
-            logger.info(f"[{snap_date}] (single-pass) FastText+NLE complete.")
+            logger.info(f"[{snap_date}] (single-pass) FastText-only complete.")
         except Exception as e:
             logger.error(f"[{snap_date}] (single-pass) Failed: {e}", exc_info=True)
             raise
@@ -1137,48 +1073,3 @@ class DBOnlyWriter:
         vector = self.encoder.encode_instance(record)
         if vector is not None:
             self.storage.add(record, vector)
-
-# TODO(two-axis-removal): dormant legacy — the Step-1 two-axis writer. Never
-# constructed in production (no country-level wdw.pickle exists; verified
-# 2026-08-31). "Dual" is a misnomer — this writer never fuses the axes; the
-# fused 400D static_embedding (compute_static_embeddings) is the real
-# "dual". Candidate for removal with
-# embedding_service._build_dual_writer / _run_parallel_dual.
-class DualEncodingWriter:
-
-    class _CombinedStorage:
-        def __init__(self, tag_storage, nle_storage):
-            self._tag_storage = tag_storage
-            self._nle_storage = nle_storage
-
-        def flush(self):
-            if hasattr(self._tag_storage, "flush"):
-                self._tag_storage.flush()
-            if hasattr(self._nle_storage, "flush"):
-                self._nle_storage.flush()
-
-    def __init__(self, tag_encoder, nle_encoder, tag_storage, nle_storage, boundary=None):
-        self.tag_encoder = tag_encoder
-        self.nle_encoder = nle_encoder
-        self.tag_storage = tag_storage
-        self.nle_storage = nle_storage
-        self.boundary = boundary
-        self.storage = self._CombinedStorage(tag_storage, nle_storage)
-
-    def add_line(self, record):
-        if self.boundary and record[3] is not None and record[4] is not None:
-            point = Point(record[4], record[3])
-            if not self.boundary.contains(point):
-                return
-        if self.tag_encoder is not None:
-            tag_vec = self.tag_encoder.encode_instance(record)
-        else:
-            tag_vec = None
-        if tag_vec is not None:
-            self.tag_storage.add(record, tag_vec)
-        if self.nle_encoder is not None:
-            nle_vec = self.nle_encoder.encode_instance(record)
-        else:
-            nle_vec = None
-        if nle_vec is not None:
-            self.nle_storage.add(record, nle_vec)

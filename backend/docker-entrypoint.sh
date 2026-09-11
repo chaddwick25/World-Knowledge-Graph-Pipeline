@@ -110,10 +110,22 @@ else
   if [ "$RUN_INIT_PLANET" = "false" ]; then
     echo "Skipping init_planet (RUN_INIT_PLANET=false)."
   else
-    echo "Running init_planet..."
-    # Best-effort: failures don't abort container startup (matches the old
-    # Celery chain's max_retries=1 semantics). Logs are surfaced via stderr.
-    python manage.py init_planet || echo "WARNING: init_planet reported failures; see logs above."
+    # Cheap DB pre-check: skip the full command (Django process + step
+    # registration) when planet init is already complete. Mirrors the worker
+    # migration-poll style above; best-effort — if the DB is unreachable we
+    # fall through and run init_planet as before. Table is planet_snapshots
+    # (see core/models/infrastructure.py PlanetSnapshot).
+    PLANET_COMPLETE=$(PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "
+      SELECT 1 FROM planet_snapshots WHERE status = 'COMPLETED' LIMIT 1;
+    " 2>/dev/null || echo "")
+    if [ -n "$PLANET_COMPLETE" ]; then
+      echo "Planet init already complete; skipping init_planet."
+    else
+      echo "Running init_planet..."
+      # Best-effort: failures don't abort container startup (matches the old
+      # Celery chain's max_retries=1 semantics). Logs are surfaced via stderr.
+      python manage.py init_planet || echo "WARNING: init_planet reported failures; see logs above."
+    fi
   fi
 fi
 

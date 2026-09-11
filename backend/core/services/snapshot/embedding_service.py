@@ -1,7 +1,10 @@
 """Stateless service: embed OSM entities from a snapshot PBF.
 
-Handles FastText + NLE model loading, writer setup, snapshot reading,
-WorldKG class enrichment, and entropy computation.
+Handles FastText model loading, writer setup, snapshot reading,
+WorldKG class enrichment, and entropy computation.  Step 1 is
+FastText-only (GV-Tags); GV-NLE comes from Step 5 training and the
+inductive query-time path (see
+docs/Schematics/01_Encoder/01_Two_Axis_vs_Single_Axis_Encoding.md).
 
 Pure data plane — no Celery, no logging dispatcher, no WS push.
 Receives a CountryEnvelope, reads files, writes to DB,
@@ -20,28 +23,6 @@ if TYPE_CHECKING:
     from pipeline.envelopes import CountryEnvelope
 
 logger = logging.getLogger(__name__)
-
-# TODO(two-axis-removal): the two-axis Step-1 path (_build_dual_writer /
-# _run_parallel_dual / _PARALLEL_DUAL_ENABLED) is dormant legacy: zero
-# country-level wdw.pickle files exist on disk (verified 2026-08-31), so this
-# gate never routes to the dual path. GV-NLE is produced by Step 5 training +
-# the inductive query-time path. Candidate for removal — decide when the
-# pickle-provisioning question is settled. Note: "dual" properly refers to
-# the fused 400D static_embedding, not this writer (see
-# docs/Schematics/01_Encoder/01_Two_Axis_vs_Single_Axis_Encoding.md).
-# Phase gate for the dual-encoding (FastText + NLE) parallel path.
-# Phase 1 ships the FastText-only parallel path; Phase 2 enables dual after
-# the pickle-country parity test (PARALLEL_UPSERT_APPROACH_B_PLAN.md §5.2)
-# passes.
-#
-# Enabled 2026-08-14: all countries currently have pickle_path=None, so
-# flipping this gate routes has_pretrained_nle=True countries to
-# _run_parallel (FastText-only) — identical encoding to the single-threaded
-# DBOnlyWriter path, just parallelized.  The _run_parallel_dual path is
-# only reached when pickle_path is set, which is not the case today.
-# If a country with a pickle is added later, _run_parallel_dual will be
-# exercised and should be parity-tested first (§5.2).
-_PARALLEL_DUAL_ENABLED = True
 
 
 class EmbeddingService:
@@ -85,16 +66,11 @@ class EmbeddingService:
         Returns:
             ``{"entropy": float, "has_nle": bool, "entity_count": int}``.
         """
-        from geovectors_encoder.services.geovectors_service import (
-            DBOnlyWriter,
-            DualEncodingWriter,
-        )
+        from geovectors_encoder.services.geovectors_service import DBOnlyWriter
         from geovectors_encoder.services.vector_storage_service import (
             VectorStorageService,
         )
         from geovectors_encoder.core.models.fasttext import FastTextModel
-        from geovectors_encoder.core.models.nle import NLEModel
-        from geovectors_encoder.core.db import DjangoPostgresDB
         from geovectors_encoder.core.util import read_from_snapshot
 
         pbf_path = pbf_path_override or cfg.snapshot_pbf_path
@@ -123,25 +99,15 @@ class EmbeddingService:
                 )
                 workers = 1
 
-        use_parallel = workers > 1 and (
-            not cfg.has_pretrained_nle or _PARALLEL_DUAL_ENABLED
-        )
-        if workers > 1 and cfg.has_pretrained_nle and not _PARALLEL_DUAL_ENABLED:
-            logger.info(
-                "Parallel dual-encoding path not yet enabled (phase-1 gate); "
-                "using single-threaded path [country=%s]",
-                cfg.iso,
+        # Step 1 is FastText-only (GV-Tags).  The two-axis Step-1 path
+        # (DualEncodingWriter / _run_parallel_dual) was removed 2026-09-10 —
+        # see docs/issues/TICKET_REMOVE_DUAL_ENCODER.md.  GV-NLE comes from
+        # Step 5 training + the inductive query-time path, so the parallel
+        # path needs no NLE gating.
+        if workers > 1:
+            entity_count = self._run_parallel(
+                cfg, pbf_path, workers, queue_depth, source_snapshot_id,
             )
-
-        if use_parallel:
-            if cfg.has_pretrained_nle and cfg.pickle_path:
-                entity_count = self._run_parallel_dual(
-                    cfg, pbf_path, workers, queue_depth,
-                )
-            else:
-                entity_count = self._run_parallel(
-                    cfg, pbf_path, workers, queue_depth,
-                )
         else:
             # === legacy single-threaded path (unchanged behavior) ===
             ft_model = FastTextModel()
@@ -151,23 +117,7 @@ class EmbeddingService:
                 source_snapshot_id=source_snapshot_id,
             )
 
-            # TODO(two-axis-removal): legacy two-axis branch — unreachable in
-            # production (no country has pickle_path set). See gate note above.
-            if cfg.has_pretrained_nle and cfg.pickle_path:
-                logger.info(
-                    "Dual encoding mode (FastText + NLE from pickle) [pickle_path=%s country=%s]",
-                    cfg.pickle_path, cfg.iso,
-                )
-                writer, nle_storage = self._build_dual_writer(cfg, ft_model, tags_storage)
-            else:
-                if not cfg.has_pretrained_nle:
-                    logger.info(
-                        "FastText-only mode (no pre-trained NLE model) [country=%s]",
-                        cfg.iso,
-                    )
-                writer = DBOnlyWriter(ft_model, tags_storage)
-                nle_storage = None
-
+            writer = DBOnlyWriter(ft_model, tags_storage)
             n_data, w_data, r_data = read_from_snapshot(
                 pbf_path, writer=writer, max_runs=2,
                 chunk_size=_parallel_upsert_chunk_size(),
@@ -175,14 +125,6 @@ class EmbeddingService:
             for record in itertools.chain(w_data, r_data):
                 writer.add_line(record)
             tags_storage.flush()
-            if nle_storage:
-                nle_storage.flush()
-                # NLEModel doesn't expose destroy in all versions; guard it
-                try:
-                    if hasattr(writer, "nle_encoder") and hasattr(writer.nle_encoder, "destroy"):
-                        writer.nle_encoder.destroy()
-                except Exception:
-                    pass
             entity_count = len(n_data) + len(w_data) + len(r_data)
             # === end legacy single-threaded path ===
 
@@ -204,51 +146,23 @@ class EmbeddingService:
             "entity_count": entity_count,
         }
 
-    def _build_dual_writer(self, cfg, ft_model, tags_storage):
-        """Build a DualEncodingWriter for the FastText + NLE path.
-
-        TODO(two-axis-removal): dormant legacy — no country has pickle_path
-        set (verified 2026-08-31). Remove with the gate + _run_parallel_dual.
-
-        Returns (writer, nle_storage).
-        """
-        from geovectors_encoder.core.models.nle import NLEModel
-        from geovectors_encoder.core.db import DjangoPostgresDB
-        from geovectors_encoder.services.geovectors_service import DualEncodingWriter
-        from geovectors_encoder.services.vector_storage_service import VectorStorageService
-
-        db_bridge = DjangoPostgresDB()
-        nle_model = NLEModel(
-            str(Path(cfg.pickle_path).parent),
-            njobs=1, db=db_bridge,
-        )
-        nle_model.load_indexes()
-        nle_storage = VectorStorageService(
-            model_type="nle", version=cfg.snapshot_date,
-            snapshot_id=cfg.snapshot_date, country_code=cfg.iso,
-            source_snapshot_id=self._resolve_snapshot_uuid(cfg.iso, cfg.snapshot_date),
-        )
-        writer = DualEncodingWriter(
-            tag_encoder=ft_model,
-            nle_encoder=nle_model,
-            tag_storage=tags_storage,
-            nle_storage=nle_storage,
-        )
-        return writer, nle_storage
-
     # ------------------------------------------------------------------
     # Parallel encode + upsert (Approach B — in-memory batch fan-out)
     # ------------------------------------------------------------------
 
     def _run_parallel(self, cfg: "CountryEnvelope", pbf_path: str,
-                      workers: int, queue_depth: int) -> int:
+                      workers: int, queue_depth: int,
+                      source_snapshot_id: str = None) -> int:
         """Parallel FastText-only encode + upsert.
 
-        Phase 1 path: ``cfg.has_pretrained_nle`` is False (no pickle).
         Spawns ``workers`` consumer threads, streams the PBF once through
         ``read_from_snapshot`` on the main thread via a ``BatchCollector``
         (drop-in writer replacement), then joins workers and re-raises the
         first worker error if any.
+
+        Args:
+            source_snapshot_id: Snapshot UUID for provenance, passed through
+                to every upserted ``OsmEntity`` row.
 
         Returns the total entity count (nodes + ways + relations).
         """
@@ -307,93 +221,6 @@ class EmbeddingService:
             except Exception:
                 pass
         return collector.total
-
-    def _run_parallel_dual(self, cfg: "CountryEnvelope", pbf_path: str,
-                           workers: int, queue_depth: int) -> int:
-        """Parallel FastText + NLE encode + upsert (dual encoding).
-
-        TODO(two-axis-removal): dormant legacy — only reachable when
-        pickle_path is set, which never happens today. Remove with the gate.
-
-        Phase 2 path: ``cfg.has_pretrained_nle`` is True and a pickle exists.
-        Shares one ``NLEModel`` across workers (read-only inference; each
-        worker's KNN query uses its own thread-local Django connection —
-        see plan §2.3).  ``NLEModel.destroy()`` is called from the main
-        thread after workers join (unchanged position relative to encoding).
-        """
-        import queue as queue_mod
-        from geovectors_encoder.core.models.fasttext import FastTextModel
-        from geovectors_encoder.core.util import read_from_snapshot
-        from geovectors_encoder.services.batch_collector import (
-            BatchCollector,
-            SENTINEL,
-            spawn_encode_workers,
-        )
-
-        logger.info(
-            "Parallel embed (FastText + NLE dual): workers=%d queue_depth=%d [country=%s]",
-            workers, queue_depth, cfg.iso,
-        )
-        ft_model = FastTextModel()
-        nle_model = self._build_shared_nle_model(cfg)
-        work_queue: "queue_mod.Queue" = queue_mod.Queue(maxsize=workers * queue_depth)
-        source_snapshot_id = self._resolve_snapshot_uuid(cfg.iso, cfg.snapshot_date)
-        threads, upsert_thread, upsert_queue, error_box = spawn_encode_workers(
-            work_queue, workers, ft_model, nle_model=nle_model,
-            snapshot_date=cfg.snapshot_date, country_code=cfg.iso,
-            has_nle=True, source_snapshot_id=source_snapshot_id,
-        )
-        collector = BatchCollector(work_queue)
-        try:
-            n_data, w_data, r_data = read_from_snapshot(
-                pbf_path, writer=collector, max_runs=2,
-                chunk_size=_parallel_upsert_chunk_size(),
-            )
-            for record in itertools.chain(w_data, r_data):
-                collector.add_line(record)
-            # Send sentinels to encoding workers
-            collector.finish(workers)
-            # Wait for all encoding workers to finish pushing to upsert_queue
-            for t in threads:
-                t.join()
-            # Send sentinel to upsert worker
-            upsert_queue.put(SENTINEL)
-            # Wait for upsert worker to finish
-            upsert_thread.join()
-            exc, tb = error_box.get()
-            if exc is not None:
-                raise RuntimeError(
-                    f"parallel embed worker failed: {exc}"
-                ) from exc
-        finally:
-            try:
-                collector.finish(workers)
-            except Exception:
-                pass
-            try:
-                upsert_queue.put(SENTINEL)
-            except Exception:
-                pass
-            # NLEModel.destroy() is a no-op on DjangoPostgresDB (Django owns
-            # connections) but call it for parity with the single-threaded path.
-            try:
-                nle_model.destroy()
-            except Exception:
-                pass
-        return collector.total
-
-    def _build_shared_nle_model(self, cfg: "CountryEnvelope"):
-        """Build a single NLEModel shared across worker threads."""
-        from geovectors_encoder.core.models.nle import NLEModel
-        from geovectors_encoder.core.db import DjangoPostgresDB
-
-        db_bridge = DjangoPostgresDB()
-        nle_model = NLEModel(
-            str(Path(cfg.pickle_path).parent),
-            njobs=1, db=db_bridge,
-        )
-        nle_model.load_indexes()
-        return nle_model
 
 
 # ----------------------------------------------------------------------

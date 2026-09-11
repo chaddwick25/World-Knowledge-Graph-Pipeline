@@ -9,9 +9,11 @@ Per ``docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md`` §5.2:
 - Assert: identical row count, identical embeddings for sampled
   ``(osm_type, osm_id)``, identical ``entity_count`` return, entropy within
   float tolerance.
-- Dual-encoding (pretrained NLE) variant for a country with a pickle:
-  assert ``gv_nle_embedding`` parity and no extra connections leaked
-  (``pg_stat_activity`` count before/after).
+
+Step 1 is FastText-only (GV-Tags): the former dual-encoding (FastText + NLE
+from pickle) variant was removed 2026-09-10 with `DualEncodingWriter` /
+`_run_parallel_dual` — see ``docs/issues/TICKET_REMOVE_DUAL_ENCODER.md``.
+GV-NLE comes from Step 5 training + the inductive query-time path.
 
 This is a true integration test — it requires:
 - Docker services up (postgres-default, postgres-vectors, redis, backend)
@@ -194,47 +196,6 @@ class ParallelEmbedParityTest(unittest.TestCase):
             conn_after, conn_before + 1,
             f"connection leak: before={conn_before} after={conn_after}",
         )
-
-    @unittest.skipUnless(_enabled(), "Set PARITY_TEST_ENABLED=1 to run")
-    def test_dual_encoding_parity(self):
-        """Dual-encoding (FastText + NLE from pickle) parity.
-
-        Skipped automatically if the country has no pretrained NLE pickle
-        or if the phase-1 gate (``_PARALLEL_DUAL_ENABLED``) is still closed.
-        Enable the gate in ``embedding_service.py`` before running this.
-        """
-        from pipeline.envelopes import CountryEnvelope
-        from core.services.snapshot.embedding_service import _PARALLEL_DUAL_ENABLED
-
-        iso = _country()
-        probe = CountryEnvelope.from_db(iso)
-        if not probe.has_pretrained_nle or not probe.pickle_path:
-            self.skipTest(f"country {iso} has no pretrained NLE pickle")
-        if not _PARALLEL_DUAL_ENABLED:
-            self.skipTest("parallel dual-encoding path not yet enabled (phase-1 gate)")
-
-        # Reuse the FastText-only parity flow; the assertions are identical,
-        # the only difference is the parallel path now exercises NLE too.
-        self.test_fasttext_only_parity()
-
-        # Additionally assert gv_nle_embedding parity for the sample.
-        from worldkg_nca.models import OsmEntity
-        base_snapshot = probe.snapshot_date
-        sample_ids = list(
-            OsmEntity.objects.filter(
-                snapshot_id=f"{base_snapshot}_s", country_code=iso,
-                gv_nle_embedding__isnull=False,
-            ).values_list("osm_id", flat=True)[:50]
-        )
-        if not sample_ids:
-            self.skipTest("no entities with gv_nle_embedding in single run")
-        single = dict(_embedding_sample("node", sample_ids))
-        parallel = dict(_embedding_sample("node", sample_ids))
-        for osm_id in sample_ids:
-            # _embedding_sample returns gv_tags_embedding; for NLE parity we
-            # need a dedicated query.  This is a placeholder that the operator
-            # fills in when enabling the dual path — see plan §5.2.
-            pass
 
 
 def run_parity_check() -> int:

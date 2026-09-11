@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from pathlib import Path
+import json
 import os
 import shutil
 
@@ -234,6 +235,15 @@ class Command(BaseCommand):
                 db_ok = False
                 all_valid = False
 
+        # Overrides (overrides.json) validation — fail-fast on misconfigured
+        # cold storage: every file referenced by the override config must
+        # exist, so a broken overrides.json is caught at boot, not mid-pipeline.
+        self.stdout.write('')
+        self.stdout.write('-' * 65)
+        overrides_errors, overrides_warnings = self._check_overrides(strict)
+        all_valid = all_valid and overrides_errors == 0
+        warnings += overrides_warnings
+
         # Strict mode auto-fix: polygons + country profiles
         if strict and all_valid:
             self.stdout.write('')
@@ -269,6 +279,220 @@ class Command(BaseCommand):
 
         if strict and not all_valid:
             raise SystemExit(1)
+
+    def _check_overrides(self, strict):
+        """Validate OVERRIDES_JSON_PATH and every file it references.
+
+        Covers:
+        - existence/parseability of the override file itself
+        - every ``embedding_splits.splits[].targets[].poly`` resolved via the
+          same overrides/-then-root order as
+          ``EmbeddingSpatialSplitService.resolve_poly_path``
+        - creatability of split ``output`` parent directories
+          (``EMBEDDINGS_ROOT/<continent>/<slug>``)
+        - malformed sections (non-list splits/merges, non-dict entries) as
+          warnings with the offending key
+
+        In ``--strict`` mode a missing override file is an error; in
+        non-strict mode it is a warning (deployments without an
+        overrides.json skip cleanly). Missing referenced polys are always
+        errors (✗) in the report.
+
+        Returns ``(errors, warnings)`` counts.
+        """
+        from core.services.snapshot.embedding_spatial_split_service import (
+            EmbeddingSpatialSplitService,
+        )
+
+        errors = 0
+        warnings = 0
+
+        overrides_path = getattr(settings, 'OVERRIDES_JSON_PATH', None)
+        if not overrides_path:
+            self.stdout.write(
+                self.style.WARNING(
+                    '  ⚠ OVERRIDES_JSON_PATH: Not configured (optional — no overrides in use)'
+                )
+            )
+            return 0, 1
+
+        overrides_path = Path(overrides_path)
+
+        if not overrides_path.exists():
+            if strict:
+                self.stdout.write(
+                    self.style.ERROR(
+                        f'  ✗ OVERRIDES_JSON_PATH: {overrides_path} (NOT FOUND)'
+                    )
+                )
+                return 1, 0
+            self.stdout.write(
+                self.style.WARNING(
+                    f'  ⚠ OVERRIDES_JSON_PATH: {overrides_path} (not found, optional)'
+                )
+            )
+            return 0, 1
+
+        self.stdout.write(
+            self.style.SUCCESS(f'  ✓ OVERRIDES_JSON_PATH: {overrides_path}')
+        )
+
+        try:
+            with overrides_path.open('r') as f:
+                data = json.load(f)
+        except Exception as e:
+            self.stdout.write(
+                self.style.ERROR(f'  ✗ overrides.json: invalid JSON ({e})')
+            )
+            return 1, 0
+
+        if not isinstance(data, dict):
+            self.stdout.write(
+                self.style.WARNING(
+                    '  ⚠ overrides.json: root is not a JSON object; skipping section validation'
+                )
+            )
+            return 0, 1
+
+        polygon_dir = getattr(settings, 'POLYGON_FILES_DIR', None)
+        embeddings_root = getattr(settings, 'EMBEDDINGS_ROOT', None)
+        if polygon_dir:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f'  ✓ POLYGON_FILES_DIR (poly resolution base): {polygon_dir}'
+                )
+            )
+        else:
+            self.stdout.write(
+                self.style.WARNING(
+                    '  ⚠ POLYGON_FILES_DIR: not configured — cannot resolve referenced polys'
+                )
+            )
+            warnings += 1
+
+        splits_cfg = data.get('embedding_splits')
+        if splits_cfg is None:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    '  ✓ embedding_splits: absent (no splits/merges configured)'
+                )
+            )
+            return 0, warnings
+
+        if not isinstance(splits_cfg, dict):
+            self.stdout.write(
+                self.style.WARNING(
+                    '  ⚠ embedding_splits: not a JSON object (expected {"splits": [...], "merges": [...]})'
+                )
+            )
+            return 0, warnings + 1
+
+        splits = splits_cfg.get('splits', [])
+        merges = splits_cfg.get('merges', [])
+
+        if not isinstance(splits, list):
+            self.stdout.write(self.style.WARNING('  ⚠ embedding_splits.splits: not a list'))
+            warnings += 1
+            splits = []
+        if not isinstance(merges, list):
+            self.stdout.write(self.style.WARNING('  ⚠ embedding_splits.merges: not a list'))
+            warnings += 1
+            merges = []
+
+        polygons_root = Path(polygon_dir) if polygon_dir else None
+
+        for i, split_def in enumerate(splits):
+            if not isinstance(split_def, dict):
+                self.stdout.write(
+                    self.style.WARNING(f'  ⚠ embedding_splits.splits[{i}]: not a JSON object')
+                )
+                warnings += 1
+                continue
+            continent = split_def.get('continent')
+            targets = split_def.get('targets')
+            if not isinstance(targets, list):
+                self.stdout.write(
+                    self.style.WARNING(f'  ⚠ embedding_splits.splits[{i}].targets: not a list')
+                )
+                warnings += 1
+                continue
+            for j, tgt in enumerate(targets):
+                if not isinstance(tgt, dict):
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f'  ⚠ embedding_splits.splits[{i}].targets[{j}]: not a JSON object'
+                        )
+                    )
+                    warnings += 1
+                    continue
+                label = tgt.get('slug') or f'splits[{i}].targets[{j}]'
+                poly_name = tgt.get('poly')
+                output = tgt.get('output')
+
+                if poly_name:
+                    if polygons_root is not None:
+                        poly_path = EmbeddingSpatialSplitService.resolve_poly_path(
+                            polygons_root, poly_name,
+                        )
+                        if poly_path:
+                            self.stdout.write(
+                                self.style.SUCCESS(f'  ✓ poly [{label}]: {poly_path}')
+                            )
+                        else:
+                            self.stdout.write(
+                                self.style.ERROR(
+                                    f'  ✗ poly [{label}]: {poly_name} '
+                                    '(NOT FOUND in overrides/ or POLYGON_FILES_DIR root)'
+                                )
+                            )
+                            errors += 1
+                    else:
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f'  ⚠ poly [{label}]: {poly_name} '
+                                '(skipped — POLYGON_FILES_DIR not configured)'
+                            )
+                        )
+                        warnings += 1
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'  ⚠ splits[{i}].targets[{j}]: missing "poly" key')
+                    )
+                    warnings += 1
+
+                # Outputs are written by the split service; validate the parent
+                # directory is creatable/existing
+                # (EMBEDDINGS_ROOT/<continent>/<slug>) and auto-create it like
+                # the existing auto_create_dirs behaviour.
+                if output and continent and embeddings_root:
+                    out_dir = Path(embeddings_root) / continent / label
+                    try:
+                        out_dir.mkdir(parents=True, exist_ok=True)
+                        self.stdout.write(
+                            self.style.SUCCESS(f'  ✓ output dir [{label}]: {out_dir} (ready)')
+                        )
+                    except Exception as e:
+                        self.stdout.write(
+                            self.style.ERROR(
+                                f'  ✗ output dir [{label}]: {out_dir} (not creatable: {e})'
+                            )
+                        )
+                        errors += 1
+                elif output:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f'  ⚠ splits[{i}].targets[{j}]: cannot validate output parent '
+                            '(continent or EMBEDDINGS_ROOT missing)'
+                        )
+                    )
+                    warnings += 1
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(f'  ⚠ splits[{i}].targets[{j}]: missing "output" key')
+                    )
+                    warnings += 1
+
+        return errors, warnings
 
     def _run_strict_auto_fixes(self):
         """Run post-verification auto-fix steps for strict mode.
