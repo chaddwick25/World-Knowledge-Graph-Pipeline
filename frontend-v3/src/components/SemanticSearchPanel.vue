@@ -160,30 +160,42 @@
       </div>
     </div>
 
-    <!-- Enriching indicator (SSE context event received, answer streaming) -->
-    <div v-if="enrichingContext && !displayAnswer" class="small text-secondary">
-      Enriching with entity context…
+    <!-- Data answer (deterministic factor-join — arrives first, stays pinned) -->
+    <div v-if="executeAnswer" class="alert alert-info small py-1 px-2 mb-1">
+      <div class="text-secondary small mb-1">
+        Retrieval time: <span class="text-danger">{{ dataAnswerElapsed != null ? dataAnswerElapsed.toFixed(1) : '—' }}s</span>
+      </div>
+      <strong>Answer from DB:</strong> {{ executeAnswer }}
     </div>
 
-    <!-- Answer summary (MapQA executor) -->
-    <div v-if="displayAnswer" class="alert alert-success small py-1 px-2 mb-0">
-      <strong>Answer:</strong> {{ displayAnswer }}
-      <div v-if="displayTrace.length > 0" class="mt-1 small text-secondary">
-        <details>
-          <summary class="cursor-pointer">Execution trace ({{ displayTrace.length }} steps)</summary>
-          <ol class="mt-1 ms-3">
-            <li v-for="(step, idx) in displayTrace" :key="idx">
-              <strong>{{ step.step }}</strong>
-              <span v-if="step.input"> — in: {{ formatTraceValue(step.input) }}</span>
-              <span v-if="step.output_count !== undefined"> — count: {{ step.output_count }}</span>
-              <span v-if="step.output"> — out: {{ formatTraceValue(step.output) }}</span>
-              <span v-if="step.output_km !== undefined"> — {{ step.output_km }} km</span>
-              <span v-if="step.output_degrees !== undefined"> — {{ step.output_degrees }}°</span>
-              <span v-if="step.error" class="text-danger"> — ERROR: {{ step.error }}</span>
-            </li>
-          </ol>
-        </details>
+    <!-- AI answer (enrichment stream — completes when ready, held back
+         until the data answer has had its solo moment) -->
+    <div v-if="enrichingContext && !aiAnswerAt" class="small text-secondary">
+      Enriching with AI…
+    </div>
+    <div v-if="aiAnswerAt && enrichedAnswer" class="alert alert-success small py-1 px-2 mb-0">
+      <div class="text-secondary small mb-1">
+        Retrieval time: <span class="text-danger">{{ aiAnswerElapsed != null ? aiAnswerElapsed.toFixed(1) : '—' }}s</span>
       </div>
+      <strong>AI answer:</strong> {{ enrichedAnswer }}
+    </div>
+
+    <!-- Execution trace -->
+    <div v-if="displayTrace.length > 0" class="mt-1 small text-secondary">
+      <details>
+        <summary class="cursor-pointer">Execution trace ({{ displayTrace.length }} steps)</summary>
+        <ol class="mt-1 ms-3">
+          <li v-for="(step, idx) in displayTrace" :key="idx">
+            <strong>{{ step.step }}</strong>
+            <span v-if="step.input"> — in: {{ formatTraceValue(step.input) }}</span>
+            <span v-if="step.output_count !== undefined"> — count: {{ step.output_count }}</span>
+            <span v-if="step.output"> — out: {{ formatTraceValue(step.output) }}</span>
+            <span v-if="step.output_km !== undefined"> — {{ step.output_km }} km</span>
+            <span v-if="step.output_degrees !== undefined"> — {{ step.output_degrees }}°</span>
+            <span v-if="step.error" class="text-danger"> — ERROR: {{ step.error }}</span>
+          </li>
+        </ol>
+      </details>
     </div>
 
     <!-- Results table -->
@@ -298,6 +310,16 @@ export default {
       eventSource: null,
       enrichedAnswer: '',
       enrichingContext: null,
+      // Data-answer min-display window: the raw answer must stay visible
+      // alone for a beat before the AI region appears.
+      minDataAnswerMs: 900,
+      dataAnswerAt: null,
+      aiAnswerAt: null,
+      aiAnswerTimer: null,
+      // Answer timing labels (seconds from query start)
+      queryStartAt: null,
+      dataAnswerElapsed: null,
+      aiAnswerElapsed: null,
       classOptions: [
         { value: 'wkgs:Cafe', text: 'Cafe' },
         { value: 'wkgs:Restaurant', text: 'Restaurant' },
@@ -341,10 +363,6 @@ export default {
     },
     displayParsedQuery() {
       return this.parsedQuery
-    },
-    displayAnswer() {
-      // Prefer the live SSE token stream; fall back to the final answer.
-      return this.enrichedAnswer || this.executeAnswer
     },
     displayTrace() {
       return this.executeTrace
@@ -432,6 +450,11 @@ export default {
       this.executeTrace = []
       this.enrichedAnswer = ''
       this.enrichingContext = null
+      this.clearAiAnswerTimer()
+      this.dataAnswerAt = null
+      this.aiAnswerAt = null
+      this.dataAnswerElapsed = null
+      this.aiAnswerElapsed = null
       this.eventSource?.close()
       this.eventSource = null
 
@@ -442,6 +465,7 @@ export default {
           this.loading = false
           return
         }
+        console.log('[SSE] executeSync template mode @', Date.now())
         this.openTemplateStream()
         return  // loading is cleared by the stream's done/error events
       }
@@ -503,42 +527,72 @@ export default {
       if (this.countryName) params.set('country_code', this.countryName)
       if (this.snapshotDate) params.set('snapshot_date', this.snapshotDate)
 
+      this.queryStartAt = Date.now()
       const base = axios.defaults.baseURL || ''
       const url = `${base}/nca/execute-query/stream/?${params}`
+      // TEMP diagnosis signals — remove after the answer-first timing is confirmed.
+      console.log('[SSE] opening stream', url, '@', Date.now())
       const es = new EventSource(url)
       this.eventSource = es
 
       es.addEventListener('parsed', (e) => {
         this.parsedQuery = JSON.parse(e.data).parsed || null
+        console.log('[SSE] parsed @', Date.now())
       })
 
       es.addEventListener('executed', (e) => {
         // {template, result_count, trace} — render the trace/anchors early.
         const d = JSON.parse(e.data)
         this.executeTrace = d.trace || []
+        console.log('[SSE] executed @', Date.now(), 'template:', d.template, 'count:', d.result_count)
+      })
+
+      es.addEventListener('answer', (e) => {
+        // Deterministic factor-join answer (non-AI) — shown immediately;
+        // the LLM enrichment (answer_delta) replaces it when ready.
+        const d = JSON.parse(e.data)
+        console.log('[SSE] answer @', Date.now(), 'len:', (d.answer || '').length, 'text:', (d.answer || '').slice(0, 60))
+        if (d.answer) {
+          this.executeAnswer = d.answer
+          this.dataAnswerAt = Date.now()
+          this.dataAnswerElapsed = (Date.now() - this.queryStartAt) / 1000
+          this.aiAnswerAt = null
+        }
       })
 
       es.addEventListener('context', (e) => {
         // Deterministic entity context is in — show an enriching indicator.
         this.enrichingContext = JSON.parse(e.data).context || null
+        console.log('[SSE] context @', Date.now())
       })
 
       es.addEventListener('answer_delta', (e) => {
         const delta = JSON.parse(e.data).delta
         if (delta) this.enrichedAnswer += delta
+        this.ensureAiAnswerVisible()
+        console.log('[SSE] answer_delta @', Date.now(), 'deltaLen:', (delta || '').length, 'total:', this.enrichedAnswer.length)
       })
 
       es.addEventListener('done', (e) => {
         const d = JSON.parse(e.data)
         const result = d.result || {}
-        this.executeAnswer = result.answer || null
+        console.log('[SSE] done @', Date.now(), 'enriched:', !!result.enrichment, 'answerLen:', (result.answer || '').length)
+        // Data answer stays pinned; the AI answer settles to the final
+        // enriched text when present.
+        if (result.enrichment?.enriched_answer) {
+          this.enrichedAnswer = result.enrichment.enriched_answer
+        } else if (!this.executeAnswer) {
+          this.executeAnswer = result.answer || null
+        }
+        this.ensureAiAnswerVisible()
+        // Final AI elapsed — the moment the enriched answer was complete.
+        this.aiAnswerElapsed = (Date.now() - this.queryStartAt) / 1000
         this.executeTrace = result.trace || this.executeTrace
         if (Array.isArray(result.results)) {
           // Full result set — the Top K control caps display/markers.
           this.results = result.results.map((r) => this.normalizeResult(r))
         }
         if (result.error) this.error = result.error
-        this.enrichedAnswer = ''
         this.searched = true
         this.loading = false
         this.publishResults()
@@ -548,6 +602,8 @@ export default {
       es.addEventListener('error', () => {
         // Fires on connection failure OR when the server closes the stream.
         // After a clean `done` this is a no-op; otherwise surface an error.
+        console.log('[SSE] error @', Date.now(), 'readyState:', es.readyState, 'searched:', this.searched)
+        this.clearAiAnswerTimer()
         if (es.readyState === EventSource.CLOSED && !this.searched) {
           this.error = this.error || 'Stream error'
           this.loading = false
@@ -557,8 +613,42 @@ export default {
     },
 
     closeTemplateStream() {
+      // NOTE: do not clear the AI-reveal timer here — done() closes the
+      // stream, but the buffered AI answer must still appear after the
+      // data answer's solo window (the timer fires ~900ms later).
       this.eventSource?.close()
       this.eventSource = null
+    },
+
+    /** Reveal the AI answer region once the data answer has had its
+     * minimum solo display window; tokens buffer in the meantime. */
+    ensureAiAnswerVisible() {
+      if (this.aiAnswerAt) {
+        console.log('[SSE] ensureAi: already visible @', Date.now())
+        return
+      }
+      const elapsed = this.dataAnswerAt
+        ? Date.now() - this.dataAnswerAt
+        : Number.POSITIVE_INFINITY
+      console.log('[SSE] ensureAi @', Date.now(), 'elapsed:', elapsed, 'min:', this.minDataAnswerMs, 'enrichedLen:', this.enrichedAnswer.length)
+      if (elapsed >= this.minDataAnswerMs) {
+        this.aiAnswerAt = Date.now()
+        this.aiAnswerElapsed = (Date.now() - this.queryStartAt) / 1000
+        return
+      }
+      this.clearAiAnswerTimer()
+      this.aiAnswerTimer = setTimeout(() => {
+        this.aiAnswerAt = Date.now()
+        this.aiAnswerElapsed = (Date.now() - this.queryStartAt) / 1000
+        console.log('[SSE] ensureAi: timer fired @', Date.now())
+      }, this.minDataAnswerMs - elapsed)
+    },
+
+    clearAiAnswerTimer() {
+      if (this.aiAnswerTimer) {
+        clearTimeout(this.aiAnswerTimer)
+        this.aiAnswerTimer = null
+      }
     },
 
     // ── Anchor/entity query graph ─────────────────────────────────────
