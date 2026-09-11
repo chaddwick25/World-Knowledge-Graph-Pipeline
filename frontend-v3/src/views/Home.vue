@@ -9,7 +9,7 @@
             World Knowledge Graph Pipeline
           </h1>
           <p class="fs-6 text-secondary mb-0 ms-1">
-            OSM and Wikidata KG that produces semantic tags, location embeddings, geo-spatial links and enriched entity classes
+            Search places worldwide and get AI-powered answers
           </p>
         </div>
 
