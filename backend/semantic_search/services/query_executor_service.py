@@ -244,6 +244,13 @@ class QueryExecutorService:
                     "trace": trace,
                 })
 
+            # Deterministic factor-join answer (the raw, non-AI result) —
+            # emit it immediately so the client renders it before the LLM
+            # synthesis finishes; the enriched answer_delta stream replaces
+            # it when ready.
+            if event_callback and question:
+                event_callback({"event": "answer", "answer": answer})
+
             # Enrichment (direct path): fetch deterministic entity context
             # (USLP links + communities + class distribution — no LLM
             # selection step), then a single grounded synthesis call.
