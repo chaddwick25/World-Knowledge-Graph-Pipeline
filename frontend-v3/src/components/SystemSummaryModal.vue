@@ -32,7 +32,7 @@
               class="summary-modal__tab"
               :class="{ 'summary-modal__tab--active': activeTab === 'embeddings' }"
               @click="activeTab = 'embeddings'"
-            >Embeddings</button>
+            >Data</button>
             <button
               class="summary-modal__tab"
               :class="{ 'summary-modal__tab--active': activeTab === 'storage' }"
@@ -109,24 +109,42 @@
             <!-- ── Embeddings Tab ── -->
             <div v-if="activeTab === 'embeddings'" class="summary-panel">
               <div class="summary-section">
-                <h3 class="summary-section__title">Embeddings by Continent</h3>
+                <h3 class="summary-section__title">How Places Are Represented</h3>
                 <p class="summary-section__description">
-                  The pipeline produces two independent embedding models per OSM entity:
-                  300D
+                  Every place on the map gets two independent embeddings.
                   <a href="https://github.com/NicolasTe/GeoVectors/blob/master/Encoder.py" target="_blank" rel="noopener noreferrer">GV-Tags</a>
-                  (semantic, "what something is") via FastText encoding of OSM tags
-                  during Step 1, and 100D
+                  (300D, semantic: "what something is") is produced by FastText encoding
+                  of OSM tags during Step 1.
                   <a href="https://github.com/NicolasTe/GeoVectors/blob/master/Encoder.py" target="_blank" rel="noopener noreferrer">GV-NLE</a>
-                  (spatial, "where something is") via weighted DeepWalk training on the
-                  k-NN graph (k=50 geographic neighbors) during Step 5. For entities in
-                  new snapshots that haven't been through DeepWalk, an inductive BallTree
-                  + IDW bridge computes provisional GV-NLE from the k=50 nearest trained
-                  entities. The fused 400D static_embedding (GV-Tags | GV-NLE) is defined
-                  for unified ANN search but is only populated by the
-                  <code>compute_static_embeddings</code> command after Step 5 — it is
-                  currently pending. Reference
+                  (100D, spatial: "where something is") is produced by weighted DeepWalk
+                  on the k-NN graph of the 50 nearest geographic neighbors during Step 5.
+                  Reference the
                   <a href="https://geovectors.l3s.uni-hannover.de/data" target="_blank" rel="noopener noreferrer">Embeddings</a>
                   dataset.
+                </p>
+                <h4 class="summary-section__subhead">GV-Tags: FastText encoder (300D)</h4>
+                <p class="summary-section__description">
+                  OSM tags are split into tokens and each token is looked up in a
+                  pretrained FastText word-vector model. The embedding is the L2-normalized
+                  mean of the token vectors, so entities with similar tags land close
+                  together. This is word-vector lookup plus mean aggregation, not a learned
+                  encode, and runs at about 1s per 20K batch.
+                </p>
+                <h4 class="summary-section__subhead">GV-NLE: Weighted DeepWalk (100D)</h4>
+                <p class="summary-section__description">
+                  Step 5 builds a k-NN graph over the country's entities using haversine
+                  distance, limited to the 50 nearest neighbors per entity. Edges are
+                  weighted by log-inverse distance
+                  (<code>w = max(1/ln(max(d_km, 1.1)), e)</code>, floored at e (about 2.72)
+                  so the graph stays connected). Weighted DeepWalk random walks train a
+                  100D embedding per entity, saved as a
+                  <code>wdw.pickle</code> mapping each entity to its vector; the BallTree
+                  used to find neighbors is rebuilt in-memory each time and never
+                  persisted. New snapshot entities get a provisional GV-NLE from their 50
+                  nearest trained entities through the same in-memory BallTree and
+                  log-inverse distance weighting. Full DeepWalk retraining remains the
+                  authoritative path and should run periodically: the provisional vectors
+                  interpolate the trained manifold, they do not replace it.
                 </p>
                 <div class="summary-availability-banner">
                   <span class="summary-availability-banner__count">{{ countriesWithEmbeddings }}/{{ totalCountries }}</span>
@@ -554,7 +572,7 @@ export default {
 .summary-section__title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #e5e7eb;
+  color: #4ade80;
   margin: 0 0 0.35rem;
   display: flex;
   align-items: baseline;
@@ -572,6 +590,13 @@ export default {
   font-weight: 500;
 }
 
+.summary-section__subhead {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4ade80;
+  margin: 0.75rem 0 0.25rem;
+}
+
 .summary-section__description {
   font-size: 0.78rem;
   font-weight: 400;
@@ -582,8 +607,13 @@ export default {
 
 .summary-section__description a,
 .summary-section__title a {
-  color: #4ade80;
+  color: #60a5fa;
   text-decoration: none;
+  font-weight: 500;
+}
+
+.summary-section__description code {
+  color: #60a5fa;
   font-weight: 500;
 }
 
