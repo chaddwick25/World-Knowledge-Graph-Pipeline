@@ -202,6 +202,16 @@ class GraphSpectralFingerprint(models.Model):
     signal_smoothness = models.FloatField(
         help_text="Dirichlet energy sᵀLs for the wkg_class graph signal"
     )
+    community_count = models.IntegerField(
+        null=True, blank=True,
+        help_text="Louvain community count for this region and snapshot. "
+                  "Persisted by Step 5c (Part 2 prerequisite 0c, 2026-09-11).",
+    )
+    modularity = models.FloatField(
+        null=True, blank=True,
+        help_text="Louvain modularity Q for this region and snapshot. "
+                  "Persisted by Step 5c (Part 2 prerequisite 0c, 2026-09-11).",
+    )
     node_count = models.IntegerField(help_text="Number of graph nodes")
     edge_count = models.IntegerField(help_text="Number of graph edges")
     k_eigenvalues = models.IntegerField(

@@ -3,7 +3,6 @@
     <form class="d-flex flex-column gap-2" @submit.prevent="performSearch">
       <!-- Query mode toggle -->
       <div class="d-flex flex-column gap-1">
-        <label class="form-label small text-secondary mb-0">Query mode</label>
         <div class="d-flex gap-1">
           <button
             type="button"
@@ -180,21 +179,66 @@
       <strong>AI answer:</strong> {{ enrichedAnswer }}
     </div>
 
-    <!-- Execution trace -->
-    <div v-if="displayTrace.length > 0" class="mt-1 small text-secondary">
-      <details>
-        <summary class="cursor-pointer">Execution trace ({{ displayTrace.length }} steps)</summary>
-        <ol class="mt-1 ms-3">
-          <li v-for="(step, idx) in displayTrace" :key="idx">
-            <strong>{{ step.step }}</strong>
-            <span v-if="step.input"> — in: {{ formatTraceValue(step.input) }}</span>
-            <span v-if="step.output_count !== undefined"> — count: {{ step.output_count }}</span>
-            <span v-if="step.output"> — out: {{ formatTraceValue(step.output) }}</span>
-            <span v-if="step.output_km !== undefined"> — {{ step.output_km }} km</span>
-            <span v-if="step.output_degrees !== undefined"> — {{ step.output_degrees }}°</span>
-            <span v-if="step.error" class="text-danger"> — ERROR: {{ step.error }}</span>
-          </li>
-        </ol>
+    <!-- Execution trace — decision flow (each step shows what it decided).
+         Colors follow the AI answer palette: green (success) for steps on
+         the answer path, red (danger) for warnings/errors. The caret is
+         red while closed, gray once fully open. -->
+    <div v-if="traceFlow.length > 0" class="mt-1 small text-secondary">
+      <details class="trace-details">
+        <summary class="cursor-pointer">Execution trace ({{ traceFlow.length }} steps)</summary>
+        <div class="trace-flow mt-1">
+          <div
+            v-for="(node, idx) in traceFlow"
+            :key="idx"
+            :class="['trace-node', node.status ? `trace-node--${node.status}` : '']"
+          >
+            <div class="d-flex align-items-baseline gap-2">
+              <span
+                :class="['trace-icon', node.iconBg, node.live ? 'trace-icon--live' : '']"
+                aria-hidden="true"
+              >
+                <i :class="['bi', node.icon, node.iconColor]"></i>
+              </span>
+              <strong :class="node.color ? `text-${node.color}` : ''">{{ node.title }}</strong>
+              <!-- Status protocol: red = error, amber = warning/degraded -->
+              <span
+                v-if="node.status === 'error'"
+                class="trace-status trace-status--error"
+                title="error"
+              >
+                <i class="bi bi-x-octagon-fill"></i>
+              </span>
+              <span
+                v-else-if="node.status === 'warning'"
+                class="trace-status trace-status--warning"
+                title="warning"
+              >
+                <i class="bi bi-exclamation-triangle-fill"></i>
+              </span>
+              <span v-if="node.error" class="text-danger">— {{ node.error }}</span>
+            </div>
+            <ul v-if="node.lines.length" class="trace-lines">
+              <li v-for="(line, li) in node.lines" :key="li">
+                <!-- Segmented line: links (entity, WorldKG class, OSM tag)
+                     are green, underlined on hover, open in a new tab. -->
+                <template v-if="Array.isArray(line?.segments)">
+                  <template v-for="(seg, si) in line.segments" :key="si">
+                    <template v-if="si > 0">{{ line.sep || ' · ' }}</template>
+                    <a
+                      v-if="seg && seg.href"
+                      :href="seg.href"
+                      target="_blank"
+                      rel="noopener"
+                      class="trace-link"
+                    >{{ seg.text }}</a>
+                    <template v-else>{{ seg }}</template>
+                  </template>
+                </template>
+                <template v-else>{{ line }}</template>
+              </li>
+            </ul>
+          </div>
+        </div>
       </details>
     </div>
 
@@ -366,6 +410,11 @@ export default {
     },
     displayTrace() {
       return this.executeTrace
+    },
+    /** Trace steps rendered as a decision-flow (Layout B): each node shows
+     *  the step, its inputs, and what it decided. */
+    traceFlow() {
+      return (this.executeTrace || []).map((s) => this._decorateStep(s))
     },
     /** Top K clamped to the backend-supported 1–100 range. */
     topKClamped() {
@@ -621,7 +670,14 @@ export default {
     },
 
     /** Reveal the AI answer region once the data answer has had its
-     * minimum solo display window; tokens buffer in the meantime. */
+     * minimum solo display window; tokens buffer in the meantime.
+     *
+     * This controls ONLY when the AI box becomes visible — it must never
+     * touch aiAnswerElapsed. That value is set once, at the `done` event
+     * (the true enrichment completion time). Stamping it here made the
+     * displayed AI latency equal to dataAnswer + 900ms whenever the
+     * enrichment finished inside the solo window — the "always 0.9s
+     * behind" artifact. */
     ensureAiAnswerVisible() {
       if (this.aiAnswerAt) {
         console.log('[SSE] ensureAi: already visible @', Date.now())
@@ -633,13 +689,11 @@ export default {
       console.log('[SSE] ensureAi @', Date.now(), 'elapsed:', elapsed, 'min:', this.minDataAnswerMs, 'enrichedLen:', this.enrichedAnswer.length)
       if (elapsed >= this.minDataAnswerMs) {
         this.aiAnswerAt = Date.now()
-        this.aiAnswerElapsed = (Date.now() - this.queryStartAt) / 1000
         return
       }
       this.clearAiAnswerTimer()
       this.aiAnswerTimer = setTimeout(() => {
         this.aiAnswerAt = Date.now()
-        this.aiAnswerElapsed = (Date.now() - this.queryStartAt) / 1000
         console.log('[SSE] ensureAi: timer fired @', Date.now())
       }, this.minDataAnswerMs - elapsed)
     },
@@ -669,21 +723,31 @@ export default {
       }
     },
 
-    /** Anchors = geocoded named locations from the executor trace (geocode steps). */
+    /** Anchors = geocoded named locations from the executor trace.
+     *  Handles every geocoding step shape: 'geocode' / 'geocode_anchor'
+     *  (single output) and 'batch_geocode' (paired inputs/outputs). */
     extractAnchors() {
       const trace = this.executeTrace
       const seen = new Set()
       const anchors = []
+      const pushAnchor = (name, out) => {
+        if (!out) return
+        const lat = out.lat
+        const lon = out.lon
+        if (lat == null || lon == null) return
+        const key = name || 'anchor'
+        if (seen.has(key)) return
+        seen.add(key)
+        anchors.push({ name: key, lat: Number(lat), lon: Number(lon) })
+      }
       for (const step of trace || []) {
-        if (step?.step !== 'geocode') continue
-        const out = step.output
-        const lat = out?.lat
-        const lon = out?.lon
-        if (lat == null || lon == null) continue
-        const name = step.input || 'anchor'
-        if (seen.has(name)) continue
-        seen.add(name)
-        anchors.push({ name, lat: Number(lat), lon: Number(lon) })
+        if (step?.step === 'geocode' || step?.step === 'geocode_anchor') {
+          pushAnchor(step.input, step.output)
+        } else if (step?.step === 'batch_geocode') {
+          const inputs = Array.isArray(step.inputs) ? step.inputs : []
+          const outputs = Array.isArray(step.outputs) ? step.outputs : []
+          outputs.forEach((out, i) => pushAnchor(inputs[i] || `anchor ${i + 1}`, out))
+        }
       }
       return anchors
     },
@@ -714,6 +778,37 @@ export default {
       return best
     },
 
+    /** Distance/bearing lines between paired geocoded anchors
+     *  (OBJECT-FIELD-MEASURE, bearing 5a): batch_geocode steps with two
+     *  coordinate-bearing outputs; the label comes from the haversine step
+     *  when present. */
+    extractAnchorLines() {
+      const trace = this.executeTrace
+      let distLabel = null
+      for (const step of trace || []) {
+        if (step?.step === 'haversine' && step.output_km != null) {
+          distLabel = `${step.output_km} km`
+        }
+      }
+      const lines = []
+      for (const step of trace || []) {
+        if (step?.step !== 'batch_geocode') continue
+        const outputs = Array.isArray(step.outputs) ? step.outputs : []
+        const inputs = Array.isArray(step.inputs) ? step.inputs : []
+        const pts = outputs
+          .filter((o) => o && o.lat != null && o.lon != null)
+          .slice(0, 2)
+        if (pts.length === 2) {
+          lines.push({
+            from: { lat: Number(pts[0].lat), lon: Number(pts[0].lon) },
+            to: { lat: Number(pts[1].lat), lon: Number(pts[1].lon) },
+            label: distLabel || `${inputs[0] || 'A'} → ${inputs[1] || 'B'}`,
+          })
+        }
+      }
+      return lines
+    },
+
     /** Build the anchor/entity graph payload consumed by WorldKGMap. */
     buildQueryGraph(entities) {
       const anchors = this.extractAnchors()
@@ -729,6 +824,7 @@ export default {
         anchors,
         entities,
         links,
+        anchorLines: this.extractAnchorLines(),
         showAnchors: this.showAnchors,
         showEntities: this.showEntities,
         showLinks: this.showLinks,
@@ -751,15 +847,384 @@ export default {
       return entries.length < Object.keys(tags).length ? str + '…' : str
     },
 
-    formatTraceValue(val) {
-      if (val == null) return ''
-      if (typeof val === 'string') return val
-      if (typeof val === 'number') return String(val)
-      try {
-        return JSON.stringify(val)
-      } catch {
-        return String(val)
+    /** Meters → human ("1.2 km" / "450 m"); '' when null. */
+    _fmtM(m) {
+      if (m == null) return ''
+      return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`
+    },
+
+    /** openstreetmap.org link for an OSM entity; null when no id. */
+    _osmUrl(e) {
+      if (!e || e.osm_id == null) return null
+      return `https://www.openstreetmap.org/${e.osm_type || 'node'}/${e.osm_id}`
+    },
+
+    /** OSM Wiki page for a tag value (Tag:key=value); null when empty. */
+    _tagSeg(key, value) {
+      if (!key || value == null || value === '') return null
+      const href = `https://wiki.openstreetmap.org/wiki/Tag:${key}=${encodeURIComponent(value)}`
+      return { text: `${key}=${value}`, href }
+    },
+
+    /** Link to a tag VALUE only ("pub" → Tag:amenity=pub), for use after a
+     *  plain "amenity" label; null when empty. */
+    _tagValueSeg(key, value) {
+      if (!key || value == null || value === '') return null
+      const href = `https://wiki.openstreetmap.org/wiki/Tag:${key}=${encodeURIComponent(value)}`
+      return { text: String(value), href }
+    },
+
+    /** WorldKG depth-1 classes whose UpperCamelCase name is the OSM key
+     *  (matches the ontology's KEY_CLASS_MAP). */
+    _WKGS_KEY_CLASSES() {
+      return new Set([
+        'Amenity', 'Natural', 'Building', 'Highway', 'Railway', 'Leisure',
+        'Shop', 'Tourism', 'Historic', 'Waterway', 'Landuse', 'Place',
+        'Aeroway', 'Emergency', 'Healthcare', 'Man_made', 'Power',
+        'Public_transport',
+      ])
+    },
+
+    /** Wiki link for a WorldKG class: wkgs:Place → OSM Wiki Key:place
+     *  (the OSM key the class is derived from); unknown classes fall back
+     *  to the WorldKG class URI. Returns a segment or null. */
+    _classSeg(wkgClass) {
+      if (!wkgClass || !wkgClass.startsWith('wkgs:')) return null
+      const cls = wkgClass.slice(5)
+      const key = cls.charAt(0).toLowerCase() + cls.slice(1)
+      const href = this._WKGS_KEY_CLASSES().has(cls)
+        ? `https://wiki.openstreetmap.org/wiki/Key:${key}`
+        : `http://www.worldkg.org/schema/${cls}`
+      return { text: wkgClass, href }
+    },
+
+    /** Trace line for an OSM entity as segments: the entity NAME, the
+     *  WorldKG class, and any place tag each get the green wiki link.
+     *  Pass { linked: false } for failed steps (no id/coords) — the
+     *  entity renders as a plain diagnostic, never a success link. */
+    _entityLine(e, { linked = true } = {}) {
+      const segs = []
+      const name = e.name || e.tags?.name || 'unnamed'
+      const href = linked ? this._osmUrl(e) : null
+      segs.push(href ? { text: name, href } : name)
+      if (e.osm_id != null) segs.push(`(${e.osm_type || '?'}/${e.osm_id})`)
+      if (e.lat != null && e.lon != null) {
+        segs.push(`${Number(e.lat).toFixed(4)}, ${Number(e.lon).toFixed(4)}`)
       }
+      if (linked && e.wkg_class) {
+        const cls = this._classSeg(e.wkg_class)
+        if (cls) segs.push(cls)
+      }
+      if (linked && e.tags?.place) {
+        const tag = this._tagSeg('place', e.tags.place)
+        if (tag) segs.push(tag)
+      }
+      return { segments: segs }
+    },
+
+    /** Decorate one trace step into a flow node: icon + title + insight lines.
+     *  Every step type keeps its real fields — nothing is dropped, the
+     *  layout just decides what reads as the one-line insight.
+     *
+     *  Colors: the heading matches the primary-answer text color ("Found N
+     *  entities within …", rendered with the info emphasis color); each
+     *  icon is colored by its nature (green = resolution, amber = decision,
+     *  blue = ordering/search, cyan = spatial/diffusion, gray = context).
+     *  Warnings/errors flip heading + icon to red. */
+    _decorateStep(step) {
+      const st = step?.step || 'step'
+      const node = {
+        icon: 'bi-arrow-right',
+        title: st.replace(/_/g, ' '),
+        lines: [],
+        error: null,
+        color: 'info-emphasis',
+        iconColor: 'text-secondary',
+        iconBg: 'bg-secondary-subtle',
+        live: false,
+        status: null, // 'error' | 'warning' | null — status badge + accent bar
+      }
+
+      const isEntity = (v) =>
+        v && typeof v === 'object' && v.osm_id != null && v.tags
+
+      switch (st) {
+        case 'geocode':
+        case 'geocode_anchor': {
+          // Anchor resolved → green; entity is a link to OSM. On failure
+          // (no usable id/coords) the step shows the error and the entity
+          // renders as a plain diagnostic, never a success link.
+          node.icon = 'bi-geo-alt'
+          node.iconColor = 'text-success'
+          node.title = `Geocode${step.input ? `: ${step.input}` : ''}`
+          if (step.error) node.error = step.error
+          if (isEntity(step.output)) {
+            node.lines.push(this._entityLine(step.output, { linked: !step.error }))
+          }
+          break
+        }
+        case 'batch_geocode': {
+          // Multiple anchors resolved in one step → green links.
+          node.icon = 'bi-pin-map'
+          node.iconColor = 'text-success'
+          node.title = step.inputs?.length
+            ? `Geocode: ${step.inputs.join(', ')}`
+            : 'Batch geocode'
+          if (step.error) node.error = step.error
+          if (Array.isArray(step.outputs)) {
+            step.outputs.forEach((out, i) => {
+              if (isEntity(out)) {
+                node.lines.push(this._entityLine(out, { linked: !step.error }))
+              } else if (step.inputs?.[i]) {
+                node.lines.push(step.inputs[i])
+              }
+            })
+          }
+          break
+        }
+        case 'haversine': {
+          // Distance computed between two points → cyan.
+          node.icon = 'bi-rulers'
+          node.iconColor = 'text-info'
+          node.title = 'Distance (haversine)'
+          if (step.output_km != null) {
+            node.lines.push(
+              `${step.output_km} km${step.output_m != null ? ` (${step.output_m} m)` : ''}`
+            )
+          }
+          break
+        }
+        case 'cone_search': {
+          // Directional cone filter → amber compass; amenity links to wiki.
+          node.icon = 'bi-compass'
+          node.iconColor = 'text-warning'
+          node.title = step.direction
+            ? `Cone search: ${step.direction}`
+            : 'Cone search'
+          const amenitySeg = this._tagValueSeg('amenity', step.amenity)
+          if (amenitySeg) {
+            node.lines.push({ segments: ['amenity', amenitySeg] })
+          }
+          if (step.radius_m != null) node.lines.push(`radius: ${step.radius_m} m`)
+          if (step.output_count != null) node.lines.push(`candidates: ${step.output_count}`)
+          break
+        }
+        case 'compare_closer': {
+          // Comparison decision → amber; each candidate's name is a green
+          // OSM link (resolved entity id comes from the executor; legacy
+          // string candidates fall back to a name join with the results).
+          node.icon = 'bi-arrows-angle-contract'
+          node.iconColor = 'text-warning'
+          node.title = step.anchor
+            ? `Which is closer to ${step.anchor}?`
+            : 'Compared candidates'
+          if (Array.isArray(step.candidates) && step.candidates.length) {
+            const byName = new Map()
+            for (const r of this.displayResults) {
+              const key = String(r.name || '').toLowerCase()
+              if (key) byName.set(key, r)
+            }
+            const rows = step.candidates.map((c) => {
+              if (typeof c === 'string') {
+                const hit = byName.get(String(c).toLowerCase())
+                return { text: c, d: hit?.distance_m ?? null, entity: hit }
+              }
+              return {
+                text: c.query || c.name || String(c.osm_id ?? ''),
+                d: c.distance_m ?? null,
+                entity: c,
+              }
+            })
+            const minD = Math.min(...rows.map((r) => (r.d == null ? Infinity : r.d)))
+            for (const r of rows) {
+              const segs = []
+              if (r.entity && r.entity.osm_id != null) {
+                segs.push({ text: r.text, href: this._osmUrl(r.entity) })
+              } else {
+                segs.push(r.text)
+              }
+              if (r.d != null) {
+                segs.push(`— ${this._fmtM(r.d)}${r.d === minD ? ' ✓ closest' : ''}`)
+              }
+              node.lines.push({ segments: segs, sep: ' ' })
+            }
+          } else if (step.output_count != null) {
+            node.title = `Compared ${step.output_count} candidates`
+          }
+          break
+        }
+        case 'entity_context': {
+          // Supporting context → cyan with a live pulse so the node reads
+          // as "context being assembled for the answer".
+          node.icon = 'bi-diagram-3'
+          node.iconColor = 'text-info'
+          node.live = true
+          node.title = 'Entity context'
+          const parts = []
+          if (step.uslp_links != null) parts.push(`uslp links ${step.uslp_links}`)
+          if (step.communities != null) parts.push(`communities ${step.communities}`)
+          if (step.class_distribution != null) parts.push(`classes ${step.class_distribution}`)
+          if (parts.length) node.lines.push(parts.join(' · '))
+          if (Array.isArray(step.sources) && step.sources.length) {
+            node.lines.push(`sources: ${step.sources.join(', ')}`)
+          }
+          break
+        }
+        case 'default_radius':
+        case 'radius_guard': {
+          // Spatial bound / filter → cyan
+          node.icon = 'bi-broadcast'
+          node.iconColor = 'text-info'
+          node.title = `Radius ${step.radius_m ?? '?'} m`
+          if (step.reason) node.lines.push(step.reason)
+          if (step.before != null && step.after != null) {
+            node.lines.push(`${step.before} → ${step.after} entities after radius guard`)
+          }
+          break
+        }
+        case 'rank_by_distance': {
+          // Ordering → blue
+          node.icon = 'bi-sort-numeric-down'
+          node.iconColor = 'text-primary'
+          node.title = 'Ranked by distance'
+          if (step.anchor) node.lines.push(`anchor: ${step.anchor}`)
+          if (step.top) node.lines.push(`closest: ${step.top}`)
+          break
+        }
+        case 'heat_kernel': {
+          // Diffusion → cyan; amenity value links to its OSM wiki tag page.
+          node.icon = 'bi-thermometer-half'
+          node.iconColor = 'text-info'
+          node.title = 'Diffusion (heat kernel)'
+          const segs = []
+          const amenitySeg = this._tagValueSeg('amenity', step.amenity)
+          if (amenitySeg) segs.push('amenity', amenitySeg)
+          if (step.t != null) segs.push(`t=${step.t}`)
+          if (step.total_amenity_nodes != null) segs.push(`${step.total_amenity_nodes} nodes`)
+          if (segs.length) node.lines.push({ segments: segs })
+          break
+        }
+        case 'multi_anchor_resolve':
+        case 'multi_anchor_search':
+        case 'multi_anchor_anchors':
+        case 'multi_anchor_empty': {
+          // Multiple anchors → blue; category (an amenity value) links to wiki.
+          node.icon = 'bi-pin-angle'
+          node.iconColor = 'text-primary'
+          node.title = st.replace(/_/g, ' ')
+          if (step.input) node.lines.push(step.input)
+          const catSeg = this._tagValueSeg('amenity', step.anchor_category)
+          if (catSeg) {
+            node.lines.push({ segments: ['category', catSeg] })
+          }
+          const resSeg = this._tagValueSeg('amenity', step.resolved_amenity)
+          if (resSeg) {
+            node.lines.push({ segments: ['resolved', resSeg] })
+          }
+          if (step.anchor_count != null) node.lines.push(`anchors: ${step.anchor_count}`)
+          if (step.radius_m != null) node.lines.push(`radius: ${step.radius_m} m`)
+          if (step.warning) node.lines.push(step.warning)
+          break
+        }
+        case 'augmented_enrichment': {
+          // Enrichment added → green
+          node.icon = 'bi-arrow-up-right'
+          node.iconColor = 'text-success'
+          node.title = 'Enrichment'
+          if (step.output_count != null) node.lines.push(`enriched ${step.output_count} entities`)
+          break
+        }
+        case 'place_search': {
+          node.icon = 'bi-search'
+          node.iconColor = 'text-primary'
+          node.title = 'Place search'
+          if (step.error) node.error = step.error
+          if (step.warning) node.lines.push(step.warning)
+          break
+        }
+        case 'factor_join': {
+          // Factor-table retrieval — the heart of the answer. Surface the
+          // table, subgraph scope, candidate/result counts and any note
+          // (e.g. lenient eigenbasis fallback) instead of a bare label.
+          node.icon = 'bi-table'
+          node.iconColor = 'text-primary'
+          node.title = step.op
+            ? `Factor join: ${step.op.replace(/_/g, ' ')}`
+            : 'Factor join'
+          if (step.table) node.lines.push(`table: ${step.table}`)
+          if (step.subgraph_slug) node.lines.push(`subgraph: ${step.subgraph_slug}`)
+          if (step.anchor_osm_id != null) node.lines.push(`anchor: ${step.anchor_osm_id}`)
+          if (step.candidates != null) node.lines.push(`candidates: ${step.candidates}`)
+          if (step.output_count != null) node.lines.push(`results: ${step.output_count}`)
+          if (step.note) node.lines.push(`note: ${step.note}`)
+          if (step.detail) node.lines.push(step.detail)
+          if (step.cross_subgraph_transport) {
+            const t = step.cross_subgraph_transport
+            if (t.transport_matrices_used != null) {
+              node.lines.push(`cross-subgraph transport: ${t.transport_matrices_used} matrices`)
+            }
+          }
+          if (step.error) node.error = step.error
+          if (step.warning) node.lines.push(step.warning)
+          break
+        }
+        case 'spatial_filter_skipped': {
+          // Skipped → amber, flips red via the warning rule
+          node.icon = 'bi-exclamation-triangle'
+          node.iconColor = 'text-warning'
+          node.title = st.replace(/_/g, ' ')
+          if (step.error) node.error = step.error
+          if (step.warning) node.lines.push(step.warning)
+          break
+        }
+        default: {
+          // Generic step: surface every scalar field as key: value — the
+          // default keeps future step types visible instead of invisible.
+          node.iconColor = 'text-secondary'
+          const skip = new Set(['step', 'input', 'output'])
+          for (const [k, v] of Object.entries(step)) {
+            if (skip.has(k)) continue
+            if (typeof v === 'string' || typeof v === 'number') {
+              node.lines.push(`${k}: ${v}`)
+            }
+          }
+          if (isEntity(step.output)) node.lines.push(this._entityLine(step.output))
+        }
+      }
+      // Status protocol — errors → red badge/bar; warnings and degraded
+      // states (NULL, unverified, lenient, pre-migration, fallback) →
+      // amber badge/bar. The badge catches the eye; the heading keeps its
+      // "Found…" color and the icon keeps its nature color.
+      const attentionText = [step.warning, step.note, step.detail]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      const degraded = /unverified|lenient|null|pre-migration|fallback|unavailable|degraded|skipped/.test(
+        attentionText
+      )
+      if (node.error || step.error) {
+        // step.error must count even when a case didn't copy it to
+        // node.error (e.g. a failed geocode) — otherwise the error is
+        // silently invisible to the status protocol.
+        node.status = 'error'
+        node.color = 'danger'
+        node.iconColor = 'text-danger'
+        node.live = false
+        node.error = node.error || step.error
+      } else if (step.warning || degraded) {
+        node.status = 'warning'
+        if (step.warning) node.iconColor = 'text-warning'
+        node.live = false
+      }
+      // Icon chip background follows the icon color (subtle tint).
+      node.iconBg = {
+        'text-success': 'bg-success-subtle',
+        'text-danger': 'bg-danger-subtle',
+        'text-warning': 'bg-warning-subtle',
+        'text-primary': 'bg-primary-subtle',
+        'text-info': 'bg-info-subtle',
+      }[node.iconColor] || 'bg-secondary-subtle'
+      return node
     },
   },
 }
@@ -771,6 +1236,107 @@ export default {
    provide a utility for this). */
 .cursor-pointer {
   cursor: pointer;
+}
+
+/* Execution trace decision flow: vertical spine with dashed separators
+   between nodes so each step reads as one decision in the chain. When
+   open, the spine matches the AI answer box's green border. */
+.trace-flow {
+  border-left: 2px solid var(--bs-secondary-border-subtle);
+  padding-left: 0.75rem;
+}
+.trace-details[open] .trace-flow {
+  border-left-color: var(--bs-success-border-subtle);
+}
+
+/* Trace caret: the native disclosure triangle, red while closed
+   (attention), gray once fully open. */
+.trace-details > summary::marker {
+  color: var(--bs-danger);
+}
+.trace-details > summary::-webkit-details-marker {
+  color: var(--bs-danger);
+}
+.trace-details[open] > summary::marker {
+  color: var(--bs-secondary);
+}
+.trace-details[open] > summary::-webkit-details-marker {
+  color: var(--bs-secondary);
+}
+.trace-node + .trace-node {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--bs-secondary-border-subtle);
+}
+
+/* Status protocol: red = error, amber = warning/degraded. A left accent
+   bar + a badge icon flag the node without recoloring the whole line. */
+.trace-node {
+  padding-left: 0.4rem;
+}
+.trace-node--error {
+  border-left: 3px solid var(--bs-danger);
+}
+.trace-node--warning {
+  border-left: 3px solid var(--bs-warning);
+}
+.trace-status {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+.trace-status i {
+  font-size: 0.85rem;
+}
+.trace-status--error {
+  color: var(--bs-danger);
+}
+.trace-status--warning {
+  color: var(--bs-warning);
+}
+.trace-lines {
+  margin: 0.15rem 0 0;
+  padding-left: 1.35rem;
+  list-style: none;
+}
+
+/* Icon chip: subtle tinted background so each node's icon has presence. */
+.trace-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 0.3rem;
+  flex-shrink: 0;
+}
+.trace-icon i {
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+/* Live pulse for context-assembly nodes (entity_context). */
+@keyframes trace-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+.trace-icon--live {
+  animation: trace-pulse 2.2s ease-in-out infinite;
+}
+
+/* Entity link: green, underline on hover, opens in a new tab. */
+.trace-link {
+  color: var(--bs-success);
+  text-decoration: none;
+}
+.trace-link:hover {
+  color: var(--bs-success);
+  text-decoration: underline;
 }
 
 /* The font-monospace utility uses Bootstrap's --bs-font-monospace; ensure

@@ -20,8 +20,11 @@ django.setup()
 def _allow_db(request):
     """Auto-apply django_db marker to allow DB access for all tests.
 
-    Uses transaction=False to avoid creating a separate test database.
-    Tests run against the live Docker databases.
+    Uses transaction=False: writes COMMIT to the test databases
+    (test_django_db / test_vector_db) and are NOT rolled back between
+    tests, so DB-writing tests must clean up after themselves. The
+    pytest-django test runner always redirects connections to the test
+    databases — this suite never touches the live django_db / vector_db.
     """
     if not request.node.get_closest_marker("django_db"):
         request.node.add_marker(pytest.mark.django_db(transaction=False))

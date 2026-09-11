@@ -60,6 +60,7 @@ class FactorNodeWriter:
         signal: np.ndarray = None,
         subgraph_slug: str = None,
         core_ids: set = None,
+        fingerprint_id=None,
     ) -> int:
         """Write one SpectralNodeMetric row per graph node.
 
@@ -88,6 +89,11 @@ class FactorNodeWriter:
                 skipped.  This is used when the spectral solve ran on the
                 full buffered graph but factor rows should only cover
                 core entities.
+            fingerprint_id: optional GraphSpectralFingerprint.id whose
+                eigenbasis produced ``features`` — stamped on every row so
+                runtime diffusion can verify the loadings match the
+                eigenvalues it reads (Phase 1 coherence check).  NULL =
+                unverified (pre-migration rows).
 
         Returns:
             Number of rows written.
@@ -173,6 +179,7 @@ class FactorNodeWriter:
                 snapshot_id=snapshot_id,
                 country_code=country_code,
                 subgraph_slug=subgraph_slug,
+                fingerprint_id=fingerprint_id,
                 osm_id=int(osm_id),
                 eigen_loadings=loadings.tolist() if loadings is not None else None,
                 fiedler_component=fiedler,
