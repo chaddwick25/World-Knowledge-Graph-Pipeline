@@ -105,20 +105,6 @@
           />
           <span class="small text-secondary">max results to show</span>
         </div>
-        <div v-if="hasQueryGraph" class="d-flex flex-wrap gap-3 align-items-center small">
-          <div class="form-check form-switch form-check-inline mb-0">
-            <input id="qg-show-anchors" v-model="showAnchors" type="checkbox" class="form-check-input" role="switch" />
-            <label class="form-check-label" for="qg-show-anchors">Anchors</label>
-          </div>
-          <div class="form-check form-switch form-check-inline mb-0">
-            <input id="qg-show-entities" v-model="showEntities" type="checkbox" class="form-check-input" role="switch" />
-            <label class="form-check-label" for="qg-show-entities">Entities</label>
-          </div>
-          <div class="form-check form-switch form-check-inline mb-0">
-            <input id="qg-show-links" v-model="showLinks" type="checkbox" class="form-check-input" role="switch" />
-            <label class="form-check-label" for="qg-show-links">Links</label>
-          </div>
-        </div>
       </div>
 
       <button
@@ -337,10 +323,6 @@ export default {
       lon: '',
       rdfType: null,
       topK: 20,
-      // Query-graph layer visibility (anchors / entities / links)
-      showAnchors: true,
-      showEntities: true,
-      showLinks: true,
       loading: false,
       error: null,
       results: [],
@@ -424,9 +406,6 @@ export default {
     displayResults() {
       return this.results.map((r) => this.normalizeResult(r)).slice(0, this.topKClamped)
     },
-    hasQueryGraph() {
-      return this.displayResults.length > 0 || this.extractAnchors().length > 0
-    },
     confidenceBadgeClass() {
       const c = this.displayParsedQuery?.confidence || 0
       if (c >= 0.8) return 'text-bg-success'
@@ -438,17 +417,8 @@ export default {
     countryName() {
       this.reset()
     },
-    // Live controls: re-slice / re-toggle the emitted graph without re-querying.
+    // Live control: re-slice the emitted graph without re-querying.
     topK() {
-      this.publishResults()
-    },
-    showAnchors() {
-      this.publishResults()
-    },
-    showEntities() {
-      this.publishResults()
-    },
-    showLinks() {
       this.publishResults()
     },
   },
@@ -459,9 +429,6 @@ export default {
   },
   methods: {
     reset() {
-      this.showAnchors = true
-      this.showEntities = true
-      this.showLinks = true
       this.queryMode = 'tags'
       this.queryTagsInput = '{"amenity": "cafe"}'
       this.naturalQuery = ''
@@ -825,9 +792,6 @@ export default {
         entities,
         links,
         anchorLines: this.extractAnchorLines(),
-        showAnchors: this.showAnchors,
-        showEntities: this.showEntities,
-        showLinks: this.showLinks,
         topK: this.topKClamped,
       }
     },

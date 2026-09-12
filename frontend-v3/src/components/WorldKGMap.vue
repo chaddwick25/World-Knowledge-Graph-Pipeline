@@ -159,7 +159,7 @@ export default {
     },
     // Anchor/entity graph from SemanticSearchPanel:
     // { anchors: [{name, lat, lon}], entities: [{..., geom}],
-    //   links: [{anchorIdx, entityIdx}], showAnchors, showEntities, showLinks }
+    //   links: [{anchorIdx, entityIdx}], anchorLines: [{from, to, label}] }
     queryGraph: {
       type: Object,
       default: null,
@@ -460,8 +460,7 @@ export default {
 
       const bounds = []
 
-      if (graph.showAnchors !== false) {
-        for (const a of graph.anchors || []) {
+      for (const a of graph.anchors || []) {
           if (a.lat == null || a.lon == null) continue
           const marker = L.marker([a.lat, a.lon], { icon: ANCHOR_ICON })
           marker.bindPopup(
@@ -472,10 +471,8 @@ export default {
           marker.addTo(queryGraphLayer)
           bounds.push([a.lat, a.lon])
         }
-      }
 
-      if (graph.showEntities !== false) {
-        for (const e of graph.entities || []) {
+      for (const e of graph.entities || []) {
           if (!e.geom || e.geom.lat == null) continue
           const marker = L.marker([e.geom.lat, e.geom.lon], { icon: ENTITY_ICON })
           const popup = [
@@ -498,10 +495,8 @@ export default {
           marker.addTo(queryGraphLayer)
           bounds.push([e.geom.lat, e.geom.lon])
         }
-      }
 
-      if (graph.showLinks !== false) {
-        for (const link of graph.links || []) {
+      for (const link of graph.links || []) {
           const anchor = graph.anchors?.[link.anchorIdx]
           const entity = graph.entities?.[link.entityIdx]
           if (!anchor || anchor.lat == null || !entity?.geom) continue
@@ -515,7 +510,6 @@ export default {
             }
           ).addTo(queryGraphLayer)
         }
-      }
 
       // Distance/bearing lines between two geocoded anchors
       // (OBJECT-FIELD-MEASURE distance, bearing): solid indigo line with a
