@@ -1,0 +1,124 @@
+{
+  "_docs": {
+    "purpose": "Schema-complete example for overrides.json. Copy to the path pointed at by OVERRIDES_JSON_PATH (default COLD_STORAGE_BASE_DIR/overrides.json) and edit values for your deployment. JSON has no comments, so per-section explanation lives in the _docs key of each section. Canonical field reference: docs/preserving_the_process/NON_SOVEREIGN_TERRITORIES_AND_OVERRIDES.md sections 2.1-2.3. Validate with: python manage.py verify_paths --strict.",
+    "loader": "backend/core/services/snapshot/country_override_service.py:load_overrides() also accepts a flat legacy mapping like {\"IE\": \"ireland\"} at the top level, but the structured schema below is preferred.",
+    "settings": "backend/backend/settings.py:155 OVERRIDES_JSON_PATH env var, default COLD_STORAGE_BASE_DIR/overrides.json.",
+    "boot_validation": "python manage.py verify_paths loads this file and checks every embedding_splits poly against POLYGON_FILES_DIR/overrides/ then root (same order as EmbeddingSpatialSplitService.resolve_poly_path). Missing polys are errors under --strict. Polys live in cold storage, not the repo, so a bare checkout will report them as missing; that is correct behavior."
+  },
+  "country_iso_overrides": {
+    "_docs": {
+      "purpose": "Maps official ISO 3166-1 alpha-2 codes to pipeline-specific slugs for Geofabrik/embedding alignment. Used by get_country_slug() when the OSM-derived slug does not match the Geofabrik dataset directory name.",
+      "fields": {
+        "country_slug": "Filesystem slug for embeddings/downloads (required)",
+        "embedding_slug": "GeoVectors dataset directory name (optional, used when the embedding folder name differs from the country slug)",
+        "slug": "Legacy alias for country_slug (country_slug takes precedence)"
+      },
+      "lookup": "Case-insensitive on the ISO key. backend/core/services/snapshot/country_override_service.py:get_country_override_record()."
+    },
+    "IE": { "country_slug": "ireland" },
+    "GB": { "embedding_slug": "great-britain", "country_slug": "united-kingdom" },
+    "BS": { "country_slug": "the_bahamas" },
+    "ZA": { "country_slug": "south_africa" }
+  },
+  "embedding_edge_cases": {
+    "_docs": {
+      "purpose": "Documents shared embedding shards across countries (memory optimization). A country can borrow another dataset's location index or tag embeddings instead of materializing its own. Optional section; most deployments leave it empty.",
+      "fields": {
+        "shared_location_overrides": "Array of {override_type, source, targets, note?} targets reuse the source's location embeddings.",
+        "shared_tag_overrides": "Array of {override_type, source, targets} targets reuse the source's tag embeddings.",
+        "override_type": "shared_locations | shared_tags"
+      },
+      "lookup": "Keyed by embedding slug, case-insensitive. backend/core/services/snapshot/country_override_service.py:get_embedding_edge_case()."
+    },
+    "germany": {
+      "shared_location_overrides": [
+        {
+          "override_type": "shared_locations",
+          "source": "germany-node-location",
+          "targets": ["germany-node-location", "germany-ways-location"]
+        }
+      ],
+      "shared_tag_overrides": [
+        {
+          "override_type": "shared_tags",
+          "source": "germany-node-tags",
+          "targets": ["germany-ways-tags"]
+        }
+      ]
+    },
+    "united_states": {
+      "shared_location_overrides": [
+        {
+          "override_type": "shared_locations",
+          "source": "us-west",
+          "targets": ["us-other"]
+        }
+      ]
+    }
+  },
+  "embedding_splits": {
+    "_docs": {
+      "purpose": "Spatial splits (one TSV -> many) and merges (many TSVs -> one) for embeddings that ship as a combined shard but need per-country or per-territory outputs. Required by preprocess_embeddings and scan_embeddings.",
+      "split_fields": {
+        "source_tsv": "Path relative to EMBEDDINGS_ROOT of the input TSV (gz)",
+        "continent": "Continent slug for the PBF snapshot",
+        "continent_pbf": "PBF file key matching CONTINENTS_ROOT",
+        "targets": "Array of {slug, poly, output}",
+        "targets.slug": "Lowercase ISO code or territory slug (e.g. scotland, im, gg)",
+        "targets.poly": "Polygon file relative to POLYGON_FILES_DIR; resolved against POLYGON_FILES_DIR/overrides/ then root by EmbeddingSpatialSplitService.resolve_poly_path",
+        "targets.output": "Output filename written under EMBEDDINGS_ROOT/<continent>/<slug>/"
+      },
+      "merge_fields": {
+        "slug": "Output embedding slug (e.g. us)",
+        "continent": "Continent slug",
+        "output": "Output filename",
+        "shards": "Array of input TSV paths relative to EMBEDDINGS_ROOT"
+      },
+      "config_loader": "backend/core/services/snapshot/embedding_spatial_split_service.py:load_embedding_splits_config() reads {splits, merges}; malformed sections degrade to empty, not errors.",
+      "dataclass": "SplitTargetConfig at embedding_spatial_split_service.py:26-31 fields slug, poly, output.",
+      "poly_bug_note": "A combined shard (e.g. malaysia-singapore-brunei) must point every target at the SAME combined .poly file. Pointing each target at a per-country .poly that does not exist on disk will fail verify_paths --strict and raise FileNotFoundError mid-pipeline."
+    },
+    "splits": [
+      {
+        "source_tsv": "europe/great-britain-location/great-britain-location.tsv.gz",
+        "continent": "europe",
+        "continent_pbf": "europe",
+        "targets": [
+          { "slug": "scotland", "poly": "europe/united_kingdom/scotland.poly", "output": "scotland-location.tsv.gz" },
+          { "slug": "england",  "poly": "europe/united_kingdom/england.poly",  "output": "england-location.tsv.gz" },
+          { "slug": "wales",    "poly": "europe/united_kingdom/wales.poly",    "output": "wales-location.tsv.gz" }
+        ]
+      },
+      {
+        "source_tsv": "asia/asia-location/malaysia-singapore-brunei-location.tsv.gz",
+        "continent": "asia",
+        "continent_pbf": "asia",
+        "targets": [
+          { "slug": "malaysia",  "poly": "asia/malaysia_singapore_brunei.poly", "output": "malaysia-location.tsv.gz" },
+          { "slug": "singapore", "poly": "asia/malaysia_singapore_brunei.poly", "output": "singapore-location.tsv.gz" },
+          { "slug": "brunei",    "poly": "asia/malaysia_singapore_brunei.poly", "output": "brunei-location.tsv.gz" }
+        ]
+      }
+    ],
+    "merges": [
+      {
+        "slug": "us",
+        "continent": "north-america",
+        "output": "us-location.tsv.gz",
+        "shards": [
+          "north-america/us-other-location/us-midwest-location.tsv.gz",
+          "north-america/us-other-location/us-northeast-location.tsv.gz",
+          "north-america/us-other-location/us-pacific-location.tsv.gz",
+          "north-america/us-south-location/us-south-location.tsv.gz",
+          "north-america/us-other-location/us-west-location.tsv.gz"
+        ]
+      }
+    ]
+  },
+  "continents": {
+    "_docs": {
+      "purpose": "Optional per-continent overrides keyed by embedding/folder name. Currently has no worked example in the schema doc and no in-repo callers exercise specific fields; kept here as a placeholder so operators know the section exists. Populate with whatever fields get_continent_override() consumers in your deployment read.",
+      "lookup": "Keyed by continent name, case-insensitive. backend/core/services/snapshot/country_override_service.py:get_continent_override()."
+    }
+  }
+}
