@@ -231,16 +231,19 @@ class SystemSummaryView(APIView):
         ).count()
         failed = PipelineRun.objects.filter(status="FAILED").count()
 
-        recent = list(
+        # ALL runs (no cap) — the History tab scrolls through the full
+        # list. `configuration` is stripped after deriving `snapshot`: it
+        # only feeds the display field, and shipping full config JSONs per
+        # run would bloat the summary payload.
+        runs = list(
             PipelineRun.objects.filter(pipeline_type="worldkg_v2")
             .exclude(status__in=["PENDING", "RUNNING"])
-            .order_by("-completed_at")[:10]
+            .order_by("-completed_at")
             .values("country_code", "country_name", "status", "completed_at", "configuration")
         )
 
-        # Extract snapshot_date from config JSON for display
-        for r in recent:
-            config = r.get("configuration", {}) or {}
+        for r in runs:
+            config = r.pop("configuration", None) or {}
             if isinstance(config, dict):
                 r["snapshot"] = config.get("snapshot_date", "unknown")
             else:
@@ -249,7 +252,7 @@ class SystemSummaryView(APIView):
         return {
             "completed": completed,
             "failed": failed,
-            "recent": recent,
+            "runs": runs,
         }
 
     # ── Preprocessing steps ─────────────────────────────────────────────

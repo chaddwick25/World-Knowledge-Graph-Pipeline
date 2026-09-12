@@ -255,17 +255,42 @@
                 <p class="summary-section__subtitle">
                   {{ data.pipeline_runs.completed }} completed, {{ data.pipeline_runs.failed }} failed
                 </p>
-                <table v-if="data.pipeline_runs.recent.length > 0" class="summary-table">
-                  <thead>
-                    <tr>
-                      <th>Country</th>
-                      <th>Snapshot</th>
-                      <th>Status</th>
-                      <th>Completed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="run in data.pipeline_runs.recent" :key="run.country_code + run.completed_at">
+                <div v-if="data.pipeline_runs.runs.length > 0" class="summary-table__scroll">
+                  <table class="summary-table">
+                    <thead>
+                      <tr>
+                        <th>
+                          <button type="button" class="summary-table__sort" @click="toggleHistorySort('country_code')">
+                            Country
+                            <i v-if="historySortKey === 'country_code'"
+                               :class="historySortDir === 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'"></i>
+                          </button>
+                        </th>
+                        <th>
+                          <button type="button" class="summary-table__sort" @click="toggleHistorySort('snapshot')">
+                            Snapshot
+                            <i v-if="historySortKey === 'snapshot'"
+                               :class="historySortDir === 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'"></i>
+                          </button>
+                        </th>
+                        <th>
+                          <button type="button" class="summary-table__sort" @click="toggleHistorySort('status')">
+                            Status
+                            <i v-if="historySortKey === 'status'"
+                               :class="historySortDir === 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'"></i>
+                          </button>
+                        </th>
+                        <th>
+                          <button type="button" class="summary-table__sort" @click="toggleHistorySort('completed_at')">
+                            Completed
+                            <i v-if="historySortKey === 'completed_at'"
+                               :class="historySortDir === 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill'"></i>
+                          </button>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="run in sortedRuns" :key="run.country_code + run.completed_at">
                       <td>
                         <span class="summary-table__country">{{ run.country_name || run.country_code }}</span>
                         <code class="summary-table__iso">{{ run.country_code }}</code>
@@ -284,8 +309,9 @@
                       </td>
                       <td class="summary-table__date">{{ run.completed_at ? new Date(run.completed_at).toLocaleDateString() : '-' }}</td>
                     </tr>
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
+                </div>
                 <p v-else class="summary-empty">No pipeline runs yet.</p>
               </div>
             </div>
@@ -311,6 +337,10 @@ export default {
       loading: false,
       error: '',
       activeTab: 'overview',
+      // History tab column sort — defaults to newest-first (the backend
+      // order). Nulls always sort last regardless of direction.
+      historySortKey: 'completed_at',
+      historySortDir: 'desc',
     }
   },
   computed: {
@@ -327,6 +357,24 @@ export default {
     },
     totalPipelines() {
       return this.data?.pipeline_runs?.completed || 0
+    },
+    /** History runs sorted by the active column (nulls last). */
+    sortedRuns() {
+      const runs = [...(this.data?.pipeline_runs?.runs || [])]
+      const key = this.historySortKey
+      const dir = this.historySortDir === 'asc' ? 1 : -1
+      runs.sort((a, b) => {
+        const va = a?.[key]
+        const vb = b?.[key]
+        if (va == null && vb == null) return 0
+        if (va == null) return 1
+        if (vb == null) return -1
+        if (key === 'completed_at') {
+          return (new Date(va) - new Date(vb)) * dir
+        }
+        return String(va).localeCompare(String(vb)) * dir
+      })
+      return runs
     },
     preprocessingCompleted() {
       if (!this.data?.preprocessing_steps) return 0
@@ -366,6 +414,17 @@ export default {
     if (this.open) this.fetchSummary()
   },
   methods: {
+    /** Toggle the History column sort: same column flips direction,
+     *  a new column starts asc (completed_at starts desc — newest first). */
+    toggleHistorySort(key) {
+      if (this.historySortKey === key) {
+        this.historySortDir = this.historySortDir === 'asc' ? 'desc' : 'asc'
+      } else {
+        this.historySortKey = key
+        this.historySortDir = key === 'completed_at' ? 'desc' : 'asc'
+      }
+    },
+
     async fetchSummary() {
       this.loading = true
       this.error = ''
@@ -711,6 +770,50 @@ export default {
 }
 
 /* ── Table ── */
+/* Scroll container for the History tab: the full run list scrolls inside
+   the modal instead of stretching it. */
+.summary-table__scroll {
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid #1e293b;
+  border-radius: 0.375rem;
+}
+
+/* Sticky header inside the scroll container — matches the modal bg so
+   rows pass underneath it cleanly. Headings use the theme green
+   (#4ade80), same as the section titles. */
+.summary-table__scroll .summary-table th {
+  position: sticky;
+  top: 0;
+  background: #020617;
+  z-index: 1;
+}
+.summary-table__scroll .summary-table th {
+  color: #4ade80;
+}
+
+/* Sortable column header: transparent button inheriting the green text. */
+.summary-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.summary-table__sort:hover {
+  color: #86efac;
+  text-decoration: underline;
+}
+.summary-table__sort i {
+  font-size: 0.65rem;
+}
+
 .summary-table {
   width: 100%;
   border-collapse: collapse;
