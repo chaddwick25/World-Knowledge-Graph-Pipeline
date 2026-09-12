@@ -123,13 +123,13 @@ each template has in the parser's training data.
 ├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
 │ Find the nearest X           │ "What is the nearest cafe to Shandon Bells?"                     │ GEOCODE-BATCH-COMPARE            │ 25%      │
 ├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ Compare distances            │ "Which is closer to Dublin: Tully Mill or the Cliffs of Moher?"  │ GEOCODE-BATCH-COMPARE            │ 25%      │
+│ Compare distances            │ "Which is closer to Moher Cottage: Cliff Coast Coffee or the Cliffs of Moher?"  │ GEOCODE-BATCH-COMPARE            │ 25%      │
 ├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
 │ What's around here           │ "What amenities are around Tully Mill?"                          │ PLACE-ATTRIBUTE-QUERY            │ 19%      │
 ├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
 │ Direction from a place       │ "What is west of Tullygally Tavern?"                             │ LOCATION-BEARING-CLASSIFY        │ 17%      │
 ├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
-│ How far is X from Y          │ "How far is Betelnut Cafe from Dublin?"                          │ OBJECT-FIELD-MEASURE             │ 17%      │
+│ How far is X from Y          │ "How far is Betelnut Cafe from Limerick?"                        │ OBJECT-FIELD-MEASURE             │ 17%      │
 ├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
 │ Optimal visiting order       │ "What's the best order to visit these 5 cafes?"                  │ ROUTE-OPTIMIZE                   │ 0%       │
 ├──────────────────────────────┼──────────────────────────────────────────────────────────────────┼──────────────────────────────────┼──────────┤
