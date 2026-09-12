@@ -6,7 +6,7 @@
         <div class="d-flex flex-column gap-1">
           <h1 class="fs-4 fw-bold mb-0" style="color: var(--bs-heading-color); letter-spacing: -0.03em; text-align: left;">
             <a href="https://www.vgiscience.org/projects/worldkg.html" target="_blank" rel="noopener noreferrer" class="app-shell__brand-mark text-decoration-none">&#127758;</a>
-            World Knowledge Graph Pipeline
+            World KG & Geo Spatial Reasoning 
           </h1>
           <p class="fs-6 text-secondary mb-0 ms-1">
             Search places worldwide and get AI-powered answers
@@ -125,7 +125,7 @@
             <div v-if="isLoadingStatus" class="small text-secondary mt-1">
               Checking status…
             </div>
-            <div v-else-if="countryStatus" class="d-flex flex-wrap gap-1 mt-1">
+            <!-- <div v-else-if="countryStatus" class="d-flex flex-wrap gap-1 mt-1">
               <span
                 v-if="countryStatus.is_db_processed"
                 class="badge text-bg-success"
@@ -144,57 +144,31 @@
               >
                 Not Preprocessed
               </span>
-            </div>
+            </div> -->
           </div>
         </div>
 
-        <!-- Year selector (visible only after init) -->
-        <div v-if="singleCountry && isSystemReady && isContinentSnapshotsReady" class="d-flex flex-column gap-1">
-          <div class="d-flex align-items-center justify-content-between">
-            <label class="form-label small text-secondary mb-0">Snapshot Year</label>
-            <button
-              v-if="hasAnyYearsUsed()"
-              class="btn btn-link btn-sm text-danger p-0"
-              @click="resetYearSelections"
-              :disabled="isPipelineRunning"
-            >
-              Reset
-            </button>
-          </div>
-          <div class="d-flex flex-wrap gap-1">
-            <button
-              v-for="year in snapshotYears"
-              :key="year"
-              class="btn btn-sm btn-outline-secondary sidebar__year-btn"
-              :class="{
-                'sidebar__year-btn--active': isYearActive(year),
-                'sidebar__year-btn--used': isYearUsed(year) && !isYearActive(year),
-                'sidebar__year-btn--disabled': yearDisabled
-              }"
-              :disabled="yearDisabled"
-              @click="selectYear(year)"
-              :title="isYearUsed(year) ? `Re-run pipeline for ${year}` : `Use snapshot from ${year}`"
-            >
-              <span>{{ year }}</span>
-              <span v-if="isYearUsed(year) && !isYearActive(year)">&#10003;</span>
-            </button>
-          </div>
-        </div>
+        <!-- Snapshot calendar (visible only after init) -->
+        <SnapshotCalendar
+          v-if="singleCountry && isSystemReady && isContinentSnapshotsReady"
+          :snapshot-dates="snapshotDates"
+          :completed-dates="completedDates"
+          :used-dates="storeUsedDates"
+          :selected-date="selectedSnapshotDate"
+          :disabled="isPipelineRunning"
+          :jobs="storeSnapshotJobs"
+          :loading="isLoadingStatus"
+          :show-run-btn="showPipelineBtn"
+          :run-btn-disabled="pipelineBtnDisabled"
+          :run-btn-loading="isPipelineRunning"
+          :run-btn-label="pipelineTitle"
+          @select-date="onSelectDate"
+          @reset="onResetDates"
+          @rerun="onRerunDate"
+          @run="handleRunPipeline"
+        />
 
-        <!-- Pipeline trigger (hidden until init) -->
-        <div v-if="isSystemReady" class="d-flex flex-column gap-1">
-          <button
-            class="btn w-100 d-flex align-items-center justify-content-center gap-2"
-            :class="pipelineBtnBootstrapClass"
-            :disabled="pipelineBtnDisabled"
-            @click="handleRunPipeline"
-          >
-            <span v-if="isPipelineRunning" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-            <span>{{ pipelineTitle }}</span>
-          </button>
 
-          <div v-if="errorMessage" class="alert alert-danger small py-1 px-2 mb-0">{{ errorMessage }}</div>
-        </div>
 
         <!-- Pipeline progress -->
         <div class="d-flex flex-column gap-1">
@@ -242,18 +216,22 @@
               @links-toggle="onLinksToggle"
             />
 
-            <!-- Spatial Layers tab -->
-            <SpatialMetricsPanel
-              v-else-if="activeTab === 'spatial'"
-              :country-name="singleCountry.name"
-              :snapshot-date="selectedSnapshotDate"
-            />
+            <!-- Deck GL tab -->
+            <div v-else-if="activeTab === 'deckgl'" class="d-flex align-items-center justify-content-center py-4">
+              <span class="text-secondary">Coming Soon</span>
+            </div>
           </div>
         </div>
       </aside>
     </section>
 
     <SystemSummaryModal :open="showSystemSummary" @close="showSystemSummary = false" />
+    <RerunConfirmModal
+      :open="showRerunConfirm"
+      :snapshot-date="rerunConfirmDate"
+      @close="showRerunConfirm = false"
+      @confirm="confirmRerun"
+    />
   </div>
 </template>
 
@@ -263,24 +241,26 @@ import axios from 'axios'
 import { usePipelineStore } from '../stores/pipelineStore'
 import WorldKGMap from '../components/WorldKGMap.vue'
 import PipelineProgressPanelV3 from '../components/PipelineProgressPanelV3.vue'
+import SnapshotCalendar from '../components/SnapshotCalendar.vue'
 import SemanticSearchPanel from '../components/SemanticSearchPanel.vue'
 import PipelineMetricsPanel from '../components/PipelineMetricsPanel.vue'
 import AugmentedDataPanel from '../components/AugmentedDataPanel.vue'
-import SpatialMetricsPanel from '../components/SpatialMetricsPanel.vue'
 import PlanetInitPanel from '../components/PlanetInitPanel.vue'
 import SystemSummaryModal from '../components/SystemSummaryModal.vue'
+import RerunConfirmModal from '../components/RerunConfirmModal.vue'
 
 export default {
   name: 'Home',
   components: {
     WorldKGMap,
     PipelineProgressPanelV3,
+    SnapshotCalendar,
     SemanticSearchPanel,
     PipelineMetricsPanel,
     AugmentedDataPanel,
-    SpatialMetricsPanel,
     PlanetInitPanel,
     SystemSummaryModal,
+    RerunConfirmModal,
   },
   data() {
     return {
@@ -289,7 +269,7 @@ export default {
         { key: 'query', label: 'Query' },
         { key: 'metrics', label: 'Metrics' },
         { key: 'augmented', label: 'USLP' },
-        { key: 'spatial', label: 'Spatial' },
+        { key: 'deckgl', label: 'Deck GL' },
       ],
 
       // ── System state ──
@@ -298,6 +278,8 @@ export default {
       systemError: '',
       suggestedPlanetFilePath: '',
       showSystemSummary: false,
+      showRerunConfirm: false,
+      rerunConfirmDate: '',
 
       // ── Country selection ──
       allCountries: [],
@@ -332,10 +314,8 @@ export default {
 
       // ── Snapshot date selector ──
       snapshotDates: [],
+      completedDates: [],
       selectedSnapshotDate: null,
-
-      // ── Year selector (Option 3) ──
-      snapshotYears: [],
     }
   },
   computed: {
@@ -368,34 +348,17 @@ export default {
     },
     pipelineTitle() {
       if (this.isPipelineRunning) return 'Pipeline Running…'
-      if (this.pipelineDoneStatus === 'completed') return 'Pipeline Complete'
       if (this.pipelineDoneStatus === 'failed') return 'Pipeline Failed'
       if (this.pipelineDoneStatus === 'skipped') return 'Pipeline Skipped'
-      if (this.selectedYear) {
-        const isReRun = this.isYearUsed(this.selectedYear)
-        return isReRun
-          ? `Re-run WorldKG Pipeline — ${this.selectedYear}`
-          : `Run WorldKG Pipeline — ${this.selectedYear}`
-      }
-      return 'Run WorldKG Pipeline'
+      return `Run ${this.selectedSnapshotDate || 'WorldKG Pipeline'}`
+    },
+    /** Show the run button only for new dates (not already completed). */
+    showPipelineBtn() {
+      if (!this.selectedSnapshotDate) return false
+      return !this.storeUsedDates.has(this.selectedSnapshotDate)
     },
     pipelineBtnDisabled() {
       return !this.pipelineCanRun
-    },
-    pipelineBtnVariant() {
-      if (this.isPipelineRunning) return 'neutral'
-      if (this.pipelineDoneStatus === 'completed') return 'success'
-      if (this.pipelineDoneStatus === 'failed') return 'danger'
-      if (this.pipelineDoneStatus === 'skipped') return 'warning'
-      return 'primary'
-    },
-    pipelineBtnBootstrapClass() {
-      const variant = this.pipelineBtnVariant
-      if (variant === 'primary') return 'btn-primary'
-      if (variant === 'success') return 'btn-success'
-      if (variant === 'danger') return 'btn-danger'
-      if (variant === 'warning') return 'btn-warning'
-      return 'btn-secondary'
     },
 
     pipelineIsDone() {
@@ -410,12 +373,17 @@ export default {
     isContinentSnapshotsReady() {
       return this.snapshotDates.length > 0
     },
-    selectedYear() {
-      if (!this.selectedSnapshotDate) return null
-      return parseInt(this.selectedSnapshotDate.split('_')[0], 10)
+    // Snapshot jobs from the store, for the current country
+    storeSnapshotJobs() {
+      if (!this.singleCountry) return []
+      const store = usePipelineStore()
+      return store.snapshotJobs[this.singleCountry.name] || []
     },
-    yearDisabled() {
-      return !this.isContinentSnapshotsReady || this.isPipelineRunning
+    // Used snapshot dates from the store, for the current country
+    storeUsedDates() {
+      if (!this.singleCountry) return new Set()
+      const store = usePipelineStore()
+      return store.usedSnapshotDates[this.singleCountry.name] || new Set()
     },
   },
   watch: {
@@ -475,6 +443,7 @@ export default {
         this.isSystemReady = !!data.ready
         this.suggestedPlanetFilePath = data.suggested_planet_file_path || ''
         this.applySnapshotDates(data.snapshot_dates || [], data.default || null)
+        this.completedDates = data.completed_dates || []
         if (!this.isSystemReady) {
           this.systemError = 'System not initialized. Planet init runs as a Docker startup step (python manage.py init_planet).'
         }
@@ -529,28 +498,34 @@ export default {
     // ── Snapshot dates (hydrated from /system/status/) ──
     applySnapshotDates(dates, defaultDate) {
       this.snapshotDates = dates
-      // Derive unique years from the dates, sorted newest-first
-      this.snapshotYears = Array.from(
-        new Set(
-          dates
-            .map((d) => parseInt(d.split('_')[0], 10))
-            .filter((y) => !isNaN(y))
-        )
-      ).sort((a, b) => b - a)
       // Default to the first available date, or the backend default
       this.selectedSnapshotDate = dates[0] || defaultDate || null
     },
 
-    // ── Year selector methods ──
-    selectYear(year) {
+    // ── Snapshot date methods ──
+    onSelectDate(date) {
+      this.selectedSnapshotDate = date
+    },
+    onRerunDate(date) {
+      this.selectedSnapshotDate = date
+      this.handleRunPipeline()
+    },
+    onResetDates() {
       if (!this.singleCountry) return
-      // Allow selecting any year, including completed ones (re-run with force=true)
-      const matchingDate = this.snapshotDates.find(d => d.startsWith(String(year)))
-      this.selectedSnapshotDate = matchingDate || `${year}_12_31`
+      const store = usePipelineStore()
+      store.clearUsedSnapshotDates(this.singleCountry.name)
+      store.resetUsedSnapshotDates(this.singleCountry.name)
+      // Reset pipeline state
+      this.pipelineSessionId = null
+      this.pipelineDoneStatus = null
+      this.isPipelineRunning = false
+      this.errorMessage = ''
+      // Re-select first available date
+      this.selectedSnapshotDate = this.snapshotDates[0] || null
     },
 
     /**
-     * If the selected year has a completed SnapshotJob, fetch its durable
+     * If the selected date has a completed SnapshotJob, fetch its durable
      * results from the DB so the progress panel renders step-by-step data
      * without needing an active WebSocket connection.
      */
@@ -558,10 +533,9 @@ export default {
       if (!this.singleCountry?.iso_code || !this.selectedSnapshotDate) return
       // Don't fetch if a pipeline is actively running (WebSocket is live)
       if (this.isPipelineRunning) return
-      const year = String(this.selectedSnapshotDate).split('_')[0]
       const store = usePipelineStore()
-      const usedYears = store.runsByYear[this.singleCountry.name]
-      const isCompleted = usedYears && usedYears.has(year)
+      const usedDates = store.usedSnapshotDates[this.singleCountry.name]
+      const isCompleted = usedDates && usedDates.has(this.selectedSnapshotDate)
       if (!isCompleted) return
       await store.fetchSnapshotJobResults(
         this.singleCountry.name,
@@ -574,36 +548,6 @@ export default {
         this.pipelineDoneStatus = 'completed'
       }
     },
-    isYearUsed(year) {
-      if (!this.singleCountry) return false
-      const store = usePipelineStore()
-      const usedYears = store.runsByYear[this.singleCountry.name]
-      return usedYears ? usedYears.has(String(year)) : false
-    },
-    isYearActive(year) {
-      if (!this.selectedSnapshotDate) return false
-      const matchingDate = this.snapshotDates.find(d => d.startsWith(String(year)))
-      return this.selectedSnapshotDate === (matchingDate || `${year}_12_31`)
-    },
-    resetYearSelections() {
-      if (!this.singleCountry) return
-      const store = usePipelineStore()
-      store.clearRunsByYear(this.singleCountry.name)
-      store.resetYearsForCountry(this.singleCountry.name)
-      // Reset pipeline state
-      this.pipelineSessionId = null
-      this.pipelineDoneStatus = null
-      this.isPipelineRunning = false
-      this.errorMessage = ''
-      // Re-select first available date
-      this.selectedSnapshotDate = this.snapshotDates[0] || null
-    },
-    hasAnyYearsUsed() {
-      if (!this.singleCountry) return false
-      const store = usePipelineStore()
-      const usedYears = store.runsByYear[this.singleCountry.name]
-      return usedYears ? usedYears.size > 0 : false
-    },
     // ── Pipeline ──
     async handleRunPipeline() {
       if (!this.singleCountry || this.isPipelineRunning) return
@@ -613,15 +557,21 @@ export default {
         return
       }
 
-      // If the selected year is already completed, confirm before re-running
-      const selectedYear = this.selectedSnapshotDate?.split('_')[0]
-      const isCompleted = selectedYear && this.isYearUsed(selectedYear)
-      if (isCompleted && !window.confirm(
-        `Pipeline already completed for ${selectedYear}. Re-run and overwrite?`
-      )) {
+      // If the selected date is already completed, confirm via modal
+      const isCompleted = this.storeUsedDates.has(this.selectedSnapshotDate)
+      if (isCompleted) {
+        this.rerunConfirmDate = this.selectedSnapshotDate
+        this.showRerunConfirm = true
         return
       }
 
+      await this._startPipelineRun(false)
+    },
+    confirmRerun() {
+      this.showRerunConfirm = false
+      this._startPipelineRun(true)
+    },
+    async _startPipelineRun(force) {
       this.isPipelineRunning = true
       this.pipelineDoneStatus = null
       this.errorMessage = ''
@@ -630,7 +580,7 @@ export default {
         const sessionId = await store.startPipeline(
           this.singleCountry.name,
           this.selectedSnapshotDate,
-          { force: isCompleted }
+          { force }
         )
         this.pipelineSessionId = sessionId || null
       } catch (err) {
@@ -732,30 +682,6 @@ export default {
   background: var(--bs-primary);
 }
 
-/* Year button states — Bootstrap's .active uses --bs-primary but the
-   "used" (already-processed) green border is custom. */
-.sidebar__year-btn--active {
-  background: var(--bs-primary-bg-subtle);
-  border-color: var(--bs-primary);
-  color: var(--bs-primary-text-emphasis);
-  font-weight: 600;
-}
-
-.sidebar__year-btn--used {
-  border-color: var(--bs-success);
-  color: var(--bs-success);
-}
-
-.sidebar__year-btn--used:hover:not(.sidebar__year-btn--active) {
-  background: var(--bs-success-bg-subtle);
-  border-color: var(--bs-success);
-}
-
-.sidebar__year-btn--disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
 /* Brand mark hover — opacity transition on the globe emoji link. */
 .app-shell__brand-mark {
   transition: opacity 0.2s ease;
@@ -764,4 +690,5 @@ export default {
 .app-shell__brand-mark:hover {
   opacity: 0.7;
 }
+
 </style>

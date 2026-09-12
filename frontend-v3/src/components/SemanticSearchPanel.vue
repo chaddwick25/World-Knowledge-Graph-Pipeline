@@ -1,33 +1,41 @@
 <template>
   <div class="d-flex flex-column gap-2">
     <form class="d-flex flex-column gap-2" @submit.prevent="performSearch">
-      <!-- Query mode toggle -->
+      <!-- Query mode radio group (was pill buttons) -->
       <div class="d-flex flex-column gap-1">
-        <div class="d-flex gap-1">
-          <button
-            type="button"
-            class="btn btn-sm rounded-pill"
-            :class="isTagsMode ? 'btn-primary' : 'btn-outline-secondary'"
-            @click="queryMode = 'tags'"
+        <div class="btn-group btn-group-sm" role="group" aria-label="Query mode">
+          <input
+            type="radio"
+            class="btn-check"
+            name="query-mode"
+            id="query-mode-tags"
+            autocomplete="off"
+            value="tags"
+            v-model="queryMode"
           >
-            Structured (JSON)
-          </button>
-          <button
-            type="button"
-            class="btn btn-sm rounded-pill"
-            :class="isNaturalMode ? 'btn-primary' : 'btn-outline-secondary'"
-            @click="queryMode = 'natural'"
+          <label class="btn btn-outline-secondary" for="query-mode-tags">Structured (JSON)</label>
+
+          <input
+            type="radio"
+            class="btn-check"
+            name="query-mode"
+            id="query-mode-natural"
+            autocomplete="off"
+            value="natural"
+            v-model="queryMode"
           >
-            Natural language
-          </button>
-          <button
-            type="button"
-            class="btn btn-sm rounded-pill"
-            :class="isTemplateMode ? 'btn-primary' : 'btn-outline-secondary'"
-            @click="queryMode = 'template'"
+          <label class="btn btn-outline-secondary" for="query-mode-natural">Natural language</label>
+
+          <input
+            type="radio"
+            class="btn-check"
+            name="query-mode"
+            id="query-mode-template"
+            autocomplete="off"
+            value="template"
+            v-model="queryMode"
           >
-            Kuhn's Template
-          </button>
+          <label class="btn btn-outline-secondary" for="query-mode-template">AI query</label>
         </div>
       </div>
 
@@ -72,15 +80,15 @@
 
       <!-- Filters (hidden in NL Template mode) -->
       <div v-if="!isTemplateMode" class="row g-2">
-        <div class="col-6">
+        <div class="col-4">
           <label class="form-label small text-secondary mb-0">Lat</label>
           <input v-model="lat" type="number" step="any" class="form-control form-control-sm" placeholder="Optional" />
         </div>
-        <div class="col-6">
+        <div class="col-4">
           <label class="form-label small text-secondary mb-0">Lon</label>
           <input v-model="lon" type="number" step="any" class="form-control form-control-sm" placeholder="Optional" />
         </div>
-        <div class="col-6">
+        <div class="col-4">
           <label class="form-label small text-secondary mb-0">Class</label>
           <select v-model="rdfType" class="form-select form-select-sm">
             <option :value="null">Any class</option>
@@ -91,58 +99,31 @@
         </div>
       </div>
 
-      <!-- Top K results limit + anchor/entity graph layer toggles -->
-      <div class="d-flex flex-column gap-1">
-        <div class="d-flex align-items-center gap-2">
-          <label class="form-label small text-secondary mb-0">Top K</label>
-          <input
-            v-model.number="topK"
-            type="number"
-            min="1"
-            max="100"
-            class="form-control form-control-sm"
-            style="max-width: 90px;"
-          />
-          <span class="small text-secondary">max results to show</span>
-        </div>
+      <!-- Top K results limit + Search button (inline) -->
+      <div class="d-flex align-items-center gap-2">
+        <label class="form-label small text-secondary mb-0 text-nowrap">Top K</label>
+        <input
+          v-model.number="topK"
+          type="number"
+          min="1"
+          max="100"
+          class="form-control form-control-sm"
+          style="max-width: 90px;"
+        />
+        <button
+          type="submit"
+          class="btn btn-primary btn-sm flex-grow-1"
+          :disabled="isLoading || !isValid"
+        >
+          <span v-if="isLoading" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+          {{ isLoading ? 'Searching…' : 'Search' }}
+        </button>
       </div>
-
-      <button
-        type="submit"
-        class="btn btn-primary btn-sm"
-        :disabled="isLoading || !isValid"
-      >
-        <span v-if="isLoading" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-        {{ isLoading ? 'Searching…' : 'Search' }}
-      </button>
     </form>
 
     <!-- Error -->
     <div v-if="displayError" class="alert alert-danger small py-1 px-2 mb-0">
       {{ displayError }}
-    </div>
-
-    <!-- Parsed query (MapQA parser — template mode) -->
-    <div v-if="displayParsedQuery" class="card card-body p-2">
-      <div class="d-flex align-items-center gap-2 mb-1">
-        <span class="small fw-semibold" style="color: var(--bs-primary-text-emphasis);">{{ displayParsedQuery.template }}</span>
-        <span
-          class="badge rounded-pill"
-          :class="confidenceBadgeClass"
-        >
-          {{ (displayParsedQuery.confidence * 100).toFixed(0) }}% confident
-        </span>
-      </div>
-      <div class="d-flex flex-wrap gap-1">
-        <span
-          v-for="(concept, idx) in displayParsedQuery.concepts"
-          :key="idx"
-          class="d-inline-flex align-items-center gap-1 small"
-        >
-          <span class="badge text-bg-info">{{ concept.type }}</span>
-          <span class="text-secondary">{{ concept.text || '—' }}</span>
-        </span>
-      </div>
     </div>
 
     <!-- Data answer (deterministic factor-join — arrives first, stays pinned) -->
@@ -171,8 +152,30 @@
          red while closed, gray once fully open. -->
     <div v-if="traceFlow.length > 0" class="mt-1 small text-secondary">
       <details class="trace-details">
-        <summary class="cursor-pointer">Execution trace ({{ traceFlow.length }} steps)</summary>
+        <summary class="cursor-pointer">Execution trace ({{ traceFlow.length  + 1 }} steps)</summary>
         <div class="trace-flow mt-1">
+          <!-- WK Template headline: first node in the trace. Template name
+               + confidence badge. "WK Template" links to the ACL paper. -->
+          <div v-if="displayParsedQuery" class="trace-node">
+            <div class="d-flex align-items-baseline gap-2">
+              <span class="trace-icon bg-primary-subtle" aria-hidden="true">
+                <i class="bi bi-file-earmark-text text-primary"></i>
+              </span>
+              <a
+                href="https://aclanthology.org/2026.acl-long.679.pdf"
+                target="_blank"
+                rel="noopener"
+                class="trace-link fw-semibold"
+              >WK Template</a>
+              <span class="text-secondary">: {{ displayParsedQuery.template }}</span>
+              <span
+                class="badge rounded-pill"
+                :class="confidenceBadgeClass"
+              >
+                {{ (displayParsedQuery.confidence * 100).toFixed(0) }}% confident
+              </span>
+            </div>
+          </div>
           <div
             v-for="(node, idx) in traceFlow"
             :key="idx"
@@ -230,20 +233,36 @@
 
     <!-- Results table -->
     <div v-if="displayResults.length > 0" class="d-flex flex-column gap-1">
-      <h6 class="small fw-semibold mb-0">Results ({{ displayResults.length }})</h6>
+      <div class="d-flex align-items-center justify-content-between">
+        <h6 class="small fw-semibold mb-0">Results ({{ displayResults.length }})</h6>
+        <button
+          class="btn btn-link btn-sm text-secondary p-0"
+          @click="showScores = !showScores"
+        >
+          {{ showScores ? 'Hide' : 'Show' }} scores
+        </button>
+      </div>
       <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
         <table class="table table-sm table-borderless mb-0" style="font-size: 0.72rem;">
           <thead class="table-dark">
             <tr>
+              <th>Name</th>
               <th>OSM ID</th>
               <th>Tags</th>
               <th>Class</th>
               <th>Coords</th>
-              <th>Score</th>
+              <template v-if="showScores">
+                <th class="text-end">Name</th>
+                <th class="text-end">Geo</th>
+                <th class="text-end">Class</th>
+                <th class="text-end">Tag</th>
+              </template>
+              <th class="text-end">Final</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="item in displayResults" :key="`${item.osm_type}-${item.osm_id}`">
+              <td>{{ item.name || '—' }}</td>
               <td>
                 <a
                   :href="`https://www.openstreetmap.org/${item.osm_type}/${item.osm_id}`"
@@ -262,6 +281,12 @@
                 </template>
                 <span v-else class="text-secondary">N/A</span>
               </td>
+              <template v-if="showScores">
+                <td class="text-end">{{ item.scores?.name_score?.toFixed(3) || '—' }}</td>
+                <td class="text-end">{{ item.scores?.geo_score?.toFixed(3) || '—' }}</td>
+                <td class="text-end">{{ item.scores?.class_score?.toFixed(3) || '—' }}</td>
+                <td class="text-end">{{ item.scores?.tag_match_score?.toFixed(3) || '—' }}</td>
+              </template>
               <td class="text-end">
                 <strong>{{ item.scores?.final_score?.toFixed(3) || '—' }}</strong>
               </td>
@@ -327,6 +352,7 @@ export default {
       error: null,
       results: [],
       searched: false,
+      showScores: false,
       subdivisionQid: null,
       // MapQA parser state (sync template mode)
       parsedQuery: null,
@@ -406,6 +432,7 @@ export default {
     displayResults() {
       return this.results.map((r) => this.normalizeResult(r)).slice(0, this.topKClamped)
     },
+    /** Confidence badge color: green >= 80%, yellow >= 60%, red < 60%. */
     confidenceBadgeClass() {
       const c = this.displayParsedQuery?.confidence || 0
       if (c >= 0.8) return 'text-bg-success'
@@ -681,7 +708,7 @@ export default {
       return {
         osm_type: r.osm_type,
         osm_id: r.osm_id,
-        name: r.name || '',
+        name: r.name || r.tags?.name || r.tags?.['name:en'] || '',
         tags: r.tags || {},
         wkg_class: r.wkg_class || null,
         geom: lat != null && lon != null ? { lat: Number(lat), lon: Number(lon) } : null,

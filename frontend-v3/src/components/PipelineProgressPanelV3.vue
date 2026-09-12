@@ -1,50 +1,12 @@
 <template>
   <section
-    v-if="run || status !== 'idle' || logs.length > 0"
+    v-if="hasVisibleContent"
     class="pipeline"
     :class="{ 'pipeline--running': isRunning, 'pipeline--failed': isFailed }"
   >
-    <!-- ── Header ─────────────────────────────────────────── -->
-    <header class="pipeline__header">
-      <div class="pipeline__header-left">
-        <span class="pipeline__title">{{ pipelineTitle }} — {{ countryName }}</span>
-        <span v-if="snapshotDate && isDurable" class="pipeline__snapshot-date">
-          {{ snapshotDate }}
-        </span>
-        <span v-if="isRunning" class="pipeline__step-count">
-          Step {{ completedCount }}/{{ totalCount }}
-        </span>
-      </div>
-      <div class="pipeline__header-right">
-        <span
-          class="pipeline__badge"
-          :class="`pipeline__badge--${badgeVariant}`"
-        >{{ badgeLabel }}</span>
-
-        <!-- Action button: Run / Re-run / Retry -->
-        <button
-          v-if="isIdle || isComplete || isSkipped"
-          class="pipeline__action-btn"
-          @click="handleRun"
-        >
-          <template v-if="isIdle">
-            {{ pipelineType === 'temporal' ? 'Start Preprocessing' : 'Run Pipeline' }}
-          </template>
-          <template v-else>Re-run Pipeline</template>
-        </button>
-
-        <button
-          v-if="isFailed"
-          class="pipeline__action-btn pipeline__action-btn--danger"
-          @click="handleRetry"
-        >
-          Retry
-        </button>
-      </div>
-    </header>
 
     <!-- ── Durable results summary (DB-backed) ─────────────── -->
-    <div v-if="isDurable && summary" class="pipeline__summary">
+    <div v-if="isDurable && hasSummary" class="pipeline__summary">
       <span v-if="summary.totalEntities" class="pipeline__summary-item">
         {{ summary.totalEntities.toLocaleString() }} entities
       </span>
@@ -53,9 +15,6 @@
       </span>
       <span v-if="summary.totalSpatialLinks" class="pipeline__summary-item">
         {{ summary.totalSpatialLinks }} spatial links
-      </span>
-      <span v-if="run?.startedAt && run?.completedAt" class="pipeline__summary-item">
-        {{ formatDuration(new Date(run.completedAt) - new Date(run.startedAt)) }} total
       </span>
     </div>
 
@@ -66,7 +25,7 @@
 
     <!-- ── Steps list ───────────────────────────────────── -->
     <details
-      v-if="steps.length > 0"
+      v-if="steps.length > 0 && !(isDurable && isComplete)"
       class="pipeline__steps-details"
       :open="isRunning || isFailed"
     >
@@ -132,23 +91,6 @@
       class="pipeline__error"
     >{{ errorMessage }}</p>
   </section>
-
-  <!-- ── Empty state: idle with run button ───────────────── -->
-  <section
-    v-else-if="countryName"
-    class="pipeline pipeline--idle"
-  >
-    <header class="pipeline__header">
-      <div class="pipeline__header-left">
-        <span class="pipeline__title">{{ pipelineTitle }} — {{ countryName }}</span>
-      </div>
-      <div class="pipeline__header-right">
-        <button class="pipeline__action-btn" @click="handleRun">
-          {{ pipelineType === 'temporal' ? 'Start Preprocessing' : 'Run Pipeline' }}
-        </button>
-      </div>
-    </header>
-  </section>
 </template>
 
 <script>
@@ -161,7 +103,8 @@
  *
  * Props:
  *   countryName  - Required. Country to track.
- *   pipelineType - 'worldkg' (default) or 'temporal'
+ *   sessionId    - Optional. Connect WebSocket immediately if the pipeline
+ *                  was already started externally.
  *
  * Events:
  *   pipeline-done  - { status, sessionId, error }
@@ -175,10 +118,6 @@ export default {
     countryName: {
       type: String,
       required: true,
-    },
-    pipelineType: {
-      type: String,
-      default: 'worldkg', // 'worldkg' | 'temporal'
     },
     /**
      * Optional session ID to connect WebSocket immediately
@@ -225,6 +164,20 @@ export default {
     summary() {
       return this.run?.summary || null
     },
+    hasSummary() {
+      const s = this.summary
+      if (!s) return false
+      return !!(s.totalEntities || s.totalAligned || s.totalSpatialLinks)
+    },
+    /** Whether the panel has any visible content to render. Gates the
+     *  root <section> so an empty panel never appears. */
+    hasVisibleContent() {
+      if (!this.run) return false
+      if (this.isRunning || this.isFailed) return true
+      if (this.isDurable && this.hasSummary) return true
+      if (this.steps.length > 0 && !(this.isDurable && this.isComplete)) return true
+      return this.logs.length > 0
+    },
     snapshotDate() {
       return this.run?.snapshotDate || null
     },
@@ -240,30 +193,9 @@ export default {
     isSkipped() {
       return this.status === 'skipped'
     },
-    isIdle() {
-      return this.status === 'idle'
-    },
-    badgeLabel() {
-      if (this.isRunning) return 'Running'
-      if (this.isComplete) return 'Complete'
-      if (this.isFailed) return 'Failed'
-      if (this.isSkipped) return 'Skipped'
-      return 'Idle'
-    },
-    badgeVariant() {
-      if (this.isRunning) return 'info'
-      if (this.isComplete) return 'success'
-      if (this.isFailed) return 'danger'
-      if (this.isSkipped) return 'warning'
-      return 'secondary'
-    },
     currentStepName() {
       const active = this.steps.find((s) => s.status === 'in_progress')
       return active ? active.name : null
-    },
-    pipelineTitle() {
-      if (this.pipelineType === 'temporal') return 'Preprocessing'
-      return 'WorldKG Pipeline'
     },
   },
   watch: {
@@ -294,16 +226,6 @@ export default {
     }
   },
   methods: {
-    async handleRun() {
-      if (this.pipelineType === 'temporal') {
-        await this.store.startPreprocessing(this.countryName)
-      } else {
-        await this.store.startPipeline(this.countryName)
-      }
-    },
-    handleRetry() {
-      this.handleRun()
-    },
     iconClass(stepStatus) {
       if (stepStatus === 'completed') return 'step-icon step-icon--success'
       if (stepStatus === 'in_progress') return 'step-icon step-icon--running'
@@ -346,34 +268,6 @@ export default {
   border-color: #450a0a;
 }
 
-/* ── Header ─────────────────────────────────── */
-
-.pipeline__header {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.pipeline__header-left {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-.pipeline__title {
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.pipeline__snapshot-date {
-  font-size: 0.72rem;
-  color: #9ca3af;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
 /* ── Durable summary ─────────────────────────── */
 
 .pipeline__summary {
@@ -390,81 +284,6 @@ export default {
   font-size: 0.72rem;
   color: #9ca3af;
   white-space: nowrap;
-}
-
-.pipeline__step-count {
-  font-size: 0.75rem;
-  color: #9ca3af;
-}
-
-.pipeline__header-right {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-shrink: 0;
-}
-
-.pipeline__badge {
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  border: 1px solid transparent;
-  white-space: nowrap;
-}
-
-.pipeline__badge--success {
-  background: rgba(34, 197, 94, 0.15);
-  border-color: #22c55e;
-  color: #22c55e;
-}
-
-.pipeline__badge--danger {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: #ef4444;
-  color: #ef4444;
-}
-
-.pipeline__badge--info {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: #60a5fa;
-  color: #60a5fa;
-}
-
-.pipeline__badge--secondary {
-  background: rgba(75, 85, 99, 0.2);
-  border-color: #4b5563;
-  color: #9ca3af;
-}
-
-.pipeline__badge--warning {
-  background: rgba(234, 179, 8, 0.15);
-  border-color: #eab308;
-  color: #eab308;
-}
-
-.pipeline__action-btn {
-  padding: 0.25rem 0.6rem;
-  border-radius: 0.5rem;
-  border: 1px solid #4f46e5;
-  background: #111827;
-  color: #e5e7eb;
-  font-size: 0.78rem;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.pipeline__action-btn:hover {
-  background: #1f2937;
-  border-color: #6366f1;
-}
-
-.pipeline__action-btn--danger {
-  border-color: #dc2626;
-}
-
-.pipeline__action-btn--danger:hover {
-  background: rgba(220, 38, 38, 0.15);
 }
 
 /* ── Progress bar ────────────────────────────── */
@@ -684,12 +503,5 @@ export default {
   padding: 0.3rem 0.4rem;
   background: rgba(239, 68, 68, 0.08);
   border-radius: 0.4rem;
-}
-
-/* ── Idle state ───────────────────────────────── */
-
-.pipeline--idle {
-  border-color: #1f2937;
-  opacity: 0.85;
 }
 </style>

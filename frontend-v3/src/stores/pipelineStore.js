@@ -132,15 +132,16 @@ export const usePipelineStore = defineStore('pipeline', {
     runs: {},
 
     /**
-     * Tracks which snapshot years have been completed for a country.
-     * Keyed by country name, value is a Set of year strings (e.g., "2024").
+     * Tracks which snapshot dates have been completed for a country.
+     * Keyed by country name, value is a Set of full date strings
+     * (e.g., "2025_12_31").
      * { [countryName]: Set<string> }
      *
-     * NOTE: Now backed by SnapshotJob DB rows via fetchSnapshotJobs().
-     * The in-memory Set is a cache populated from the DB; clearing it
-     * requires a re-fetch (or a resetYearsForCountry() call).
+     * Backed by SnapshotJob DB rows via fetchSnapshotJobs(). The in-memory
+     * Set is a cache populated from the DB; clearing it requires a re-fetch
+     * (or a resetUsedSnapshotDates() call).
      */
-    runsByYear: {},
+    usedSnapshotDates: {},
 
     /**
      * Per-country SnapshotJob rows keyed by country name.
@@ -373,13 +374,12 @@ export const usePipelineStore = defineStore('pipeline', {
       this._initRun(countryName, 'running', 'worldkg', pipelineSteps)
       this.runs[countryName].snapshotDate = snapshotDate
 
-      // Track this year as used for this country
+      // Track this date as used for this country
       if (snapshotDate) {
-        const year = snapshotDate.split('_')[0]
-        if (!this.runsByYear[countryName]) {
-          this.runsByYear[countryName] = new Set()
+        if (!this.usedSnapshotDates[countryName]) {
+          this.usedSnapshotDates[countryName] = new Set()
         }
-        this.runsByYear[countryName].add(year)
+        this.usedSnapshotDates[countryName].add(snapshotDate)
       }
 
       try {
@@ -473,20 +473,19 @@ export const usePipelineStore = defineStore('pipeline', {
     },
 
     /**
-     * Clear all tracked pipeline runs by year for a country.
-     * Re-enables all year buttons for that country.
+     * Clear all tracked used snapshot dates for a country.
+     * Re-enables all dates for that country.
      */
-    clearRunsByYear(countryName) {
-      // Use $patch to trigger Vue reactivity when clearing
-      this.runsByYear[countryName] = new Set()
+    clearUsedSnapshotDates(countryName) {
+      this.usedSnapshotDates[countryName] = new Set()
       // Also clear the run itself
       this.clearRun(countryName)
     },
 
     /**
      * Fetch SnapshotJob rows for a country from the DB and refresh the
-     * in-memory runsByYear cache. Replaces the lost-on-refresh state with
-     * DB ground truth (TEMPORAL_SNAPSHOT_REFACTOR.md Phase F).
+     * in-memory usedSnapshotDates cache. Replaces the lost-on-refresh state
+     * with DB ground truth (TEMPORAL_SNAPSHOT_REFACTOR.md Phase F).
      *
      * Returns the array of job rows.
      */
@@ -496,16 +495,15 @@ export const usePipelineStore = defineStore('pipeline', {
         const { data } = await axios.get(`/snapshot-jobs/${encodeURIComponent(countryCode)}/`)
         const jobs = data.jobs || []
         this.snapshotJobs[countryName] = jobs
-        // Rebuild runsByYear cache: a year is "used" if any job for that
-        // snapshot_date is COMPLETED or RUNNING.
+        // Rebuild usedSnapshotDates cache: a date is "used" if any job for
+        // that snapshot_date is COMPLETED or RUNNING.
         const used = new Set()
         for (const j of jobs) {
           if (j.status === 'completed' || j.status === 'running') {
-            const year = String(j.snapshot_date).split('_')[0]
-            if (year) used.add(year)
+            used.add(j.snapshot_date)
           }
         }
-        this.runsByYear[countryName] = used
+        this.usedSnapshotDates[countryName] = used
         return jobs
       } catch (err) {
         console.error(`[pipelineStore] fetchSnapshotJobs error for ${countryCode}:`, err)
@@ -514,11 +512,11 @@ export const usePipelineStore = defineStore('pipeline', {
     },
 
     /**
-     * Reset the year cache for a country (after a SnapshotJob deletion
+     * Reset the used-dates cache for a country (after a SnapshotJob deletion
      * on the backend, or to force a re-fetch on next render).
      */
-    resetYearsForCountry(countryName) {
-      this.runsByYear[countryName] = new Set()
+    resetUsedSnapshotDates(countryName) {
+      this.usedSnapshotDates[countryName] = new Set()
       this.snapshotJobs[countryName] = []
     },
 
