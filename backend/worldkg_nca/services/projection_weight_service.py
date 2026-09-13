@@ -54,7 +54,10 @@ class ProjectionWeightService(BaseService):
         # ------------------------------------------------------------------
         country_filter = Q()
         if country_name:
+            from core.services.snapshot.regional_path_service import normalize_country_slug
+            normalized = normalize_country_slug(country_name)
             country_filter |= Q(country_name__iexact=country_name)
+            country_filter |= Q(country_name__iexact=normalized)
         if iso_code and iso_code != country_name:
             country_filter |= Q(country_name__iexact=iso_code)
 

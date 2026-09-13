@@ -12,7 +12,6 @@
             Search places worldwide and get AI-powered answers
           </p>
         </div>
-
         <!-- System status badge -->
         <div class="flex-shrink-0">
           <span v-if="isCheckingSystem" class="badge rounded-pill text-bg-info">
@@ -24,7 +23,6 @@
           <span v-else class="badge rounded-pill text-bg-danger">
             System Offline
           </span>
-
           <!-- System Summary button (visible when ready) -->
           <button
             v-if="isSystemReady"
@@ -65,7 +63,6 @@
           />
         </div>
       </div>
-
       <!-- Right: Sidebar -->
       <aside class="d-flex flex-column gap-2 p-3 rounded-3 border overflow-auto" style="background: var(--bs-emphasis-bg); min-height: 0;">
         <!-- Planet Initialization Panel (shown only when system init failed or never ran) -->
@@ -76,7 +73,6 @@
           :checking="isCheckingSystem"
           @refresh="checkSystem"
         />
-
         <!-- Selected country info (hidden until planet init is complete) -->
         <div v-if="isSystemReady" class="d-flex flex-column gap-1">
           <div class="d-flex align-items-center justify-content-between">
@@ -92,7 +88,6 @@
               Clear
             </button>
           </div>
-
           <!-- Search + dropdown when nothing selected -->
           <div v-if="!singleCountry" class="d-flex flex-column gap-1">
             <input
@@ -116,38 +111,14 @@
               No matching countries found.
             </div>
           </div>
-
           <!-- Selected country card -->
           <div v-else class="card card-body p-2" style="border-color: var(--bs-primary-border-subtle);">
-            <div class="fs-6 fw-semibold" style="color: var(--bs-heading-color);">{{ countryDisplayName }}</div>
-            <div class="small text-secondary text-capitalize">{{ singleCountry.continent }}</div>
-
+            <div class="fs-6 fw-semibold" style="color: var(--bs-heading-color);">{{ countryDisplayName }} - {{ continentDisplayName }}</div>
             <div v-if="isLoadingStatus" class="small text-secondary mt-1">
               Checking status…
             </div>
-            <!-- <div v-else-if="countryStatus" class="d-flex flex-wrap gap-1 mt-1">
-              <span
-                v-if="countryStatus.is_db_processed"
-                class="badge text-bg-success"
-              >
-                Preprocessed
-              </span>
-              <span
-                v-if="countryStatus.has_pickle"
-                class="badge text-bg-success"
-              >
-                Has Pickle
-              </span>
-              <span
-                v-if="!countryStatus.is_db_processed"
-                class="badge text-bg-secondary"
-              >
-                Not Preprocessed
-              </span>
-            </div> -->
           </div>
         </div>
-
         <!-- Snapshot calendar (visible only after init) -->
         <SnapshotCalendar
           v-if="singleCountry && isSystemReady && isContinentSnapshotsReady"
@@ -167,9 +138,6 @@
           @rerun="onRerunDate"
           @run="handleRunPipeline"
         />
-
-
-
         <!-- Pipeline progress -->
         <div class="d-flex flex-column gap-1">
           <PipelineProgressPanelV3
@@ -179,7 +147,6 @@
             @pipeline-done="onPipelineDone"
           />
         </div>
-
         <!-- Tabbed panel (post-pipeline or search ready) -->
         <div v-if="canSearch" class="d-flex flex-column gap-1">
           <ul class="nav nav-tabs nav-fill">
@@ -200,14 +167,12 @@
               @search-results="onSearchResults"
               @query-graph="onQueryGraph"
             />
-
             <!-- Metrics tab -->
             <PipelineMetricsPanel
               v-else-if="activeTab === 'metrics'"
               :country-name="singleCountry.name"
               :snapshot-date="selectedSnapshotDate"
             />
-
             <!-- Augmented Data tab -->
             <AugmentedDataPanel
               v-else-if="activeTab === 'augmented'"
@@ -215,7 +180,6 @@
               :snapshot-date="selectedSnapshotDate"
               @links-toggle="onLinksToggle"
             />
-
             <!-- Deck GL tab -->
             <div v-else-if="activeTab === 'deckgl'" class="d-flex align-items-center justify-content-center py-4">
               <span class="text-secondary">Coming Soon</span>
@@ -224,7 +188,6 @@
         </div>
       </aside>
     </section>
-
     <SystemSummaryModal :open="showSystemSummary" @close="showSystemSummary = false" />
     <RerunConfirmModal
       :open="showRerunConfirm"
@@ -339,6 +302,12 @@ export default {
     countryDisplayName() {
       if (!this.singleCountry) return ''
       return this.singleCountry.name.charAt(0).toUpperCase() + this.singleCountry.name.slice(1)
+    },
+    continentDisplayName() {
+      if (!this.singleCountry) return ''
+      return this.singleCountry.continent
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase())
     },
     pipelineCanRun() {
       return this.hasSelection

@@ -61,10 +61,18 @@ class CountrySearchStatusView(APIView):
         import calendar
         
         try:
-            # Simplified: just try direct DB lookup with the provided name
-            country_processing = CountrySearchProcessing.objects.filter(
-                country_name__iexact=country_name
-            ).first()
+            # Normalize: frontend sends display names ("Ireland And Northern Ireland"),
+            # DB stores slugs ("ireland_and_northern_ireland"). normalize_country_slug
+            # aligns the two so multi-word countries match.
+            from core.services.snapshot.regional_path_service import normalize_country_slug
+            normalized_name = normalize_country_slug(country_name)
+
+            # Try the normalized slug first, then fall back to the raw name
+            # (covers any DB rows stored with spaces or mixed casing).
+            country_processing = (
+                CountrySearchProcessing.objects.filter(country_name__iexact=normalized_name).first()
+                or CountrySearchProcessing.objects.filter(country_name__iexact=country_name).first()
+            )
 
             if country_processing:
                 is_processed = country_processing.is_processed

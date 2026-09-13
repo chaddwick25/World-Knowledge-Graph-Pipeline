@@ -22,6 +22,8 @@ from typing import Optional
 
 from django.conf import settings
 
+from core.services.snapshot.regional_path_service import normalize_country_slug
+
 logger = logging.getLogger(__name__)
 
 
@@ -294,9 +296,14 @@ class AppStateService:
         if iso:
             profile = CountryPipelineProfile.objects.filter(iso2__iexact=iso).first()
 
-        country_processing = CountrySearchProcessing.objects.filter(
-            country_name__iexact=country_name
-        ).first()
+        country_processing = (
+            CountrySearchProcessing.objects.filter(
+                country_name__iexact=normalize_country_slug(country_name)
+            ).first()
+            or CountrySearchProcessing.objects.filter(
+                country_name__iexact=country_name
+            ).first()
+        )
         is_ready = bool(country_processing and country_processing.is_processed)
 
         entity_count = 0

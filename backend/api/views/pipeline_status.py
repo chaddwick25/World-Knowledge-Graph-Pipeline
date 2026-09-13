@@ -16,9 +16,26 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 
 from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
+from core.services.snapshot.regional_path_service import normalize_country_slug
 from core.models import ProcessingSession, Task, PipelineRun
 
 logger = logging.getLogger(__name__)
+
+
+def _country_filter(country_name: str) -> 'Q':
+    """Build a Q filter that matches the country name as-sent and as a slug.
+
+    Frontend sends display names ("Ireland And Northern Ireland"); the DB
+    stores slugs ("ireland_and_northern_ireland"). Match both so multi-word
+    countries resolve.
+    """
+    from django.db.models import Q
+    iso_code = resolve_iso_code(country_name)
+    normalized = normalize_country_slug(country_name)
+    f = Q(country_name__iexact=country_name) | Q(country_name__iexact=normalized)
+    if iso_code and iso_code.upper() != country_name.upper():
+        f |= Q(country_name__iexact=iso_code)
+    return f
 
 
 class WorldKGPipelineStatusView(APIView):
@@ -74,11 +91,8 @@ class WorldKGPipelineSummaryView(APIView):
         snapshot_id = request.query_params.get('snapshot_id')
 
         # Build query - always filter by country_name (also try ISO code)
-        from django.db.models import Q
         iso_code = resolve_iso_code(country_name)
-        country_filter = Q(country_name__iexact=country_name)
-        if iso_code and iso_code.upper() != country_name.upper():
-            country_filter |= Q(country_name__iexact=iso_code)
+        country_filter = _country_filter(country_name)
         scores = SpatialTripletScore.objects.filter(country_filter)
 
         # If snapshot_id provided, also filter by it
@@ -178,7 +192,7 @@ class WorldKGPipelineCountryStateView(APIView):
 
         # Find associated PipelineRun if exists
         pipeline_run = PipelineRun.objects.filter(
-            country_name__iexact=country_name
+            _country_filter(country_name)
         ).order_by('-created_at').first()
 
         response_data = {
@@ -237,11 +251,8 @@ class WorldKGPipelineRejectedSummaryView(APIView):
         snapshot_id = request.query_params.get('snapshot_id')
 
         # Build query - always filter by country_name (also try ISO code)
-        from django.db.models import Q
         iso_code = resolve_iso_code(country_name)
-        country_filter = Q(country_name__iexact=country_name)
-        if iso_code and iso_code.upper() != country_name.upper():
-            country_filter |= Q(country_name__iexact=iso_code)
+        country_filter = _country_filter(country_name)
         scores = SpatialTripletScoreRejected.objects.filter(country_filter)
 
         # If snapshot_id provided, also filter by it
@@ -320,10 +331,7 @@ class ValidationCostEstimateView(APIView):
 
         # Resolve country name to ISO code for DB query (DB stores ISO code)
         iso_code = resolve_iso_code(country_name)
-        from django.db.models import Q
-        country_filter = Q(country_name__iexact=country_name)
-        if iso_code and iso_code.upper() != country_name.upper():
-            country_filter |= Q(country_name__iexact=iso_code)
+        country_filter = _country_filter(country_name)
 
         rejected = SpatialTripletScoreRejected.objects.filter(country_filter)
 
