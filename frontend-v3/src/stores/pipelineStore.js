@@ -550,7 +550,7 @@ export const usePipelineStore = defineStore('pipeline', {
           try {
             const parsed = typeof t.result === 'string' ? JSON.parse(t.result) : t.result
             if (parsed) {
-              if (parsed.igea_accepted !== undefined) {
+              if (stepName === 'run_igea' && parsed.igea_accepted !== undefined) {
                 message = `IGEA accepted: ${parsed.igea_accepted}`
               } else if (parsed.subgraph) {
                 message = `Subgraph: ${parsed.subgraph}`

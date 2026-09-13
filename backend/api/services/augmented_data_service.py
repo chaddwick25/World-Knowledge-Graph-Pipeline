@@ -736,10 +736,17 @@ class AugmentedDataService:
 
     @staticmethod
     def _country_filter(country_name: str, iso: Optional[str]):
-        """Build a Q filter matching country_name or ISO code."""
-        from django.db.models import Q
+        """Build a Q filter matching country_name (display or slug) or ISO code.
 
-        f = Q(country_name__iexact=country_name)
+        Frontend sends display names ("Ireland And Northern Ireland"); the DB
+        stores slugs ("ireland_and_northern_ireland"). Match both so multi-word
+        countries resolve.
+        """
+        from django.db.models import Q
+        from core.services.snapshot.regional_path_service import normalize_country_slug
+
+        normalized = normalize_country_slug(country_name)
+        f = Q(country_name__iexact=country_name) | Q(country_name__iexact=normalized)
         if iso and iso.upper() != country_name.upper():
             f |= Q(country_name__iexact=iso)
         return f
