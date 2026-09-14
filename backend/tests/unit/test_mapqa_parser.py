@@ -146,6 +146,59 @@ class TestDagValidation:
                 )
 
 
+# ── Question-word typo tolerance ─────────────────────────────────────
+
+class TestQuestionWordTypoTolerance:
+    """'Whichs'/'Wich' typos must not defeat compare-closer patterns or
+    leak into entity extraction.
+
+    Regression: "Whichs is closer to Moher Cottage: Cliff Coast Coffee or
+    the Cliffs of Moher?" previously extracted 'Whichs' as an entity and
+    split 'Cliffs of Moher' into fragments, cascading into a wrong anchor
+    ("Moher" → "Moher West") and a truncated-span false positive
+    ("Cliffs" → "Cliffs of Howth").
+    """
+
+    def test_extract_all_entities_tolerates_question_word_typo(self):
+        from semantic_search.services.query_parser_service import QueryParserService
+        entities = QueryParserService.extract_all_entities(
+            "Whichs is closer to Moher Cottage: Cliff Coast Coffee or the "
+            "Cliffs of Moher?"
+        )
+        # "the" is preserved by the compare pattern; EntityGeocoder strips
+        # leading articles before resolution.
+        assert entities == [
+            "Cliff Coast Coffee", "the Cliffs of Moher", "Moher Cottage",
+        ]
+
+    def test_parse_typo_question_clean_concepts(self, parser):
+        result = parser.parse(
+            "Whichs is closer to Moher Cottage: Cliff Coast Coffee or the "
+            "Cliffs of Moher?"
+        )
+        assert result["template"] == "GEOCODE-BATCH-COMPARE (#4)"
+        texts = " ".join(c["text"] or "" for c in result["concepts"])
+        assert "Whichs" not in texts
+        assert "Moher Cottage" in texts
+
+    def test_correct_spelling_unchanged(self):
+        """Correctly-spelled question words must survive normalization."""
+        from semantic_search.services.query_parser_service import QueryParserService
+        q = "Which is closer to Moher Cottage: Cliff Coast Coffee or the Cliffs of Moher?"
+        assert QueryParserService._normalize_question_words(q) == q
+
+    def test_entity_like_word_not_clobbered(self):
+        """Real entity words edit-close to question words must survive
+        normalization ('Mill' → 'Will' is 1 edit, 'What' → 'Who' is 2 —
+        but neither is a prefix-linked typo)."""
+        from semantic_search.services.query_parser_service import QueryParserService
+        q = "Which is closer to Dublin: Tully Mill, Betelnut or Moher?"
+        assert QueryParserService._normalize_question_words(q) == q
+        assert QueryParserService._normalize_question_words(
+            "What is closer to Heavens cafe: Roshan Cafe or Pipels Cafe ?"
+        ) == "What is closer to Heavens cafe: Roshan Cafe or Pipels Cafe ?"
+
+
 # ── Multi-entity extraction ──────────────────────────────────────────
 
 class TestMultiEntityExtraction:

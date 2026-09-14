@@ -247,45 +247,30 @@
           <thead class="table-dark">
             <tr>
               <th>Name</th>
-              <th>OSM ID</th>
               <th>Tags</th>
               <th>Class</th>
-              <th>Coords</th>
               <template v-if="showScores">
-                <th class="text-end">Name</th>
-                <th class="text-end">Geo</th>
-                <th class="text-end">Class</th>
-                <th class="text-end">Tag</th>
+                <th v-for="col in activeScoreColumns" :key="col.key" class="text-end">{{ col.label }}</th>
               </template>
               <th class="text-end">Final</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="item in displayResults" :key="`${item.osm_type}-${item.osm_id}`">
-              <td>{{ item.name || '—' }}</td>
               <td>
                 <a
                   :href="`https://www.openstreetmap.org/${item.osm_type}/${item.osm_id}`"
                   target="_blank"
-                  class="text-decoration-none"
+                  class="results-name-link"
                   style="color: var(--bs-info-text-emphasis);"
                 >
-                  {{ item.osm_type }}/{{ item.osm_id }}
+                  {{ item.name || '—' }}
                 </a>
               </td>
               <td><small>{{ formatTags(item.tags) }}</small></td>
-              <td>{{ item.wkg_class || '—' }}</td>
-              <td>
-                <template v-if="item.geom">
-                  {{ item.geom.lat.toFixed(3) }}, {{ item.geom.lon.toFixed(3) }}
-                </template>
-                <span v-else class="text-secondary">N/A</span>
-              </td>
+              <td>{{ (item.wkg_class || '—').replace(/^wkgs:/, '') }}</td>
               <template v-if="showScores">
-                <td class="text-end">{{ item.scores?.name_score?.toFixed(3) || '—' }}</td>
-                <td class="text-end">{{ item.scores?.geo_score?.toFixed(3) || '—' }}</td>
-                <td class="text-end">{{ item.scores?.class_score?.toFixed(3) || '—' }}</td>
-                <td class="text-end">{{ item.scores?.tag_match_score?.toFixed(3) || '—' }}</td>
+                <td v-for="col in activeScoreColumns" :key="col.key" class="text-end">{{ item.scores?.[col.key]?.toFixed(3) || '—' }}</td>
               </template>
               <td class="text-end">
                 <strong>{{ item.scores?.final_score?.toFixed(3) || '—' }}</strong>
@@ -431,6 +416,23 @@ export default {
     /** Normalized + top-k-capped results (table rows and map entities). */
     displayResults() {
       return this.results.map((r) => this.normalizeResult(r)).slice(0, this.topKClamped)
+    },
+    /** Score columns that have at least one non-zero value in the current
+     *  result set. Columns that are always 0 for a given search mode
+     *  (e.g. Geo without lat/lon, Tag without specific tags) are hidden. */
+    activeScoreColumns() {
+      const cols = [
+        { key: 'name_score',       label: 'Name'  },
+        { key: 'geo_score',        label: 'Geo'   },
+        { key: 'class_score',      label: 'Class' },
+        { key: 'tag_match_score',  label: 'Tag'   },
+      ]
+      return cols.filter((c) =>
+        this.displayResults.some((r) => {
+          const v = r.scores?.[c.key]
+          return v != null && v !== 0 && !Number.isNaN(v)
+        })
+      )
     },
     /** Confidence badge color: green >= 80%, yellow >= 60%, red < 60%. */
     confidenceBadgeClass() {
@@ -1227,6 +1229,17 @@ export default {
    provide a utility for this). */
 .cursor-pointer {
   cursor: pointer;
+}
+
+/* Result-table entity name links: underline on hover only (the plain
+   Bootstrap link default is always-underlined; its text-decoration-none
+   utility carries !important and would beat a hover rule, hence the
+   dedicated class). */
+.results-name-link {
+  text-decoration: none;
+}
+.results-name-link:hover {
+  text-decoration: underline;
 }
 
 /* Execution trace decision flow: vertical spine with dashed separators

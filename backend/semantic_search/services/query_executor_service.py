@@ -296,8 +296,21 @@ class QueryExecutorService:
 
                 # Deterministic context — no LLM tool selection.
                 osm_ids = [r["osm_id"] for r in results if r.get("osm_id")]
+                # Resolve the effective country from the result entities when
+                # the request has none: the class-distribution context query
+                # otherwise Appends over EVERY country partition of the
+                # snapshot (measured 3.4-12.4s on 2025_12_31 vs ~295ms
+                # pruned to one leaf — rules §6.6 partitioning).
+                effective_country = country_code
+                if not effective_country:
+                    countries = {
+                        r.get("country_code") for r in results
+                        if r.get("country_code")
+                    }
+                    if len(countries) == 1:
+                        effective_country = countries.pop()
                 context = EntityContextService.get_context(
-                    osm_ids, country_code, snapshot_date,
+                    osm_ids, effective_country, snapshot_date,
                     template=template, trace=trace,
                 )
                 if event_callback:
@@ -306,7 +319,7 @@ class QueryExecutorService:
                 # Single LLM call — synthesis with context.
                 enrichment = QueryEnrichmentService.synthesize(
                     question, template, concepts, results, context,
-                    country_code, snapshot_date,
+                    effective_country, snapshot_date,
                     event_callback=event_callback,
                 )
                 if enrichment and enrichment.get("enriched_answer"):
@@ -413,6 +426,27 @@ class QueryExecutorService:
             ids = list(qs.values_list('osm_id', flat=True)[:cap])
             if ids:
                 return ids, "ontology_class"
+
+        # Fuzzy correction tier (Kuhn's Template correction layer): a
+        # misspelled phrase fails both exact tiers above. Correct against
+        # the snapshot's real tag vocabulary (pg_trgm + fuzzystrmatch) and
+        # retry the exact-tag tier with the canonical tag.
+        from semantic_search.services.query_correction_service import (
+            QueryCorrectionService,
+        )
+        corrected = QueryCorrectionService.correct_amenity(
+            amenity_type, country_code=country_code, snapshot_id=snapshot_id,
+        )
+        if corrected and corrected[0] != amenity_type:
+            qs = OsmEntity.objects.using("vectors").filter(
+                snapshot_id=snapshot_id,
+                tags__contains={"amenity": corrected[0]},
+            )
+            if country_code:
+                qs = qs.filter(country_code=country_code.upper())
+            ids = list(qs.values_list('osm_id', flat=True)[:cap])
+            if ids:
+                return ids, "fuzzy_correction"
         return [], None
 
     @classmethod
@@ -627,6 +661,7 @@ class QueryExecutorService:
             "lat": lat,
             "lon": lon,
             "wkg_class": entity.wkg_class,
+            "country_code": entity.country_code,
         }
 
     # ── Template 1: GEOCODE-BATCH-COMPARE (#4) ──────────────────────────────
@@ -728,13 +763,27 @@ class QueryExecutorService:
 
         anchor_point = Point(anchor["lon"], anchor["lat"], srid=4326)
         results = []
+        # Candidate geocodes prune to the anchor's country leaf when the
+        # request has none: an unpruned name search Appends over EVERY
+        # country partition of the snapshot (measured ~1-3s cold per
+        # geocode on the 2025_12_31 snapshot vs ~50ms on one leaf).
+        candidate_country = country_code or anchor.get("country_code")
         # Enriched candidates: input query + resolved entity (id, name,
         # distance) so the trace can link each candidate to its OSM entity
         # regardless of name matching. One entry per candidate, in input
         # order — failed geocodes stay present with null entity fields.
         enriched_candidates = []
         for name in candidate_names:
-            entity = EntityGeocoder.geocode(name, country_code, snapshot_date)
+            entity = EntityGeocoder.geocode(
+                name, candidate_country, snapshot_date,
+            )
+            if entity is None and candidate_country != country_code:
+                # Cross-country candidate (e.g. border compare questions
+                # "Windsor or Detroit") — retry unpruned. Rare, so the
+                # extra Append is the exception, not the rule.
+                entity = EntityGeocoder.geocode(
+                    name, country_code, snapshot_date,
+                )
             if entity and entity.get("lat"):
                 dist_m = cls._haversine_m(
                     anchor["lat"], anchor["lon"],
@@ -1073,6 +1122,21 @@ class QueryExecutorService:
             qs = qs.filter(country_code=country_code.upper())
         if qs.exists():
             return key
+
+        # Fuzzy correction tier (Kuhn's Template correction layer): the
+        # phrase is not a known amenity tag. Correct misspellings against
+        # the snapshot's real tag vocabulary (pg_trgm + fuzzystrmatch) so
+        # the caller receives a canonical tag instead of None — and the
+        # FastText tier, when reached, embeds the corrected phrase rather
+        # than a garbage token.
+        from semantic_search.services.query_correction_service import (
+            QueryCorrectionService,
+        )
+        corrected = QueryCorrectionService.correct_amenity(
+            text, country_code=country_code, snapshot_id=snapshot_id,
+        )
+        if corrected:
+            return corrected[0]
         return None
 
     @staticmethod
@@ -1538,6 +1602,40 @@ class QueryExecutorService:
         if ontology_results:
             return ontology_results
 
+        # ── Step 2b: fuzzy correction (Kuhn's Template correction layer) ──
+        # A misspelled phrase ("resturant") fails steps 1-2. Correct it
+        # against the snapshot's real tag vocabulary (pg_trgm +
+        # fuzzystrmatch) and retry the exact-tag tier with the canonical
+        # form so the FastText step never sees a garbage embedding.
+        from semantic_search.services.query_correction_service import (
+            QueryCorrectionService,
+        )
+        corrected = QueryCorrectionService.correct_amenity(
+            amenity_type, country_code=country_code, snapshot_id=snapshot_id,
+        )
+        if corrected and corrected[0] != amenity_type:
+            corrected_tag = corrected[0]
+            qs = OsmEntity.objects.using("vectors").filter(
+                snapshot_id=snapshot_id,
+                tags__contains={"amenity": corrected_tag},
+            )
+            if country_code:
+                qs = qs.filter(country_code=country_code.upper())
+            qs = qs.exclude(geom__isnull=True)[:top_k]
+            entities = list(qs)
+            if entities:
+                results = [cls._entity_to_result(e) for e in entities]
+                if trace is not None:
+                    trace.append({
+                        "step": "place_search",
+                        "input": amenity_type,
+                        "match_type": "fuzzy_correction",
+                        "corrected_to": corrected_tag,
+                        "similarity": corrected[1],
+                        "output_count": len(results),
+                    })
+                return results
+
         # ── Step 3: generic amenity phrases ("amenities are") → any entity
         #    asserting an amenity-type key (GIN-indexed `tags ?|` — no
         #    embedding scan).
@@ -1761,10 +1859,16 @@ class QueryExecutorService:
         # ── Step 1: Exact tag match with spatial filter ──
         # `tags__contains` renders `@>` (GIN-accelerated); `tags__amenity=`
         # renders `->>` equality and full-scans the partition.
+        # NaN geometries (POINT(NaN NaN) ways — not NULL, so exclude()
+        # misses them) must be dropped: ST_Distance on NaN coordinates
+        # returns 0, ranking coordinate-less entities as "nearest (0m
+        # away)" ahead of real matches.
         qs = OsmEntity.objects.using("vectors").filter(
             snapshot_id=snapshot_id,
             tags__contains={"amenity": amenity_type},
-        ).exclude(geom__isnull=True)
+        ).exclude(geom__isnull=True).extra(
+            where=["NOT (ST_X(geom) = 'NaN' AND ST_Y(geom) = 'NaN')"],
+        )
 
         if country_code:
             qs = qs.filter(country_code=country_code.upper())

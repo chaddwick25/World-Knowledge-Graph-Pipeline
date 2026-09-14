@@ -312,6 +312,55 @@ class QueryParserService:
         return None
 
     @staticmethod
+    def _levenshtein(a: str, b: str) -> int:
+        """Plain edit distance (parser is control plane — no DB)."""
+        if len(a) < len(b):
+            a, b = b, a
+        prev = list(range(len(b) + 1))
+        for i, ca in enumerate(a, 1):
+            cur = [i]
+            for j, cb in enumerate(b, 1):
+                cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+            prev = cur
+        return prev[-1]
+
+    @staticmethod
+    def _normalize_question_words(question: str) -> str:
+        """Correct near-miss question words ("Whichs" → "Which") before
+        pattern matching and entity extraction.
+
+        A typo'd question word defeats the compare-closer patterns AND sneaks
+        through the capitalized-token fallback as a named entity, corrupting
+        multi-entity extraction. Regression: "Whichs is closer to Moher
+        Cottage: Cliff Coast Coffee or the Cliffs of Moher?" extracted
+        'Whichs' as an entity, cascading into a wrong anchor ("Moher" →
+        "Moher West") and a truncated-span false positive ("Cliffs" →
+        "Cliffs of Howth").
+        """
+        out = []
+        for tok in question.split():
+            stripped = tok.strip(",.!?;:")
+            punct = tok[len(stripped):]
+            if len(stripped) >= 4:
+                low = stripped.lower()
+                for qw in QueryParserService._QUESTION_WORDS:
+                    qw_low = qw.lower()
+                    # The typo must preserve the question word as a PREFIX
+                    # (or be a prefix of it): "Whichs" ⊃ "Which", "Wich" ⊂
+                    # "Which". This excludes false positives where an entity
+                    # word is merely edit-close ("Mill" → "Will", "What" →
+                    # "Who" — neither is a prefix of the other).
+                    prefix_linked = (
+                        low.startswith(qw_low) or qw_low.startswith(low)
+                    )
+                    if prefix_linked and low != qw_low and \
+                            QueryParserService._levenshtein(low, qw_low) <= 2:
+                        stripped = qw
+                        break
+            out.append(stripped + punct)
+        return " ".join(out)
+
+    @staticmethod
     def _extract_entity_name(question: str, template: str) -> str:
         """Extract proper-noun entity names from the question.
 
@@ -320,18 +369,26 @@ class QueryParserService:
         separately.
         """
         # Remove signal phrases and extract the remainder
-        q = question.strip()
+        q = QueryParserService._normalize_question_words(question.strip())
         # Common patterns: "X near Y", "X within 50m of Y", "how far is X from Y"
-        # Try to find the anchor entity after prepositions
-        for prep in ("of", "from", "to", "near", "around", "by", "beside"):
-            pattern = rf"\b{prep}\s+(.+?)(?:\?|$|,|\bwithin\b|\bhow\b)"
-            m = re.search(pattern, q, re.I)
-            if m:
-                entity = m.group(1).strip().rstrip("?").strip()
-                if entity:
-                    return entity
+        # Find the EARLIEST preposition so the structural anchor wins over a
+        # later "of" ("Which is closer to Moher Cottage: ... the Cliffs OF
+        # Moher?" must anchor on "Moher Cottage", not "Moher"). ":" terminates
+        # the span so "X: A or B" compare phrasings stop at the colon.
+        preps = ("of", "from", "to", "near", "around", "by", "beside")
+        earliest = None
+        for prep in preps:
+            m = re.search(rf"\b{prep}\s+", q, re.I)
+            if m and (earliest is None or m.start() < earliest.start()):
+                earliest = m
+        if earliest:
+            rest = q[earliest.end():]
+            m2 = re.search(r"(.+?)(?:\?|$|,|:|\bwithin\b|\bhow\b)", rest)
+            entity = (m2.group(1) if m2 else rest).strip().rstrip("?").strip()
+            if entity:
+                return entity
         # Fallback: capitalized tokens
-        tokens = question.replace("?", "").split()
+        tokens = q.replace("?", "").split()
         caps = [t for t in tokens if t[0].isupper() and len(t) > 2]
         if caps:
             return " ".join(caps[:3])
@@ -344,7 +401,9 @@ class QueryParserService:
         Handles "How far is X from Y?" and "Which is closer to Z: X or Y?"
         Returns a list of entity name strings.
         """
-        q = question.strip().rstrip("?")
+        q = QueryParserService._normalize_question_words(
+            question.strip().rstrip("?")
+        )
 
         # Pattern 1: "How far is X from Y?"
         m = re.match(r"how far is\s+(.+?)\s+from\s+(.+)$", q, re.I)

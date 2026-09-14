@@ -72,11 +72,21 @@ class EntityGeocoder:
                 # 0.3 threshold false-positives, e.g. "paranormal nonsense
                 # place" → "Paradise Place" at ~0.32).
                 from django.contrib.postgres.search import TrigramSimilarity
+                # Fragment guard: a short query ("Cliffs") must not match a
+                # much longer candidate ("Cliffs of Howth") at low similarity
+                # — that is a truncated entity span, not a typo. Preserves
+                # the equal-length typo case ("Shannon Bells" → "Shandon
+                # Bells", sim 0.65).
                 qs_fuzzy = (
                     qs.extra(
-                        where=["name_romanized %% %s AND "
-                               "similarity(name_romanized, %s) >= 0.4"],
-                        params=[name_variant, name_variant],
+                        where=[
+                            "name_romanized %% %s AND "
+                            "similarity(name_romanized, %s) >= 0.4 AND "
+                            "NOT (similarity(name_romanized, %s) < 0.6 AND "
+                            "     length(name_romanized) > %s)"
+                        ],
+                        params=[name_variant, name_variant, name_variant,
+                                int(1.6 * len(name_variant))],
                     )
                     .order_by(TrigramSimilarity("name_romanized", name_variant).desc())
                 )
@@ -104,6 +114,16 @@ class EntityGeocoder:
         #    when both the indexed trigram and exact steps missed.
         for name_variant in variants:
             qs_ilike = qs.filter(tags__name__icontains=name_variant)
+            # Fragment guard (Kuhn's Template correction layer): a short
+            # query ("Cliffs", 6 chars) must not substring-match a much
+            # longer name ("Cliffs of Howth") — that is a truncated span,
+            # not a partial name. Partial-name queries of >= 8 chars and
+            # contained names up to 2x the query length are unaffected.
+            if len(name_variant) < 8:
+                qs_ilike = qs_ilike.extra(
+                    where=["length(tags->>'name') <= %s"],
+                    params=[2 * len(name_variant)],
+                )
             # Prefer nodes (which have valid Point geom) over ways
             for entity in qs_ilike[:20]:
                 result = EntityGeocoder._entity_to_dict(entity)
@@ -189,6 +209,9 @@ class EntityGeocoder:
             "lon": lon,
             "tags": tags,
             "wkg_class": entity.wkg_class,
+            # Lets the executor prune context queries to the entity's leaf
+            # partition instead of Appending over every country.
+            "country_code": entity.country_code,
         }
 
     @staticmethod
