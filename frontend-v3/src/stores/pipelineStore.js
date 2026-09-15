@@ -292,8 +292,11 @@ export const usePipelineStore = defineStore('pipeline', {
       // Close old connection for this session if any
       this.disconnectWebSocket(sessionId)
 
-      // Always connect to Django/Channels backend (port 8000)
-      const url = `ws://localhost:8000/ws/pipeline/${sessionId}/`
+      // Always connect to Django/Channels backend. Derive the WS URL from the
+      // API base (http→ws, https→wss), or use a VITE_WS_BASE_URL override.
+      const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
+      const wsBase = import.meta.env.VITE_WS_BASE_URL || apiBase.replace(/^http/, 'ws').replace(/\/api$/, '')
+      const url = `${wsBase}/ws/pipeline/${sessionId}/`
 
       let ws
       try {

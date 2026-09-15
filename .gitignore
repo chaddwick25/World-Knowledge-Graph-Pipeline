@@ -7,6 +7,8 @@ __pycache__
 ***REMOVED*** Poetry
 .venv/
 
+deploy/
+
 ***REMOVED*** IDE / Editor
 .vscode/
 
