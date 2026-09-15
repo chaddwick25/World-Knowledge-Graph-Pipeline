@@ -7,6 +7,8 @@ __pycache__
 # Poetry
 .venv/
 
+deploy/
+
 # IDE / Editor
 .vscode/
 

@@ -1,5 +1,6 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
+from backend.middleware import is_public_host
 
 class WorldKGPipelineConsumer(AsyncWebsocketConsumer):
     """
@@ -14,6 +15,16 @@ class WorldKGPipelineConsumer(AsyncWebsocketConsumer):
     """
 
     async def connect(self):
+        # Same-origin session guard: on public hosts, the pipeline stream
+        # requires an authenticated session (the SPA sends the session cookie
+        # on the WS handshake; AuthMiddlewareStack populates scope['user']).
+        headers = dict(self.scope.get('headers') or [])
+        host = headers.get(b'host', b'').decode('latin-1')
+        user = self.scope.get('user')
+        if is_public_host(host) and not (user and user.is_authenticated):
+            await self.close(code=4401)
+            return
+
         self.session_id = self.scope['url_route']['kwargs']['session_id']
         self.group_name = f'pipeline_{self.session_id}'
         await self.channel_layer.group_add(self.group_name, self.channel_name)

@@ -22,7 +22,11 @@ SECRET_KEY = 'django-insecure-i%)wb*%s81#y-rrf!fw9v$quoo0!&@)-2f0o9os!b*i&53xtqj
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+# Deployed backend hosts (Tailscale funnel / custom domain), set on the
+# homeserver env. Without this, Django answers 400 DisallowedHost for the
+# funnel hostname.
+_extra_hosts = [h.strip() for h in os.getenv('ALLOWED_EXTRA_HOSTS', '').split(',') if h.strip()]
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', *_extra_hosts]
 
 # ============================================================================
 # FILE PATHS CONFIGURATIONS + Overrides
@@ -271,6 +275,9 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
 
 
+# Deployed frontend origins (Netlify domain), set on the homeserver env.
+_extra_origins = [o.strip() for o in os.getenv('CORS_EXTRA_ORIGINS', '').split(',') if o.strip()]
+
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:8080',
     'http://127.0.0.1:8080',
@@ -278,11 +285,20 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:8081',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    *_extra_origins,
 ]
 
 CORS_ALLOW_HEADERS = [
     'content-type',
 ]
+
+# Behind the Tailscale Funnel + nginx: TLS terminates upstream, so tell
+# Django to trust the X-Forwarded-Proto header (nginx sets it from $scheme,
+# overriding any client-supplied value). Without this, request.is_secure()
+# is False on public requests and Django's CSRF Origin check rejects the
+# browser's https:// Origin on every unsafe request ("Origin checking
+# failed").
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # CSRF Trusted Origins (required for Django 4.0+)
 CSRF_TRUSTED_ORIGINS = [
@@ -292,6 +308,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://127.0.0.1:8081',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    *_extra_origins,
 ]
 
 # REST Framework Configuration
@@ -343,11 +360,13 @@ CHANNEL_LAYERS = {
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'backend.middleware.AdminHostGateMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'backend.middleware.PublicAuthGuardMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

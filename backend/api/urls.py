@@ -1,5 +1,6 @@
 from django.urls import path, include
 from . import views
+from . import views_auth
 from . import search_update_views
 from . import country_search_views
 from . import projection_weight_views
@@ -24,6 +25,13 @@ from .views import (
 
 # Core API Endpoints - E2E Tested
 urlpatterns = [
+    # Session auth (SPA login guard)
+    path('auth/csrf/', views_auth.csrf, name='auth_csrf'),
+    path('auth/login/', views_auth.login_view, name='auth_login'),
+    path('auth/logout/', views_auth.logout_view, name='auth_logout'),
+    path('auth/register/', views_auth.register_view, name='auth_register'),
+    path('auth/me/', views_auth.me, name='auth_me'),
+
     # Initial Status
     path('status/initial/', InitialStatusView.as_view(), name='initial_status'),
     
