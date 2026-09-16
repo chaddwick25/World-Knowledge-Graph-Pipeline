@@ -195,6 +195,12 @@
       @close="showRerunConfirm = false"
       @confirm="confirmRerun"
     />
+    <PipelinePasswordModal
+      :open="showPipelinePassword"
+      :error="pipelinePasswordError"
+      @close="showPipelinePassword = false; pipelinePasswordError = ''"
+      @confirm="onPipelinePasswordSubmit"
+    />
   </div>
 </template>
 
@@ -211,6 +217,7 @@ import AugmentedDataPanel from '../components/AugmentedDataPanel.vue'
 import PlanetInitPanel from '../components/PlanetInitPanel.vue'
 import SystemSummaryModal from '../components/SystemSummaryModal.vue'
 import RerunConfirmModal from '../components/RerunConfirmModal.vue'
+import PipelinePasswordModal from '../components/PipelinePasswordModal.vue'
 
 export default {
   name: 'Home',
@@ -224,6 +231,7 @@ export default {
     PlanetInitPanel,
     SystemSummaryModal,
     RerunConfirmModal,
+    PipelinePasswordModal,
   },
   data() {
     return {
@@ -243,6 +251,11 @@ export default {
       showSystemSummary: false,
       showRerunConfirm: false,
       rerunConfirmDate: '',
+
+      // ── Pipeline password gate (front-end only) ──
+      showPipelinePassword: false,
+      pendingPasswordForce: false,
+      pipelinePasswordError: '',
 
       // ── Country selection ──
       allCountries: [],
@@ -534,11 +547,31 @@ export default {
         return
       }
 
-      await this._startPipelineRun(false)
+      this.requestPassword(false)
     },
     confirmRerun() {
       this.showRerunConfirm = false
-      this._startPipelineRun(true)
+      this.requestPassword(true)
+    },
+    requestPassword(force) {
+      const expected = import.meta.env.VITE_PIPELINE_PASSWORD
+      if (!expected) {
+        this._startPipelineRun(force)
+        return
+      }
+      this.pendingPasswordForce = force
+      this.pipelinePasswordError = ''
+      this.showPipelinePassword = true
+    },
+    onPipelinePasswordSubmit(password) {
+      const expected = (import.meta.env.VITE_PIPELINE_PASSWORD || '').trim()
+      if (password !== expected) {
+        this.pipelinePasswordError = 'Incorrect password'
+        return
+      }
+      this.pipelinePasswordError = ''
+      this.showPipelinePassword = false
+      this._startPipelineRun(this.pendingPasswordForce)
     },
     async _startPipelineRun(force) {
       this.isPipelineRunning = true
