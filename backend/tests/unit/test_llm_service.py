@@ -83,7 +83,7 @@ class TestConfig:
         assert svc.style == "native"
         assert svc.base_url == "http://localhost:11434/v1"
         assert svc.root_url == "http://localhost:11434"
-        assert svc.model == "qwen3:14b"
+        assert svc.model == "qwen3:8b"
         assert svc.timeout == 60.0  # read timeout — cold model reloads take 5-15s
 
     def test_env_overrides(self, monkeypatch):
@@ -128,7 +128,7 @@ class TestChat:
         out = svc.chat([{"role": "user", "content": "hi"}])
         assert out == "hello world"
         assert calls["url"] == "http://localhost:11434/api/chat"
-        assert calls["json"]["model"] == "qwen3:14b"
+        assert calls["json"]["model"] == "qwen3:8b"
         assert calls["json"]["think"] is False       # thinking disabled
         assert calls["json"]["stream"] is False
         assert calls["json"]["options"]["num_predict"] == 512

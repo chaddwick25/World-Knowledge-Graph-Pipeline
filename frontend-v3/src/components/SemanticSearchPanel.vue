@@ -8,6 +8,17 @@
             type="radio"
             class="btn-check"
             name="query-mode"
+            id="query-mode-template"
+            autocomplete="off"
+            value="template"
+            v-model="queryMode"
+          >
+          <label class="btn btn-outline-secondary" for="query-mode-template">AI query</label>
+
+          <input
+            type="radio"
+            class="btn-check"
+            name="query-mode"
             id="query-mode-tags"
             autocomplete="off"
             value="tags"
@@ -25,17 +36,6 @@
             v-model="queryMode"
           >
           <label class="btn btn-outline-secondary" for="query-mode-natural">Natural language</label>
-
-          <input
-            type="radio"
-            class="btn-check"
-            name="query-mode"
-            id="query-mode-template"
-            autocomplete="off"
-            value="template"
-            v-model="queryMode"
-          >
-          <label class="btn btn-outline-secondary" for="query-mode-template">AI query</label>
         </div>
       </div>
 
@@ -325,10 +325,10 @@ export default {
   data() {
     return {
       // ── Query state (component-local) ──
-      queryMode: 'tags',
+      queryMode: 'template',
       queryTagsInput: '{"amenity": "cafe"}',
       naturalQuery: '',
-      templateQuery: '',
+      templateQuery: 'Which cafes are within 2km of a school?',
       lat: '',
       lon: '',
       rdfType: null,

@@ -20,7 +20,7 @@ Two API styles:
 Config (env vars, read once per instance):
     LLM_ENABLED      (default "1")  — master switch
     LLM_BASE_URL     (default "http://localhost:11434/v1")  — /v1 may be omitted for native
-    LLM_MODEL        (default "qwen3:14b")
+    LLM_MODEL        (default "qwen3:8b")
     LLM_API_STYLE    (default "native")  — "native" | "openai"
     LLM_TIMEOUT      (default 60.0) — read timeout; the connect timeout stays at
                                       2s so a DOWN model fails fast (and the
@@ -47,7 +47,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 _DEFAULT_BASE_URL = "http://localhost:11434/v1"
-_DEFAULT_MODEL = "qwen3:14b"
+_DEFAULT_MODEL = "qwen3:8b"
 _DEFAULT_TIMEOUT = 60.0
 _DEFAULT_AVAILABILITY_CACHE_SECONDS = 15
 

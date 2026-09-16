@@ -96,7 +96,7 @@ services:
       - RUN_MIGRATIONS=true
       - RUN_INIT_PLANET=true
       - LLM_BASE_URL=http://ollama:11434/v1
-      - LLM_MODEL=qwen3:14b
+      - LLM_MODEL=qwen3:8b
     ports:
       - "8000:8000"
     volumes:
@@ -170,7 +170,7 @@ services:
       - RUN_MIGRATIONS=false
       - RUN_INIT_PLANET=false
       - LLM_BASE_URL=http://ollama:11434/v1
-      - LLM_MODEL=qwen3:14b
+      - LLM_MODEL=qwen3:8b
     volumes:
       - ./backend:/app
       - backend_venv:/app/.venv
@@ -212,7 +212,7 @@ services:
       # IE-scale spectral runs may still need the app idle (see rules §5.7).
       - NVIDIA_VISIBLE_DEVICES=1
       - OLLAMA_KEEP_ALIVE=-1
-      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_NUM_PARALLEL=6
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_MAX_QUEUE=32
     ports:
@@ -246,7 +246,7 @@ services:
     network_mode: host
     environment:
       - GOOSE_PROVIDER=ollama
-      - GOOSE_MODEL=qwen3:14b
+      - GOOSE_MODEL=qwen3:8b
       - OLLAMA_HOST=http://localhost:11434
       - GOOSE_TELEMETRY_OPT_IN=false
     volumes:
