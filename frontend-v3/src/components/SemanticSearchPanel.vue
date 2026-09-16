@@ -328,7 +328,7 @@ export default {
       queryMode: 'template',
       queryTagsInput: '{"amenity": "cafe"}',
       naturalQuery: '',
-      templateQuery: 'Which cafes are within 2km of a school?',
+      templateQuery: '',
       lat: '',
       lon: '',
       rdfType: null,
