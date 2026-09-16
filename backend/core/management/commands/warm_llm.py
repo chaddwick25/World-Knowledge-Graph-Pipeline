@@ -1,10 +1,11 @@
 """
 warm_llm — Load the platform LLM into VRAM at startup.
 
-qwen3:14b unloads after OLLAMA_KEEP_ALIVE (10m in docker-compose), and a
-cold reload takes 5-15s on the 4070 Ti Super. Running this in the backend
-entrypoint means the first user query does not pay that penalty. Fail-soft:
-skips silently when the LLM is disabled or unreachable.
+The platform model (default qwen3:8b) stays resident because
+OLLAMA_KEEP_ALIVE=-1, so this is mainly a first-token warm-up after a
+container restart: it triggers the initial load so the first user query
+does not pay the cold reload. Fail-soft: skips silently when the LLM is
+disabled or unreachable.
 """
 
 from django.core.management.base import BaseCommand
