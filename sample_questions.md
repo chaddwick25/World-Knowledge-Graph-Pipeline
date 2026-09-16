@@ -20,6 +20,31 @@ your own names, they must exist in OpenStreetMap for that country.
 | Direction from a place | "What is west of Tullygally Tavern?" |
 | How far is X from Y | "How far is Betelnut Cafe from Limerick?" |
 
+## All templates (Spatial-Agent paper, Ireland: 2025_12_31)
+
+All 10 macro-templates from the Spatial-Agent paper, the example questions
+used, and each template's coverage in the parser's training data. The 5
+templates with coverage are trained and operational; the remaining 5
+(routing and navigation patterns) have no training data yet and are
+future work.
+
+| Question type | English | Template Type | Coverage |
+|---|---|---|---|
+| Find things near a place | "Which cafes are within 2km of a school?" | FILTER-AGGREGATE-MEASURE | 21% |
+| Find the nearest X | "What is the nearest cafe to Shandon Bells?" | GEOCODE-BATCH-COMPARE | 25% |
+| Compare distances | "Which is closer to Moher Cottage: Cliff Coast Coffee or the Cliffs of Moher?" | GEOCODE-BATCH-COMPARE | 25% |
+| What's around here | "What amenities are around Tully Mill?" | PLACE-ATTRIBUTE-QUERY | 19% |
+| Direction from a place | "What is west of Tullygally Tavern?" | LOCATION-BEARING-CLASSIFY | 17% |
+| How far is X from Y | "How far is Betelnut Cafe from Limerick?" | OBJECT-FIELD-MEASURE | 17% |
+| Optimal visiting order | "What's the best order to visit these 5 cafes?" | ROUTE-OPTIMIZE | 0% |
+| Navigation maneuvers | "What turns do I take to get to the pub?" | ROUTE-STEP-EXTRACT | 0% |
+| Compare routes | "Which route to Dublin is faster: M1 or M7?" | MULTI-ROUTE-COMPARE | 0% |
+| Multi-leg journey | "How long is the bus and train trip to Cork?" | MULTI-SEGMENT-AGGREGATE | 0% |
+| Latest departure time | "What's the latest I can leave to arrive by 5pm?" | TIME-WINDOW-REVERSE | 0% |
+
+Source: Spatial-Agent paper, docs/papers/WernerKuhn/. The operational
+subset is the 6-type table above.
+
 Common amenity words that work well: cafe, restaurant, bar, pub, hotel,
 pharmacy, school, museum, beach, park, gas station, supermarket.
 
