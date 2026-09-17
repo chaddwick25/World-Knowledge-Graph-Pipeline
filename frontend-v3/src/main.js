@@ -14,6 +14,7 @@ import axios from "axios"
 // set it to '/api' so REST, SSE (derived from axios.defaults.baseURL) and
 // the WebSocket (derived in pipelineStore) all stay on one host.
 axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
+axios.defaults.withCredentials = true
 
 function getCookie(name) {
   const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'))
