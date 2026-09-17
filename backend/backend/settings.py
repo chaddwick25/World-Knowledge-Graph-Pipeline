@@ -18,6 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
+# TODO: use ENV
 SECRET_KEY = 'django-insecure-i%)wb*%s81#y-rrf!fw9v$quoo0!&@)-2f0o9os!b*i&53xtqj'
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -277,7 +278,7 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
 # Deployed frontend origins (Netlify domain), set on the homeserver env.
 _extra_origins = [o.strip() for o in os.getenv('CORS_EXTRA_ORIGINS', '').split(',') if o.strip()]
-
+# TODO: use ENVs
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:8080',
     'http://127.0.0.1:8080',
@@ -290,7 +291,11 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_HEADERS = [
     'content-type',
+    'x-csrftoken',
+    'x-requested-with',
 ]
+
+CORS_ALLOW_CREDENTIALS = True
 
 # Behind the Tailscale Funnel + nginx: TLS terminates upstream, so tell
 # Django to trust the X-Forwarded-Proto header (nginx sets it from $scheme,
@@ -301,6 +306,7 @@ CORS_ALLOW_HEADERS = [
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # CSRF Trusted Origins (required for Django 4.0+)
+# TODO: use ENVs
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8080',
     'http://127.0.0.1:8080',
@@ -500,6 +506,7 @@ from django.utils import timezone
 
 DEFAULT_TEMPORAL_RANGE_END = datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
 
+# TODO: re-locate
 # Spatial Semantics Configuration
 SPATIAL_SEMANTICS_CONFIG = {
     'fasttext_model_path': FASTTEXT_MODEL_PATH,
@@ -530,4 +537,5 @@ SPATIAL_SEMANTICS_CONFIG = {
     'name_substring_boost': 1.0,
 }
 
+# TODO: use ENV
 TIME_ZONE = 'America/Toronto'
