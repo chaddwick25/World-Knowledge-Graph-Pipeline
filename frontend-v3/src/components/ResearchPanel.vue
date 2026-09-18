@@ -91,7 +91,7 @@
     <div v-if="questions.length" class="d-flex flex-column gap-1">
       <details ref="questionsDetails" class="research-details small text-secondary" open>
         <summary class="cursor-pointer">Execution Trace - Research questions ({{ questions.length }})</summary>
-        <div class="d-flex flex-column gap-1 mt-1">
+        <div class="research-questions-flow d-flex flex-column gap-1 mt-1">
           <div
             v-for="q in questions"
             :key="q.index"
@@ -105,9 +105,16 @@
               <span v-else-if="q.template" class="badge bg-info text-dark">{{ q.template }}</span>
             </div>
             <div v-if="q.error" class="text-danger mt-1">{{ q.error }}</div>
-            <div v-else-if="q.answer" class="text-secondary mt-1">
-              {{ q.answer }}
-              <span v-if="q.result_count != null">({{ q.result_count }} results)</span>
+            <div v-else-if="isEmptyResult(q)" class="text-secondary">
+              (0 results)
+            </div>
+            <div v-else-if="q.answer" class="mt-1">
+              <!-- White plain text, dark blue values (entity names from the
+                   result digest + distance/amount tokens). -->
+              <template v-for="(seg, si) in answerSegments(q)" :key="si">
+                <span :class="seg.value ? 'answer-value' : ''">{{ seg.text }}</span>
+              </template>
+              <span v-if="q.result_count != null" class="text-secondary"> ({{ q.result_count }} results)</span>
             </div>
             <div v-else-if="isRunning" class="text-secondary mt-1">parsing…</div>
           </div>
@@ -317,6 +324,7 @@ export default {
           why: q.why || '',
           template: null,
           answer: '',
+          digest: '',
           result_count: null,
           error: '',
         }))
@@ -329,6 +337,7 @@ export default {
         if (this.questions[i]) {
           this.questions[i].template = d.template || null
           this.questions[i].answer = d.answer || ''
+          this.questions[i].digest = d.digest || ''
           this.questions[i].result_count = d.result_count != null ? d.result_count : null
           this.questions[i].error = d.error || ''
         }
@@ -395,6 +404,76 @@ export default {
       const el = this.$refs.questionsDetails
       if (el) el.open = false
     },
+    /**
+     * True when the executor found nothing ("No results found." with a
+     * zero count) — rendered as just "(0 results)", no redundant text.
+     */
+    isEmptyResult(q) {
+      return q.result_count === 0
+        && /^no results found\.?/i.test((q.answer || '').trim())
+    },
+    /**
+     * Split an answer into plain/white and value/dark-blue segments.
+     * Values: entity names from the result digest (the "− Name (dist)"
+     * lines) plus distance/amount tokens ("53.02 km", "(851 m)"). Pure —
+     * safe to call from the template.
+     */
+    answerSegments(q) {
+      const answer = q.answer || ''
+      if (!answer) return []
+      const matches = []
+
+      // Entity names from the digest, longest first so "San Pedro" wins
+      // over a shorter overlapping token.
+      const names = (q.digest || '')
+        .split('\n')
+        .map((line) => line.match(/^-\s+(.+?)\s+\(\d/))
+        .filter(Boolean)
+        .map((m) => m[1].trim())
+        .filter(Boolean)
+        .sort((a, b) => b.length - a.length)
+      for (const name of names) {
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const re = new RegExp(`\\b${escaped}\\b`, 'gi')
+        let m
+        while ((m = re.exec(answer)) !== null) {
+          matches.push({ start: m.index, end: m.index + m[0].length })
+          if (m.index === re.lastIndex) re.lastIndex++ // guard zero-width
+        }
+      }
+
+      // Distance/amount tokens: "53.02 km", "0.85 km", "(851 m)".
+      const unitRe = /\b\d+(?:\.\d+)?\s*(?:km|m|meters?|kilometers?)\b/gi
+      let m
+      while ((m = unitRe.exec(answer)) !== null) {
+        matches.push({ start: m.index, end: m.index + m[0].length })
+      }
+
+      // Merge overlaps, sort by position, then emit alternating segments.
+      matches.sort((a, b) => a.start - b.start || a.end - b.end)
+      const merged = []
+      for (const match of matches) {
+        const last = merged[merged.length - 1]
+        if (last && match.start <= last.end) {
+          last.end = Math.max(last.end, match.end)
+        } else {
+          merged.push({ start: match.start, end: match.end })
+        }
+      }
+      const segments = []
+      let cursor = 0
+      for (const match of merged) {
+        if (match.start > cursor) {
+          segments.push({ text: answer.slice(cursor, match.start), value: false })
+        }
+        segments.push({ text: answer.slice(match.start, match.end), value: true })
+        cursor = match.end
+      }
+      if (cursor < answer.length) {
+        segments.push({ text: answer.slice(cursor), value: false })
+      }
+      return segments
+    },
     closeStream() {
       if (this.eventSource) {
         console.log('[Research] closing stream', '@', Date.now())
@@ -414,7 +493,10 @@ export default {
 /* Minimal residual CSS — Bootstrap utilities cover the rest.
    cursor-pointer for <summary> (Bootstrap provides no utility),
    plus the questions caret: red while closed (attention), gray when
-   open — mirrors SemanticSearchPanel's Execution trace pattern. */
+   open — mirrors SemanticSearchPanel's Execution trace pattern.
+   The questions keep the trace's left spine, but in the panel's own
+   palette (info, not the trace's success green) and around the question
+   cards, not trace nodes. */
 .cursor-pointer {
   cursor: pointer;
 }
@@ -430,5 +512,25 @@ export default {
 }
 .research-details[open] > summary::-webkit-details-marker {
   color: var(--bs-secondary);
+}
+
+.research-questions-flow {
+  border-left: 2px solid var(--bs-secondary-border-subtle);
+  padding-left: 0.75rem;
+  /* Question + answer plain text in white; values (entity names,
+     distances) get the dark blue via .answer-value. Errors stay red. */
+  color: #fff;
+}
+.research-details[open] .research-questions-flow {
+  border-left-color: var(--bs-info-border-subtle);
+}
+/* The numbered index badge keeps the dark blue (Bootstrap's .badge
+   sets its own text color, so override it here). */
+.research-questions-flow .badge.bg-secondary {
+  color: var(--bs-info-text-emphasis);
+}
+.answer-value {
+  color: var(--bs-info-text-emphasis);
+  font-weight: 500;
 }
 </style>
