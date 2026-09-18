@@ -552,6 +552,9 @@ class ResearchOrchestratorService:
                     "question": qtext,
                     "template": record.get("template"),
                     "answer": record.get("answer"),
+                    ***REMOVED*** Top entity names + classes, for value highlighting
+                    ***REMOVED*** (ResearchPanel renders them dark blue in the answer).
+                    "digest": record.get("digest") or "",
                     "result_count": record.get("result_count", 0),
                     "error": record.get("error"),
                 })
