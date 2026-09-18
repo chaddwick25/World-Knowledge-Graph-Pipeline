@@ -30,6 +30,12 @@ Config (env vars, read once per instance):
                                       first token
     LLM_AVAILABILITY_CACHE_SECONDS (default 15)
 
+The research orchestrator gets its own instance via ``get_research_instance()``:
+    RESEARCH_LLM_BASE_URL  (unset → platform instance)
+    RESEARCH_LLM_MODEL     (default qwen3:8b)
+    RESEARCH_LLM_TIMEOUT   (default follows LLM_TIMEOUT)
+    RESEARCH_LLM_API_STYLE (default native)
+
 Every method is fail-soft: returns ``None`` / ``False`` on any error instead
 of raising, so pipeline code never breaks because the local model is down.
 Callers MUST fall back to their deterministic path when the LLM is
@@ -57,17 +63,28 @@ class LLMService:
 
     _instance = None
 
-    def __init__(self):
+    def __init__(self, base_url: str = None, model: str = None,
+                 style: str = None, timeout: float = None):
+        """Constructor with per-instance overrides (env defaults for None).
+
+        The overrides let a second instance point at a different provider
+        without touching the platform env: the research orchestrator uses
+        ``get_research_instance()`` (RESEARCH_LLM_*) while the interactive
+        path keeps ``get_instance()`` (LLM_*).
+        """
         self.enabled = os.environ.get("LLM_ENABLED", "1") not in ("0", "false", "False", "")
-        self.style = (os.environ.get("LLM_API_STYLE") or "native").lower()
-        base = (os.environ.get("LLM_BASE_URL") or _DEFAULT_BASE_URL).rstrip("/")
+        self.style = (style or os.environ.get("LLM_API_STYLE") or "native").lower()
+        base = (base_url or os.environ.get("LLM_BASE_URL") or _DEFAULT_BASE_URL).rstrip("/")
         self.base_url = base
         # Native Ollama endpoints live at /api/* (no /v1 prefix); the OpenAI
         # style keeps the base as given (typically including /v1).
         self.root_url = base[:-3] if base.endswith("/v1") else base
-        self.model = os.environ.get("LLM_MODEL") or _DEFAULT_MODEL
+        self.model = model or os.environ.get("LLM_MODEL") or _DEFAULT_MODEL
         try:
-            self.timeout = float(os.environ.get("LLM_TIMEOUT", _DEFAULT_TIMEOUT))
+            self.timeout = float(
+                timeout if timeout is not None
+                else os.environ.get("LLM_TIMEOUT", _DEFAULT_TIMEOUT)
+            )
         except (TypeError, ValueError):
             self.timeout = _DEFAULT_TIMEOUT
         try:
@@ -94,6 +111,26 @@ class LLMService:
     def reset_instance(cls) -> None:
         """Force a fresh instance on next get_instance() — used by tests."""
         cls._instance = None
+
+    @classmethod
+    def get_research_instance(cls) -> "LLMService":
+        """Instance for the batch research orchestrator (RESEARCH_LLM_* env).
+
+        RESEARCH_LLM_BASE_URL / RESEARCH_LLM_MODEL / RESEARCH_LLM_TIMEOUT /
+        RESEARCH_LLM_API_STYLE configure it (defaults mirror the platform
+        LLM: qwen3:8b, native style). With RESEARCH_LLM_BASE_URL unset the
+        research loop falls back to the platform instance, so it tests on
+        the interactive card before the 2070 split is configured.
+        """
+        base = os.environ.get("RESEARCH_LLM_BASE_URL")
+        if not base:
+            return cls.get_instance()
+        return cls(
+            base_url=base,
+            model=os.environ.get("RESEARCH_LLM_MODEL") or _DEFAULT_MODEL,
+            style=os.environ.get("RESEARCH_LLM_API_STYLE") or "native",
+            timeout=os.environ.get("RESEARCH_LLM_TIMEOUT"),
+        )
 
     # ── Availability ──────────────────────────────────────────────────────
 

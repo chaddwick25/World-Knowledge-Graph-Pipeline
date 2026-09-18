@@ -168,7 +168,7 @@ class QueryExecutorService:
     @classmethod
     def execute(cls, parsed: dict, country_code: str = None,
                 snapshot_date: str = None, question: str = None,
-                event_callback=None) -> dict:
+                event_callback=None, skip_enrichment: bool = False) -> dict:
         """Execute a parsed query and return results + execution trace.
 
         Args:
@@ -180,6 +180,10 @@ class QueryExecutorService:
                       in templates that need 2+ entities)
             event_callback: Optional progress callback for SSE streaming —
                 receives {"event": "executed", ...} and enrichment events.
+            skip_enrichment: Skip the deterministic context fetch + LLM
+                synthesis block. The research orchestrator uses this: its
+                loop reasons over deterministic primary answers and does its
+                own summary synthesis at the end (one LLM in the loop).
 
         Returns:
             {template, results, answer, trace, latency_ms}
@@ -283,6 +287,7 @@ class QueryExecutorService:
             )
             if (
                 question
+                and not skip_enrichment
                 and isinstance(results, list)
                 and not error_result
                 and has_entity_context

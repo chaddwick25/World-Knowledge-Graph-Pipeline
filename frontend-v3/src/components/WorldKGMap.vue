@@ -58,9 +58,9 @@ import axios from 'axios'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useOverlayStore } from '../stores/overlayStore'
-import { useDeckLabelStore } from '../stores/deckLabelStore'
-import { deckManager } from '../deckgl/deckManager'
-import { createClassLabels, createEntityLabels } from '../deckgl/textLayerConfig'
+import { useMapLabelsStore } from '../stores/mapLabelsStore'
+import { labelManager } from '../mapLabels/labelManager'
+import { createClassLabels, createEntityLabels } from '../mapLabels/textLayerConfig'
 
 // ── Basemap configuration ─────────────────────────────────────────────────
 // CARTO basemaps now require an API key (free, request at
@@ -197,8 +197,8 @@ export default {
       isLoading: true,
       overlayStore: null,
       overlayUnsub: null,
-      deckLabelStore: null,
-      deckLabelUnsub: null,
+      mapLabelsStore: null,
+      mapLabelsUnsub: null,
     }
   },
   computed: {
@@ -239,11 +239,11 @@ export default {
     this.overlayUnsub = this.overlayStore.$subscribe(() => {
       this.renderAgentOverlays()
     })
-    // Deck.gl labels (deckLabelStore → deckManager.setLayers → DeckOverlay)
-    this.deckLabelStore = useDeckLabelStore()
-    this.renderDeckLabels()
-    this.deckLabelUnsub = this.deckLabelStore.$subscribe(() => {
-      this.renderDeckLabels()
+    // Map Labels (mapLabelsStore → labelManager.setLayers → DeckOverlay)
+    this.mapLabelsStore = useMapLabelsStore()
+    this.renderMapLabels()
+    this.mapLabelsUnsub = this.mapLabelsStore.$subscribe(() => {
+      this.renderMapLabels()
     })
   },
   beforeUnmount() {
@@ -251,12 +251,12 @@ export default {
       this.overlayUnsub()
       this.overlayUnsub = null
     }
-    if (this.deckLabelUnsub) {
-      this.deckLabelUnsub()
-      this.deckLabelUnsub = null
+    if (this.mapLabelsUnsub) {
+      this.mapLabelsUnsub()
+      this.mapLabelsUnsub = null
     }
     if (mapInstance) {
-      deckManager.detach()
+      labelManager.detach()
       mapInstance.remove()
       mapInstance = null
       searchMarkersLayer = null
@@ -356,15 +356,16 @@ export default {
       augmentedAcceptedLayer = L.layerGroup().addTo(mapInstance)
       augmentedRejectedLayer = L.layerGroup().addTo(mapInstance)
 
-      // deck.gl DeckOverlay — added last so it sits in the overlay pane
-      // below the Leaflet layer groups above (markers/popups stay on top).
-      deckManager.attach(mapInstance)
+      // deck.gl DeckOverlay (Map Labels) — added last so it sits in the
+      // overlay pane below the Leaflet layer groups above (markers/popups
+      // stay on top).
+      labelManager.attach(mapInstance)
       // Sync insurance: the bridge re-syncs on its own moveend/zoomend
       // handlers; this covers any Leaflet path that fires neither.
-      mapInstance.on('moveend zoomend viewreset', () => deckManager.refresh())
+      mapInstance.on('moveend zoomend viewreset', () => labelManager.refresh())
       // Zoom hierarchy (Phase 1c): layerFilter re-evaluates every render,
       // so a single install tracks zoom — no per-event setProps needed.
-      deckManager.setLayerFilter(({ layer, viewport }) => {
+      labelManager.setLayerFilter(({ layer, viewport }) => {
         const leafletZoom = viewport.zoom + 1
         if (layer.id === 'wkg-class-labels') {
           return leafletZoom < DECK_LABEL_ZOOM_THRESHOLD
@@ -376,26 +377,26 @@ export default {
       })
     },
 
-    // ── Deck.gl label layers (deckLabelStore → deckManager) ──────────────
+    // ── Map Labels layers (mapLabelsStore → labelManager) ────────────────
     // Rebuilds the TextLayers from store state (data + size/limit settings
-    // from DeckGlControls). Empty stores produce no layers, so the deck
+    // from MapLabelsControls). Empty stores produce no layers, so the deck
     // canvas stays transparent until labels exist.
-    renderDeckLabels() {
-      if (!this.deckLabelStore) return
+    renderMapLabels() {
+      if (!this.mapLabelsStore) return
       const layers = []
-      if (this.deckLabelStore.classLabels.length) {
-        layers.push(createClassLabels(this.deckLabelStore.classLabels, {
-          limit: this.deckLabelStore.classLimit,
-          sizeScale: this.deckLabelStore.classSizeScale,
+      if (this.mapLabelsStore.classLabels.length) {
+        layers.push(createClassLabels(this.mapLabelsStore.classLabels, {
+          limit: this.mapLabelsStore.classLimit,
+          sizeScale: this.mapLabelsStore.classSizeScale,
         }))
       }
-      if (this.deckLabelStore.entityLabels.length) {
-        layers.push(createEntityLabels(this.deckLabelStore.entityLabels, {
-          limit: this.deckLabelStore.entityLimit,
-          sizeScale: this.deckLabelStore.entitySizeScale,
+      if (this.mapLabelsStore.entityLabels.length) {
+        layers.push(createEntityLabels(this.mapLabelsStore.entityLabels, {
+          limit: this.mapLabelsStore.entityLimit,
+          sizeScale: this.mapLabelsStore.entitySizeScale,
         }))
       }
-      deckManager.setLayers(layers)
+      labelManager.setLayers(layers)
     },
 
     renderCountries(countries) {
