@@ -1199,6 +1199,77 @@ def execute_query_stream(request):
     return response
 
 
+@require_GET
+def research_stream(request):
+    """Streaming research orchestrator over SSE (Server-Sent Events).
+
+    GET /api/nca/research/stream/?prompt=...&country_code=...&snapshot_date=...
+
+    Emits progressive events so the frontend shows the loop working:
+        event: plan           data: {questions}
+        event: question       data: {index, question, template, answer,
+                                     result_count, error?}
+        event: tool           data: {tool, args}
+        event: tool_out       data: {tool, output}
+        event: summary_delta  data: {delta}
+        event: done           data: {result}          (full result JSON)
+        event: error          data: {error}
+
+    Same transport as ``execute_query_stream``: the orchestrator runs in a
+    worker thread; events flow through a queue to the response generator.
+    See docs/plans/later-stages/RESEARCH_ORCHESTRATOR_MVP_PLAN.md.
+    """
+    prompt_text = (request.GET.get("prompt") or "").strip()
+    country_code = request.GET.get("country_code") or None
+    snapshot_date = request.GET.get("snapshot_date") or None
+
+    if not prompt_text:
+        return JsonResponse({"error": "prompt required"}, status=400)
+
+    async def event_stream():
+        loop = asyncio.get_running_loop()
+        events = asyncio.Queue(maxsize=512)
+
+        def emit(event, **payload):
+            if isinstance(event, dict):
+                payload = {k: v for k, v in event.items() if k != "event"}
+                event = event.get("event") or "message"
+            loop.call_soon_threadsafe(events.put_nowait, {"event": event, **payload})
+
+        def run():
+            try:
+                from semantic_search.services.research_service import (
+                    ResearchOrchestratorService,
+                )
+                cc = country_code
+                if cc:
+                    try:
+                        cc = resolve_iso_code(cc)
+                    except Exception:
+                        pass  # use as-is if resolution fails
+                result = ResearchOrchestratorService.plan(
+                    prompt_text, cc, snapshot_date, event_callback=emit,
+                )
+                emit("done", result=result)
+            except Exception as exc:  # noqa: BLE001 — surface errors as an SSE event
+                emit("error", error=str(exc))
+            finally:
+                loop.call_soon_threadsafe(events.put_nowait, None)  # sentinel
+
+        threading.Thread(target=run, daemon=True).start()
+
+        while True:
+            item = await events.get()
+            if item is None:
+                break
+            yield f"event: {item['event']}\ndata: {json.dumps(item, default=str)}\n\n"
+
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
+
+
 @api_view(['GET'])
 def worldkg_subdivisions(request):
     """List available subdivisions (provinces/states/municipalities) for a country.

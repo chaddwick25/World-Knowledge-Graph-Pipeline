@@ -97,6 +97,13 @@ services:
       - RUN_INIT_PLANET=true
       - LLM_BASE_URL=http://ollama:11434/v1
       - LLM_MODEL=qwen3:8b
+      # Research orchestrator LLM (batch path) — the RTX 2070 instance.
+      # Unset → the research loop falls back to the platform LLM (the 4070).
+      # See docs/plans/later-stages/RESEARCH_ORCHESTRATOR_MVP_PLAN.md.
+      - RESEARCH_LLM_BASE_URL=${RESEARCH_LLM_BASE_URL:-http://ollama-research:11435/v1}
+      - RESEARCH_LLM_MODEL=${RESEARCH_LLM_MODEL:-qwen3:8b}
+      - RESEARCH_LLM_TIMEOUT=${RESEARCH_LLM_TIMEOUT:-120}
+      - RESEARCH_FOLLOWUP_TOOLS=${RESEARCH_FOLLOWUP_TOOLS:-0}
     ports:
       - "8000:8000"
     volumes:
@@ -226,6 +233,33 @@ services:
       timeout: 5s
       retries: 5
 
+  # Batch research orchestrator LLM (RTX 2070, 8 GB — idle/spare card).
+  # The research loop (RESEARCH_ORCHESTRATOR_MVP_PLAN.md) decomposes big
+  # prompts and assembles summaries on this card; the 4070's interactive
+  # slots never see research traffic. Separate models volume: two Ollama
+  # daemons on one models dir can lock each other's writes.
+  ollama-research:
+    image: ollama/ollama
+    container_name: eda-ollama-research
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - OLLAMA_HOST=0.0.0.0:11435
+      - OLLAMA_KEEP_ALIVE=-1
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_MAX_QUEUE=8
+    ports:
+      - "11435:11435"
+    volumes:
+      - ollama_models_research:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
   # Local MCP agent (Block Goose) — connects to the Vite MCP server at
   # /__mcp and to Ollama. host networking: localhost reaches both the
   # Vite dev server (:5173) and Ollama (:11434) directly on Linux.
@@ -264,3 +298,4 @@ volumes:
   backend_venv:
   polygon_files:
   ollama_models:
+  ollama_models_research:
