@@ -1,8 +1,8 @@
 /**
- * DeckGlPanel — Deck GL tab content (v2 Phase 1a mount + Phase 1b data).
+ * MapLabelsPanel — Map Labels tab content (v2 Phase 1a mount + Phase 1b data).
  *
- * Loads live labels from the Phase 1b endpoints into deckLabelStore →
- * WorldKGMap.vue → deckManager.setLayers:
+ * Loads live labels from the Phase 1b endpoints into mapLabelsStore →
+ * WorldKGMap.vue → labelManager.setLayers:
  *
  *   GET /api/nca/class-centroids/  → class labels at class centroids,
  *                                    sized by entity count (low-zoom layer)
@@ -27,8 +27,8 @@
     <div class="d-flex align-items-center gap-2 small">
       <span
         class="badge rounded-pill"
-        :class="deckAttached ? 'text-bg-success' : 'text-bg-secondary'"
-      >deck overlay {{ deckAttached ? 'attached' : 'detached' }}</span>
+        :class="labelsAttached ? 'text-bg-success' : 'text-bg-secondary'"
+      >labels {{ labelsAttached ? 'attached' : 'detached' }}</span>
       <span v-if="hasLabels" class="text-secondary">
         {{ classLabelCount }} classes · {{ entityLabelCount }} entities
       </span>
@@ -76,8 +76,8 @@
 <script>
 import { ref, computed } from 'vue'
 import axios from 'axios'
-import { useDeckLabelStore } from '../stores/deckLabelStore'
-import { deckManager } from '../deckgl/deckManager'
+import { useMapLabelsStore } from '../stores/mapLabelsStore'
+import { labelManager } from '../mapLabels/labelManager'
 
 // Entity labels are fetched for the top-N classes by count (dense at
 // country scale without pulling the whole snapshot).
@@ -85,7 +85,7 @@ const ENTITY_CLASS_COUNT = 3
 const ENTITY_LIMIT = 5000
 
 export default {
-  name: 'DeckGlPanel',
+  name: 'MapLabelsPanel',
   props: {
     countryName: {
       type: String,
@@ -101,9 +101,9 @@ export default {
     },
   },
   setup(props) {
-    const store = useDeckLabelStore()
+    const store = useMapLabelsStore()
 
-    const deckAttached = ref(deckManager.isAttached())
+    const labelsAttached = ref(labelManager.isAttached())
     const loadingClasses = ref(false)
     const loadingEntities = ref(false)
     const errorMessage = ref('')
@@ -126,7 +126,7 @@ export default {
           errorMessage.value = 'No class data for this country/snapshot.'
         }
         frameLabels()
-        deckAttached.value = deckManager.isAttached()
+        labelsAttached.value = labelManager.isAttached()
       } catch (err) {
         errorMessage.value = err.response?.data?.error || err.message
       } finally {
@@ -178,7 +178,7 @@ export default {
         }
         store.setEntityLabels(entities)
         frameLabels()
-        deckAttached.value = deckManager.isAttached()
+        labelsAttached.value = labelManager.isAttached()
       } catch (err) {
         errorMessage.value = err.response?.data?.error || err.message
       } finally {
@@ -195,7 +195,7 @@ export default {
       for (const e of store.entityLabels) {
         if (e.position) latlngs.push([e.position[1], e.position[0]])
       }
-      if (latlngs.length) deckManager.fitToBounds(latlngs)
+      if (latlngs.length) labelManager.fitToBounds(latlngs)
     }
 
     function clearLabels() {
@@ -203,7 +203,7 @@ export default {
     }
 
     return {
-      deckAttached,
+      labelsAttached,
       loadingClasses,
       loadingEntities,
       errorMessage,

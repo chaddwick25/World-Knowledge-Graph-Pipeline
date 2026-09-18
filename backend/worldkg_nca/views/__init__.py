@@ -23,6 +23,8 @@ from worldkg_nca.views.search import (
     execute_query,
     execute_query_stream,
     research_stream,
+    research_chat,
+    research_finalize,
     factor_availability,
 )
 from worldkg_nca.views.graph import (
@@ -53,6 +55,8 @@ __all__ = [
     'execute_query',
     'execute_query_stream',
     'research_stream',
+    'research_chat',
+    'research_finalize',
     'factor_availability',
     'spectral_query',
     'temporal_query',

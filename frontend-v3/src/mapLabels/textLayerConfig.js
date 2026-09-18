@@ -8,7 +8,7 @@
  *   classLabels  [{ label, centroid: [lon, lat], count }]   — class-centroids/
  *   entityLabels [{ name, position: [lon, lat], score }]    — entities/
  *
- * Display settings (DeckGlControls, Phase 1c):
+ * Display settings (MapLabelsControls, Phase 1c):
  *   limit      — cap on how many labels the layer renders (data.slice)
  *   sizeScale  — multiplies the pixel clamps (and the entity size basis) so
  *                the size slider stays effective at every zoom (with

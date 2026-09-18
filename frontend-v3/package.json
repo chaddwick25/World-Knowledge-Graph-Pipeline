@@ -9,12 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ai-sdk/vue": "^4.0.106",
     "@deck.gl-community/leaflet": "^9.4.1",
     "@deck.gl/core": "^9.4.0",
     "@deck.gl/extensions": "^9.4.0",
     "@deck.gl/layers": "^9.4.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@vue/devtools-kit": "^7.7.0",
+    "ai": "^7.0.106",
     "axios": "^1.16.1",
     "bootstrap": "^5.3.8",
     "bootstrap-icons": "^1.13.1",
