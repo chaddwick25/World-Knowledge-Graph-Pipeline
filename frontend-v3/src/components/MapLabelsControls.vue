@@ -1,8 +1,8 @@
 /**
- * DeckGlControls — map-top-right legend controls for the deck.gl labels.
+ * MapLabelsControls — map-top-right legend controls for the Map Labels layers.
  *
- * Only rendered while the Deck GL tab is active (Home.vue gates it). The
- * four sliders write into deckLabelStore; WorldKGMap.vue's $subscribe
+ * Only rendered while the Map Labels tab is active (Home.vue gates it). The
+ * four sliders write into mapLabelsStore; WorldKGMap.vue's $subscribe
  * rebuilds the TextLayers with the new size/limit settings. The Save
  * button persists the four settings to localStorage; they are restored
  * on the next session. Values are bound via storeToRefs — extracting
@@ -16,68 +16,68 @@
  */
 
 <template>
-  <div class="deckgl-controls">
-    <div class="deckgl-controls__header" @click="collapsed = !collapsed">
-      <span class="deckgl-controls__title">Entity Heatmap</span>
-      <span class="deckgl-controls__badge">{{ collapsed ? 'show' : 'hide' }}</span>
+  <div class="map-labels-controls">
+    <div class="map-labels-controls__header" @click="collapsed = !collapsed">
+      <span class="map-labels-controls__title">Map Labels</span>
+      <span class="map-labels-controls__badge">{{ collapsed ? 'show' : 'hide' }}</span>
     </div>
 
-    <div v-if="!collapsed" class="deckgl-controls__body">
-      <label class="deckgl-controls__row">
-        <span class="deckgl-controls__label">Class size</span>
-        <span class="deckgl-controls__value">{{ classSizeScale.toFixed(1) }}×</span>
+    <div v-if="!collapsed" class="map-labels-controls__body">
+      <label class="map-labels-controls__row">
+        <span class="map-labels-controls__label">Class size</span>
+        <span class="map-labels-controls__value">{{ classSizeScale.toFixed(1) }}×</span>
         <input
           type="range"
-          class="form-range deckgl-controls__slider"
+          class="form-range map-labels-controls__slider"
           min="0.5" max="3" step="0.1"
           :value="classSizeScale"
           @input="store.setClassSizeScale(Number($event.target.value))"
         />
       </label>
 
-      <label class="deckgl-controls__row">
-        <span class="deckgl-controls__label">Class count</span>
-        <span class="deckgl-controls__value">{{ classLimit }}</span>
+      <label class="map-labels-controls__row">
+        <span class="map-labels-controls__label">Class count</span>
+        <span class="map-labels-controls__value">{{ classLimit }}</span>
         <input
           type="range"
-          class="form-range deckgl-controls__slider"
+          class="form-range map-labels-controls__slider"
           min="10" max="200" step="10"
           :value="classLimit"
           @input="store.setClassLimit(Number($event.target.value))"
         />
       </label>
 
-      <label class="deckgl-controls__row">
-        <span class="deckgl-controls__label">Entity size</span>
-        <span class="deckgl-controls__value">{{ entitySizeScale.toFixed(1) }}×</span>
+      <label class="map-labels-controls__row">
+        <span class="map-labels-controls__label">Entity size</span>
+        <span class="map-labels-controls__value">{{ entitySizeScale.toFixed(1) }}×</span>
         <input
           type="range"
-          class="form-range deckgl-controls__slider"
+          class="form-range map-labels-controls__slider"
           min="0.5" max="3" step="0.1"
           :value="entitySizeScale"
           @input="store.setEntitySizeScale(Number($event.target.value))"
         />
       </label>
 
-      <label class="deckgl-controls__row">
-        <span class="deckgl-controls__label">Entity count</span>
-        <span class="deckgl-controls__value">{{ entityLimit }}</span>
+      <label class="map-labels-controls__row">
+        <span class="map-labels-controls__label">Entity count</span>
+        <span class="map-labels-controls__value">{{ entityLimit }}</span>
         <input
           type="range"
-          class="form-range deckgl-controls__slider"
+          class="form-range map-labels-controls__slider"
           min="100" max="5000" step="100"
           :value="entityLimit"
           @input="store.setEntityLimit(Number($event.target.value))"
         />
       </label>
 
-      <div class="deckgl-controls__swatches">
-        <span><i class="deckgl-controls__swatch deckgl-controls__swatch--class"></i>classes</span>
-        <span><i class="deckgl-controls__swatch deckgl-controls__swatch--entity"></i>entities</span>
+      <div class="map-labels-controls__swatches">
+        <span><i class="map-labels-controls__swatch map-labels-controls__swatch--class"></i>classes</span>
+        <span><i class="map-labels-controls__swatch map-labels-controls__swatch--entity"></i>entities</span>
       </div>
 
       <button
-        class="btn btn-sm btn-outline-primary deckgl-controls__save"
+        class="btn btn-sm btn-outline-primary map-labels-controls__save"
         @click="onSave"
       >{{ saved ? 'Saved' : 'Save settings' }}</button>
     </div>
@@ -87,12 +87,12 @@
 <script>
 import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useDeckLabelStore } from '../stores/deckLabelStore'
+import { useMapLabelsStore } from '../stores/mapLabelsStore'
 
 export default {
-  name: 'DeckGlControls',
+  name: 'MapLabelsControls',
   setup() {
-    const store = useDeckLabelStore()
+    const store = useMapLabelsStore()
     const collapsed = ref(false)
     const saved = ref(false)
     // storeToRefs keeps the template reactive — the previous
@@ -121,7 +121,7 @@ export default {
 </script>
 
 <style scoped>
-.deckgl-controls {
+.map-labels-controls {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -136,14 +136,14 @@ export default {
   user-select: none;
 }
 
-.deckgl-controls__header {
+.map-labels-controls__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
 }
 
-.deckgl-controls__title {
+.map-labels-controls__title {
   font-size: 0.72rem;
   font-weight: 600;
   color: #d1d5db;
@@ -151,7 +151,7 @@ export default {
   letter-spacing: 0.05em;
 }
 
-.deckgl-controls__badge {
+.map-labels-controls__badge {
   font-size: 0.62rem;
   color: #6b7280;
   border: 1px solid #374151;
@@ -160,14 +160,14 @@ export default {
   line-height: 1.4;
 }
 
-.deckgl-controls__body {
+.map-labels-controls__body {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
   margin-top: 0.5rem;
 }
 
-.deckgl-controls__row {
+.map-labels-controls__row {
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-rows: auto auto;
@@ -176,24 +176,24 @@ export default {
   align-items: center;
 }
 
-.deckgl-controls__label {
+.map-labels-controls__label {
   font-size: 0.66rem;
   color: #9ca3af;
 }
 
-.deckgl-controls__value {
+.map-labels-controls__value {
   font-size: 0.66rem;
   color: #e5e7eb;
   font-variant-numeric: tabular-nums;
 }
 
-.deckgl-controls__slider {
+.map-labels-controls__slider {
   grid-column: 1 / -1;
   margin: 0;
   padding: 0;
 }
 
-.deckgl-controls__swatches {
+.map-labels-controls__swatches {
   display: flex;
   gap: 0.7rem;
   margin-top: 0.15rem;
@@ -201,7 +201,7 @@ export default {
   color: #6b7280;
 }
 
-.deckgl-controls__swatch {
+.map-labels-controls__swatch {
   display: inline-block;
   width: 10px;
   height: 10px;
@@ -209,15 +209,15 @@ export default {
   margin-right: 0.25rem;
 }
 
-.deckgl-controls__swatch--class {
+.map-labels-controls__swatch--class {
   background: #c8c8c8;
 }
 
-.deckgl-controls__swatch--entity {
+.map-labels-controls__swatch--entity {
   background: #78b4ff;
 }
 
-.deckgl-controls__save {
+.map-labels-controls__save {
   width: 100%;
   margin-top: 0.35rem;
   font-size: 0.66rem;

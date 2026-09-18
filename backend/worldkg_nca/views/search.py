@@ -1,12 +1,14 @@
 import json
 import asyncio
+import logging
 import threading
 
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.http import JsonResponse, StreamingHttpResponse
-from django.views.decorators.http import require_GET
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET, require_POST
 from django.core.paginator import Paginator
 from django.db.models import FloatField, Q, Value, F
 from django.db.models.expressions import RawSQL, Func
@@ -29,6 +31,8 @@ from core.services.planet_init.osm_wikidata_resolver import resolve_country_bbox
 from worldkg_nca.services.link_candidate_service import WorldKGLinkCandidateService
 from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
 from worldkg_nca.snapshot_utils import get_latest_snapshot_id
+
+logger = logging.getLogger(__name__)
 
 
 # TODO: Refactor this monolithic file
@@ -1268,6 +1272,138 @@ def research_stream(request):
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     return response
+
+
+@csrf_exempt
+@require_POST
+def research_chat(request):
+    """Stream the KE interviewer reply over SSE (AI SDK UI-message-stream).
+
+    POST /api/nca/research/chat/
+    body: {"messages": [AI SDK UIMessage dicts or {role, content}],
+           "country_code": "BZ", "snapshot_date": "2025_12_31"}
+
+    Emits the AI SDK v7 UI-message-stream protocol (frontend
+    ``useChat``/``DefaultChatTransport`` consumes it):
+        data: {"type": "start"}
+        data: {"type": "text-start", "id": "t1"}
+        data: {"type": "text-delta", "id": "t1", "delta": "..."}  (repeated)
+        data: {"type": "text-end", "id": "t1"}
+        data: {"type": "finish", "finishReason": "stop"}
+    Headers include ``x-vercel-ai-ui-message-stream: v1`` (the protocol
+    marker). The interviewer is the interactive LLM instance (the 4070):
+    the conversation is the interactive path, separate from the batch
+    orchestrator on the 2070. Fail-soft: 503 JSON when the LLM is down;
+    the stream always terminates with a finish frame.
+
+    ``@csrf_exempt`` matches the DRF views (DRF bypasses the global CSRF
+    middleware; its SessionAuthentication only enforces CSRF for
+    session-authenticated requests). This endpoint is stateless chat with
+    no writes, and PublicAuthGuardMiddleware gates it on public hosts.
+    """
+    try:
+        body = json.loads(request.body or b"{}")
+    except ValueError:
+        return JsonResponse({"error": "invalid JSON body"}, status=400)
+    messages = body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return JsonResponse({"error": "messages required"}, status=400)
+    country_code = body.get("country_code") or None
+    snapshot_date = body.get("snapshot_date") or None
+
+    from core.services.llm_service import LLMService
+    from semantic_search.services.research_service import (
+        ResearchOrchestratorService,
+    )
+
+    llm = LLMService.get_instance()
+    if not llm.is_available():
+        return JsonResponse({"error": "interviewer LLM unavailable"}, status=503)
+
+    full_messages = ResearchOrchestratorService.chat_messages(
+        messages, country_code, snapshot_date,
+    )
+
+    def _part(part_dict):
+        return f"data: {json.dumps(part_dict)}\n\n"
+
+    async def event_stream():
+        loop = asyncio.get_running_loop()
+        events = asyncio.Queue(maxsize=512)
+
+        def emit(line):
+            loop.call_soon_threadsafe(events.put_nowait, line)
+
+        def run():
+            try:
+                emit(_part({"type": "start"}))
+                emit(_part({"type": "text-start", "id": "t1"}))
+                for delta in llm.chat_stream(
+                    full_messages, temperature=0.4, max_tokens=400,
+                ):
+                    if delta:
+                        emit(_part({
+                            "type": "text-delta", "id": "t1", "delta": delta,
+                        }))
+                emit(_part({"type": "text-end", "id": "t1"}))
+            except Exception as exc:  # noqa: BLE001 — never leave the client hanging
+                logger.warning("Research chat stream failed: %s", exc)
+            finally:
+                emit(_part({"type": "finish", "finishReason": "stop"}))
+                loop.call_soon_threadsafe(events.put_nowait, None)
+
+        threading.Thread(target=run, daemon=True).start()
+
+        while True:
+            item = await events.get()
+            if item is None:
+                break
+            yield item
+
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    response["X-Vercel-AI-UI-Message-Stream"] = "v1"
+    return response
+
+
+@csrf_exempt
+@require_POST
+def research_finalize(request):
+    """Extract a structured research brief from the interview conversation.
+
+    POST /api/nca/research/finalize/
+    body: {"messages": [...], "country_code": "BZ", "snapshot_date": "..."}
+
+    Returns {"brief", "fields", "source"}:
+      source "structured" — chat_json field extraction + deterministic
+        render (the KE never emits free-form briefs, so the runaway
+        place/distance list cannot recur)
+      source "fallback"  — the first user message (LLM down / empty
+        extraction)
+
+    Fail-soft: no brief extractable → 422.
+    """
+    try:
+        body = json.loads(request.body or b"{}")
+    except ValueError:
+        return JsonResponse({"error": "invalid JSON body"}, status=400)
+    messages = body.get("messages")
+    if not isinstance(messages, list):
+        return JsonResponse({"error": "messages required"}, status=400)
+    country_code = body.get("country_code") or None
+    snapshot_date = body.get("snapshot_date") or None
+
+    from semantic_search.services.research_service import (
+        ResearchOrchestratorService,
+    )
+
+    result = ResearchOrchestratorService.finalize_brief(
+        messages, country_code, snapshot_date,
+    )
+    if not result:
+        return JsonResponse({"error": "no brief extractable"}, status=422)
+    return JsonResponse(result)
 
 
 @api_view(['GET'])

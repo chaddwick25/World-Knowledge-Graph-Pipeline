@@ -1,14 +1,14 @@
 /**
- * deckLabelStore — Pinia store for the deck.gl label layers (v2 Phase 1a).
+ * mapLabelsStore — Pinia store for the Map Labels layers (v2 Phase 1a).
  *
  * Mirrors overlayStore.js: WorldKGMap.vue subscribes via $subscribe and
- * rebuilds the TextLayers from store state through deckManager.setLayers.
+ * rebuilds the TextLayers from store state through labelManager.setLayers.
  *
  * Data shapes (backend endpoints, Phase 1b):
  *   classLabels  [{ label, centroid: [lon, lat], count }]
  *   entityLabels [{ name, position: [lon, lat], score }]
  *
- * Display settings (DeckGlControls, Phase 1c controls):
+ * Display settings (MapLabelsControls, Phase 1c controls):
  *   classSizeScale / entitySizeScale — multiplies the text size clamps
  *   classLimit / entityLimit         — caps how many labels render
  * Mutating any of them triggers the same $subscribe rebuild as the data.
@@ -18,11 +18,12 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 // localStorage key for the saved display settings (Save button in
-// DeckGlControls). Loaded once at store creation; missing/corrupt
-// entries fall back to the defaults.
+// MapLabelsControls). Stable across the feature rename so saved settings
+// survive; loaded once at store creation; missing/corrupt entries fall
+// back to the defaults.
 const SETTINGS_KEY = 'deckLabelSettings'
 
-export const useDeckLabelStore = defineStore('deckLabels', () => {
+export const useMapLabelsStore = defineStore('mapLabels', () => {
   // ── State ──
 
   const classLabels = ref([])

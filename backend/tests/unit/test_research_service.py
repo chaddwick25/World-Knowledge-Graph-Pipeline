@@ -415,3 +415,87 @@ class TestPlan:
         event_names = [e["event"] for e in events]
         assert "tool" in event_names
         assert "tool_out" in event_names
+
+
+# ── Brief renderer ───────────────────────────────────────────────────────
+
+class TestRenderBrief:
+    def test_full_fields(self):
+        brief = ResearchOrchestratorService._render_brief({
+            "destination": "Belize City", "duration": "2-day",
+            "party_size": "2 adults", "budget": "$5000",
+            "interests": "exploring", "constraints": "no car",
+        })
+        assert brief == (
+            "Plan a 2-day trip to Belize City for 2 adults with a $5000 "
+            "budget, focused on exploring. Constraints: no car"
+        )
+
+    def test_minimal_fields(self):
+        assert ResearchOrchestratorService._render_brief({
+            "destination": "Belize City",
+        }) == "Plan a trip to Belize City"
+
+    def test_missing_destination_none(self):
+        assert ResearchOrchestratorService._render_brief({
+            "budget": "$5000",
+        }) is None
+        assert ResearchOrchestratorService._render_brief(None) is None
+
+    def test_long_fields_capped(self):
+        brief = ResearchOrchestratorService._render_brief({
+            "destination": "X" * 500,
+            "interests": "y" * 300,
+        })
+        assert len(brief) <= 400
+        assert brief.startswith("Plan a trip to " + "X" * 100)
+        assert "y" * 100 in brief
+
+
+# ── Brief finalize ───────────────────────────────────────────────────────
+
+class TestFinalizeBrief:
+    def test_structured_extraction(self):
+        fake = FakeLLM(chat_json_result={
+            "destination": "Belize City", "duration": "2-day",
+            "party_size": "2 adults", "budget": "$5000",
+            "interests": "exploring",
+        })
+        with mock.patch.object(LLMService, "get_instance", return_value=fake):
+            result = ResearchOrchestratorService.finalize_brief([
+                {"role": "user", "content": "plan a 2-day trip to Belize City"},
+                {"role": "assistant", "content": "How many people?"},
+                {"role": "user", "content": "2 adults, $5000, exploring"},
+            ], country_code="BZ")
+        assert result["source"] == "structured"
+        assert result["brief"].startswith("Plan a 2-day trip to Belize City")
+        assert "for 2 adults" in result["brief"]
+        assert "$5000" in result["brief"]
+
+    def test_fallback_on_llm_down(self):
+        fake = FakeLLM(available=False)
+        with mock.patch.object(LLMService, "get_instance", return_value=fake):
+            result = ResearchOrchestratorService.finalize_brief([
+                {"role": "user", "content": "plan a trip to Belize City"},
+                {"role": "assistant", "content": "When?"},
+                {"role": "user", "content": "June"},
+            ])
+        assert result["source"] == "fallback"
+        assert result["brief"] == "plan a trip to Belize City"
+
+    def test_empty_extraction_falls_back(self):
+        fake = FakeLLM(chat_json_result={"destination": ""})
+        with mock.patch.object(LLMService, "get_instance", return_value=fake):
+            result = ResearchOrchestratorService.finalize_brief([
+                {"role": "user", "content": "plan a trip to Belize City"},
+            ])
+        assert result["source"] == "fallback"
+        assert result["brief"] == "plan a trip to Belize City"
+
+    def test_no_user_messages_none(self):
+        fake = FakeLLM(available=False)
+        with mock.patch.object(LLMService, "get_instance", return_value=fake):
+            result = ResearchOrchestratorService.finalize_brief([
+                {"role": "assistant", "content": "hello"},
+            ])
+        assert result is None

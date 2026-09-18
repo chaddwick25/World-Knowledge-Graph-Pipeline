@@ -109,6 +109,45 @@ _ASSEMBLE_SYSTEM_PROMPT = (
     "When an answer is missing or errored, say so instead of guessing."
 )
 
+# The KE interviewer (Knowledge Engineer) — the interactive LLM on the
+# 4070. Turns the user's vague idea into a precise research brief. The KE
+# ONLY interviews: it never emits the brief itself. The system builds the
+# brief via structured extraction (finalize_brief), so free-form model
+# output (the runaway place/distance list, observed 2026-09-18) cannot
+# reach the run.
+KE_SYSTEM_PROMPT = (
+    "You are the research interviewer for a geospatial trip-planning "
+    "system. Turn the user's idea into a precise research brief.\n"
+    "Ask ONE short clarifying question at a time. Gather: destination, "
+    "dates or duration, party size, interests, must-sees, constraints "
+    "(budget, mobility, pace).\n"
+    "If the user's first message already contains enough detail, skip the "
+    "questions and say you are ready.\n"
+    "When you have enough detail, say you are ready to run the research.\n"
+    "Never output a 'BRIEF:' line, a plan, a list of places, or distances. "
+    "You only interview; the system builds the brief from your interview.\n"
+    "Keep questions short and conversational. Do not repeat the user's "
+    "answers back at length."
+)
+
+# Structured brief extraction (finalize_brief). chat_json uses
+# format: "json" on the native Ollama path, so the reply is constrained
+# to a JSON object — the runaway free-form list cannot occur here.
+FINALIZE_SYSTEM_PROMPT = (
+    "You extract trip-planning facts from a research interview. "
+    "Respond with STRICT JSON only, no prose:\n"
+    '{"destination": "...", "duration": "...", "party_size": "...", '
+    '"budget": "...", "interests": "...", "constraints": "..."}\n'
+    "Rules:\n"
+    "- Use ONLY facts the user stated. Empty string when not stated.\n"
+    "- duration: short form like '2-day'.\n"
+    "- party_size: include the noun, e.g. '2 adults'.\n"
+    "- interests: a short comma-separated phrase.\n"
+    "- constraints: only limits the user stated (mobility, pace, things "
+    "to avoid). Empty string when the user stated none.\n"
+    "- Never invent places, distances, numbers, or opening hours."
+)
+
 
 class ResearchOrchestratorService:
     """Stateless research orchestrator — the LLM decomposes, we execute."""
@@ -189,6 +228,181 @@ class ResearchOrchestratorService:
             "summary": summary,
             "errors": errors,
         }
+
+    # ── KE interviewer chat ───────────────────────────────────────────────
+
+    @staticmethod
+    def _message_text(m: dict) -> str:
+        """Extract text from a client message.
+
+        Accepts both the AI SDK UIMessage shape (``parts: [{type: "text",
+        text: "..."}]`` — what useChat sends) and the plain
+        ``{role, content}`` shape. Returns None for empty/unsupported.
+        """
+        if not isinstance(m, dict):
+            return None
+        parts = m.get("parts")
+        if isinstance(parts, list):
+            text = "".join(
+                p.get("text", "")
+                for p in parts
+                if isinstance(p, dict) and p.get("type") == "text"
+            ).strip()
+            return text or None
+        content = m.get("content")
+        if isinstance(content, str):
+            content = content.strip()
+            return content or None
+        return None
+
+    @staticmethod
+    def chat_messages(messages: list, country_code: str = None,
+                      snapshot_date: str = None) -> list:
+        """Full message list for the KE interviewer (system + cleaned history).
+
+        ``messages`` is the raw conversation from the client (AI SDK
+        UIMessage dicts or plain role/content dicts); only user and
+        assistant turns with text survive. The system prompt carries the
+        interview rules plus the country and snapshot scope.
+        """
+        context = (
+            f"Country: {country_code or 'unspecified'}. "
+            f"Snapshot: {snapshot_date or 'latest'}."
+        )
+        full = [
+            {"role": "system", "content": f"{KE_SYSTEM_PROMPT}\n{context}"},
+        ]
+        for m in messages or []:
+            if not isinstance(m, dict):
+                continue
+            role = m.get("role")
+            text = ResearchOrchestratorService._message_text(m)
+            if role in ("user", "assistant") and text:
+                full.append({"role": role, "content": text})
+        return full
+
+    @classmethod
+    def chat(cls, messages: list, country_code: str = None,
+             snapshot_date: str = None, on_delta=None) -> str:
+        """Stream the KE interviewer reply. Returns the full reply or None.
+
+        The interviewer is the interactive LLM (``LLMService.get_instance``,
+        the 4070) — the conversation is the interactive path. ``on_delta``
+        receives each content delta for live streaming.
+        """
+        from core.services.llm_service import LLMService
+        llm = LLMService.get_instance()
+        if not llm.is_available():
+            return None
+        full = cls.chat_messages(messages, country_code, snapshot_date)
+        parts = []
+        for delta in llm.chat_stream(full, temperature=0.4, max_tokens=400):
+            if on_delta:
+                on_delta(delta)
+            parts.append(delta)
+        reply = "".join(parts).strip()
+        return reply or None
+
+    # ── Brief finalize (structured extraction) ────────────────────────────
+
+    @staticmethod
+    def _render_brief(fields: dict) -> str:
+        """Render the research brief deterministically from extracted fields.
+
+        The render is bounded and cannot produce the runaway place/distance
+        list failure (that came from free-form model output). Returns None
+        when no destination is stated.
+        """
+        f = {
+            k: (v or "").strip().replace("\n", " ")[:100]
+            for k, v in (fields or {}).items()
+            if isinstance(v, str)
+        }
+        destination = f.get("destination") or ""
+        if not destination:
+            return None
+
+        duration = f.get("duration") or ""
+        parts = []
+        if duration:
+            parts.append(f"Plan a {duration} trip to {destination}")
+        else:
+            parts.append(f"Plan a trip to {destination}")
+        party = f.get("party_size") or ""
+        if party:
+            parts.append(f"for {party}")
+        budget = f.get("budget") or ""
+        if budget:
+            parts.append(f"with a {budget} budget")
+        brief = " ".join(parts)
+
+        interests = f.get("interests") or ""
+        if interests:
+            brief += f", focused on {interests}"
+        constraints = f.get("constraints") or ""
+        if constraints:
+            brief += f". Constraints: {constraints}"
+        return brief[:400] or None
+
+    @classmethod
+    def finalize_brief(cls, messages: list, country_code: str = None,
+                       snapshot_date: str = None) -> dict:
+        """Extract a structured brief from the interview conversation.
+
+        Returns {"brief", "fields", "source"} or None.
+        ``source`` is "structured" (extracted via chat_json + deterministic
+        render) or "fallback" (the first user message, when the LLM is down
+        or extraction fails). The KE never emits free-form briefs, so the
+        runaway place/distance list cannot reach the run.
+        """
+        from core.services.llm_service import LLMService
+
+        llm = LLMService.get_instance()
+
+        user_texts = [
+            cls._message_text(m)
+            for m in messages or []
+            if isinstance(m, dict) and m.get("role") == "user"
+        ]
+        user_texts = [t for t in user_texts if t]
+        fallback = user_texts[0] if user_texts else None
+
+        if llm.is_available():
+            # Last 8 turns, truncated — enough for the facts, keeps the
+            # prompt small (and a past runaway reply out of the extraction).
+            turns = []
+            for m in (messages or [])[-8:]:
+                if not isinstance(m, dict):
+                    continue
+                role = m.get("role")
+                text = cls._message_text(m)
+                if role in ("user", "assistant") and text:
+                    turns.append(f"{role}: {text[:400]}")
+            conversation = "\n".join(turns)
+            fields = llm.chat_json([
+                {"role": "system", "content": FINALIZE_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Country: {country_code or 'unspecified'}. "
+                        f"Snapshot: {snapshot_date or 'latest'}.\n"
+                        f"Interview:\n{conversation}\n"
+                        "Extract the trip-planning facts as JSON."
+                    ),
+                },
+            ], temperature=0.0, max_tokens=300)
+            brief = cls._render_brief(fields)
+            if brief:
+                return {
+                    "brief": brief,
+                    "fields": {k: v for k, v in (fields or {}).items()
+                               if isinstance(v, str)} or {},
+                    "source": "structured",
+                }
+
+        if fallback:
+            return {"brief": fallback, "fields": {}, "source": "fallback"}
+        return None
 
     # ── Phase 1: decompose ─────────────────────────────────────────────────
 

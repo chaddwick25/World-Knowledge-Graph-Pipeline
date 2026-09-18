@@ -53,8 +53,8 @@
             @countries-loaded="onCountriesLoaded"
             @country-toggled="onCountryToggled"
           />
-          <!-- Deck GL label controls — only while the Deck GL tab is active -->
-          <DeckGlControls v-if="activeTab === 'deckgl'" />
+          <!-- Map Labels controls — only while the Map Labels tab is active -->
+          <MapLabelsControls v-if="activeTab === 'map-labels'" />
         </template>
         <div v-else class="h-100 d-flex align-items-center justify-content-center p-3">
           <PlanetInitPanel
@@ -182,9 +182,9 @@
               :snapshot-date="selectedSnapshotDate"
               @links-toggle="onLinksToggle"
             />
-            <!-- Deck GL tab -->
-            <DeckGlPanel
-              v-else-if="activeTab === 'deckgl'"
+            <!-- Map Labels tab -->
+            <MapLabelsPanel
+              v-else-if="activeTab === 'map-labels'"
               :country-name="singleCountry.name"
               :country-code="singleCountry.iso_code"
               :snapshot-date="selectedSnapshotDate"
@@ -225,8 +225,8 @@ import SnapshotCalendar from '../components/SnapshotCalendar.vue'
 import SemanticSearchPanel from '../components/SemanticSearchPanel.vue'
 import PipelineMetricsPanel from '../components/PipelineMetricsPanel.vue'
 import AugmentedDataPanel from '../components/AugmentedDataPanel.vue'
-import DeckGlPanel from '../components/DeckGlPanel.vue'
-import DeckGlControls from '../components/DeckGlControls.vue'
+import MapLabelsPanel from '../components/MapLabelsPanel.vue'
+import MapLabelsControls from '../components/MapLabelsControls.vue'
 import ResearchPanel from '../components/ResearchPanel.vue'
 import PlanetInitPanel from '../components/PlanetInitPanel.vue'
 import SystemSummaryModal from '../components/SystemSummaryModal.vue'
@@ -242,8 +242,8 @@ export default {
     SemanticSearchPanel,
     PipelineMetricsPanel,
     AugmentedDataPanel,
-    DeckGlPanel,
-    DeckGlControls,
+    MapLabelsPanel,
+    MapLabelsControls,
     ResearchPanel,
     PlanetInitPanel,
     SystemSummaryModal,
@@ -257,7 +257,7 @@ export default {
         { key: 'query', label: 'Query' },
         { key: 'metrics', label: 'Metrics' },
         { key: 'augmented', label: 'USLP' },
-        { key: 'deckgl', label: 'Deck GL' },
+        { key: 'map-labels', label: 'Map Labels' },
         { key: 'research', label: 'Research' },
       ],
 
@@ -689,7 +689,7 @@ export default {
 }
 
 /* Map container needs a min-height for Leaflet to render, and position
-   relative so the DeckGlControls overlay can anchor top-right. */
+   relative so the MapLabelsControls overlay can anchor top-right. */
 .home__map {
   position: relative;
   min-height: 0;

@@ -20,6 +20,8 @@ urlpatterns = [
     path('execute-query/', views.execute_query, name='nca_execute_query'),
     path('execute-query/stream/', views.execute_query_stream, name='nca_execute_query_stream'),
     path('research/stream/', views.research_stream, name='nca_research_stream'),
+    path('research/chat/', views.research_chat, name='nca_research_chat'),
+    path('research/finalize/', views.research_finalize, name='nca_research_finalize'),
     path('factor-availability/', views.factor_availability, name='nca_factor_availability'),
     path('subdivisions/', views.worldkg_subdivisions, name='nca_subdivisions'),
     # Graph / spectral / community / event queries (GRAPH_SPECTRAL_TEMPORAL_PLAN.md Phase 4)
