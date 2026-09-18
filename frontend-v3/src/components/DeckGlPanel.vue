@@ -9,8 +9,9 @@
  *   GET /api/nca/entities/         → entity tag names for the top classes
  *                                    (high-zoom layer)
  *
- * The zoom-hierarchy layerFilter + CollisionFilterExtension land in
- * Phase 1c; both layers render together until then.
+ * Phase 1c is implemented: WorldKGMap.vue's layerFilter switches the
+ * layers on a zoom threshold, and both TextLayers carry
+ * CollisionFilterExtension so overlapping labels are hidden.
  */
 
 <template>
@@ -66,7 +67,8 @@
       like Natural, Waterway, Highway) at their geometric centroid, sized by
       count. Entity labels come from <code>entities/</code> for the top
       classes, skipping unnamed features. The map frames the country on load;
-      the zoom-hierarchy switch and collision handling land in Phase 1c.
+      class labels show below zoom 10, entity labels at 10 and above, and
+      collision filtering hides overlapping labels.
     </p>
   </div>
 </template>
@@ -142,6 +144,10 @@ export default {
       try {
         const topClasses = store.classLabels.slice(0, ENTITY_CLASS_COUNT)
         const entities = []
+        // Dedupe by OSM identity — the same physical entity can come back
+        // once per snapshot partition when snapshot_date is unset, and
+        // identical stacked labels are noise regardless of the source.
+        const seen = new Set()
         for (const cls of topClasses) {
           const { data } = await axios.get('/nca/entities/', {
             params: {
@@ -158,6 +164,9 @@ export default {
             // noise, not a label.
             const name = e.tags?.name || e.tags?.['name:en'] || ''
             if (!name) continue
+            const key = `${e.osm_type}:${e.osm_id}`
+            if (seen.has(key)) continue
+            seen.add(key)
             entities.push({
               name,
               position: [e.geom.lon, e.geom.lat],

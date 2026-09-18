@@ -3,7 +3,10 @@
  *
  * Only rendered while the Deck GL tab is active (Home.vue gates it). The
  * four sliders write into deckLabelStore; WorldKGMap.vue's $subscribe
- * rebuilds the TextLayers with the new size/limit settings.
+ * rebuilds the TextLayers with the new size/limit settings. The Save
+ * button persists the four settings to localStorage; they are restored
+ * on the next session. Values are bound via storeToRefs — extracting
+ * store props as plain values freezes the display at mount.
  *
  *   Class size    — scales the class-label pixel clamps (blurry-at-low-zoom
  *                   fix: crank it up when zoomed out)
@@ -72,12 +75,18 @@
         <span><i class="deckgl-controls__swatch deckgl-controls__swatch--class"></i>classes</span>
         <span><i class="deckgl-controls__swatch deckgl-controls__swatch--entity"></i>entities</span>
       </div>
+
+      <button
+        class="btn btn-sm btn-outline-primary deckgl-controls__save"
+        @click="onSave"
+      >{{ saved ? 'Saved' : 'Save settings' }}</button>
     </div>
   </div>
 </template>
 
 <script>
 import { ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useDeckLabelStore } from '../stores/deckLabelStore'
 
 export default {
@@ -85,14 +94,27 @@ export default {
   setup() {
     const store = useDeckLabelStore()
     const collapsed = ref(false)
+    const saved = ref(false)
+    // storeToRefs keeps the template reactive — the previous
+    // `store.classSizeScale` extraction captured a static number, so the
+    // displayed values froze at mount and never tracked the sliders.
+    const { classSizeScale, entitySizeScale, classLimit, entityLimit } = storeToRefs(store)
+
+    function onSave() {
+      store.saveSettings()
+      saved.value = true
+      setTimeout(() => { saved.value = false }, 1500)
+    }
+
     return {
       store,
       collapsed,
-      // Unwrap refs for the template bindings
-      classSizeScale: store.classSizeScale,
-      entitySizeScale: store.entitySizeScale,
-      classLimit: store.classLimit,
-      entityLimit: store.entityLimit,
+      saved,
+      onSave,
+      classSizeScale,
+      entitySizeScale,
+      classLimit,
+      entityLimit,
     }
   },
 }
@@ -193,5 +215,12 @@ export default {
 
 .deckgl-controls__swatch--entity {
   background: #78b4ff;
+}
+
+.deckgl-controls__save {
+  width: 100%;
+  margin-top: 0.35rem;
+  font-size: 0.66rem;
+  padding: 0.15rem 0;
 }
 </style>

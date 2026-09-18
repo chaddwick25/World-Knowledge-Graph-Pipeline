@@ -109,7 +109,9 @@ def worldkg_entities_by_class(request):
     
     `country_code` and `snapshot_date` (optional) scope the query to a single
     snapshot partition — required for country-scale label views.  `limit` is
-    clamped to [1, 5000].
+    clamped to [1, 5000].  When `snapshot_date` is omitted the latest
+    snapshot is used (mirroring class-centroids); without a snapshot filter
+    every entity returns once per snapshot partition.
     
     Returns:
         {
@@ -130,6 +132,10 @@ def worldkg_entities_by_class(request):
     limit = max(1, min(limit, ENTITIES_LIMIT_MAX))
     country_code = request.GET.get('country_code')
     snapshot_date = request.GET.get('snapshot_date')
+    if not snapshot_date:
+        # Mirror class-centroids: missing snapshot means latest, not all
+        # partitions — otherwise each entity returns once per snapshot.
+        snapshot_date = get_latest_snapshot_id()
     
     if not class_name:
         return Response(

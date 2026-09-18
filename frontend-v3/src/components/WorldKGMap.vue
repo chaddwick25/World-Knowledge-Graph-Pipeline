@@ -83,6 +83,13 @@ const BASEMAP_ATTRIBUTION = USE_CARTO
   ? '© <a href="https://www.openstreetmap.org/copyright">OSM</a> · <a href="https://carto.com/">CARTO</a>'
   : '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
+// ── Deck.gl label zoom hierarchy (Phase 1c) ─────────────────────────────
+// Leaflet zoom at which the label layers switch: class labels render below
+// the threshold, entity labels at/above it. The layerFilter installed in
+// initMap reads viewport.zoom (deck units = leaflet zoom - 1) and converts
+// back, so this constant stays in Leaflet units.
+const DECK_LABEL_ZOOM_THRESHOLD = 10
+
 // ── Relation type color map ──────────────────────────────────────────────
 // Harmonious palette (Tailwind 400-500 range) that complements the app's
 // dark theme (#0f172a backgrounds, #6366f1 indigo accent).
@@ -355,6 +362,18 @@ export default {
       // Sync insurance: the bridge re-syncs on its own moveend/zoomend
       // handlers; this covers any Leaflet path that fires neither.
       mapInstance.on('moveend zoomend viewreset', () => deckManager.refresh())
+      // Zoom hierarchy (Phase 1c): layerFilter re-evaluates every render,
+      // so a single install tracks zoom — no per-event setProps needed.
+      deckManager.setLayerFilter(({ layer, viewport }) => {
+        const leafletZoom = viewport.zoom + 1
+        if (layer.id === 'wkg-class-labels') {
+          return leafletZoom < DECK_LABEL_ZOOM_THRESHOLD
+        }
+        if (layer.id === 'entity-tag-labels') {
+          return leafletZoom >= DECK_LABEL_ZOOM_THRESHOLD
+        }
+        return true
+      })
     },
 
     // ── Deck.gl label layers (deckLabelStore → deckManager) ──────────────
