@@ -15,11 +15,15 @@
  *                sizeUnits meters/pixels the clamps would otherwise
  *                dominate and swallow the slider).
  *
- * The zoom-hierarchy layerFilter, 250ms alpha transitions and
- * CollisionFilterExtension land in Phase 1c — these factories stay stable.
+ * Zoom hierarchy (Phase 1c, implemented): the layerFilter in
+ * WorldKGMap.vue keeps one layer visible per zoom level, and
+ * CollisionFilterExtension on both layers hides labels that would
+ * overlap — the collision winner is whichever has the higher
+ * getCollisionPriority (same basis as the text size).
  */
 
 import { TextLayer } from '@deck.gl/layers'
+import { CollisionFilterExtension } from '@deck.gl/extensions'
 
 export function createClassLabels(classData, { limit = 100, sizeScale = 1 } = {}) {
   return new TextLayer({
@@ -33,6 +37,10 @@ export function createClassLabels(classData, { limit = 100, sizeScale = 1 } = {}
     sizeMinPixels: 14 * sizeScale,
     sizeMaxPixels: 48 * sizeScale,
     getColor: [200, 200, 200, 255],
+    extensions: [new CollisionFilterExtension()],
+    collisionEnabled: true,
+    getCollisionPriority: (d) => d.count,
+    transitions: { getColor: 250 },
   })
 }
 
@@ -48,5 +56,9 @@ export function createEntityLabels(entityData, { limit = 5000, sizeScale = 1 } =
     sizeMinPixels: 10 * sizeScale,
     sizeMaxPixels: 20 * sizeScale,
     getColor: [120, 180, 255, 255],
+    extensions: [new CollisionFilterExtension()],
+    collisionEnabled: true,
+    getCollisionPriority: (d) => d.score,
+    transitions: { getColor: 250 },
   })
 }
