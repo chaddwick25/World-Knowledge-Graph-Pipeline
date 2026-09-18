@@ -272,10 +272,6 @@ CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
 
-
-
-
-
 # Deployed frontend origins (Netlify domain), set on the homeserver env.
 _extra_origins = [o.strip() for o in os.getenv('CORS_EXTRA_ORIGINS', '').split(',') if o.strip()]
 # TODO: use ENVs

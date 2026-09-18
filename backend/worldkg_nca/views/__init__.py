@@ -8,6 +8,9 @@ from worldkg_nca.views.enrichment import (
     worldkg_entities_by_class,
     worldkg_entity_detail,
 )
+from worldkg_nca.views.visualizations import (
+    worldkg_class_centroids,
+)
 from worldkg_nca.views.drift import (
     worldkg_compute_fingerprint,
     worldkg_compute_drift,
@@ -39,6 +42,7 @@ __all__ = [
     'worldkg_enrich_entity',
     'worldkg_entities_by_class',
     'worldkg_entity_detail',
+    'worldkg_class_centroids',
     'worldkg_compute_fingerprint',
     'worldkg_compute_drift',
     'worldkg_drift_list',

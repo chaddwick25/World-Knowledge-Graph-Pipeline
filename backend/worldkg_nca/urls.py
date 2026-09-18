@@ -11,6 +11,8 @@ urlpatterns = [
     
     # Entity queries
     path('entities/', views.worldkg_entities_by_class, name='nca_query_entities'),
+    # Visualization data (DECKGL_VISUALIZATION_INTEGRATION_PLAN_V2.md Phase 1)
+    path('class-centroids/', views.worldkg_class_centroids, name='nca_class_centroids'),
     path('entities/detail/<str:osm_type>/<int:osm_id>/', views.worldkg_entity_detail, name='nca_entity_detail'),
     path('distribution/', views.worldkg_class_distribution, name='nca_class_distribution'),
     path('semantic-query/plan/', views.worldkg_semantic_query_plan, name='nca_semantic_query_plan'),

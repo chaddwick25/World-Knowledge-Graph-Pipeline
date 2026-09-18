@@ -854,7 +854,9 @@ class WorldKGEnrichmentService:
         self,
         wkg_class: str,
         include_subclasses: bool = True,
-        limit: int = 100
+        limit: int = 100,
+        country_code: Optional[str] = None,
+        snapshot_date: Optional[str] = None
     ) -> List[OsmEntity]:
         """
         Retrieve entities belonging to a WorldKG class.
@@ -863,25 +865,27 @@ class WorldKGEnrichmentService:
             wkg_class: WorldKG class name using wkgs: namespace (e.g., 'wkgs:Cafe')
             include_subclasses: If True, include all subclasses
             limit: Maximum number of entities to return
-        
+            country_code: Optional ISO 3166-1 alpha-2 code — scopes the query
+                to one geographic partition (deck.gl label views).
+            snapshot_date: Optional 'YYYY_MM_DD' snapshot partition key —
+                scopes the query to one temporal partition.
+
         Returns:
             List of OsmEntity instances
         """
+        qs = OsmEntity.objects.using('vectors')
         if include_subclasses:
             # Get all subclasses
             subclasses = self.ontology.get_subclasses(wkg_class, recursive=True)
             class_filter = [wkg_class] + subclasses
-            
-            return list(
-                OsmEntity.objects.using('vectors')
-                .filter(wkg_class__in=class_filter)
-                .order_by('-wkg_depth')[:limit]
-            )
+            qs = qs.filter(wkg_class__in=class_filter).order_by('-wkg_depth')
         else:
-            return list(
-                OsmEntity.objects.using('vectors')
-                .filter(wkg_class=wkg_class)[:limit]
-            )
+            qs = qs.filter(wkg_class=wkg_class)
+        if country_code:
+            qs = qs.filter(country_code=country_code)
+        if snapshot_date:
+            qs = qs.filter(snapshot_id=snapshot_date)
+        return list(qs[:limit])
     
     def get_class_distribution(
         self,

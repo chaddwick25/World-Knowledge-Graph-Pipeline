@@ -58,6 +58,9 @@ import axios from 'axios'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useOverlayStore } from '../stores/overlayStore'
+import { useDeckLabelStore } from '../stores/deckLabelStore'
+import { deckManager } from '../deckgl/deckManager'
+import { createClassLabels, createEntityLabels } from '../deckgl/textLayerConfig'
 
 // ── Basemap configuration ─────────────────────────────────────────────────
 // CARTO basemaps now require an API key (free, request at
@@ -187,6 +190,8 @@ export default {
       isLoading: true,
       overlayStore: null,
       overlayUnsub: null,
+      deckLabelStore: null,
+      deckLabelUnsub: null,
     }
   },
   computed: {
@@ -227,13 +232,24 @@ export default {
     this.overlayUnsub = this.overlayStore.$subscribe(() => {
       this.renderAgentOverlays()
     })
+    // Deck.gl labels (deckLabelStore → deckManager.setLayers → DeckOverlay)
+    this.deckLabelStore = useDeckLabelStore()
+    this.renderDeckLabels()
+    this.deckLabelUnsub = this.deckLabelStore.$subscribe(() => {
+      this.renderDeckLabels()
+    })
   },
   beforeUnmount() {
     if (this.overlayUnsub) {
       this.overlayUnsub()
       this.overlayUnsub = null
     }
+    if (this.deckLabelUnsub) {
+      this.deckLabelUnsub()
+      this.deckLabelUnsub = null
+    }
     if (mapInstance) {
+      deckManager.detach()
       mapInstance.remove()
       mapInstance = null
       searchMarkersLayer = null
@@ -245,8 +261,21 @@ export default {
   },
   watch: {
     selectedIds: {
-      handler() {
+      handler(newIds) {
         this.refreshStyles()
+        // Sidebar selection: frame the country. Map-polygon clicks already
+        // fly in handleClick — skip the double flight via _flyingFromClick.
+        if (newIds.length === 1 && !this._flyingFromClick) {
+          const layer = layerLookup[newIds[0]]
+          if (layer && mapInstance) {
+            mapInstance.flyToBounds(layer.getBounds(), {
+              padding: [100, 100],
+              maxZoom: 14,
+              duration: 0.8,
+            })
+          }
+        }
+        this._flyingFromClick = false
       },
       deep: true,
     },
@@ -319,6 +348,35 @@ export default {
       agentOverlayLayer = L.layerGroup().addTo(mapInstance)
       augmentedAcceptedLayer = L.layerGroup().addTo(mapInstance)
       augmentedRejectedLayer = L.layerGroup().addTo(mapInstance)
+
+      // deck.gl DeckOverlay — added last so it sits in the overlay pane
+      // below the Leaflet layer groups above (markers/popups stay on top).
+      deckManager.attach(mapInstance)
+      // Sync insurance: the bridge re-syncs on its own moveend/zoomend
+      // handlers; this covers any Leaflet path that fires neither.
+      mapInstance.on('moveend zoomend viewreset', () => deckManager.refresh())
+    },
+
+    // ── Deck.gl label layers (deckLabelStore → deckManager) ──────────────
+    // Rebuilds the TextLayers from store state (data + size/limit settings
+    // from DeckGlControls). Empty stores produce no layers, so the deck
+    // canvas stays transparent until labels exist.
+    renderDeckLabels() {
+      if (!this.deckLabelStore) return
+      const layers = []
+      if (this.deckLabelStore.classLabels.length) {
+        layers.push(createClassLabels(this.deckLabelStore.classLabels, {
+          limit: this.deckLabelStore.classLimit,
+          sizeScale: this.deckLabelStore.classSizeScale,
+        }))
+      }
+      if (this.deckLabelStore.entityLabels.length) {
+        layers.push(createEntityLabels(this.deckLabelStore.entityLabels, {
+          limit: this.deckLabelStore.entityLimit,
+          sizeScale: this.deckLabelStore.entitySizeScale,
+        }))
+      }
+      deckManager.setLayers(layers)
     },
 
     renderCountries(countries) {
@@ -770,6 +828,7 @@ export default {
     },
 
     handleClick(countryId) {
+      this._flyingFromClick = true
       this.$emit('country-toggled', { countryId })
       const layer = layerLookup[countryId]
       if (layer && mapInstance) {

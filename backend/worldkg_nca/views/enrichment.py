@@ -94,24 +94,42 @@ def worldkg_enrich_entity(request):
     })
 
 
+# Cap on the entities endpoint limit — the deck.gl label view fetches up to
+# 5000 entities per class (DECKGL_VISUALIZATION_INTEGRATION_PLAN_V2.md §3.2.7).
+ENTITIES_LIMIT_MAX = 5000
+
+
 @api_view(['GET'])
 def worldkg_entities_by_class(request):
     """
     Get entities belonging to a WorldKG class.
     
-    GET /api/worldkg/entities/?class={class_name}&include_subclasses={bool}&limit={int}
+    GET /api/nca/entities/?class={class_name}&include_subclasses={bool}&limit={int}
+        &country_code={ISO}&snapshot_date={YYYY_MM_DD}
+    
+    `country_code` and `snapshot_date` (optional) scope the query to a single
+    snapshot partition — required for country-scale label views.  `limit` is
+    clamped to [1, 5000].
     
     Returns:
         {
             "class": str,
             "include_subclasses": bool,
+            "country_code": str | null,
+            "snapshot_date": str | null,
             "total": int,
             "entities": [...]
         }
     """
     class_name = request.GET.get('class')
     include_subclasses = request.GET.get('include_subclasses', 'true').lower() == 'true'
-    limit = int(request.GET.get('limit', 100))
+    try:
+        limit = int(request.GET.get('limit', 100))
+    except (TypeError, ValueError):
+        limit = 100
+    limit = max(1, min(limit, ENTITIES_LIMIT_MAX))
+    country_code = request.GET.get('country_code')
+    snapshot_date = request.GET.get('snapshot_date')
     
     if not class_name:
         return Response(
@@ -119,11 +137,23 @@ def worldkg_entities_by_class(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     
+    if country_code:
+        # Normalize to ISO first (override-aware), mirroring factor_availability.
+        try:
+            resolved = resolve_iso_code(country_code)
+            if resolved:
+                country_code = resolved
+        except Exception:
+            pass
+        country_code = country_code.upper()
+    
     enrichment_service = get_worldkg_enrichment_service()
     entities = enrichment_service.get_entities_by_class(
         class_name,
         include_subclasses=include_subclasses,
-        limit=limit
+        limit=limit,
+        country_code=country_code or None,
+        snapshot_date=snapshot_date or None,
     )
     
     entities_data = [{
@@ -141,6 +171,8 @@ def worldkg_entities_by_class(request):
     return Response({
         "class": class_name,
         "include_subclasses": include_subclasses,
+        "country_code": country_code or None,
+        "snapshot_date": snapshot_date or None,
         "total": len(entities_data),
         "entities": entities_data
     })
