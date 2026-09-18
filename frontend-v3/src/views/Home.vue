@@ -189,6 +189,12 @@
               :country-code="singleCountry.iso_code"
               :snapshot-date="selectedSnapshotDate"
             />
+            <!-- Research tab -->
+            <ResearchPanel
+              v-else-if="activeTab === 'research'"
+              :country-name="singleCountry.name"
+              :snapshot-date="selectedSnapshotDate"
+            />
           </div>
         </div>
       </aside>
@@ -221,6 +227,7 @@ import PipelineMetricsPanel from '../components/PipelineMetricsPanel.vue'
 import AugmentedDataPanel from '../components/AugmentedDataPanel.vue'
 import DeckGlPanel from '../components/DeckGlPanel.vue'
 import DeckGlControls from '../components/DeckGlControls.vue'
+import ResearchPanel from '../components/ResearchPanel.vue'
 import PlanetInitPanel from '../components/PlanetInitPanel.vue'
 import SystemSummaryModal from '../components/SystemSummaryModal.vue'
 import RerunConfirmModal from '../components/RerunConfirmModal.vue'
@@ -237,6 +244,7 @@ export default {
     AugmentedDataPanel,
     DeckGlPanel,
     DeckGlControls,
+    ResearchPanel,
     PlanetInitPanel,
     SystemSummaryModal,
     RerunConfirmModal,
@@ -250,6 +258,7 @@ export default {
         { key: 'metrics', label: 'Metrics' },
         { key: 'augmented', label: 'USLP' },
         { key: 'deckgl', label: 'Deck GL' },
+        { key: 'research', label: 'Research' },
       ],
 
       // ── System state ──

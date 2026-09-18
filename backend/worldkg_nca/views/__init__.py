@@ -22,6 +22,7 @@ from worldkg_nca.views.search import (
     worldkg_subdivisions,
     execute_query,
     execute_query_stream,
+    research_stream,
     factor_availability,
 )
 from worldkg_nca.views.graph import (
@@ -51,6 +52,7 @@ __all__ = [
     'worldkg_subdivisions',
     'execute_query',
     'execute_query_stream',
+    'research_stream',
     'factor_availability',
     'spectral_query',
     'temporal_query',
