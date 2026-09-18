@@ -24,7 +24,7 @@
             value="tags"
             v-model="queryMode"
           >
-          <label class="btn btn-outline-secondary" for="query-mode-tags">Structured (JSON)</label>
+          <label class="btn btn-outline-secondary" for="query-mode-tags">OSM Tag Query</label>
 
           <input
             type="radio"
@@ -45,15 +45,25 @@
         @subdivision-selected="subdivisionQid = $event"
       />
 
-      <!-- Tags input (Structured JSON mode) -->
-      <div v-if="isTagsMode" class="d-flex flex-column gap-1">
-        <label class="form-label small text-secondary mb-0">OSM Tag</label>
-        <textarea
-          v-model="queryTagsInput"
-          class="form-control form-control-sm font-monospace"
-          rows="2"
-          placeholder='{"amenity": "cafe"}  or  {"name": "파리바게뜨"}'
-        ></textarea>
+      <!-- Tag key/value (OSM Tag Query mode) -->
+      <div v-if="isTagsMode" class="row g-2">
+        <div class="col-6">
+          <label class="form-label small text-secondary mb-0">Tag key</label>
+          <select v-model="tagKey" class="form-select form-select-sm">
+            <option v-for="opt in tagKeyOptions" :key="opt.value" :value="opt.value">
+              {{ opt.text }}
+            </option>
+          </select>
+        </div>
+        <div class="col-6">
+          <label class="form-label small text-secondary mb-0">Tag value</label>
+          <input
+            v-model="tagValue"
+            type="text"
+            class="form-control form-control-sm"
+            placeholder="e.g. cafe (empty = has key)"
+          />
+        </div>
       </div>
 
       <!-- Natural language name search input -->
@@ -326,7 +336,9 @@ export default {
     return {
       // ── Query state (component-local) ──
       queryMode: 'template',
-      queryTagsInput: '{"amenity": "cafe"}',
+      // OSM Tag Query mode: key dropdown + free-text value → query_tags.
+      tagKey: 'amenity',
+      tagValue: 'cafe',
       naturalQuery: '',
       templateQuery: '',
       lat: '',
@@ -366,6 +378,36 @@ export default {
         { value: 'wkgs:Shop', text: 'Shop' },
         { value: 'wkgs:Amenity', text: 'Amenity (general)' },
       ],
+      // OSM tag keys for the OSM Tag Query dropdown. `name` is listed
+      // first-adjacent because the backend routes it to the fuzzy name
+      // search instead of exact tag matching.
+      tagKeyOptions: [
+        { value: 'amenity', text: 'amenity' },
+        { value: 'name', text: 'name (fuzzy search)' },
+        { value: 'shop', text: 'shop' },
+        { value: 'cuisine', text: 'cuisine' },
+        { value: 'tourism', text: 'tourism' },
+        { value: 'leisure', text: 'leisure' },
+        { value: 'office', text: 'office' },
+        { value: 'healthcare', text: 'healthcare' },
+        { value: 'craft', text: 'craft' },
+        { value: 'building', text: 'building' },
+        { value: 'natural', text: 'natural' },
+        { value: 'place', text: 'place' },
+        { value: 'historic', text: 'historic' },
+        { value: 'man_made', text: 'man_made' },
+        { value: 'highway', text: 'highway' },
+        { value: 'railway', text: 'railway' },
+        { value: 'waterway', text: 'waterway' },
+        { value: 'power', text: 'power' },
+        { value: 'landuse', text: 'landuse' },
+        { value: 'aeroway', text: 'aeroway' },
+        { value: 'emergency', text: 'emergency' },
+        { value: 'military', text: 'military' },
+        { value: 'sport', text: 'sport' },
+        { value: 'barrier', text: 'barrier' },
+        { value: 'telecom', text: 'telecom' },
+      ],
     }
   },
   computed: {
@@ -380,12 +422,9 @@ export default {
     },
     isValid() {
       if (this.isTagsMode) {
-        try {
-          JSON.parse(this.queryTagsInput)
-          return true
-        } catch {
-          return false
-        }
+        // Key always comes from the dropdown; value may stay empty (the
+        // backend treats it as a has-key filter).
+        return !!this.tagKey
       }
       if (this.isTemplateMode) {
         return this.templateQuery.trim().length > 0
@@ -459,7 +498,8 @@ export default {
   methods: {
     reset() {
       this.queryMode = 'tags'
-      this.queryTagsInput = '{"amenity": "cafe"}'
+      this.tagKey = 'amenity'
+      this.tagValue = 'cafe'
       this.naturalQuery = ''
       this.templateQuery = ''
       this.lat = ''
@@ -516,20 +556,16 @@ export default {
       }
 
       try {
-        // Structured (JSON) and Natural language modes both use triplet search
+        // OSM Tag Query and Natural language modes both use triplet search
         const payload = {
           country_code: this.countryName,
           top_k: this.topKClamped,
         }
 
         if (this.isTagsMode) {
-          let queryTags = {}
-          try {
-            queryTags = JSON.parse(this.queryTagsInput)
-          } catch {
-            throw new Error('Invalid JSON in query tags')
-          }
-          payload.query_tags = queryTags
+          // Key from dropdown + free-text value → query_tags; empty value
+          // means has-key matching on the backend.
+          payload.query_tags = { [this.tagKey]: this.tagValue.trim() }
         } else if (this.isNaturalMode) {
           // Natural language name search: romanizer + FastText
           if (!this.naturalQuery.trim()) {
