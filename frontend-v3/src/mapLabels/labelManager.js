@@ -1,11 +1,12 @@
 /**
- * deckManager — module-level singleton owning the deck.gl DeckOverlay.
+ * labelManager — module-level singleton owning the deck.gl DeckOverlay
+ * for the Map Labels feature.
  *
  * DECKGL_VISUALIZATION_INTEGRATION_PLAN_V2.md §3.2.2. The DeckOverlay is an
  * L.Layer added to the Leaflet map (camera-synced by the bridge; Leaflet
  * keeps controller:false so it owns pan/zoom). Vue never touches deck
  * internals — WorldKGMap.vue calls attach/detach around the map lifecycle,
- * and the deck label store drives setLayers.
+ * and the map labels store drives setLayers.
  *
  * Module-level state mirrors the layer-singleton style of WorldKGMap.vue
  * (mapInstance, geoJsonLayer, ...).
@@ -17,7 +18,7 @@ import { MapView } from '@deck.gl/core'
 let deckOverlay = null
 let mapInstance = null
 
-export const deckManager = {
+export const labelManager = {
   /**
    * Create the DeckOverlay and add it to the map. Safe to call again
    * (HMR/remount): an existing overlay is detached first.
