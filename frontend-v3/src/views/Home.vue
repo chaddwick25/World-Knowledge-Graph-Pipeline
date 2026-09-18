@@ -53,6 +53,8 @@
             @countries-loaded="onCountriesLoaded"
             @country-toggled="onCountryToggled"
           />
+          <!-- Deck GL label controls — only while the Deck GL tab is active -->
+          <DeckGlControls v-if="activeTab === 'deckgl'" />
         </template>
         <div v-else class="h-100 d-flex align-items-center justify-content-center p-3">
           <PlanetInitPanel
@@ -181,9 +183,12 @@
               @links-toggle="onLinksToggle"
             />
             <!-- Deck GL tab -->
-            <div v-else-if="activeTab === 'deckgl'" class="d-flex align-items-center justify-content-center py-4">
-              <span class="text-secondary">Coming Soon</span>
-            </div>
+            <DeckGlPanel
+              v-else-if="activeTab === 'deckgl'"
+              :country-name="singleCountry.name"
+              :country-code="singleCountry.iso_code"
+              :snapshot-date="selectedSnapshotDate"
+            />
           </div>
         </div>
       </aside>
@@ -214,6 +219,8 @@ import SnapshotCalendar from '../components/SnapshotCalendar.vue'
 import SemanticSearchPanel from '../components/SemanticSearchPanel.vue'
 import PipelineMetricsPanel from '../components/PipelineMetricsPanel.vue'
 import AugmentedDataPanel from '../components/AugmentedDataPanel.vue'
+import DeckGlPanel from '../components/DeckGlPanel.vue'
+import DeckGlControls from '../components/DeckGlControls.vue'
 import PlanetInitPanel from '../components/PlanetInitPanel.vue'
 import SystemSummaryModal from '../components/SystemSummaryModal.vue'
 import RerunConfirmModal from '../components/RerunConfirmModal.vue'
@@ -228,6 +235,8 @@ export default {
     SemanticSearchPanel,
     PipelineMetricsPanel,
     AugmentedDataPanel,
+    DeckGlPanel,
+    DeckGlControls,
     PlanetInitPanel,
     SystemSummaryModal,
     RerunConfirmModal,
@@ -670,8 +679,10 @@ export default {
   }
 }
 
-/* Map container needs a min-height for Leaflet to render. */
+/* Map container needs a min-height for Leaflet to render, and position
+   relative so the DeckGlControls overlay can anchor top-right. */
 .home__map {
+  position: relative;
   min-height: 0;
 }
 
