@@ -16,6 +16,7 @@ produces no summary.
 
 import json
 import sys
+import uuid
 
 from django.core.management.base import BaseCommand
 
@@ -56,9 +57,22 @@ class Command(BaseCommand):
             line = {"event": event, **payload}
             self.stdout.write("→ " + json.dumps(line, ensure_ascii=False, default=str)[:600])
 
-        result = ResearchOrchestratorService.plan(
-            prompt, country, snapshot_date, event_callback=emit,
-        )
+        # One trace per demo run (console sink shows it; Langfuse sink
+        # ingests it). Thread-local: LLM spans attach as children.
+        from core.services.trace_service import TraceService
+
+        trace_id = uuid.uuid4().hex
+        self.stdout.write(f"trace: {trace_id}")
+
+        with TraceService.run_trace(
+            "research", trace_id=trace_id,
+            metadata={"country": country, "snapshot_date": snapshot_date},
+        ):
+            result = ResearchOrchestratorService.plan(
+                prompt, country, snapshot_date, event_callback=emit,
+            )
+        if isinstance(result, dict):
+            result.setdefault("trace_id", trace_id)
 
         self.stdout.write("")
         if result.get("summary"):

@@ -38,6 +38,11 @@ _ENTITY_ROWS = [
     ("Moher Cottage", {"amenity": "cafe"}, 52.9530, -9.4211, 700004),
     ("Cliff Coast Coffee", {"amenity": "cafe"}, 53.0126, -9.3839, 700005),
     ("Real Cafe Near Shandon", {"amenity": "cafe"}, 51.9035, -8.4760, 700006),
+    # Belfast anchor regression (2026-09-19): the city and a same-name
+    # bicycle destination sign both match exactly; the city must win.
+    ("Belfast", {"place": "city", "capital": "yes"}, 54.5973, -5.9301, 700010),
+    ("Belfast", {"type": "destination_sign", "destination": "Belfast"},
+     54.6589, -5.9029, 700011),
 ]
 _SEEDED_OSM_IDS = [row[4] for row in _ENTITY_ROWS]
 
@@ -156,3 +161,14 @@ class TestFragmentGuard:
         result = EntityGeocoder.geocode("Shandon Bell", snapshot_date=SNAP)
         assert result is not None
         assert result["name"] == "Shandon Bells"
+
+    def test_city_beats_same_name_destination_sign(self, seed_entities):
+        """The Belfast regression: an exact-name 'Belfast' must resolve to
+        the place=city entity, not the NCN 93 destination sign."""
+        from semantic_search.services.entity_geocoder import EntityGeocoder
+        result = EntityGeocoder.geocode("Belfast", snapshot_date=SNAP)
+        assert result is not None
+        assert result["osm_id"] == 700010, (
+            "geocoder resolved to the signpost, not the city"
+        )
+        assert result["tags"].get("place") == "city"

@@ -79,6 +79,10 @@ _DECOMPOSE_SYSTEM_PROMPT = (
     "- One entity class per question (hotels, cafes, restaurants, museums, "
     "beaches, parks, ...).\n"
     "- Radius questions must state an explicit distance in meters or km.\n"
+    "- Scale the radius to the anchor's extent: a city-scale anchor "
+    "(Dublin, Seoul, Rome) needs at least 2 km, prefer 3-5 km; a venue, "
+    "building, or neighbourhood anchor works at 500m-2km. Never use 1 km "
+    "for a city.\n"
     "- Anchor every question at a named place from the request, or at a "
     "place named by an earlier question, written as 'the top <class>' "
     "(e.g. 'the top hotel').\n"
@@ -106,7 +110,11 @@ _ASSEMBLE_SYSTEM_PROMPT = (
     "classes, or opening hours. Use the exact entity names from the "
     "answers. Organize the summary into short labeled sections (for a trip "
     "plan: where to stay, where to eat, what to see, getting around). "
-    "When an answer is missing or errored, say so instead of guessing."
+    "When an answer is missing or errored, say so instead of guessing. "
+    "Never introduce a place, category, count, or distance that does not "
+    "appear in the answers. When a question found nothing, write that "
+    "nothing was found for that question; do not generalize to nearby "
+    "categories or invent alternatives."
 )
 
 # The KE interviewer (Knowledge Engineer) — the interactive LLM on the
@@ -466,7 +474,10 @@ class ResearchOrchestratorService:
         """Run parser + executor per question. Returns
         (records, errors, last_top_entity, last_results)."""
         from semantic_search.services.query_parser_service import QueryParserService
-        from semantic_search.services.query_executor_service import QueryExecutorService
+        from semantic_search.services.query_executor_service import (
+            DEFAULT_NEAR_RADIUS_M,
+            QueryExecutorService,
+        )
         from semantic_search.services.query_enrichment_service import (
             QueryEnrichmentService,
         )
@@ -519,6 +530,42 @@ class ResearchOrchestratorService:
                             qtext = alt
                             parsed = alt_parsed
 
+                # Small-radius empty escalation: a 1 km question about a
+                # city anchor returns nothing ("1 km is too small to search
+                # Dublin"), and an empty answer invites the assembler to
+                # invent content. When a #1 question with an explicit
+                # radius below the open-ended default returns zero results,
+                # widen the radius to DEFAULT_NEAR_RADIUS_M and run once.
+                if (
+                    template == "FILTER-AGGREGATE-MEASURE (#1)"
+                    and not cls._anchor_geocode_failed(result)
+                    and (len(results) if isinstance(results, list) else 0) == 0
+                ):
+                    radius_m = cls._parse_radius_m(
+                        cls._amount_text(parsed) or qtext,
+                    )
+                    if radius_m is not None and radius_m < DEFAULT_NEAR_RADIUS_M:
+                        widened = cls._widen_radius(qtext, DEFAULT_NEAR_RADIUS_M)
+                        if widened and widened != qtext:
+                            logger.info(
+                                "Research radius escalation: %r -> %r",
+                                qtext, widened,
+                            )
+                            wide_parsed = QueryParserService.get_instance().parse(
+                                widened,
+                            )
+                            if (wide_parsed or {}).get("template"):
+                                result = QueryExecutorService.execute(
+                                    wide_parsed, country_code, snapshot_date,
+                                    question=widened, skip_enrichment=True,
+                                )
+                                if result.get("error"):
+                                    raise ValueError(result["error"])
+                                results = result.get("results") or []
+                                qtext = widened
+                                parsed = wide_parsed
+                                record["radius_escalated"] = True
+
                 last_results = results
                 record.update({
                     "question": qtext,
@@ -557,6 +604,7 @@ class ResearchOrchestratorService:
                     "digest": record.get("digest") or "",
                     "result_count": record.get("result_count", 0),
                     "error": record.get("error"),
+                    "radius_escalated": record.get("radius_escalated", False),
                 })
 
         return records, errors, last_top_entity, last_results
@@ -575,6 +623,43 @@ class ResearchOrchestratorService:
             r"\bthe\s+(?:top|best|nearest|first)\s+\w+",
             last_top_entity, qtext, count=1, flags=re.IGNORECASE,
         )
+
+    @staticmethod
+    def _amount_text(parsed: dict) -> str:
+        """The parsed AMOUNT concept text (the radius), if any."""
+        for c in (parsed or {}).get("concepts") or []:
+            if c.get("type") == "AMOUNT" and c.get("text"):
+                return c["text"]
+        return None
+
+    _RADIUS_TOKEN_RE = re.compile(
+        r"\b(\d+(?:\.\d+)?)\s*(km|kilometers?|meters?|m)\b", re.IGNORECASE,
+    )
+
+    @classmethod
+    def _parse_radius_m(cls, text: str):
+        """Parse a radius from text ('1km', '500m') → meters, or None.
+
+        Local to the loop (the executor is patched in tests and its
+        ``_parse_radius`` is executor-internal); same token family as
+        ``_RADIUS_TOKEN_RE``.
+        """
+        if not text:
+            return None
+        m = cls._RADIUS_TOKEN_RE.search(text)
+        if not m:
+            return None
+        value = float(m.group(1))
+        unit = m.group(2).lower()
+        if unit.startswith("k"):
+            return int(value * 1000)
+        return int(value)
+
+    @classmethod
+    def _widen_radius(cls, qtext: str, radius_m: int) -> str:
+        """Rewrite the question's radius token to a fixed radius."""
+        target = f"{radius_m / 1000.0:g} km"
+        return cls._RADIUS_TOKEN_RE.sub(target, qtext, count=1)
 
     @staticmethod
     def _top_entity_name(results: list, exclude: str = None) -> str:

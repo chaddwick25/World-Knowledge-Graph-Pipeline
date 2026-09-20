@@ -2,6 +2,7 @@ import json
 import asyncio
 import logging
 import threading
+import uuid
 
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -1139,6 +1140,10 @@ def execute_query_stream(request):
     if not query_text:
         return JsonResponse({"error": "query required"}, status=400)
 
+    # Traceability (UNIFIED_LLM_TRACE_PLAN.md): one trace per run; the
+    # caller can propagate a cross-app id via ?trace_id= (or X-Trace-Id).
+    trace_id = request.GET.get("trace_id") or uuid.uuid4().hex
+
     async def event_stream():
         # Async generator + asyncio.Queue: Django's ASGI handler BUFFERS
         # sync streaming generators (verified empirically — chunks arrive in
@@ -1163,6 +1168,7 @@ def execute_query_stream(request):
 
         def run():
             try:
+                from core.services.trace_service import TraceService
                 from semantic_search.services.query_parser_service import QueryParserService
                 from semantic_search.services.query_executor_service import QueryExecutorService
 
@@ -1175,15 +1181,26 @@ def execute_query_stream(request):
                     except Exception:
                         pass  # use as-is if resolution fails
 
-                parser = QueryParserService.get_instance()
-                parsed = parser.parse(query_text)
-                emit("parsed", parsed=parsed)
+                # The trace context is thread-local: LLM spans emitted by
+                # LLMService inside the executor attach as children.
+                with TraceService.run_trace(
+                    "execute_query", trace_id=trace_id,
+                    metadata={
+                        "query": query_text[:200], "country_code": cc,
+                        "snapshot_date": snapshot_date,
+                    },
+                ):
+                    parser = QueryParserService.get_instance()
+                    parsed = parser.parse(query_text)
+                    emit("parsed", parsed=parsed)
 
-                result = QueryExecutorService.execute(
-                    parsed, cc, snapshot_date,
-                    question=query_text, event_callback=emit,
-                )
-                emit("done", result=result)
+                    result = QueryExecutorService.execute(
+                        parsed, cc, snapshot_date,
+                        question=query_text, event_callback=emit,
+                    )
+                    if isinstance(result, dict):
+                        result["trace_id"] = trace_id
+                    emit("done", result=result)
             except Exception as exc:  # noqa: BLE001 — surface errors as an SSE event
                 emit("error", error=str(exc))
             finally:
@@ -1200,6 +1217,7 @@ def execute_query_stream(request):
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
+    response["X-Trace-Id"] = trace_id
     return response
 
 
@@ -1221,7 +1239,6 @@ def research_stream(request):
 
     Same transport as ``execute_query_stream``: the orchestrator runs in a
     worker thread; events flow through a queue to the response generator.
-    See docs/plans/later-stages/RESEARCH_ORCHESTRATOR_MVP_PLAN.md.
     """
     prompt_text = (request.GET.get("prompt") or "").strip()
     country_code = request.GET.get("country_code") or None
@@ -1230,7 +1247,13 @@ def research_stream(request):
     if not prompt_text:
         return JsonResponse({"error": "prompt required"}, status=400)
 
+    # Traceability (UNIFIED_LLM_TRACE_PLAN.md): one trace per run; the
+    # caller can propagate a cross-app id via ?trace_id= (or X-Trace-Id).
+    trace_id = request.GET.get("trace_id") or uuid.uuid4().hex
+
     async def event_stream():
+        from core.services.trace_service import TraceService
+
         loop = asyncio.get_running_loop()
         events = asyncio.Queue(maxsize=512)
 
@@ -1238,10 +1261,13 @@ def research_stream(request):
             if isinstance(event, dict):
                 payload = {k: v for k, v in event.items() if k != "event"}
                 event = event.get("event") or "message"
+            # Deterministic stage markers (behind TRACE_DETERMINISTIC_STAGES=1).
+            TraceService.stage_event(event, payload)
             loop.call_soon_threadsafe(events.put_nowait, {"event": event, **payload})
 
         def run():
             try:
+                from core.services.trace_service import TraceService
                 from semantic_search.services.research_service import (
                     ResearchOrchestratorService,
                 )
@@ -1251,10 +1277,21 @@ def research_stream(request):
                         cc = resolve_iso_code(cc)
                     except Exception:
                         pass  # use as-is if resolution fails
-                result = ResearchOrchestratorService.plan(
-                    prompt_text, cc, snapshot_date, event_callback=emit,
-                )
-                emit("done", result=result)
+                # Thread-local trace: LLM spans from decompose/assemble/follow-ups
+                # attach as children; question/tool events become point spans.
+                with TraceService.run_trace(
+                    "research", trace_id=trace_id,
+                    metadata={
+                        "prompt": prompt_text[:200], "country_code": cc,
+                        "snapshot_date": snapshot_date,
+                    },
+                ):
+                    result = ResearchOrchestratorService.plan(
+                        prompt_text, cc, snapshot_date, event_callback=emit,
+                    )
+                    if isinstance(result, dict):
+                        result["trace_id"] = trace_id
+                    emit("done", result=result)
             except Exception as exc:  # noqa: BLE001 — surface errors as an SSE event
                 emit("error", error=str(exc))
             finally:
@@ -1271,6 +1308,7 @@ def research_stream(request):
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
+    response["X-Trace-Id"] = trace_id
     return response
 
 
@@ -1310,6 +1348,7 @@ def research_chat(request):
         return JsonResponse({"error": "messages required"}, status=400)
     country_code = body.get("country_code") or None
     snapshot_date = body.get("snapshot_date") or None
+    trace_id = body.get("trace_id") or uuid.uuid4().hex
 
     from core.services.llm_service import LLMService
     from semantic_search.services.research_service import (
@@ -1336,16 +1375,26 @@ def research_chat(request):
 
         def run():
             try:
-                emit(_part({"type": "start"}))
-                emit(_part({"type": "text-start", "id": "t1"}))
-                for delta in llm.chat_stream(
-                    full_messages, temperature=0.4, max_tokens=400,
+                from core.services.trace_service import TraceService
+                # One trace per interview turn; the KE stream span attaches
+                # via the thread-local (LLMService.chat_stream).
+                with TraceService.run_trace(
+                    "research_chat", trace_id=trace_id,
+                    metadata={
+                        "country_code": country_code,
+                        "snapshot_date": snapshot_date,
+                    },
                 ):
-                    if delta:
-                        emit(_part({
-                            "type": "text-delta", "id": "t1", "delta": delta,
-                        }))
-                emit(_part({"type": "text-end", "id": "t1"}))
+                    emit(_part({"type": "start"}))
+                    emit(_part({"type": "text-start", "id": "t1"}))
+                    for delta in llm.chat_stream(
+                        full_messages, temperature=0.4, max_tokens=400,
+                    ):
+                        if delta:
+                            emit(_part({
+                                "type": "text-delta", "id": "t1", "delta": delta,
+                            }))
+                    emit(_part({"type": "text-end", "id": "t1"}))
             except Exception as exc:  # noqa: BLE001 — never leave the client hanging
                 logger.warning("Research chat stream failed: %s", exc)
             finally:
@@ -1364,6 +1413,7 @@ def research_chat(request):
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     response["X-Vercel-AI-UI-Message-Stream"] = "v1"
+    response["X-Trace-Id"] = trace_id
     return response
 
 

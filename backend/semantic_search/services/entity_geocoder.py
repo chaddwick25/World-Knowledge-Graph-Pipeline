@@ -90,7 +90,7 @@ class EntityGeocoder:
                     )
                     .order_by(TrigramSimilarity("name_romanized", name_variant).desc())
                 )
-                entity = qs_fuzzy.first()
+                entity = EntityGeocoder._pick(list(qs_fuzzy[:5]))
                 if entity:
                     result = EntityGeocoder._entity_to_dict(entity)
                     if result and result.get("lat") is not None:
@@ -101,7 +101,7 @@ class EntityGeocoder:
         # 2. Exact name match (case-insensitive) — check the 'name' tag
         for name_variant in variants:
             qs_exact = qs.filter(tags__name__iexact=name_variant)
-            entity = qs_exact.first()
+            entity = EntityGeocoder._pick(list(qs_exact[:5]))
             if entity:
                 result = EntityGeocoder._entity_to_dict(entity)
                 if result and result.get("lat") is not None:
@@ -124,8 +124,8 @@ class EntityGeocoder:
                     where=["length(tags->>'name') <= %s"],
                     params=[2 * len(name_variant)],
                 )
-            # Prefer nodes (which have valid Point geom) over ways
-            for entity in qs_ilike[:20]:
+            entity = EntityGeocoder._pick(list(qs_ilike[:20]))
+            if entity:
                 result = EntityGeocoder._entity_to_dict(entity)
                 if result and result.get("lat") is not None:
                     return result
@@ -135,7 +135,8 @@ class EntityGeocoder:
         expanded = EntityGeocoder._expand_abbreviations(clean_name)
         if expanded != clean_name:
             qs_exp = qs.filter(tags__name__icontains=expanded)
-            for entity in qs_exp[:20]:
+            entity = EntityGeocoder._pick(list(qs_exp[:20]))
+            if entity:
                 result = EntityGeocoder._entity_to_dict(entity)
                 if result and result.get("lat") is not None:
                     return result
@@ -153,6 +154,55 @@ class EntityGeocoder:
         logger.debug("Geocode failed for '%s' (country=%s, snapshot=%s)",
                      entity_name, country_code, snapshot_id)
         return None
+
+    # Settlement place tags — a named settlement should beat a same-name
+    # marker (signpost, route sign) at equal similarity ("Belfast" the city
+    # vs "Belfast" the NCN 93 destination sign — observed 2026-09-19, every
+    # Belfast-anchored question radiated from a countryside signpost).
+    _PLACE_SETTLEMENT_TAGS = (
+        "city", "town", "village", "hamlet", "suburb", "neighbourhood",
+        "borough", "locality", "isolated_dwelling", "municipality",
+    )
+    _MARKER_TYPES = (
+        "destination_sign", "guidepost", "milestone", "signpost", "junction",
+    )
+
+    @staticmethod
+    def _place_score(tags: dict) -> int:
+        """Score an entity's tags: settlements/admin boundaries up,
+        marker/sign entities down. 0 for ordinary POIs."""
+        tags = tags or {}
+        score = 0
+        place = tags.get("place")
+        if place in EntityGeocoder._PLACE_SETTLEMENT_TAGS:
+            score += 2
+        elif place:
+            score += 1
+        if tags.get("admin_level") or tags.get("capital"):
+            score += 1
+        if tags.get("destination") or tags.get("type") in EntityGeocoder._MARKER_TYPES:
+            score -= 2
+        return score
+
+    @staticmethod
+    def _pick(candidates: list):
+        """Best candidate from a list ordered by descending similarity:
+        prefer entities with coordinates, then the highest place_score.
+        Ties keep the earlier (higher-similarity) candidate."""
+        best = None
+        best_key = None
+        for entity in candidates or []:
+            detail = EntityGeocoder._entity_to_dict(entity)
+            if detail is None:
+                continue
+            key = (
+                detail.get("lat") is not None,
+                EntityGeocoder._place_score(entity.tags or {}),
+            )
+            if best_key is None or key > best_key:
+                best = entity
+                best_key = key
+        return best
 
     @staticmethod
     def geocode_many(entity_names: list, country_code: str = None,

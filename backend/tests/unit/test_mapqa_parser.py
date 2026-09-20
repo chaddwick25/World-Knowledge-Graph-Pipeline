@@ -111,6 +111,23 @@ class TestConceptExtraction:
         assert len(objects) == 1
         assert objects[0]["text"] == "bus_station"
 
+    @pytest.mark.parametrize("question,expected", [
+        ("Which museums are within 2km of Belfast?", "museum"),
+        ("Which beaches are within 5km of Belfast?", "beach"),
+        ("Which parks are within 2km of Belfast?", "park"),
+    ])
+    def test_rare_amenity_object_extraction(self, parser, question, expected):
+        """Regression (2026-09-19): 'Which museums are within 2km of
+        Belfast?' extracted no OBJECT (the trained concept model missed the
+        rare vocabulary and the heuristic back-in lacked it), so the
+        executor skipped the search entirely and the research summary
+        reported "no museums found". The heuristic OBJECT back-in now
+        carries the documented sample_questions.md amenity vocabulary."""
+        result = parser.parse(question)
+        objects = [c for c in result["concepts"] if c["type"] == "OBJECT"]
+        assert len(objects) == 1, "no OBJECT concept extracted for %r" % question
+        assert expected in objects[0]["text"]
+
 
 # ── DAG validation ───────────────────────────────────────────────────
 

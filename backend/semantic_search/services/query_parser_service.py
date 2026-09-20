@@ -214,7 +214,16 @@ class QueryParserService:
         if any(sig in q_lower for sig in
                ("bar", "restaurant", "cafe", "hotel", "school", "hospital",
                 "shop", "amenity", "pub", "bank", "pharmacy",
-                "bus", "station", "train", "taxi", "airport", "ferry")):
+                "bus", "station", "train", "taxi", "airport", "ferry",
+                # 2026-09-19: "Which museums are within 2km of Belfast?"
+                # extracted no OBJECT (trained model missed it, list below
+                # lacked it) → the executor skipped the search entirely and
+                # the research summary reported "no museums found".
+                # The documented sample_questions.md amenity vocabulary:
+                "museum", "beach", "park", "supermarket", "gas station",
+                "bakery", "library", "cinema", "clinic", "church",
+                "university", "gallery", "theatre", "theater", "stadium",
+                "swimming", "playground", "brewery", "distillery")):
             idx = CONCEPT_TYPES.index("OBJECT")
             present[idx] = 1
             probs[idx] = 0.85

@@ -74,6 +74,7 @@ services:
       - .env
     environment:
       - DJANGO_SETTINGS_MODULE=backend.settings
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-django-insecure-i%)wb*%s81#y-rrf!fw9v$quoo0!&@)-2f0o9os!b*i&53xtqj}
       - POSTGRES_HOST=postgres-default
       - PGVECTOR_HOST=postgres-vectors
       - REDIS_HOST=redis
@@ -99,7 +100,6 @@ services:
       - LLM_MODEL=qwen3:8b
       # Research orchestrator LLM (batch path) — the RTX 2070 instance.
       # Unset → the research loop falls back to the platform LLM (the 4070).
-      # See docs/plans/later-stages/RESEARCH_ORCHESTRATOR_MVP_PLAN.md.
       - RESEARCH_LLM_BASE_URL=${RESEARCH_LLM_BASE_URL:-http://ollama-research:11435/v1}
       - RESEARCH_LLM_MODEL=${RESEARCH_LLM_MODEL:-qwen3:8b}
       - RESEARCH_LLM_TIMEOUT=${RESEARCH_LLM_TIMEOUT:-120}
@@ -294,8 +294,49 @@ services:
         condition: service_started
     restart: "no"
 
+  # Self-hosted Langfuse (LLM trace observability, UNIFIED_LLM_TRACE_PLAN.md).
+  # Not started by default: `docker compose --profile observability up -d`.
+  # Backend env for the HTTP sink: TRACE_SINK=langfuse,
+  # TRACE_SINK_URL=http://langfuse:3000/api/public, TRACE_SINK_PUBLIC_KEY /
+  # TRACE_SINK_SECRET_KEY (project keys from the Langfuse UI).
+  langfuse:
+    image: langfuse/langfuse:3
+    profiles: ["observability"]
+    container_name: eda-langfuse
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-langfuse}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
+      - NEXTAUTH_URL=${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:-change-me-nextauth-secret}
+      - SALT=${LANGFUSE_SALT:-change-me-salt}
+      - ENCRYPTION_KEY=${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      - HOSTNAME=0.0.0.0
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  langfuse-db:
+    image: postgres:15
+    profiles: ["observability"]
+    container_name: eda-langfuse-db
+    environment:
+      - POSTGRES_USER=${LANGFUSE_DB_USER:-langfuse}
+      - POSTGRES_PASSWORD=${LANGFUSE_DB_PASSWORD:-langfuse}
+      - POSTGRES_DB=${LANGFUSE_DB_NAME:-langfuse}
+    volumes:
+      - langfuse_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LANGFUSE_DB_USER:-langfuse} -d ${LANGFUSE_DB_NAME:-langfuse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   backend_venv:
   polygon_files:
   ollama_models:
   ollama_models_research:
+  langfuse_pgdata:

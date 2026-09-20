@@ -19,6 +19,7 @@ from core.services.llm_service import LLMService
 from semantic_search.services.research_service import (
     MAX_QUESTIONS,
     ResearchOrchestratorService,
+    _DECOMPOSE_SYSTEM_PROMPT,
 )
 
 
@@ -155,6 +156,14 @@ class TestValidateQuestions:
 
 # ── Placeholder substitution + top entity ────────────────────────────────
 
+class TestDecomposePrompt:
+    def test_radius_guidance_present(self):
+        # City-scale anchors must never get a 1km radius ("1 km is too
+        # small to search Dublin" — observed 2026-09-19).
+        assert "Never use 1 km for a city" in _DECOMPOSE_SYSTEM_PROMPT
+        assert "at least 2 km" in _DECOMPOSE_SYSTEM_PROMPT
+
+
 class TestPlaceholders:
     def test_top_entity_substituted(self):
         out = ResearchOrchestratorService._substitute_placeholders(
@@ -186,6 +195,22 @@ class TestPlaceholders:
         assert ResearchOrchestratorService._top_entity_name(
             results, exclude="Belize City",
         ) == "Jovilee Apartments"
+
+    def test_parse_radius_m(self):
+        svc = ResearchOrchestratorService
+        assert svc._parse_radius_m("within 1km of Dublin") == 1000
+        assert svc._parse_radius_m("within 500m of Temple Bar") == 500
+        assert svc._parse_radius_m("within 2 km of Dublin") == 2000
+        assert svc._parse_radius_m("within 1.5km of Rome") == 1500
+        assert svc._parse_radius_m("near Dublin") is None
+        assert svc._parse_radius_m(None) is None
+
+    def test_widen_radius(self):
+        svc = ResearchOrchestratorService
+        assert svc._widen_radius("Which hotels are within 1km of Dublin?", 2000) == \
+            "Which hotels are within 2 km of Dublin?"
+        assert svc._widen_radius("Which cafes are within 500m of X?", 2000) == \
+            "Which cafes are within 2 km of X?"
 
     def test_anchor_geocode_failed_detection(self):
         assert ResearchOrchestratorService._anchor_geocode_failed({
@@ -391,6 +416,88 @@ class TestPlan:
         assert calls[2] == "What amenities are near Jovilee Apartments?"
         assert result["questions"][2]["question"] == \
             "What amenities are near Jovilee Apartments?"
+
+    def test_plan_small_radius_empty_escalates(self):
+        fake_llm = FakeLLM(chat_json_result={"questions": [
+            {"question": "Which hotels are within 1km of Dublin?", "why": ""},
+        ]})
+        calls = []
+
+        def radius_execute(*args, **kwargs):
+            q = kwargs.get("question", "")
+            calls.append(q)
+            if "1km" in q:
+                return {
+                    "template": "FILTER-AGGREGATE-MEASURE (#1)",
+                    "results": [], "answer": "No results found.",
+                    "trace": [], "latency_ms": 5,
+                }
+            return {
+                "template": "FILTER-AGGREGATE-MEASURE (#1)",
+                "results": [{"name": "The Shelbourne", "osm_id": 9,
+                             "wkg_class": "wkgs:Hotel", "distance_m": 1200}],
+                "answer": "Found 1 entities within 2km.",
+                "trace": [], "latency_ms": 5,
+            }
+
+        with self._patch_loop(fake_llm) as executor:
+            executor.execute.side_effect = radius_execute
+            result = ResearchOrchestratorService.plan("Plan a trip", "IE", None)
+
+        # 1km of Dublin returns nothing → the loop widens to 2km and re-runs.
+        assert calls == [
+            "Which hotels are within 1km of Dublin?",
+            "Which hotels are within 2 km of Dublin?",
+        ]
+        record = result["questions"][0]
+        assert record["radius_escalated"] is True
+        assert record["result_count"] == 1
+        assert record["question"] == "Which hotels are within 2 km of Dublin?"
+
+    def test_plan_small_radius_with_results_no_escalation(self):
+        fake_llm = FakeLLM(chat_json_result={"questions": [
+            {"question": "Which cafes are within 500m of Temple Bar?", "why": ""},
+        ]})
+        calls = []
+
+        def ok_execute(*args, **kwargs):
+            calls.append(kwargs.get("question", ""))
+            return {
+                "template": "FILTER-AGGREGATE-MEASURE (#1)",
+                "results": [{"name": "Cafe X", "osm_id": 1,
+                             "wkg_class": "wkgs:Cafe", "distance_m": 300}],
+                "answer": "Found 1 entities within 500m.",
+                "trace": [], "latency_ms": 5,
+            }
+
+        with self._patch_loop(fake_llm) as executor:
+            executor.execute.side_effect = ok_execute
+            result = ResearchOrchestratorService.plan("Plan a trip", "IE", None)
+
+        assert len(calls) == 1  # results exist → no escalation
+        assert result["questions"][0].get("radius_escalated") is None
+
+    def test_plan_radius_at_floor_no_escalation(self):
+        fake_llm = FakeLLM(chat_json_result={"questions": [
+            {"question": "Which hotels are within 2km of Dublin?", "why": ""},
+        ]})
+        calls = []
+
+        def empty_execute(*args, **kwargs):
+            calls.append(kwargs.get("question", ""))
+            return {
+                "template": "FILTER-AGGREGATE-MEASURE (#1)",
+                "results": [], "answer": "No results found.",
+                "trace": [], "latency_ms": 5,
+            }
+
+        with self._patch_loop(fake_llm) as executor:
+            executor.execute.side_effect = empty_execute
+            result = ResearchOrchestratorService.plan("Plan a trip", "IE", None)
+
+        # Radius already at the 2km floor → the empty result stands.
+        assert len(calls) == 1
+        assert result["questions"][0].get("radius_escalated") is None
 
     def test_plan_followup_tools(self):
         fake_llm = FakeLLM(chat_json_result={
