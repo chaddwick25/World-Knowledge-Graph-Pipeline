@@ -50,6 +50,8 @@ from typing import List, Optional
 
 import requests
 
+from core.services.trace_service import TraceService
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_BASE_URL = "http://localhost:11434/v1"
@@ -165,6 +167,13 @@ class LLMService:
         """Chat completion. Returns the text or None (never raises)."""
         if not self.enabled:
             return None
+        attrs = {
+            "model": self.model, "style": self.style,
+            "temperature": temperature, "max_tokens": max_tokens,
+        }
+        span = TraceService.begin_span("chat", attributes=attrs)
+        error = None
+        usage_attrs = {}
         try:
             if self.style == "native":
                 payload = {
@@ -189,6 +198,9 @@ class LLMService:
                     return None
                 data = resp.json()
                 content = data.get("message", {}).get("content")
+                if isinstance(data, dict):
+                    usage_attrs["prompt_tokens"] = data.get("prompt_eval_count")
+                    usage_attrs["output_tokens"] = data.get("eval_count")
                 return (content or "").strip() or None
             else:
                 payload = {
@@ -207,10 +219,17 @@ class LLMService:
                     return None
                 data = resp.json()
                 content = data["choices"][0]["message"].get("content")
+                usage = (data or {}).get("usage") or {}
+                if isinstance(usage, dict):
+                    usage_attrs["prompt_tokens"] = usage.get("prompt_tokens")
+                    usage_attrs["output_tokens"] = usage.get("completion_tokens")
                 return (content or "").strip() or None
         except (requests.RequestException, KeyError, IndexError, ValueError) as exc:
             logger.warning("LLM chat failed: %s", exc)
+            error = str(exc)
             return None
+        finally:
+            TraceService.end_span(span, error=error, attributes=usage_attrs)
 
     def chat_stream(self, messages, temperature: float = 0.2,
                     max_tokens: int = 512):
@@ -223,6 +242,13 @@ class LLMService:
         """
         if not self.enabled:
             return
+        attrs = {
+            "model": self.model, "style": self.style,
+            "temperature": temperature, "max_tokens": max_tokens,
+        }
+        span = None
+        error = None
+        output_chars = 0
         try:
             if self.style == "native":
                 payload = {
@@ -253,6 +279,9 @@ class LLMService:
                         continue
                     content = chunk.get("message", {}).get("content")
                     if content:
+                        if span is None:
+                            span = TraceService.begin_span("chat_stream", attributes=attrs)
+                        output_chars += len(content)
                         yield content
             else:
                 payload = {
@@ -283,10 +312,19 @@ class LLMService:
                         continue
                     delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
                     if delta:
+                        if span is None:
+                            span = TraceService.begin_span("chat_stream", attributes=attrs)
+                        output_chars += len(delta)
                         yield delta
         except (requests.RequestException, ValueError) as exc:
             logger.warning("LLM chat_stream failed: %s", exc)
+            error = str(exc)
             return
+        finally:
+            if span is not None:
+                TraceService.end_span(
+                    span, error=error, attributes={"output_chars": output_chars},
+                )
 
     def chat_json(self, messages, temperature: float = 0.0,
                   max_tokens: int = 512) -> Optional[dict]:
@@ -297,6 +335,13 @@ class LLMService:
         """
         if not self.enabled:
             return None
+        attrs = {
+            "model": self.model, "style": self.style,
+            "temperature": temperature, "max_tokens": max_tokens,
+        }
+        span = TraceService.begin_span("chat_json", attributes=attrs)
+        error = None
+        usage_attrs = {}
         try:
             if self.style == "native":
                 payload = {
@@ -320,12 +365,18 @@ class LLMService:
                     return None
                 data = resp.json()
                 text = (data.get("message", {}).get("content") or "").strip()
+                if isinstance(data, dict):
+                    usage_attrs["prompt_tokens"] = data.get("prompt_eval_count")
+                    usage_attrs["output_tokens"] = data.get("eval_count")
             else:
                 text = self.chat(messages, temperature=temperature,
                                  max_tokens=max_tokens)
         except (requests.RequestException, KeyError, ValueError) as exc:
             logger.warning("LLM chat_json failed: %s", exc)
+            error = str(exc)
             return None
+        finally:
+            TraceService.end_span(span, error=error, attributes=usage_attrs)
         if not text:
             return None
         return self._extract_json(text)
