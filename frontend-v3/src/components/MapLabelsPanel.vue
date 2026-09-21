@@ -18,7 +18,7 @@
   <div class="d-flex flex-column gap-2">
     <div class="small text-secondary">
       <template v-if="countryName">
-        {{ countryName }}<template v-if="snapshotDate"> · {{ snapshotDate }}</template>
+        {{ countryName }}<template v-if="snapshotDate"> · <span class="data-mono">{{ snapshotDate }}</span></template>
       </template>
       <template v-else>No country selected</template>
     </div>
@@ -30,7 +30,7 @@
         :class="labelsAttached ? 'text-bg-success' : 'text-bg-secondary'"
       >labels {{ labelsAttached ? 'attached' : 'detached' }}</span>
       <span v-if="hasLabels" class="text-secondary">
-        {{ classLabelCount }} classes · {{ entityLabelCount }} entities
+        <span class="num">{{ classLabelCount }}</span> classes · <span class="num">{{ entityLabelCount }}</span> entities
       </span>
       <span v-else class="text-secondary">no labels</span>
     </div>

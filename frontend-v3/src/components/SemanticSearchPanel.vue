@@ -253,16 +253,16 @@
         </button>
       </div>
       <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
-        <table class="table table-sm table-borderless mb-0" style="font-size: 0.72rem;">
+        <table class="table table-sm table-borderless results-table mb-0" style="font-size: 0.72rem;">
           <thead class="table-dark">
             <tr>
               <th>Name</th>
               <th>Tags</th>
               <th>Class</th>
               <template v-if="showScores">
-                <th v-for="col in activeScoreColumns" :key="col.key" class="text-end">{{ col.label }}</th>
+                <th v-for="col in activeScoreColumns" :key="col.key" class="num">{{ col.label }}</th>
               </template>
-              <th class="text-end">Final</th>
+              <th class="num">Final</th>
             </tr>
           </thead>
           <tbody>
@@ -280,9 +280,9 @@
               <td><small>{{ formatTags(item.tags) }}</small></td>
               <td>{{ (item.wkg_class || '—').replace(/^wkgs:/, '') }}</td>
               <template v-if="showScores">
-                <td v-for="col in activeScoreColumns" :key="col.key" class="text-end">{{ item.scores?.[col.key]?.toFixed(3) || '—' }}</td>
+                <td v-for="col in activeScoreColumns" :key="col.key" class="num">{{ item.scores?.[col.key]?.toFixed(3) || '—' }}</td>
               </template>
-              <td class="text-end">
+              <td class="num">
                 <strong>{{ item.scores?.final_score?.toFixed(3) || '—' }}</strong>
               </td>
             </tr>
@@ -1276,6 +1276,30 @@ export default {
 }
 .results-name-link:hover {
   text-decoration: underline;
+}
+
+/* Results table: active row (reticle entity) stays distinct on hover;
+   balanced cell padding keeps the scan line level. */
+.results-table tbody tr:hover {
+  background-color: var(--bs-tertiary-bg);
+}
+.results-table tbody tr:hover td:first-child {
+  box-shadow: inset 3px 0 0 var(--bs-info);
+}
+.results-table td {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+  vertical-align: middle;
+}
+
+/* Form fields + selectors: standardized 12px with comfortable 32px
+   touch targets (Stitch design pass 2026-09-21). */
+.form-control-sm,
+.form-select-sm {
+  font-size: 0.75rem;
+  min-height: 32px;
 }
 
 /* Execution trace decision flow: vertical spine with dashed separators
