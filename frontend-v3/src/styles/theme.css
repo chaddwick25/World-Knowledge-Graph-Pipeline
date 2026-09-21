@@ -32,6 +32,13 @@ body {
   --bs-body-color: #e5e7eb;
   --bs-secondary-color: #9ca3af;
   --bs-tertiary-color: #6b7280;
+
+  /* Typography contrast hierarchy (Stitch design pass 2026-09-21):
+     Primary readouts/headings → crisp off-whites; meta/subtext → clean slate. */
+  --bs-heading-color: #f1f5f9;
+  --bs-readout-color: #f8fafc;
+  --bs-meta-color: #94a3b8;
+  --bs-meta-strong: #cbd5e1;
   --bs-secondary-bg: #111827;
   --bs-tertiary-bg: #1f2937;
   --bs-emphasis-bg: #020617;
@@ -56,12 +63,13 @@ body {
   --bs-link-color-rgb: 129, 140, 248;
   --bs-link-hover-color-rgb: 165, 180, 252;
 
-  /* ── Semantic (Bootstrap 5.3 native vars) ── */
-  --bs-success: #22c55e;
-  --bs-success-rgb: 34, 197, 94;
-  --bs-success-bg-subtle: rgba(34, 197, 94, 0.15);
-  --bs-success-border-subtle: #22c55e;
-  --bs-success-text-emphasis: #4ade80;
+  /* ── Semantic (Bootstrap 5.3 native vars) ──
+     Emerald success (readiness, active embeddings, completed steps). */
+  --bs-success: #34d399;
+  --bs-success-rgb: 52, 211, 153;
+  --bs-success-bg-subtle: rgba(52, 211, 153, 0.15);
+  --bs-success-border-subtle: #34d399;
+  --bs-success-text-emphasis: #4edea3;
   --bs-success-text: #6ee7b7;
 
   --bs-danger: #ef4444;
@@ -78,12 +86,12 @@ body {
   --bs-warning-text-emphasis: #fcd34d;
   --bs-warning-text: #fde68a;
 
-  --bs-info: #3b82f6;
-  --bs-info-rgb: 59, 130, 246;
-  --bs-info-bg-subtle: rgba(59, 130, 246, 0.15);
-  --bs-info-border-subtle: #60a5fa;
-  --bs-info-text-emphasis: #93c5fd;
-  --bs-info-text: #bfdbfe;
+  --bs-info: #06b6d4;
+  --bs-info-rgb: 6, 182, 212;
+  --bs-info-bg-subtle: rgba(6, 182, 212, 0.15);
+  --bs-info-border-subtle: #06b6d4;
+  --bs-info-text-emphasis: #38bdf8;
+  --bs-info-text: #67e8f9;
 
   /* ── Form controls ── */
   --bs-form-control-bg: #020617;
@@ -164,10 +172,47 @@ body {
   /* ── Spinner ── */
   --bs-spinner-color: #6366f1;
 
-  /* ── Headings ── */
-  --bs-heading-color: #f3f4f6;
+  /* ── Headings (color defined in the typography section above) ── */
 
   /* ── Code ── */
   --bs-code-color: #a5b4fc;
   --bs-code-bg: #111827;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Typography + alignment utilities (Stitch design pass 2026-09-21).
+ * Single type scale — components should use these instead of ad-hoc
+ * font-size/letter-spacing literals. Dark-theme only (app is data-bs-theme
+ * dark), so these are plain classes; they compose with Bootstrap utilities.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* Engine headers / titles — 16–17px bold ("Spatial Reasoning Engine", "Italy IT"). */
+.engine-title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--bs-heading-color);
+}
+
+/* Section micro-headers — 11–12px semibold uppercase with tracking
+ * ("SPATIAL SCOPE", "REASONING TRACE GRAPH", "RELATION GRAPH LEGEND"). */
+.micro-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--bs-meta-color);
+}
+
+/* Data + identifiers — monospace at 11–12px (OSM IDs, traces, date stamps). */
+.data-mono {
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Numeric cells — tabular figures + right alignment so columns don't jitter. */
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }

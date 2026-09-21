@@ -157,15 +157,16 @@ export default {
   padding: 0.4rem 0.5rem;
   border-radius: 0.4rem;
   background: rgba(15, 23, 42, 0.5);
-  border: 1px solid #1f2937;
+  border: 1px solid var(--bs-border-color);
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
 }
 
 .metrics-summary__label {
+  /* Micro-header: 10px uppercase with tracking. */
   font-size: 0.65rem;
-  color: #6b7280;
+  color: var(--bs-meta-color);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -173,18 +174,19 @@ export default {
 .metrics-summary__value {
   font-size: 0.9rem;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .metrics-summary__value--running {
-  color: #60a5fa;
+  color: var(--bs-info-text-emphasis);
 }
 
 .metrics-summary__value--completed {
-  color: #22c55e;
+  color: var(--bs-success);
 }
 
 .metrics-summary__value--failed {
-  color: #ef4444;
+  color: var(--bs-danger);
 }
 
 /* ── Step timeline ── */
@@ -201,26 +203,26 @@ export default {
   gap: 0.35rem;
   padding: 0.3rem 0.4rem;
   border-radius: 0.35rem;
-  border-left: 2px solid #1f2937;
+  border-left: 2px solid var(--bs-border-color);
   transition: background 0.15s;
 }
 
 .metric-step--done {
-  border-left-color: #22c55e;
+  border-left-color: var(--bs-success);
 }
 
 .metric-step--active {
-  border-left-color: #60a5fa;
-  background: rgba(59, 130, 246, 0.05);
+  border-left-color: var(--bs-info-text-emphasis);
+  background: rgba(6, 182, 212, 0.05);
 }
 
 .metric-step--fail {
-  border-left-color: #ef4444;
+  border-left-color: var(--bs-danger);
   background: rgba(239, 68, 68, 0.05);
 }
 
 .metric-step--skip {
-  border-left-color: #6b7280;
+  border-left-color: var(--bs-meta-color);
   opacity: 0.6;
 }
 
@@ -232,9 +234,9 @@ export default {
   flex-shrink: 0;
 }
 
-.metric-step--done .metric-step__icon { color: #22c55e; }
-.metric-step--active .metric-step__icon { color: #60a5fa; }
-.metric-step--fail .metric-step__icon { color: #ef4444; }
+.metric-step--done .metric-step__icon { color: var(--bs-success); }
+.metric-step--active .metric-step__icon { color: var(--bs-info-text-emphasis); }
+.metric-step--fail .metric-step__icon { color: var(--bs-danger); }
 
 .metric-step__body {
   flex: 1;
@@ -254,15 +256,18 @@ export default {
 }
 
 .metric-step__duration {
+  /* Data + identifiers: mono at 11px with tabular figures. */
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
   font-size: 0.7rem;
-  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+  color: var(--bs-meta-color);
   flex-shrink: 0;
 }
 
 .metric-step__message {
   margin: 0.05rem 0 0;
   font-size: 0.68rem;
-  color: #6b7280;
+  color: var(--bs-meta-color);
 }
 
 /* ── Empty / error ── */
@@ -270,7 +275,7 @@ export default {
 .metrics-empty {
   padding: 0.5rem;
   text-align: center;
-  color: #6b7280;
+  color: var(--bs-meta-color);
   font-size: 0.8rem;
 }
 
@@ -278,8 +283,8 @@ export default {
   margin: 0;
   padding: 0.3rem 0.4rem;
   border-radius: 0.35rem;
-  background: rgba(239, 68, 68, 0.08);
-  color: #fecaca;
+  background: var(--bs-danger-bg-subtle);
+  color: var(--bs-danger-text);
   font-size: 0.75rem;
 }
 </style>

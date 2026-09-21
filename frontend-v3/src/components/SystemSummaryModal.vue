@@ -162,7 +162,7 @@
                   <tbody>
                     <tr v-for="c in data.embeddings.by_continent" :key="c.name">
                       <td class="summary-table__continent">{{ c.name }}</td>
-                      <td>{{ c.total }}</td>
+                      <td class="num">{{ c.total }}</td>
                       <td>
                         <span
                           class="summary-bar"
@@ -172,10 +172,10 @@
                             class="summary-bar__fill"
                             :style="{ width: (c.total > 0 ? (c.with_embeddings / c.total) * 100 : 0) + '%' }"
                           ></span>
-                          <span class="summary-bar__label">{{ c.with_embeddings }}/{{ c.total }}</span>
+                          <span class="summary-bar__label num">{{ c.with_embeddings }}/{{ c.total }}</span>
                         </span>
                       </td>
-                      <td>{{ c.pipelines_completed }}</td>
+                      <td class="num">{{ c.pipelines_completed }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -191,8 +191,8 @@
                     <code>{{ hotStorage.path }}</code>
                   </div>
                   <div class="summary-storage__stats">
-                    <span>{{ hotStorage.file_count || 0 }} files</span>
-                    <span>{{ hotStorage.size_gb || 0 }} GB</span>
+                    <span><span class="num">{{ hotStorage.file_count || 0 }}</span> files</span>
+                    <span><span class="num">{{ hotStorage.size_gb || 0 }}</span> GB</span>
                   </div>
                   <p class="summary-storage__contents">{{ hotStorage.contents }}</p>
                 </div>
@@ -204,8 +204,8 @@
                     <code>{{ coldStorage.path }}</code>
                   </div>
                   <div class="summary-storage__stats">
-                    <span>{{ coldStorage.file_count || 0 }} files</span>
-                    <span>{{ coldStorage.size_gb || 0 }} GB</span>
+                    <span><span class="num">{{ coldStorage.file_count || 0 }}</span> files</span>
+                    <span><span class="num">{{ coldStorage.size_gb || 0 }}</span> GB</span>
                   </div>
                   <p class="summary-storage__contents">{{ coldStorage.contents }}</p>
                 </div>
@@ -295,7 +295,7 @@
                         <span class="summary-table__country">{{ run.country_name || run.country_code }}</span>
                         <code class="summary-table__iso">{{ run.country_code }}</code>
                       </td>
-                      <td>{{ run.snapshot }}</td>
+                      <td class="data-mono">{{ run.snapshot }}</td>
                       <td>
                         <span
                           class="summary-badge"
@@ -461,8 +461,8 @@ export default {
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  background: #020617;
-  border: 1px solid #1e293b;
+  background: var(--bs-emphasis-bg);
+  border: 1px solid var(--bs-border-color);
   border-radius: 1rem;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -473,7 +473,7 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border-bottom: 1px solid #111827;
+  border-bottom: 1px solid var(--bs-emphasis-bg);
   flex-shrink: 0;
 }
 
@@ -481,7 +481,7 @@ export default {
   margin: 0;
   font-size: 1.1rem;
   font-weight: 700;
-  color: #f3f4f6;
+  color: var(--bs-heading-color);
 }
 
 .summary-modal__header-right {
@@ -495,7 +495,7 @@ export default {
 .summary-modal__close-btn {
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: var(--bs-meta-color);
   font-size: 1.5rem;
   cursor: pointer;
   line-height: 1;
@@ -503,7 +503,7 @@ export default {
 }
 
 .summary-modal__close-btn:hover {
-  color: #f3f4f6;
+  color: var(--bs-heading-color);
 }
 
 /* ── Loading / Error ── */
@@ -513,15 +513,15 @@ export default {
   align-items: center;
   gap: 0.75rem;
   padding: 3rem 1rem;
-  color: #9ca3af;
+  color: var(--bs-meta-color);
 }
 
 .summary-modal__spinner {
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  border: 3px solid rgba(59, 130, 246, 0.2);
-  border-top-color: #60a5fa;
+  border: 3px solid var(--bs-info-bg-subtle);
+  border-top-color: var(--bs-info-text-emphasis);
   animation: spin 0.8s linear infinite;
 }
 
@@ -562,7 +562,7 @@ export default {
   border: none;
   border-radius: 0.35rem 0.35rem 0 0;
   background: transparent;
-  color: #6b7280;
+  color: var(--bs-meta-color);
   font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
@@ -570,14 +570,14 @@ export default {
 }
 
 .summary-modal__tab:hover {
-  color: #d1d5db;
+  color: var(--bs-meta-strong);
   background: rgba(75, 85, 99, 0.2);
 }
 
 .summary-modal__tab--active {
-  color: #e5e7eb;
-  background: rgba(59, 130, 246, 0.1);
-  border-bottom: 2px solid #3b82f6;
+  color: var(--bs-body-color);
+  background: var(--bs-primary-bg-subtle);
+  border-bottom: 2px solid var(--bs-primary);
 }
 
 /* ── Body (scrollable) ── */
@@ -600,13 +600,14 @@ export default {
   flex-direction: column;
   padding: 0.75rem;
   border-radius: 0.6rem;
-  background: #0a0f1e;
-  border: 1px solid #1f2937;
+  background: var(--bs-card-bg);
+  border: 1px solid var(--bs-border-color);
 }
 
 .summary-card__label {
+  /* Micro-header: 11px uppercase with tracking. */
   font-size: 0.7rem;
-  color: #6b7280;
+  color: var(--bs-meta-color);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -614,13 +615,14 @@ export default {
 .summary-card__value {
   font-size: 1.3rem;
   font-weight: 700;
-  color: #f3f4f6;
+  color: var(--bs-readout-color);
+  font-variant-numeric: tabular-nums;
   margin: 0.15rem 0;
 }
 
 .summary-card__sub {
   font-size: 0.7rem;
-  color: #9ca3af;
+  color: var(--bs-meta-color);
 }
 
 /* ── Sections ── */
@@ -631,7 +633,7 @@ export default {
 .summary-section__title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #4ade80;
+  color: var(--bs-success-text-emphasis);
   margin: 0 0 0.35rem;
   display: flex;
   align-items: baseline;
@@ -641,38 +643,38 @@ export default {
 .summary-section__subtitle {
   font-size: 0.72rem;
   font-weight: 400;
-  color: #6b7280;
+  color: var(--bs-meta-color);
 }
 
 .summary-section__subtitle--accent {
-  color: #4ade80;
+  color: var(--bs-success-text-emphasis);
   font-weight: 500;
 }
 
 .summary-section__subhead {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #4ade80;
+  color: var(--bs-success-text-emphasis);
   margin: 0.75rem 0 0.25rem;
 }
 
 .summary-section__description {
   font-size: 0.78rem;
   font-weight: 400;
-  color: #ffffff;
+  color: var(--bs-heading-color);
   line-height: 1.5;
   margin: 0 0 0.75rem;
 }
 
 .summary-section__description a,
 .summary-section__title a {
-  color: #60a5fa;
+  color: var(--bs-info-text-emphasis);
   text-decoration: none;
   font-weight: 500;
 }
 
 .summary-section__description code {
-  color: #60a5fa;
+  color: var(--bs-info-text-emphasis);
   font-weight: 500;
 }
 
@@ -688,19 +690,20 @@ export default {
   gap: 0.4rem;
   padding: 0.35rem 0.5rem;
   margin: 0 0 0.75rem;
-  border-top: 2px solid #22c55e;
-  border-bottom: 2px solid #22c55e;
-  background: #1f2937;
+  border-top: 2px solid var(--bs-success);
+  border-bottom: 2px solid var(--bs-success);
+  background: var(--bs-tertiary-bg);
 }
 
 .summary-availability-banner__count {
-  color: #22c55e;
+  color: var(--bs-success);
   font-weight: 600;
   font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .summary-availability-banner__label {
-  color: #6b7280;
+  color: var(--bs-meta-color);
   font-weight: 400;
   font-size: 0.72rem;
 }
@@ -718,12 +721,12 @@ export default {
   gap: 0.5rem;
   padding: 0.4rem 0.5rem;
   border-radius: 0.4rem;
-  background: #0a0f1e;
-  border: 1px solid #1f2937;
+  background: var(--bs-card-bg);
+  border: 1px solid var(--bs-border-color);
 }
 
 .summary-step--completed {
-  border-color: rgba(34, 197, 94, 0.15);
+  border-color: var(--bs-success-bg-subtle);
 }
 
 .summary-step__icon {
@@ -734,11 +737,11 @@ export default {
 }
 
 .summary-step__icon--ok {
-  color: #22c55e;
+  color: var(--bs-success);
 }
 
 .summary-step__icon--pending {
-  color: #6b7280;
+  color: var(--bs-meta-color);
 }
 
 .summary-step__body {
@@ -750,19 +753,20 @@ export default {
   display: block;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #d1d5db;
-  font-family: ui-monospace, SFMono-Regular, 'Courier New', monospace;
+  color: var(--bs-meta-strong);
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, 'Courier New', monospace);
 }
 
 .summary-step__desc {
   display: block;
   font-size: 0.68rem;
-  color: #6b7280;
+  color: var(--bs-meta-color);
 }
 
 .summary-step__count {
   font-size: 0.7rem;
-  color: #9ca3af;
+  color: var(--bs-meta-color);
+  font-variant-numeric: tabular-nums;
   flex-shrink: 0;
   background: rgba(75, 85, 99, 0.2);
   padding: 0.1rem 0.4rem;
@@ -780,16 +784,16 @@ export default {
 }
 
 /* Sticky header inside the scroll container — matches the modal bg so
-   rows pass underneath it cleanly. Headings use the theme green
-   (#4ade80), same as the section titles. */
+   rows pass underneath it cleanly. Headings use the theme emerald
+   (--bs-success-text-emphasis), same as the section titles. */
 .summary-table__scroll .summary-table th {
   position: sticky;
   top: 0;
-  background: #020617;
+  background: var(--bs-emphasis-bg);
   z-index: 1;
 }
 .summary-table__scroll .summary-table th {
-  color: #4ade80;
+  color: var(--bs-success-text-emphasis);
 }
 
 /* Sortable column header: transparent button inheriting the green text. */
@@ -807,7 +811,7 @@ export default {
   cursor: pointer;
 }
 .summary-table__sort:hover {
-  color: #86efac;
+  color: var(--bs-success-text);
   text-decoration: underline;
 }
 .summary-table__sort i {
@@ -823,9 +827,9 @@ export default {
 .summary-table th {
   text-align: left;
   padding: 0.35rem 0.5rem;
-  color: #6b7280;
+  color: var(--bs-meta-color);
   font-weight: 500;
-  border-bottom: 1px solid #1f2937;
+  border-bottom: 1px solid var(--bs-border-color);
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -833,8 +837,8 @@ export default {
 
 .summary-table td {
   padding: 0.35rem 0.5rem;
-  color: #d1d5db;
-  border-bottom: 1px solid #111827;
+  color: var(--bs-meta-strong);
+  border-bottom: 1px solid var(--bs-emphasis-bg);
 }
 
 .summary-table__continent {
@@ -844,13 +848,13 @@ export default {
 
 .summary-table__key code {
   font-size: 0.7rem;
-  color: #9ca3af;
+  color: var(--bs-meta-color);
   word-break: break-all;
 }
 
 .summary-table__path {
   font-size: 0.68rem;
-  color: #525252;
+  color: var(--bs-meta-color);
   word-break: break-all;
 }
 
@@ -860,13 +864,14 @@ export default {
 
 .summary-table__iso {
   font-size: 0.65rem;
-  color: #6b7280;
+  color: var(--bs-meta-color);
   margin-left: 0.3rem;
 }
 
 .summary-table__date {
   font-size: 0.72rem;
-  color: #9ca3af;
+  color: var(--bs-meta-color);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Bar chart ── */
@@ -887,20 +892,20 @@ export default {
   left: 0;
   top: 0;
   height: 100%;
-  background: #22c55e;
+  background: var(--bs-success);
   border-radius: 4px;
   transition: width 0.5s ease;
 }
 
 .summary-bar--full .summary-bar__fill {
-  background: #22c55e;
+  background: var(--bs-success);
 }
 
 .summary-bar__label {
   position: relative;
   z-index: 1;
   font-size: 0.65rem;
-  color: #e5e7eb;
+  color: var(--bs-body-color);
   padding: 0 0.3rem;
   font-weight: 500;
 }
@@ -914,11 +919,11 @@ export default {
 }
 
 .summary-dot--ok {
-  background: #22c55e;
+  background: var(--bs-success);
 }
 
 .summary-dot--missing {
-  background: #ef4444;
+  background: var(--bs-danger);
 }
 
 /* ── Badges ── */
@@ -930,26 +935,26 @@ export default {
 }
 
 .summary-badge--ok {
-  background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  background: var(--bs-success-bg-subtle);
+  color: var(--bs-success);
 }
 
 .summary-badge--fail {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  background: var(--bs-danger-bg-subtle);
+  color: var(--bs-danger);
 }
 
 /* ── Storage ── */
 .summary-storage {
   padding: 0.5rem 0.6rem;
   border-radius: 0.4rem;
-  background: #0a0f1e;
-  border: 1px solid #1f2937;
+  background: var(--bs-card-bg);
+  border: 1px solid var(--bs-border-color);
 }
 
 .summary-storage__path code {
   font-size: 0.7rem;
-  color: #9ca3af;
+  color: var(--bs-meta-color);
   word-break: break-all;
 }
 
@@ -958,19 +963,19 @@ export default {
   gap: 0.75rem;
   margin-top: 0.3rem;
   font-size: 0.78rem;
-  color: #d1d5db;
+  color: var(--bs-meta-strong);
 }
 
 .summary-storage__contents {
   margin: 0.25rem 0 0;
   font-size: 0.7rem;
-  color: #6b7280;
+  color: var(--bs-meta-color);
 }
 
 /* ── Empty ── */
 .summary-empty {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--bs-meta-color);
   padding: 0.5rem 0;
 }
 </style>

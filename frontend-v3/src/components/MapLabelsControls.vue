@@ -144,17 +144,18 @@ export default {
 }
 
 .map-labels-controls__title {
-  font-size: 0.72rem;
+  /* Micro-header: 11px semibold uppercase with tracking. */
+  font-size: 0.69rem;
   font-weight: 600;
-  color: #d1d5db;
+  color: var(--bs-meta-strong);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .map-labels-controls__badge {
   font-size: 0.62rem;
-  color: #6b7280;
-  border: 1px solid #374151;
+  color: var(--bs-meta-color);
+  border: 1px solid var(--bs-border-color);
   border-radius: 999px;
   padding: 0 0.45rem;
   line-height: 1.4;
@@ -178,12 +179,12 @@ export default {
 
 .map-labels-controls__label {
   font-size: 0.66rem;
-  color: #9ca3af;
+  color: var(--bs-meta-color);
 }
 
 .map-labels-controls__value {
   font-size: 0.66rem;
-  color: #e5e7eb;
+  color: var(--bs-readout-color);
   font-variant-numeric: tabular-nums;
 }
 
@@ -198,7 +199,7 @@ export default {
   gap: 0.7rem;
   margin-top: 0.15rem;
   font-size: 0.62rem;
-  color: #6b7280;
+  color: var(--bs-meta-color);
 }
 
 .map-labels-controls__swatch {

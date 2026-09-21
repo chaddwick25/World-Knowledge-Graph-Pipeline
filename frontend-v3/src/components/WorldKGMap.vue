@@ -871,7 +871,8 @@ export default {
 
       layer
         .bindTooltip(
-          `<strong>${props.name}</strong><br><small>${props.continent}</small>`,
+          `<div class="country-tooltip__name">${props.name}</div>` +
+          `<div class="country-tooltip__continent">${props.continent}</div>`,
           { sticky: true, className: 'country-tooltip-leaflet' }
         )
         .openTooltip()
@@ -948,9 +949,10 @@ export default {
 }
 
 .map-legend__title {
+  /* Micro-header: 11px uppercase with tracking. */
   font-size: 0.68rem;
   font-weight: 600;
-  color: #9ca3af;
+  color: var(--bs-meta-color);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 0.35rem;
@@ -1011,13 +1013,27 @@ export default {
 <style>
 .country-tooltip-leaflet {
   background: rgba(15, 23, 42, 0.95);
-  color: #fff;
-  border: none;
+  color: var(--bs-body-color);
+  border: 1px solid var(--bs-border-color);
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 0.85rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   line-height: 1.4;
+}
+
+.country-tooltip__name {
+  color: var(--bs-readout-color);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.country-tooltip__continent {
+  color: var(--bs-meta-color);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 1px;
 }
 
 .country-tooltip-leaflet::before {
