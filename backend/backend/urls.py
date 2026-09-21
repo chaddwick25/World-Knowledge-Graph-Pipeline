@@ -20,7 +20,6 @@ from django.urls import path, include
 urlpatterns = [ 
     path('admin/', admin.site.urls),
     path('api/geodata/', include('geodata.urls')),
-    path('api/semantic-search/', include('semantic_search.urls')),
     path('api/nca/', include('worldkg_nca.urls')),
     path('api/igea/', include('igea.urls')),
     path('api/geovectors/', include('geovectors_encoder.urls')),
