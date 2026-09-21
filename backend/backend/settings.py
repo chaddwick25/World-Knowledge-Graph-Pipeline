@@ -51,7 +51,7 @@ _default_legacy_polygon_files_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/o
 LEGACY_POLYGON_FILES_DIR = os.getenv('LEGACY_POLYGON_FILES_DIR', _default_legacy_polygon_files_dir)
 
 # Geofabrik index URL used for polygon discovery
-GEOFABRIK_INDEX_URL = os.getenv('GEOFABRIK_INDEX_URL', 'https://download.geofabrik.de/index-v1.json')
+GEOFABRIK_INDEX_URL = 'https://download.geofabrik.de/index-v1.json'
 
 # OSM Wikidata Extractions Directory, this is the directory where the wikidata extractions are stored
 _default_osm_wikidata_extractions = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/osm_wikidata_extractions') if BASE_DATA_DIR else None
@@ -83,13 +83,6 @@ FASTTEXT_MODEL_PATH = os.getenv('FASTTEXT_MODEL_PATH', _default_fasttext_model_p
 _default_fasttext_tuned_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/models/fasttext_tuned') if BASE_DATA_DIR else None
 FASTTEXT_TUNED_DIR = os.getenv('FASTTEXT_TUNED_DIR', _default_fasttext_tuned_dir)
 
-_default_worldkg_ontology_ttl = os.path.join(
-    BASE_DATA_DIR, 'OSM-PBF-FILES/world_kg_ontology/WorldKG_Ontolgy.ttl'
-) if BASE_DATA_DIR else None
-WORLDKG_ONTOLOGY_TTL_PATH = os.getenv(
-    'WORLDKG_ONTOLOGY_TTL_PATH', _default_worldkg_ontology_ttl
-)
-
 # Redis configuration for Channels, Celery, and WorldKG services
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
@@ -101,10 +94,7 @@ WS_PORT = os.getenv('WS_PORT', '8000')
 
 # Single Snapshot Configuration for Temporal Pipeline
 # Used by Vue-triggered preprocessing to generate only one snapshot per country
-SINGLE_SNAPSHOT_DATE = os.getenv(
-    'SINGLE_SNAPSHOT_DATE',
-    '2025_12_31'
-)
+SINGLE_SNAPSHOT_DATE = '2025_12_31'
 # Derive year from date (e.g., '2025_12_31' -> 2025)
 SINGLE_SNAPSHOT_YEAR = int(SINGLE_SNAPSHOT_DATE.split('_')[0])
 
@@ -123,16 +113,16 @@ OSMIUM_EXECUTABLE = os.getenv(
 # ============================================================================
 # Skip full pipeline if Shannon entropy of WorldKG class distribution is below this.
 # Low entropy = few dominant classes = semantically homogeneous region.
-MIN_PREFLIGHT_SHANNON_ENTROPY = float(os.getenv('MIN_PREFLIGHT_SHANNON_ENTROPY', '1.5'))
+MIN_PREFLIGHT_SHANNON_ENTROPY = 1.5
 
 # Skip full pipeline if entropy delta vs previous fingerprint is below this.
 # Low delta = no meaningful semantic change since last run.
-MIN_PREFLIGHT_ENTROPY_DELTA = float(os.getenv('MIN_PREFLIGHT_ENTROPY_DELTA', '0.2'))
+MIN_PREFLIGHT_ENTROPY_DELTA = 0.2
 
 # ============================================================================
 # GOOGLE PLACES VALIDATION (Stage 10 — Amplification Layer)
 # ============================================================================
-GOOGLE_VALIDATION_ENABLED = os.getenv('GOOGLE_VALIDATION_ENABLED', 'False').lower() in ('true', '1', 'yes')
+GOOGLE_VALIDATION_ENABLED = False
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', None)
 
 # ============================================================================
@@ -212,31 +202,27 @@ SPECTRAL_REPORT_DIR = os.getenv('SPECTRAL_REPORT_DIR', _default_spectral_report_
 # + NetworkX + scipy at request time.  The legacy runtime graph path has
 # been removed; the table path is authoritative.  PostGIS remains as a
 # spatial fallback for templates without factor-table coverage.
-FACTOR_NODE_TABLES_ENABLED = os.getenv('FACTOR_NODE_TABLES_ENABLED', 'true').lower() == 'true'
+FACTOR_NODE_TABLES_ENABLED = True
 
 # Eigenbasis coherence (GRAPH_SPECTRAL_FEEDBACK_HARDENING_PLAN Phase 1):
 # False (default) = lenient — NULL fingerprint_id (pre-migration rows) still
 # resolves with a trace note. True = strict — NULL is treated as a mismatch,
 # forcing the PostGIS fallback during the transition window.
-FACTOR_EIGENBASIS_STRICT = os.getenv('FACTOR_EIGENBASIS_STRICT', 'false').lower() == 'true'
-
-# Hot storage path (SSD/NVME working files)
-HOT_STORAGE_PATH = os.getenv('HOT_STORAGE_PATH', BASE_DATA_DIR)
-
-# Cold storage path (embeddings on separate mount)
-COLD_STORAGE_PATH = os.getenv('COLD_STORAGE_PATH', COLD_STORAGE_BASE_DIR)
+FACTOR_EIGENBASIS_STRICT = False
 
 # USLP (Unsupervised Spatial Link Prediction) Configuration
+# USLP_THRESHOLD / USLP_USE_GPU / USLP_GPU_DEVICE stay env-driven (per
+# deployment / per country tuning). The scale limits are code constants.
 USLP_THRESHOLD = float(os.getenv('USLP_THRESHOLD', '0.7'))
-USLP_TOP_K = int(os.getenv('USLP_TOP_K', '50'))
-USLP_LIMIT = int(os.getenv('USLP_LIMIT', '1000000000'))
-USLP_MAX_HEADS = int(os.getenv('USLP_MAX_HEADS', '1000000000'))
+USLP_TOP_K = 50
+USLP_LIMIT = 1000000000
+USLP_MAX_HEADS = 1000000000
 # USLP_USE_GPU: 'auto' (default), 'true', or 'false'
 USLP_USE_GPU = os.getenv('USLP_USE_GPU', 'true').lower()
 USLP_GPU_DEVICE = os.getenv('USLP_GPU_DEVICE', 'cuda:0')
-USLP_USE_FP64 = os.getenv('USLP_USE_FP64', 'false').lower() == 'true'
+USLP_USE_FP64 = False
 
-CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:6379/0"
+CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{REDIS_PORT}/0"
 
 # ── Celery Result Backend ──
 # Custom Django DB backend with chord-in-chain fix.
@@ -358,7 +344,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [(os.getenv('REDIS_HOST', '127.0.0.1'), 6379)],
+            'hosts': [(os.getenv('REDIS_HOST', '127.0.0.1'), REDIS_PORT)],
         },
     },
 }
@@ -397,8 +383,8 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 # WorldKG Pipeline snapshot date range defaults
-WORLDKG_SNAPSHOT_START_YEAR = int(os.getenv('WORLDKG_SNAPSHOT_START_YEAR', '2021'))
-WORLDKG_SNAPSHOT_END_YEAR = int(os.getenv('WORLDKG_SNAPSHOT_END_YEAR', '2025'))
+WORLDKG_SNAPSHOT_START_YEAR = 2021
+WORLDKG_SNAPSHOT_END_YEAR = 2025
 # Short aliases used by SnapshotDatesView and SnapshotJobStatusView
 # (TEMPORAL_SNAPSHOT_REFACTOR.md Phase C). Fall back to the WORLDKG_* names.
 SNAPSHOT_START_YEAR = WORLDKG_SNAPSHOT_START_YEAR
@@ -442,7 +428,7 @@ DATABASE_ROUTERS = [
 # The rule-based paraphrase tier is always on; this env var gates the optional
 # LLM tier (Ollama via LLMService — no external API). Default off: generation
 # must be deterministic and offline-safe.
-MAPQA_LLM_AUGMENTATION_ENABLED = os.getenv('MAPQA_LLM_AUGMENTATION_ENABLED', 'false').lower() == 'true'
+MAPQA_LLM_AUGMENTATION_ENABLED = False
 
 
 # Password validation
@@ -469,8 +455,6 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
-
 USE_I18N = True
 
 USE_TZ = True
@@ -492,9 +476,9 @@ GEODATA_CONFIG = {
     # Download dir lives under BASE_DIR/data (resolves to /app/data in
     # containers — see docs/.devin rules §2.7).
     'download_dir': os.getenv('GEODATA_DIR', os.path.join(BASE_DIR, 'data', 'geodata')),
-    'bulk_insert_batch_size': int(os.getenv('GEODATA_BULK_INSERT_BATCH_SIZE', '1000')),
-    'default_ssl_verify': os.getenv('GEODATA_SSL_VERIFY', 'false').lower() == 'true',
-    'default_timeout': int(os.getenv('GEODATA_TIMEOUT', '30')),
+    'bulk_insert_batch_size': 1000,
+    'default_ssl_verify': False,
+    'default_timeout': 30,
 }
 
 # Temporal Snapshot Configuration
@@ -536,5 +520,4 @@ SPATIAL_SEMANTICS_CONFIG = {
     'name_substring_boost': 1.0,
 }
 
-# TODO: use ENV
 TIME_ZONE = 'America/Toronto'

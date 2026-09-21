@@ -86,9 +86,7 @@ services:
       - OSMIUM_BINARY_PATH=/usr/bin/osmium
       - WORLDKG_ONTOLOGY_PATH=/app/data/OSM-PBF-FILES/world_kg_ontology/WorldKG_Ontolgy.ttl
       - CONTINENTS_ROOT=/app/data/OSM-PBF-FILES/osm_wikidata_extractions/continents
-      - HOT_STORAGE_PATH=/app/data
       - COLD_STORAGE_BASE_DIR=${COLD_STORAGE_BASE_DIR}
-      - COLD_STORAGE_PATH=${COLD_STORAGE_BASE_DIR}
       - EMBEDDINGS_ROOT=${EMBEDDINGS_ROOT}
       - OVERRIDES_JSON_PATH=${OVERRIDES_JSON_PATH}
       - PLANET_OSM_FILE_PATH=/app/data/OSM-PBF-FILES/planet/history-260209.osm.pbf
@@ -160,9 +158,7 @@ services:
       - OSMIUM_BINARY_PATH=/usr/bin/osmium
       - WORLDKG_ONTOLOGY_PATH=/app/data/OSM-PBF-FILES/world_kg_ontology/WorldKG_Ontolgy.ttl
       - CONTINENTS_ROOT=/app/data/OSM-PBF-FILES/osm_wikidata_extractions/continents
-      - HOT_STORAGE_PATH=/app/data
       - COLD_STORAGE_BASE_DIR=${COLD_STORAGE_BASE_DIR}
-      - COLD_STORAGE_PATH=${COLD_STORAGE_BASE_DIR}
       - EMBEDDINGS_ROOT=${EMBEDDINGS_ROOT}
       - OVERRIDES_JSON_PATH=${OVERRIDES_JSON_PATH}
       - PLANET_OSM_FILE_PATH=/app/data/OSM-PBF-FILES/planet/history-260209.osm.pbf

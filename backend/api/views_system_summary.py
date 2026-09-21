@@ -68,8 +68,8 @@ class SystemSummaryView(APIView):
 
     def _get_storage_info(self):
         from django.conf import settings
-        hot_path = Path(settings.HOT_STORAGE_PATH) if settings.HOT_STORAGE_PATH else Path(settings.BASE_DATA_DIR)
-        cold_path = Path(settings.COLD_STORAGE_PATH) if settings.COLD_STORAGE_PATH else Path(settings.COLD_STORAGE_BASE_DIR)
+        hot_path = Path(settings.BASE_DATA_DIR) if settings.BASE_DATA_DIR else Path(settings.BASE_DIR)
+        cold_path = Path(settings.COLD_STORAGE_BASE_DIR) if settings.COLD_STORAGE_BASE_DIR else Path(settings.BASE_DIR)
 
         # Hot storage (SSD/NVME — working files)
         hot_info = self._path_summary(hot_path)

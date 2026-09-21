@@ -1,6 +1,11 @@
 """
 Management command to trigger the WorldKG Pipeline v2.
 
+Run inside the worker container for GPU stages (worker carries
+NVIDIA_VISIBLE_DEVICES=1 + GV_NLE_GPU_DEVICES=cuda:0; the backend
+container has no GPU):
+    docker compose exec worker python manage.py run_pipeline ...
+
 Usage:
     # Full pipeline (Steps 1–5)
     python manage.py run_pipeline MZ
@@ -14,8 +19,10 @@ Usage:
     # Full pipeline with entropy gate bypass
     python manage.py run_pipeline GB --skip-entropy-gate
 
-    # Single stage (for debugging / resume)
+    # Single stage (for debugging / resume). Stages: 1, 1.5, 2, 3, 4, 4.5,
+    # 5, 5.5, 5.7 (graph spectral), 5.8 (temporal drift), 6.
     python manage.py run_pipeline MZ --stage 3
+    python manage.py run_pipeline MZ --stage 5.7
 
     # With custom snapshot date
     python manage.py run_pipeline MZ --snapshot-date 2024_06_30
@@ -35,10 +42,11 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--stage',
-            type=int,
+            type=float,
             default=None,
-            choices=[1, 2, 3, 4, 5],
-            help='Run a single stage instead of the full pipeline (for debugging)',
+            choices=[1, 1.5, 2, 3, 4, 4.5, 5, 5.5, 5.7, 5.8, 6],
+            help='Run a single stage instead of the full pipeline (for debugging): '
+                 '1, 1.5, 2, 3, 4, 4.5, 5, 5.5, 5.7 (graph spectral), 5.8 (temporal drift), 6',
         )
         parser.add_argument(
             '--skip-entropy-gate',

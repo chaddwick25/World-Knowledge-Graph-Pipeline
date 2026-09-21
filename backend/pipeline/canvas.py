@@ -727,7 +727,7 @@ def run_worldkg_pipeline(
 
 def run_pipeline_stage(
     iso: str,
-    stage: int,
+    stage: float,
     snapshot_date: Optional[str] = None,
 ) -> str:
     """Run a single pipeline stage independently (for debugging / resume).
@@ -743,7 +743,10 @@ def run_pipeline_stage(
     steps = _get_step_tasks()
     task = steps.get(stage)
     if not task:
-        raise ValueError(f"Invalid stage: {stage}. Must be 0–5, 0.5.")
+        raise ValueError(
+            f"Invalid stage: {stage}. Must be one of "
+            f"{sorted(steps)}."
+        )
 
     # Create a PipelineRun for tracking (consistent with run_worldkg_pipeline)
     run = PipelineRun.objects.create(

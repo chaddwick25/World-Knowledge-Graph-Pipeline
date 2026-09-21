@@ -6,7 +6,7 @@ Provides endpoints for:
    — Comprehensive summary of spatial link predictions, augmentation estimates,
      entity counts, link type breakdowns, and score distributions.
 
-Pattern follows views_worldkg_pipeline.py (WorldKGPipelineSummaryView et al.)
+Pattern follows api/views (WorldKGPipelineSummaryView et al.)
 and views_app_state.py (AppStateView).
 """
 

@@ -56,6 +56,7 @@ extraction path failed.
 | Scenario | Steps | Pass signal |
 |---|---|---|
 | Happy path | prompt → answer 2-3 questions → brief box appears → Run | per-question cards with template badges, grounded summary |
+| Radius escalation | prompt about a city ("plan a 2-day trip to Dublin") and a decomposed question uses a < 2km radius that returns nothing | question card shows the widened question; console `[Research] radius escalation`; `radius_escalated: true` in the trace/SSE event |
 | Skip-the-interview | type the full spec in one message (dates, party, interests, constraints) | KE says it is ready; brief box fills in |
 | Second pass | after the summary, type feedback (e.g. "drop the museums, only cafes") → Send → Run again | revised brief, re-run works |
 | Brief never appears | keep answering; brief box stays empty | console `[Research] finalize error` — extraction failed |
@@ -72,7 +73,12 @@ ones during a test: `chat status` (state transitions), `chat error`
 `finalize: structured|fallback <brief>` (brief build), `brief ready` /
 `brief cleared`, `run start, source: brief|lastUserPrompt` (which prompt
 the run used), `plan: N questions`, `question: <i> <template> count: <n>
-<error>`, `done, summary len: N elapsed: Xs errors: M`.
+<error>`, `radius escalation: <q> -> <wider>` (small-radius empty
+widen, 2026-09-19), `done, summary len: N elapsed: Xs errors: M`.
+Every run also has a `trace_id` (in the SSE `done` payload and the
+`X-Trace-Id` header) — set `TRACE_SINK=langfuse` to push the run's LLM
+spans to the self-hosted Langfuse
+(`docs/plans/next-stage/UNIFIED_LLM_TRACE_PLAN.md`).
 
 ## Countries (anchors verified in sample_questions.md)
 
