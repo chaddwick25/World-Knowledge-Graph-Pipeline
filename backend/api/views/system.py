@@ -1,14 +1,9 @@
-import json
-import os
-import subprocess
-from pathlib import Path
 import logging
 
 logger = logging.getLogger(__name__)
 
 from django.conf import settings
-from django.db import connections
-from rest_framework import generics, status
+from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
@@ -16,11 +11,10 @@ from rest_framework.permissions import AllowAny
 # NOTE: Heavy service imports (OsmiumFacade, osm_wikidata_resolver, regional_path_service)
 # are imported lazily inside the methods that use them to avoid slow startup.
 from api.models import (
-    RegionHierarchy, Task, PbfFile, PolygonFile
+    RegionHierarchy, PbfFile
 )
 from api.serializers import (
-    RegionHierarchySerializer, PbfFileSerializer, TaskSerializer,
-    PolygonFileSerializer
+    RegionHierarchySerializer, PbfFileSerializer
 )
 
 
@@ -140,146 +134,6 @@ class SystemStatusView(APIView):
         }
         data.update(build_snapshot_dates_payload())
         return Response(data)
-
-
-# --- PBF File and Task Management Views ---
-
-
-
-
-class SystemInitializeView(APIView):
-    """
-    Initialize the system by running bootstrap tasks:
-    - Sync polygon regions
-    - Register services
-    - Run continents recipe (extract continents + OSM boundaries)
-    """
-    def post(self, request, *args, **kwargs):
-        from django.core.management import call_command
-        from core.models import OsmBoundary
-        
-        try:
-            steps_completed = []
-            
-            # Step 1: Sync polygon regions
-            logger.info("Running sync_poly_regions management command...")
-            call_command('sync_poly_regions')
-            steps_completed.append('polygon_files_synced')
-
-            # Step 2: Generate country_relations.json from Geofabrik + SPARQL + RegionHierarchy
-            logger.info("Running sync_country_relations (regenerates country_relations.json)...")
-            call_command('sync_country_relations', force=True)
-            steps_completed.append('country_relations_generated')
-
-            # Step 3: Import country_relations.json into OSMWikiDataHierarchy DB
-            logger.info("Running import_country_relations management command...")
-            call_command('import_country_relations')
-            steps_completed.append('country_relations_imported')
-            
-            # Step 3a: Generate OSM boundaries from .poly files (for cartographic map)
-            logger.info("Generating OSM boundaries from .poly files...")
-            boundary_count = OsmBoundary.objects.filter(admin_level=2).count()
-            if boundary_count > 100:
-                logger.info(f"OSM boundaries already generated ({boundary_count}). Skipping.")
-                steps_completed.append('osm_boundaries_skipped')
-            else:
-                try:
-                    call_command('generate_osm_boundaries')
-                    steps_completed.append('osm_boundaries_generated')
-                    logger.info("OSM boundaries generated successfully")
-                except Exception as be:
-                    logger.error(f"OSM boundaries generation failed: {str(be)}", exc_info=True)
-                    steps_completed.append('osm_boundaries_failed')
-
-            # Step 3b: Run continents recipe (if not already done)
-            logger.info("Checking if continents recipe needs to run...")
-            continent_pbf_count = PbfFile.objects.filter(
-                pbf_file_type=PbfFile.PbfType.CONTINENT,
-                status=PbfFile.PbfStatus.COMPLETED
-            ).count()
-            
-            if continent_pbf_count >= 7:
-                logger.info(f"Continents already extracted ({continent_pbf_count} continents). Skipping.")
-                steps_completed.append('continents_recipe_skipped')
-            else:
-                logger.info("Running continents recipe (this may take 30-60 minutes)...")
-                try:
-                    call_command('run_continents_recipe')
-                    steps_completed.append('continents_recipe_completed')
-                    logger.info("Continents recipe completed successfully")
-                except Exception as recipe_error:
-                    logger.error(f"Continents recipe failed: {str(recipe_error)}", exc_info=True)
-                    steps_completed.append('continents_recipe_failed')
-            
-            # Step 4: Build subgraph profiles (if continents succeeded)
-            if 'continents_recipe_completed' in steps_completed or continent_pbf_count >= 7:
-                logger.info("Running prebuild_subgraphs...")
-                try:
-                    call_command('prebuild_subgraphs', all=True)
-                    steps_completed.append('subgraphs_built')
-                    logger.info("Subgraph profiles built successfully")
-                except Exception as sg_error:
-                    logger.error(f"Subgraph build failed: {str(sg_error)}", exc_info=True)
-                    steps_completed.append('subgraphs_build_failed')
-            
-            # Step 5: Resolve country paths (if continents succeeded)
-            if 'continents_recipe_completed' in steps_completed or continent_pbf_count >= 7:
-                logger.info("Running prebuild_country_paths...")
-                try:
-                    call_command('prebuild_country_paths')
-                    steps_completed.append('country_paths_resolved')
-                    logger.info("Country paths resolved successfully")
-                except Exception as cp_error:
-                    logger.error(f"Country path resolution failed: {str(cp_error)}", exc_info=True)
-                    steps_completed.append('country_paths_resolve_failed')
-            
-            # Step 6: Sync GeoVectors metadata into country_relations.json
-            # Populates geovectors_location_tsv / geovectors_tags_tsv so the
-            # frontend can determine which countries are clickable on the map.
-            logger.info("Running sync_geovectors_metadata...")
-            try:
-                call_command('sync_geovectors_metadata', save=True)
-                steps_completed.append('geovectors_metadata_synced')
-                logger.info("GeoVectors metadata synced successfully")
-            except Exception as gv_error:
-                logger.error(f"GeoVectors metadata sync failed: {str(gv_error)}", exc_info=True)
-                steps_completed.append('geovectors_metadata_failed')
-            
-            # Determine overall status
-            has_error = any('failed' in s for s in steps_completed)
-            all_done = all(s in steps_completed for s in [
-                'polygon_files_synced', 'country_relations_imported',
-                'continents_recipe_completed', 'subgraphs_built',
-
-                'country_paths_resolved', 'geovectors_metadata_synced',
-                'filesystem_subgraphs_synced',
-            ])
-            
-            if all_done:
-                overall_status = 'success'
-
-                message = 'Full system initialization complete (continents + subgraphs + paths + filesystem subgraphs)'
-            elif has_error:
-                overall_status = 'partial_success'
-                message = f'System initialized with some issues: {", ".join(s for s in steps_completed if "failed" in s)}'
-            else:
-                overall_status = 'partial_success'
-                message = 'System initialized (continents skipped, subgraphs/paths not run)'
-            
-            return Response({
-                'status': overall_status,
-                'steps_completed': steps_completed,
-                'message': message,
-                'continents_extracted': continent_pbf_count >= 7,
-                'boundaries_count': boundary_count
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"System initialization failed: {str(e)}", exc_info=True)
-            return Response({
-                'status': 'error',
-                'error': f'System initialization failed: {str(e)}'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class RegionMapDataView(APIView):

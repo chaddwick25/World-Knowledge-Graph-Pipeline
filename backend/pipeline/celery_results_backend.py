@@ -24,8 +24,8 @@ This backend fixes the bug by:
    detect task completion by querying ``TaskResult`` rows.
 
 ``TaskResult`` records are still written to Django's DB by
-``store_result()``, so ``/api/task-results/<run_id>/`` and
-``/api/snapshot-jobs/<country>/<date>/results/`` continue to work.
+``store_result()``, so ``/api/snapshot-jobs/<country>/<date>/results/``
+continues to work.
 
 The polling interval defaults to 10 seconds (vs Celery's 1-second
 default) to reduce Redis message volume during long GPU training runs
@@ -60,7 +60,8 @@ class PatchedDatabaseBackend(DatabaseBackend):
     versions).
 
     ``TaskResult`` records are still written to Django's DB, so the
-    ``/api/task-results/<run_id>/`` endpoint continues to work.
+    ``/api/snapshot-jobs/<country>/<date>/results/`` endpoint continues
+    to work.
     """
 
     def apply_chord(self, header_result, body, **kwargs):

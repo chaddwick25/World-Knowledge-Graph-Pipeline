@@ -9,9 +9,7 @@ Handles the full pipeline for updating search embeddings:
 """
 
 import logging
-import json
 from pathlib import Path
-from typing import Optional
 import threading
 
 from rest_framework.views import APIView
@@ -20,12 +18,11 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 
 from django.conf import settings
-from core.models import RegionHierarchy, OSMWikiDataHierarchy
+from core.models import RegionHierarchy
 from api.models import (
     PbfFile,
     ProcessingSession,
     CountrySearchProcessing,
-    PolygonFile,
     Task
 )
 
@@ -300,137 +297,3 @@ class CountryPreProcessView(APIView):
             
         except Exception as e:
             logger.warning(f"Error during yearly extraction cleanup: {e}")
-
-
-class CountrySubgraphsView(APIView):
-    """List subgraphs and their artifacts for a given country.
-
-    The response is derived from the filesystem layout under
-    OSM_WIKIDATA_EXTRACTIONS_DIR/{continent}/{country}/subgraphs.
-
-    Query params:
-        snapshot_date - Optional. Snapshot date string (e.g. "2025_12_31").
-                        Accepted for forward compatibility; subgraph paths
-                        currently use the single-snapshot layout.
-    """
-
-    permission_classes = [AllowAny]
-
-    def get(self, request, country_name: str):
-        if not country_name:
-            return Response(
-                {"error": "country_name is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # snapshot_date is accepted but not yet applied — subgraph paths
-        # currently use the single-snapshot filesystem layout.
-        # _snapshot_date = request.query_params.get('snapshot_date')
-
-        from core.services.planet_init.osm_wikidata_resolver import get_country_relations_dict
-        from core.services.snapshot.regional_path_service import (
-            normalize_country_slug,
-            normalize_continent_slug,
-            regional_path_service,
-        )
-        relations = get_country_relations_dict()
-        if not relations:
-            return Response(
-                {"error": "country relations metadata not available"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        search_term = normalize_country_slug(country_name)
-        entry = None
-        for _, v in relations.items():
-            slug = normalize_country_slug(v.get("slug", ""))
-            name = normalize_country_slug(v.get("name", ""))
-            if (
-                slug == search_term
-                or name == search_term
-                or search_term in slug
-                or slug in search_term
-            ):
-                entry = v
-                break
-
-        if not entry:
-            return Response(
-                {"error": f"Could not resolve country metadata for {country_name}"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        continent_raw = entry.get("continent_name") or entry.get("parent_slug") or ""
-        continent = normalize_continent_slug(continent_raw) if continent_raw else "unknown"
-        raw_slug = entry.get("slug") or country_name
-        country_slug = normalize_country_slug(raw_slug)
-
-        base_dir = getattr(settings, "OSM_WIKIDATA_EXTRACTIONS_DIR", None)
-        if not base_dir:
-            return Response(
-                {"error": "OSM_WIKIDATA_EXTRACTIONS_DIR is not configured"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        # Ensure subgraphs directory exists (regional_path_service will create it if missing)
-        subgraphs_root = regional_path_service.get_subgraphs_dir(continent, country_slug)
-
-        if not subgraphs_root.exists():
-            return Response(
-                {
-                    "country_name": country_name,
-                    "continent": continent,
-                    "country_slug": country_slug,
-                    "subgraphs": [],
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        subgraphs = []
-        for sg_dir in sorted(p for p in subgraphs_root.iterdir() if p.is_dir()):
-            slug = sg_dir.name
-            name = slug.replace("_", " ")
-
-            poly_files = sorted(sg_dir.glob("*.osm.poly"))
-            pbf_files = sorted(sg_dir.glob("*.osm.pbf"))
-
-            poly_path = str(poly_files[0]) if poly_files else None
-            pbf_path = str(pbf_files[0]) if pbf_files else None
-
-            # Subgraph pickle path follows the GeoVectors convention:
-            # OSM_WIKIDATA_EXTRACTIONS_DIR/{continent}/{country}/pickles/{subgraph}/wdw.pickle
-            from pathlib import Path
-
-            base_extractions = Path(base_dir)
-            pickle_dir = (
-                base_extractions
-                / continent.lower()
-                / country_slug
-                / "pickles"
-                / slug.lower()
-            )
-            pickle_path_obj = pickle_dir / "wdw.pickle"
-            pickle_path = str(pickle_path_obj) if pickle_path_obj.exists() else None
-
-            subgraphs.append(
-                {
-                    "name": name,
-                    "slug": slug,
-                    "poly_path": poly_path,
-                    "pbf_path": pbf_path,
-                    "pickle_path": pickle_path,
-                    "has_poly": bool(poly_path),
-                    "has_pbf": bool(pbf_path),
-                    "has_pickle": bool(pickle_path),
-                }
-            )
-
-        return Response(
-            {
-                "country_name": country_name,
-                "continent": continent,
-                "country_slug": country_slug,
-                "subgraphs": subgraphs,
-            },
-            status=status.HTTP_200_OK,
-        )

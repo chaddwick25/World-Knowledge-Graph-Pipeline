@@ -1,9 +1,8 @@
 import os
 from rest_framework import serializers
 from .models import (
-    Task, PbfFile, RegionHierarchy, PolygonFile
+    PbfFile, RegionHierarchy
 )
-# NOTE: ProjectionWeightAsset imported lazily inside ProjectionWeightAssetSerializer
 
 class RegionHierarchySerializer(serializers.ModelSerializer):
     """Recursive serializer for the RegionHierarchy model."""
@@ -109,27 +108,5 @@ class PbfFileSerializer(serializers.ModelSerializer):
         if obj.parent_pbf:
             return obj.parent_pbf.path
         return None
-
-
-class TaskSerializer(serializers.ModelSerializer):
-    task_type = serializers.CharField(source='get_task_type_display')
-    status = serializers.CharField(source='get_status_display')
-
-    class Meta:
-        model = Task
-        fields = ('id', 'task_type', 'status', 'parameters', 'result', 'created_at', 'updated_at')
-
-
-class PolygonFileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PolygonFile
-        fields = '__all__'
-
-
-class ProjectionWeightAssetSerializer(serializers.ModelSerializer):
-    class Meta:
-        from core.models import ProjectionWeightAsset
-        model = ProjectionWeightAsset
-        fields = '__all__'
 
 

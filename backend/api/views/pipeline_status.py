@@ -1,12 +1,14 @@
 """
-WorldKG Unified Pipeline API Views
+WorldKG pipeline state + snapshot job API views.
 
-POST /api/worldkg-pipeline/start/
-    Payload: { "country_name": "Jamaica", "pbf_path": "<optional>" }
-    Returns: { "session_id": "<uuid>", "ws_url": "ws://..." }
+GET /api/worldkg-pipeline/state/<country_name>/
+    Latest ProcessingSession + PipelineRun state for a country.
 
-GET /api/worldkg-pipeline/status/<session_id>/
-    Returns: ProcessingSession status JSON (fallback for clients without WebSocket)
+GET /api/planet/snapshot-dates/
+    Settings-derived snapshot-date range + completed SnapshotJob dates.
+
+GET /api/snapshot-jobs/...
+    SnapshotJob status + durable per-run results (TaskResult join).
 """
 
 import logging
@@ -17,7 +19,7 @@ from rest_framework.permissions import AllowAny
 
 from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
 from core.services.snapshot.regional_path_service import normalize_country_slug
-from core.models import ProcessingSession, Task, PipelineRun
+from core.models import ProcessingSession, PipelineRun
 
 logger = logging.getLogger(__name__)
 
@@ -36,125 +38,6 @@ def _country_filter(country_name: str) -> 'Q':
     if iso_code and iso_code.upper() != country_name.upper():
         f |= Q(country_name__iexact=iso_code)
     return f
-
-
-class WorldKGPipelineStatusView(APIView):
-    permission_classes = [AllowAny]
-
-    def get(self, request, session_id):
-        try:
-            session = ProcessingSession.objects.get(id=session_id)
-        except ProcessingSession.DoesNotExist:
-            return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        task = Task.objects.filter(
-            processing_session=session,
-            task_type=Task.TaskType.WORLDKG_PIPELINE
-        ).first()
-
-        return Response({
-            'session_id': str(session.id),
-            'status': session.status,
-            'configuration': session.configuration,
-            'results': session.results,
-            'created_at': session.created_at,
-            'completed_at': session.completed_at,
-            'task_status': task.status if task else None,
-        })
-
-
-class WorldKGPipelineSummaryView(APIView):
-    """
-    GET /api/worldkg-pipeline/summary/{country_name}/
-
-    Returns summarised SpatialTripletScore data for a country:
-    - Total links, accepted count, acceptance rate
-    - Relation distribution with counts and acceptance rates
-    - Score distribution histogram (0.2 buckets)
-    """
-    permission_classes = [AllowAny]
-
-    def get(self, request, country_name):
-        from collections import Counter, defaultdict
-        from igea.models import SpatialTripletScore
-        from core.models import PipelineRun
-
-        country_name = country_name.strip()
-        if not country_name:
-            return Response(
-                {'error': 'country_name is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Primary filter: country_name (self-describing data)
-        # Optional filter: snapshot_id (for specific snapshot queries)
-        snapshot_id = request.query_params.get('snapshot_id')
-
-        # Build query - always filter by country_name (also try ISO code)
-        iso_code = resolve_iso_code(country_name)
-        country_filter = _country_filter(country_name)
-        scores = SpatialTripletScore.objects.filter(country_filter)
-
-        # If snapshot_id provided, also filter by it
-        if snapshot_id:
-            scores = scores.filter(snapshot_id=snapshot_id)
-            logger.info(f"Filtering by country_name={country_name} and snapshot_id={snapshot_id}")
-        else:
-            logger.info(f"Filtering by country_name={country_name} (no snapshot_id filter)")
-
-        logger.info(f"Query will return {scores.count()} accepted triplet scores")
-
-        total_links = 0
-        accepted_links = 0
-        relation_counts = Counter()
-        relation_accepted = Counter()
-        score_buckets = Counter()
-
-        bucket_edges = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-        bucket_labels = ['0.0-0.2', '0.2-0.4', '0.4-0.6', '0.6-0.8', '0.8-1.0']
-
-        for s in scores.iterator(chunk_size=5000):
-            total_links += 1
-            if s.predicted:
-                accepted_links += 1
-
-            relation_counts[s.relation] += 1
-            if s.predicted:
-                relation_accepted[s.relation] += 1
-
-            for i in range(len(bucket_edges) - 1):
-                if bucket_edges[i] <= s.normalized_score < bucket_edges[i + 1]:
-                    score_buckets[bucket_labels[i]] += 1
-                    break
-            else:
-                if s.normalized_score >= 1.0:
-                    score_buckets['0.8-1.0'] += 1
-
-        acceptance_rate = round(accepted_links / total_links, 3) if total_links > 0 else 0.0
-
-        relation_distribution = []
-        for rel, count in relation_counts.most_common():
-            acc = relation_accepted.get(rel, 0)
-            relation_distribution.append({
-                'relation': rel,
-                'count': count,
-                'accepted': acc,
-                'acceptance_rate': round(acc / count, 3) if count > 0 else 0.0,
-            })
-
-        score_distribution = {
-            'buckets': bucket_labels,
-            'counts': [score_buckets.get(b, 0) for b in bucket_labels],
-        }
-
-        return Response({
-            'country_name': country_name,
-            'total_links': total_links,
-            'accepted_links': accepted_links,
-            'acceptance_rate': acceptance_rate,
-            'relation_distribution': relation_distribution,
-            'score_distribution': score_distribution,
-        })
 
 
 class WorldKGPipelineCountryStateView(APIView):
@@ -222,219 +105,6 @@ class WorldKGPipelineCountryStateView(APIView):
             response_data['is_complete'] = session.status == 'COMPLETED'
 
         return Response(response_data)
-
-
-class WorldKGPipelineRejectedSummaryView(APIView):
-    """
-    GET /api/worldkg-pipeline/rejected-summary/{country_name}/
-
-    Returns summarised SpatialTripletScoreRejected data for a country:
-    - Total rejected links
-    - Relation distribution with counts
-    - Score distribution histogram (0.2 buckets)
-    """
-    permission_classes = [AllowAny]
-
-    def get(self, request, country_name):
-        from collections import Counter
-        from igea.models import SpatialTripletScoreRejected
-
-        country_name = country_name.strip()
-        if not country_name:
-            return Response(
-                {'error': 'country_name is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Primary filter: country_name (self-describing data)
-        # Optional filter: snapshot_id (for specific snapshot queries)
-        snapshot_id = request.query_params.get('snapshot_id')
-
-        # Build query - always filter by country_name (also try ISO code)
-        iso_code = resolve_iso_code(country_name)
-        country_filter = _country_filter(country_name)
-        scores = SpatialTripletScoreRejected.objects.filter(country_filter)
-
-        # If snapshot_id provided, also filter by it
-        if snapshot_id:
-            scores = scores.filter(snapshot_id=snapshot_id)
-            logger.info(f"Filtering rejected by country_name={country_name} and snapshot_id={snapshot_id}")
-        else:
-            logger.info(f"Filtering rejected by country_name={country_name} (no snapshot_id filter)")
-
-        logger.info(f"Query will return {scores.count()} rejected triplet scores")
-
-        total_links = 0
-        relation_counts = Counter()
-        score_buckets = Counter()
-
-        bucket_edges = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-        bucket_labels = ['0.0-0.2', '0.2-0.4', '0.4-0.6', '0.6-0.8', '0.8-1.0']
-
-        for s in scores.iterator(chunk_size=5000):
-            total_links += 1
-
-            relation_counts[s.relation] += 1
-
-            for i in range(len(bucket_edges) - 1):
-                if bucket_edges[i] <= s.normalized_score < bucket_edges[i + 1]:
-                    score_buckets[bucket_labels[i]] += 1
-                    break
-            else:
-                if s.normalized_score >= 1.0:
-                    score_buckets['0.8-1.0'] += 1
-
-        relation_distribution = []
-        for rel, count in relation_counts.most_common():
-            relation_distribution.append({
-                'relation': rel,
-                'count': count,
-            })
-
-        score_distribution = {
-            'buckets': bucket_labels,
-            'counts': [score_buckets.get(b, 0) for b in bucket_labels],
-        }
-
-        return Response({
-            'country_name': country_name,
-            'total_links': total_links,
-            'relation_distribution': relation_distribution,
-            'score_distribution': score_distribution,
-        })
-
-
-class ValidationCostEstimateView(APIView):
-    """
-    GET /api/worldkg-pipeline/validation-cost/{country_name}/
-
-    Returns cost estimate for Google Places validation of rejected links.
-    Works even without a configured API key — shows what it would cost.
-    Includes breakdown by relation category.
-    """
-    permission_classes = [AllowAny]
-
-    def get(self, request, country_name):
-        from collections import Counter
-        from django.conf import settings
-        from igea.models import SpatialTripletScoreRejected
-
-        country_name = country_name.strip()
-        if not country_name:
-            return Response(
-                {'error': 'country_name is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        api_enabled = getattr(settings, 'GOOGLE_VALIDATION_ENABLED', False)
-        api_key_configured = bool(getattr(settings, 'GOOGLE_API_KEY', None))
-
-        # Resolve country name to ISO code for DB query (DB stores ISO code)
-        iso_code = resolve_iso_code(country_name)
-        country_filter = _country_filter(country_name)
-
-        rejected = SpatialTripletScoreRejected.objects.filter(country_filter)
-
-        total_rejected = rejected.count()
-
-        if total_rejected == 0:
-            return Response({
-                'country_name': country_name,
-                'total_rejected': 0,
-                'api_enabled': api_enabled,
-                'api_key_configured': api_key_configured,
-                'cost_per_call_usd': 0.005,
-                'estimated_total_cost_usd': 0.0,
-                'relation_breakdown': [],
-                'score_breakdown': [],
-                'message': 'No rejected links to validate.',
-            })
-
-        # Cost model
-        cost_per_call = 0.005  # Geocoding starter tier
-        estimated_total = round(total_rejected * cost_per_call, 2)
-
-        # Breakdown by relation
-        relation_counts = Counter()
-        relation_score_sums = Counter()
-        score_bucket_counts = Counter()
-
-        bucket_edges = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-        bucket_labels = ['0.0-0.2', '0.2-0.4', '0.4-0.6', '0.6-0.8', '0.8-1.0']
-
-        for s in rejected.iterator(chunk_size=5000):
-            relation_counts[s.relation] += 1
-            relation_score_sums[s.relation] += s.normalized_score
-
-            for i in range(len(bucket_edges) - 1):
-                if bucket_edges[i] <= s.normalized_score < bucket_edges[i + 1]:
-                    score_bucket_counts[bucket_labels[i]] += 1
-                    break
-            else:
-                if s.normalized_score >= 1.0:
-                    score_bucket_counts['0.8-1.0'] += 1
-
-        # Relation breakdown with cost per category
-        relation_breakdown = []
-        for rel, count in relation_counts.most_common():
-            avg_score = round(relation_score_sums[rel] / count, 3) if count > 0 else 0.0
-            relation_breakdown.append({
-                'relation': rel,
-                'count': count,
-                'avg_normalized_score': avg_score,
-                'cost_usd': round(count * cost_per_call, 2),
-                'pct_of_total': round(count / total_rejected * 100, 1),
-            })
-
-        # Score bucket breakdown
-        score_breakdown = [
-            {
-                'bucket': bucket,
-                'count': score_bucket_counts.get(bucket, 0),
-                'cost_usd': round(score_bucket_counts.get(bucket, 0) * cost_per_call, 2),
-            }
-            for bucket in bucket_labels
-        ]
-
-        # Tiered pricing options
-        pricing_tiers = [
-            {
-                'tier': 'Starter (Geocoding)',
-                'cost_per_call': 0.005,
-                'total_cost': round(total_rejected * 0.005, 2),
-                'description': 'Basic geocoding validation — cheapest option',
-            },
-            {
-                'tier': 'Advanced (Place Details)',
-                'cost_per_call': 0.017,
-                'total_cost': round(total_rejected * 0.017, 2),
-                'description': 'Rich place details including categories and ratings',
-            },
-            {
-                'tier': 'Premium (Place Details + Photos)',
-                'cost_per_call': 0.024,
-                'total_cost': round(total_rejected * 0.024, 2),
-                'description': 'Full place data with photo references for visual validation',
-            },
-        ]
-
-        return Response({
-            'country_name': country_name,
-            'total_rejected': total_rejected,
-            'api_enabled': api_enabled,
-            'api_key_configured': api_key_configured,
-            'cost_per_call_usd': cost_per_call,
-            'estimated_total_cost_usd': estimated_total,
-            'relation_breakdown': relation_breakdown,
-            'score_breakdown': score_breakdown,
-            'pricing_tiers': pricing_tiers,
-            'message': (
-                f'Would validate {total_rejected:,} rejected links '
-                f'at ~${estimated_total:.2f} (geocoding @ $0.005/call).'
-            ) if not api_key_configured else (
-                f'API configured — {total_rejected:,} links ready for validation.'
-            ),
-        })
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -597,7 +267,7 @@ class SnapshotJobResultsView(APIView):
         task_results = []
         if run_id:
             try:
-                from api.services.views_artifact_registry import (
+                from api.services.task_result_helpers import (
                     _import_task_result,
                     _collect_task_ids,
                     _serialize_task_results,

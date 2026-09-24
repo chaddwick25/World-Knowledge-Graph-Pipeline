@@ -1,12 +1,8 @@
 """
-WorldKG Unified Pipeline API Views
-
-POST /api/worldkg-pipeline/start/
-    Payload: { "country_name": "Jamaica", "pbf_path": "<optional>" }
-    Returns: { "session_id": "<uuid>", "ws_url": "ws://..." }
-
-GET /api/worldkg-pipeline/status/<session_id>/
-    Returns: ProcessingSession status JSON (fallback for clients without WebSocket)
+POST /api/worldkg-pipeline-v2/start/
+    Payload: { "country_name": "Jamaica", "snapshot_date": "<optional>",
+               "skip_entropy_gate": <bool>, "skip_enrich": <bool>, "force": <bool> }
+    Returns: { "pipeline_run_id": "<uuid>", "ws_url": "ws://..." }
 """
 
 import logging
@@ -16,20 +12,9 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 
 from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
-from core.models import ProcessingSession, Task, PipelineRun
+from core.models import PipelineRun
 
 logger = logging.getLogger(__name__)
-
-
-class WorldKGPipelineStartView(APIView):
-    """DEPRECATED: Use WorldKGPipelineV2StartView (POST /api/worldkg-pipeline-v2/start/) instead."""
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        return Response(
-            {'error': 'This endpoint is deprecated. Use POST /api/worldkg-pipeline-v2/start/ instead.'},
-            status=status.HTTP_410_GONE,
-        )
 
 
 class WorldKGPipelineV2StartView(APIView):

@@ -237,7 +237,8 @@ CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{REDIS_PORT
 # Our PatchedDatabaseBackend (pipeline/celery_results_backend.py) fixes
 # this by replacing ChordCounter with the standard Celery
 # fallback_chord_unlock() polling task. TaskResult records are still
-# written to Django's DB, so /api/task-results/<run_id>/ works.
+# written to Django's DB, so /api/snapshot-jobs/<country>/<date>/results/
+# works.
 #
 # See: docs/issues/CHORDCOUNTER_DOES_NOT_EXIST_BUG.md
 CELERY_RESULT_BACKEND = os.environ.get(
