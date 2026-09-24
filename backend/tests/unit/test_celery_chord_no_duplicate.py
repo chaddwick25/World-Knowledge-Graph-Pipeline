@@ -18,8 +18,9 @@ Observed impact on Norway run 4f99702c (2026-08-15):
 The fix is a custom ``PatchedDatabaseBackend``
 (``pipeline/celery_results_backend.py``) that replaces ChordCounter with
 the standard Celery ``fallback_chord_unlock()`` polling task.
-``TaskResult`` records are still written to Django's DB, so
-``/api/task-results/<run_id>/`` continues to work.
+``TaskResult`` records are still written to Django's DB, so the durable
+results layer (``/api/snapshot-jobs/<cc>/<date>/results/``) continues to
+work.
 
 These tests guard against regression in three ways:
 

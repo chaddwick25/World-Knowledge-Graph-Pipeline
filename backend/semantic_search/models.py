@@ -10,8 +10,9 @@ class SnapshotDiff(models.Model):
     """
     Records the embedding diff produced by one temporal snapshot update run.
 
-    Created by SearchUpdateOrchestrator Step 6 after upserting new entities.
-    Enables downstream consumers to know which entities changed and act accordingly.
+    The search-update orchestrator that wrote these rows was removed with
+    the dead search-update HTTP layer (2026-09); the table is retained for
+    schema compatibility.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
