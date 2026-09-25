@@ -26,8 +26,9 @@ a summary.
 
 import json
 import logging
-import os
 import re
+
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +67,9 @@ _ANCHOR_QUALIFIER_RE = re.compile(
     r"\bthe\s+(?:centre|center|downtown|heart)\s+of\s+", re.IGNORECASE,
 )
 
-_FOLLOWUP_ENABLED = os.environ.get("RESEARCH_FOLLOWUP_TOOLS", "0") not in (
-    "0", "false", "False", "",
-)
+_FOLLOWUP_ENABLED = str(
+    getattr(settings, "RESEARCH_FOLLOWUP_TOOLS", "0")
+) not in ("0", "false", "False", "")
 
 _DECOMPOSE_SYSTEM_PROMPT = (
     "You are a research planner for a geospatial question-answering system. "

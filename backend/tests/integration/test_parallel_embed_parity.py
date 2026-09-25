@@ -114,7 +114,7 @@ def _run_embed(workers: int, iso: str) -> Dict:
     suffix = "p" if workers > 1 else "s"
     env.snapshot_date = f"{env.snapshot_date}_{suffix}"
 
-    os.environ["PARALLEL_UPSERT_WORKERS"] = str(workers)
+    settings.PARALLEL_UPSERT_WORKERS = str(workers)
 
     service = EmbeddingService(embeddings_root=getattr(settings, "EMBEDDINGS_ROOT", "/app/data/embeddings"))
     return service.run(

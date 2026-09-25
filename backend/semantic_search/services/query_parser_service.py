@@ -17,7 +17,6 @@ Implements MAPQA_TO_EXECUTION_PLAN.md §1.2.2 and MAPQA_PARSER_BUILD_ORDER.md §
 
 import json
 import logging
-import os
 import pickle
 import re
 from pathlib import Path
@@ -590,9 +589,11 @@ class QueryParserService:
 
     @staticmethod
     def _llm_fallback_threshold() -> float:
-        """Confidence below which the LLM may refine a parse (env-tunable)."""
+        """Confidence below which the LLM may refine a parse."""
         try:
-            return float(os.environ.get("MAPQA_LLM_FALLBACK_CONFIDENCE", 0.5))
+            return float(
+                getattr(settings, "MAPQA_LLM_FALLBACK_CONFIDENCE", "") or 0.5
+            )
         except (TypeError, ValueError):
             return 0.5
 

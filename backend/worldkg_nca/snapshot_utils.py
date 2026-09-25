@@ -20,11 +20,12 @@ The helpers below are used by every code path that needs to scope an
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from typing import Optional
 from uuid import UUID
+
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +43,10 @@ _SNAPSHOT_CACHE_DEFAULT_TTL = 120.0
 
 def _snapshot_cache_ttl() -> float:
     try:
-        return float(os.environ.get("SNAPSHOT_ID_CACHE_TTL_SECONDS",
-                                    _SNAPSHOT_CACHE_DEFAULT_TTL))
+        return float(
+            getattr(settings, "SNAPSHOT_ID_CACHE_TTL_SECONDS", "")
+            or _SNAPSHOT_CACHE_DEFAULT_TTL
+        )
     except (TypeError, ValueError):
         return _SNAPSHOT_CACHE_DEFAULT_TTL
 

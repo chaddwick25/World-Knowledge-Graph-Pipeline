@@ -16,6 +16,7 @@ import dataclasses
 import logging
 import os
 from pathlib import Path
+from django.conf import settings
 from pipeline.tasks.helper import _log
 from pipeline.config import SubgraphConfig
 from pipeline.envelopes import CountryEnvelope
@@ -29,13 +30,13 @@ logger = logging.getLogger("pipeline")
 
 
 def _parse_gpu_config():
-    """Parse GPU device + concurrency config from env vars.
+    """Parse GPU device + concurrency config from settings.
 
-    Shares the same env vars as Step 5 (GV_NLE_GPU_DEVICES,
+    Shares the same settings as Step 5 (GV_NLE_GPU_DEVICES,
     GV_NLE_GPU_CONCURRENCY) so USLP and NLE use the same GPU scheduling.
     """
-    devices_str = os.environ.get("GV_NLE_GPU_DEVICES", "cuda:0,cuda:1")
-    concurrency_str = os.environ.get("GV_NLE_GPU_CONCURRENCY", "1,1")
+    devices_str = getattr(settings, "GV_NLE_GPU_DEVICES", "cuda:0,cuda:1")
+    concurrency_str = getattr(settings, "GV_NLE_GPU_CONCURRENCY", "1,1")
     devices = [d.strip() for d in devices_str.split(",") if d.strip()]
     concurrency = []
     for c in concurrency_str.split(","):

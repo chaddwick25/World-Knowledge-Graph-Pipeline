@@ -9,13 +9,15 @@ import time
 
 import pytest
 
+from django.conf import settings
+
 from worldkg_nca import snapshot_utils
 
 
 @pytest.fixture(autouse=True)
 def _clean_cache(monkeypatch):
     snapshot_utils.clear_snapshot_cache()
-    monkeypatch.delenv("SNAPSHOT_ID_CACHE_TTL_SECONDS", raising=False)
+    monkeypatch.setattr(settings, "SNAPSHOT_ID_CACHE_TTL_SECONDS", "")
     yield
     snapshot_utils.clear_snapshot_cache()
 
@@ -35,7 +37,7 @@ class TestSnapshotCache:
         snapshot_utils._SNAPSHOT_CACHE["latest"] = {
             "at": time.monotonic() - 9999.0, "value": "stale",
         }
-        monkeypatch.setenv("SNAPSHOT_ID_CACHE_TTL_SECONDS", "0")
+        monkeypatch.setattr(settings, "SNAPSHOT_ID_CACHE_TTL_SECONDS", "0")
         assert snapshot_utils.get_latest_snapshot_id() is None
         assert snapshot_utils._SNAPSHOT_CACHE["latest"]["value"] is None
 
@@ -48,5 +50,5 @@ class TestSnapshotCache:
 
     def test_ttl_from_env(self, monkeypatch):
         assert snapshot_utils._snapshot_cache_ttl() == 120.0
-        monkeypatch.setenv("SNAPSHOT_ID_CACHE_TTL_SECONDS", "5")
+        monkeypatch.setattr(settings, "SNAPSHOT_ID_CACHE_TTL_SECONDS", "5")
         assert snapshot_utils._snapshot_cache_ttl() == 5.0

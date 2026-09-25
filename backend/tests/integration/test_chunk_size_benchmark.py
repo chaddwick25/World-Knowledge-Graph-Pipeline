@@ -179,8 +179,8 @@ def _run_embed(workers: int, chunk_size: int, iso: str, run_label: str) -> Dict:
     base_snapshot = env.snapshot_date
     env.state.snapshot_date = f"{base_snapshot}_{run_label}"
 
-    os.environ["PARALLEL_UPSERT_WORKERS"] = str(workers)
-    os.environ["PARALLEL_UPSERT_CHUNK_SIZE"] = str(chunk_size)
+    settings.PARALLEL_UPSERT_WORKERS = str(workers)
+    settings.PARALLEL_UPSERT_CHUNK_SIZE = str(chunk_size)
 
     service = EmbeddingService(
         embeddings_root=getattr(settings, "EMBEDDINGS_ROOT", "/app/data/embeddings")
