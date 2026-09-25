@@ -38,50 +38,53 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', *_extra_hosts]
 # BASE DATA DIRECTORY (HOT Storage)
 BASE_DATA_DIR = os.getenv('BASE_DATA_DIR')
 
-# OSM Planet File Path, this is the groundtruth for the WorldKG Pipeline
-_default_planet_osm = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/planet/latest.osm.pbf') if BASE_DATA_DIR else None
-PLANET_OSM_FILE_PATH = os.getenv('PLANET_OSM_FILE_PATH', _default_planet_osm)
+# OSM Planet File Path, this is the groundtruth for the WorldKG Pipeline.
+# Derived from BASE_DATA_DIR — the history PBF is the file the pipeline
+# actually consumes (was env-overridable pre-2026-09-25; compose and .env
+# both pointed here).
+_default_planet_osm = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/planet/history-260209.osm.pbf') if BASE_DATA_DIR else None
+PLANET_OSM_FILE_PATH = _default_planet_osm
 
 # OSM Polygon Files Directory, this is the directory where the polygon files are stored
 _default_polygon_files_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/osm_polygon_files') if BASE_DATA_DIR else None
-POLYGON_FILES_DIR = os.getenv('POLYGON_FILES_DIR', _default_polygon_files_dir)
+POLYGON_FILES_DIR = _default_polygon_files_dir
 
 # Optional legacy polygon files directory (e.g., pre-existing tree with subgraphs)
 _default_legacy_polygon_files_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/osm_polygon_files_old') if BASE_DATA_DIR else None
-LEGACY_POLYGON_FILES_DIR = os.getenv('LEGACY_POLYGON_FILES_DIR', _default_legacy_polygon_files_dir)
+LEGACY_POLYGON_FILES_DIR = _default_legacy_polygon_files_dir
 
 # Geofabrik index URL used for polygon discovery
 GEOFABRIK_INDEX_URL = 'https://download.geofabrik.de/index-v1.json'
 
 # OSM Wikidata Extractions Directory, this is the directory where the wikidata extractions are stored
 _default_osm_wikidata_extractions = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/osm_wikidata_extractions') if BASE_DATA_DIR else None
-OSM_WIKIDATA_EXTRACTIONS_DIR = os.getenv('OSM_WIKIDATA_EXTRACTIONS_DIR', _default_osm_wikidata_extractions)
+OSM_WIKIDATA_EXTRACTIONS_DIR = _default_osm_wikidata_extractions
 
 # Analysis Service Paths
 _default_asset_bundles_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/filtered_snapshots') if BASE_DATA_DIR else None
-ASSET_BUNDLES_DIR = os.getenv('ASSET_BUNDLES_DIR', _default_asset_bundles_dir)
+ASSET_BUNDLES_DIR = _default_asset_bundles_dir
 
 _default_pbf_cache_dir = os.path.join(BASE_DATA_DIR, 'pbf_cache') if BASE_DATA_DIR else None
-PBF_CACHE_DIR = os.getenv('PBF_CACHE_DIR', _default_pbf_cache_dir)
+PBF_CACHE_DIR = _default_pbf_cache_dir
 
 _default_preprocessed_dir = os.path.join(BASE_DATA_DIR, 'preprocessed') if BASE_DATA_DIR else None
-PREPROCESSED_DIR = os.getenv('PREPROCESSED_DIR', _default_preprocessed_dir)
+PREPROCESSED_DIR = _default_preprocessed_dir
 
-# OSM Wikidata Extractions for Contintents
+# OSM Wikidata Extractions for Continents
 _default_continents_output_dir = os.path.join(OSM_WIKIDATA_EXTRACTIONS_DIR, 'continents') if OSM_WIKIDATA_EXTRACTIONS_DIR else None
-OSM_CONTINENTS_OUTPUT_DIR = os.getenv('OSM_CONTINENTS_OUTPUT_DIR', _default_continents_output_dir)
+OSM_CONTINENTS_OUTPUT_DIR = _default_continents_output_dir
 
 _default_osm_wikidata_temp_dir = os.path.join(OSM_WIKIDATA_EXTRACTIONS_DIR, 'temp') if OSM_WIKIDATA_EXTRACTIONS_DIR else None
-OSM_WIKIDATA_TEMP_DIR = os.getenv('OSM_WIKIDATA_TEMP_DIR', _default_osm_wikidata_temp_dir)
+OSM_WIKIDATA_TEMP_DIR = _default_osm_wikidata_temp_dir
 
 
 
 # FastText Model Configuration
 _default_fasttext_model_path = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/models/fasttext/cc.en.300.bin') if BASE_DATA_DIR else None
-FASTTEXT_MODEL_PATH = os.getenv('FASTTEXT_MODEL_PATH', _default_fasttext_model_path)
+FASTTEXT_MODEL_PATH = _default_fasttext_model_path
 
 _default_fasttext_tuned_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/models/fasttext_tuned') if BASE_DATA_DIR else None
-FASTTEXT_TUNED_DIR = os.getenv('FASTTEXT_TUNED_DIR', _default_fasttext_tuned_dir)
+FASTTEXT_TUNED_DIR = _default_fasttext_tuned_dir
 
 # Redis configuration for Channels, Celery, and WorldKG services
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
@@ -130,46 +133,51 @@ GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', None)
 # ============================================================================
 COLD_STORAGE_BASE_DIR = os.getenv('COLD_STORAGE_BASE_DIR')
 
-# OSM corpus used for fine-tuning and retraining 
-_default_corpus_dir = os.path.join(COLD_STORAGE_BASE_DIR, 'corpus') if COLD_STORAGE_BASE_DIR else None
-CORPUS_DIR = os.getenv('CORPUS_DIR', _default_corpus_dir)
+# OSM corpus used for fine-tuning and retraining.
+# Repo-local corpus (backend/data/corpus) — matches the former
+# CORPUS_DIR=.env value; derived, not env-overridable.
+_default_corpus_dir = os.path.join(BASE_DIR, 'data', 'corpus')
+CORPUS_DIR = _default_corpus_dir
 
 _default_graph_assets_dir = os.path.join(COLD_STORAGE_BASE_DIR, 'graph_assets') if COLD_STORAGE_BASE_DIR else None
-GRAPH_ASSETS_DIR = os.getenv('GRAPH_ASSETS_DIR', _default_graph_assets_dir)
+GRAPH_ASSETS_DIR = _default_graph_assets_dir
 
 # GeoVectors Embeddings Root (for TSV files used in pickle generation)
 # This is the primary source directory for the scan_embeddings command.
 _default_embeddings_dir = os.path.join(COLD_STORAGE_BASE_DIR, 'embeddings') if COLD_STORAGE_BASE_DIR else None
-EMBEDDINGS_ROOT = os.getenv('EMBEDDINGS_ROOT', _default_embeddings_dir)
+EMBEDDINGS_ROOT = _default_embeddings_dir
 
 # Fallback embeddings root for systems where embeddings live elsewhere
 # (e.g. on a separate mount). The scan_embeddings command checks this
-# before falling back to EMBEDDINGS_ROOT.
+# before falling back to EMBEDDINGS_ROOT. Machine-specific opt-in — env-only.
 _extra_embeddings_dir = os.getenv('EXTRA_EMBEDDINGS_ROOT', None)
 EXTRA_EMBEDDINGS_ROOT = _extra_embeddings_dir
 
 # Country overrides JSON path (cold storage) — now also contains embedding_splits section
 _default_overrides_json = os.path.join(COLD_STORAGE_BASE_DIR, 'overrides.json') if COLD_STORAGE_BASE_DIR else None
-OVERRIDES_JSON_PATH = os.getenv('OVERRIDES_JSON_PATH', _default_overrides_json)
+OVERRIDES_JSON_PATH = _default_overrides_json
 
 _default_downloads_dir = os.path.join(BASE_DATA_DIR, 'downloads') if BASE_DATA_DIR else str(BASE_DIR / 'downloads')
-DOWNLOADS_DIR = os.getenv('DOWNLOADS_DIR', _default_downloads_dir)
+DOWNLOADS_DIR = _default_downloads_dir
 
-# WorldKG ontology TTL path
-_default_worldkg_ontology = os.path.join(BASE_DATA_DIR, 'world_kg_ontology/WorldKG_Ontolgy.ttl') if BASE_DATA_DIR else None
-WORLDKG_ONTOLOGY_PATH = os.getenv('WORLDKG_ONTOLOGY_PATH', _default_worldkg_ontology)
+# WorldKG ontology TTL path (lives under the OSM-PBF-FILES mount, matching
+# the former WORLDKG_ONTOLOGY_PATH=.env / compose values)
+_default_worldkg_ontology = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/world_kg_ontology/WorldKG_Ontolgy.ttl') if BASE_DATA_DIR else None
+WORLDKG_ONTOLOGY_PATH = _default_worldkg_ontology
 
-# Continents root directory (for continent PBF files)
-_default_continents_root = os.path.join(BASE_DATA_DIR, 'osm_wikidata_extractions/continents') if BASE_DATA_DIR else None
-CONTINENTS_ROOT = os.getenv('CONTINENTS_ROOT', _default_continents_root)
+# Continents root directory (for continent PBF files) — same directory as
+# OSM_CONTINENTS_OUTPUT_DIR (continents extractions); matches the compose
+# override that was previously required.
+_default_continents_root = os.path.join(OSM_WIKIDATA_EXTRACTIONS_DIR, 'continents') if OSM_WIKIDATA_EXTRACTIONS_DIR else None
+CONTINENTS_ROOT = _default_continents_root
 
 # Pipeline logs directory (categorized run logs: gv-nle, pipeline, tests, uslp)
 _default_logs_dir = os.path.join(BASE_DATA_DIR, 'logs') if BASE_DATA_DIR else None
-LOGS_DIR = os.getenv('LOGS_DIR', _default_logs_dir)
+LOGS_DIR = _default_logs_dir
 
 # Wikidata candidate cache directory (JSON caches per country)
 _default_wikidata_cache_dir = os.path.join(BASE_DATA_DIR, 'data/wikidata_cache') if BASE_DATA_DIR else None
-WIKIDATA_CACHE_DIR = os.getenv('WIKIDATA_CACHE_DIR', _default_wikidata_cache_dir)
+WIKIDATA_CACHE_DIR = _default_wikidata_cache_dir
 
 # MapQA parser data directory — training data + model artifacts.
 # Layout (see docs/plans/MAPQA_PARSER_BUILD_ORDER.md §8):
@@ -178,7 +186,7 @@ WIKIDATA_CACHE_DIR = os.getenv('WIKIDATA_CACHE_DIR', _default_wikidata_cache_dir
 #   {MAPQA_PARSER_DATA_DIR}/artifacts/     — vectorizer.pkl, classifier.pkl, etc.
 # Env-driven: defaults to BASE_DATA_DIR/mapqa_parser (the /app/data mount in Docker).
 _default_mapqa_parser_dir = os.path.join(BASE_DATA_DIR, 'mapqa_parser') if BASE_DATA_DIR else None
-MAPQA_PARSER_DATA_DIR = os.getenv('MAPQA_PARSER_DATA_DIR', _default_mapqa_parser_dir)
+MAPQA_PARSER_DATA_DIR = _default_mapqa_parser_dir
 
 # k-NN graph artifact directory — serialized graphs from Step 5c.
 # Layout:
@@ -187,14 +195,14 @@ MAPQA_PARSER_DATA_DIR = os.getenv('MAPQA_PARSER_DATA_DIR', _default_mapqa_parser
 # operators (heat kernel diffusion, Dijkstra, BFS) per the Spatial-Agent
 # paper's GeoFlow Graph execution model.
 _default_graph_artifact_dir = os.path.join(BASE_DIR, 'data', 'graph_artifacts')
-GRAPH_ARTIFACT_DIR = os.getenv('GRAPH_ARTIFACT_DIR', _default_graph_artifact_dir)
+GRAPH_ARTIFACT_DIR = _default_graph_artifact_dir
 
 # Step 5c run report directory — JSON reports capturing solver selection,
 # timing, graph dimensions, eigenvalue quality, and factor-row write status.
 # Layout:
 #   {SPECTRAL_REPORT_DIR}/step5c_{country}_{snapshot}_{run_id}.json
 _default_spectral_report_dir = os.path.join(BASE_DIR, 'data', 'spectral_reports')
-SPECTRAL_REPORT_DIR = os.getenv('SPECTRAL_REPORT_DIR', _default_spectral_report_dir)
+SPECTRAL_REPORT_DIR = _default_spectral_report_dir
 
 # Factor-node tables (docs/plans/FACTOR_NODE_RUNTIME_JOINS_PLAN.md).
 # The MapQA executor resolves SUPPORT/factor nodes via SQL joins against
@@ -211,9 +219,11 @@ FACTOR_NODE_TABLES_ENABLED = True
 FACTOR_EIGENBASIS_STRICT = False
 
 # USLP (Unsupervised Spatial Link Prediction) Configuration
-# USLP_THRESHOLD / USLP_USE_GPU / USLP_GPU_DEVICE stay env-driven (per
-# deployment / per country tuning). The scale limits are code constants.
-USLP_THRESHOLD = float(os.getenv('USLP_THRESHOLD', '0.7'))
+# USLP_THRESHOLD lives in hyperparams.yaml (uslp.threshold); the value below
+# is the code fallback when the YAML key is absent. USLP_USE_GPU /
+# USLP_GPU_DEVICE stay env-driven (per deployment / per country tuning).
+# The scale limits are code constants.
+USLP_THRESHOLD = 0.7
 USLP_TOP_K = 50
 USLP_LIMIT = 1000000000
 USLP_MAX_HEADS = 1000000000
@@ -554,19 +564,22 @@ RESEARCH_FOLLOWUP_TOOLS = os.getenv('RESEARCH_FOLLOWUP_TOOLS', '0')
 SNAPSHOT_ID_CACHE_TTL_SECONDS = os.getenv('SNAPSHOT_ID_CACHE_TTL_SECONDS', '')
 LLM_ANSWER_CACHE_TTL_SECONDS = os.getenv('LLM_ANSWER_CACHE_TTL_SECONDS', '')
 MAPQA_LLM_FALLBACK_CONFIDENCE = os.getenv('MAPQA_LLM_FALLBACK_CONFIDENCE', '')
-ENRICHMENT_WORKERS = os.getenv('ENRICHMENT_WORKERS', '')
-EMBEDDING_SPLITS_WORKERS = os.getenv('EMBEDDING_SPLITS_WORKERS', '')
 
 # ── Pipeline GPU / parallel tuning (Steps 4 USLP, 5 GV-NLE, embedding upsert) ─
-# Comma-separated device + concurrency lists; the step modules parse and pad
-# per device. PARALLEL_UPSERT_* empty = service defaults.
-GV_NLE_GPU_DEVICES = os.getenv('GV_NLE_GPU_DEVICES', 'cuda:0,cuda:1')
-GV_NLE_GPU_CONCURRENCY = os.getenv('GV_NLE_GPU_CONCURRENCY', '1,1')
-GV_NLE_SMALL_PBF_MB = os.getenv('GV_NLE_SMALL_PBF_MB', '0.3')
-PARALLEL_UPSERT_WORKERS = os.getenv('PARALLEL_UPSERT_WORKERS', '')
-PARALLEL_UPSERT_QUEUE_DEPTH = os.getenv('PARALLEL_UPSERT_QUEUE_DEPTH', '')
-PARALLEL_UPSERT_MIN_PBF_MB = os.getenv('PARALLEL_UPSERT_MIN_PBF_MB', '')
-PARALLEL_UPSERT_CHUNK_SIZE = os.getenv('PARALLEL_UPSERT_CHUNK_SIZE', '')
+# Operator-edited source: backend/pipeline/hyperparams.yaml (gv_nle /
+# parallel_upsert / enrichment / embedding_splits sections), loaded once at
+# startup into ModelHyperparams.  The values below are code defaults only —
+# they apply when the YAML key is absent (services read the dataclass, which
+# falls back to these via pipeline/envelopes.py load_from_yaml()).
+ENRICHMENT_WORKERS = 2
+EMBEDDING_SPLITS_WORKERS = 1
+GV_NLE_GPU_DEVICES = 'cuda:0,cuda:1'
+GV_NLE_GPU_CONCURRENCY = '1,1'
+GV_NLE_SMALL_PBF_MB = 0.3
+PARALLEL_UPSERT_WORKERS = 1
+PARALLEL_UPSERT_QUEUE_DEPTH = 2
+PARALLEL_UPSERT_MIN_PBF_MB = 0
+PARALLEL_UPSERT_CHUNK_SIZE = 20000
 
 # ── Trace adapter (core/services/trace_service.py) ───────────────────────────
 # Raw strings — the service normalizes/clamps. Sinks: none|console|file|

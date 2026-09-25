@@ -7,6 +7,7 @@ from core.models import ProcessingSession
 from core.services.planet_init.osm_wikidata_resolver import get_country_by_name
 from core.services.snapshot.regional_path_service import normalize_country_slug, normalize_continent_slug
 from core.services.snapshot.subgraph_list_service import build_subgraph_list
+from pipeline.envelopes import ModelHyperparams
 from igea.tasks import run_uslp_for_subgraph_batch
 
 logger = logging.getLogger(__name__)
@@ -115,8 +116,8 @@ def predict_triplets(request):
     raw_slug = country_data.get('slug') or country_name
     country_slug = normalize_country_slug(raw_slug)
 
-    # USLP parameters (use settings defaults, allow request override)
-    threshold = float(request.data.get('threshold', settings.USLP_THRESHOLD))
+    # USLP parameters (hyperparams.yaml uslp.threshold default, allow request override)
+    threshold = float(request.data.get('threshold', ModelHyperparams.load_from_yaml().uslp_threshold))
     top_k = int(request.data.get('top_k', settings.USLP_TOP_K))
     limit = int(request.data.get('limit', settings.USLP_LIMIT))
     max_heads = int(request.data.get('max_heads', settings.USLP_MAX_HEADS))

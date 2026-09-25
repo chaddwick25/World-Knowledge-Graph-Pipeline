@@ -24,5 +24,30 @@ entropy:
   min_entropy: 1.5
   min_entropy_delta: 0.2
 
+# GPU scheduling — shared by Step 4 (USLP) and Step 5 (GV-NLE).
+# The worker container sees only GPU 1 (NVIDIA_VISIBLE_DEVICES=1), so the
+# single cuda:0 device below matches the docker deployment.  Dual-GPU
+# machines: "cuda:0,cuda:1" with gpu_concurrency "1,1".
+gv_nle:
+  gpu_devices: "cuda:0"
+  gpu_concurrency: "1"
+  small_pbf_mb: 0.3
+
+# Step 1 parallel embedding upsert (embedding_service.py).
+# Transcribed from the former .env PARALLEL_UPSERT_* values.
+parallel_upsert:
+  workers: 1
+  queue_depth: 4
+  min_pbf_mb: 200
+  chunk_size: 20000
+
+# Region enrichment worker threads (worldkg_enrichment_service.py).
+enrichment:
+  workers: 2
+
+# preprocess_embeddings parallel split workers (was EMBEDDING_SPLITS_WORKERS).
+embedding_splits:
+  workers: 4
+
 fasttext:
   model_path: null  # overridden by settings.FASTTEXT_MODEL_PATH

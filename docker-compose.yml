@@ -79,19 +79,14 @@ services:
       - PGVECTOR_HOST=postgres-vectors
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # Storage roots only — per-leaf paths (planet PBF, polygon dir, ontology
+      # TTL, embeddings, overrides.json, ...) are derived from these two in
+      # settings.py.  Pipeline GPU/parallel tuning lives in
+      # pipeline/hyperparams.yaml (gv_nle / parallel_upsert sections).
       - BASE_DATA_DIR=/app/data
-      - OSM_WIKIDATA_EXTRACTIONS_DIR=/app/data/OSM-PBF-FILES/osm_wikidata_extractions
-      - POLYGON_FILES_DIR=/app/data/osm_polygon_files
       - OSMIUM_EXECUTABLE=/usr/bin/osmium
       - OSMIUM_BINARY_PATH=/usr/bin/osmium
-      - WORLDKG_ONTOLOGY_PATH=/app/data/OSM-PBF-FILES/world_kg_ontology/WorldKG_Ontolgy.ttl
-      - CONTINENTS_ROOT=/app/data/OSM-PBF-FILES/osm_wikidata_extractions/continents
       - COLD_STORAGE_BASE_DIR=${COLD_STORAGE_BASE_DIR}
-      - EMBEDDINGS_ROOT=${EMBEDDINGS_ROOT}
-      - OVERRIDES_JSON_PATH=${OVERRIDES_JSON_PATH}
-      - PLANET_OSM_FILE_PATH=/app/data/OSM-PBF-FILES/planet/history-260209.osm.pbf
-      - FASTTEXT_MODEL_PATH=/app/data/OSM-PBF-FILES/models/fasttext/cc.en.300.bin
-      - MAPQA_PARSER_DATA_DIR=/app/data/mapqa_parser
       - RUN_MIGRATIONS=true
       - RUN_INIT_PLANET=true
       - LLM_BASE_URL=http://ollama:11434/v1
@@ -108,7 +103,10 @@ services:
       - ./backend:/app
       - backend_venv:/app/.venv
       - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
-      - ${POLYGON_FILES_DIR}:/app/data/osm_polygon_files
+      # Nested under the OSM-PBF-FILES mount so the settings.py derivation
+      # (BASE_DATA_DIR/OSM-PBF-FILES/osm_polygon_files) resolves; shadows the
+      # outer mount's subdir when POLYGON_FILES_DIR lives outside the root.
+      - ${POLYGON_FILES_DIR}:/app/data/OSM-PBF-FILES/osm_polygon_files
       - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
       - ${MAPQA_DATASET_DIR}:/app/data/mapqa_parser/raw/MapQA-dataset-main:ro
       - ./backend/data:/app/data
@@ -151,24 +149,19 @@ services:
       - PGVECTOR_HOST=postgres-vectors
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # Storage roots only — per-leaf paths (planet PBF, polygon dir, ontology
+      # TTL, embeddings, overrides.json, ...) are derived from these two in
+      # settings.py.  Pipeline GPU/parallel tuning lives in
+      # pipeline/hyperparams.yaml (gv_nle / parallel_upsert sections).
       - BASE_DATA_DIR=/app/data
-      - OSM_WIKIDATA_EXTRACTIONS_DIR=/app/data/OSM-PBF-FILES/osm_wikidata_extractions
-      - POLYGON_FILES_DIR=/app/data/osm_polygon_files
       - OSMIUM_EXECUTABLE=/usr/bin/osmium
       - OSMIUM_BINARY_PATH=/usr/bin/osmium
-      - WORLDKG_ONTOLOGY_PATH=/app/data/OSM-PBF-FILES/world_kg_ontology/WorldKG_Ontolgy.ttl
-      - CONTINENTS_ROOT=/app/data/OSM-PBF-FILES/osm_wikidata_extractions/continents
       - COLD_STORAGE_BASE_DIR=${COLD_STORAGE_BASE_DIR}
-      - EMBEDDINGS_ROOT=${EMBEDDINGS_ROOT}
-      - OVERRIDES_JSON_PATH=${OVERRIDES_JSON_PATH}
-      - PLANET_OSM_FILE_PATH=/app/data/OSM-PBF-FILES/planet/history-260209.osm.pbf
-      - FASTTEXT_MODEL_PATH=/app/data/OSM-PBF-FILES/models/fasttext/cc.en.300.bin
-      - MAPQA_PARSER_DATA_DIR=/app/data/mapqa_parser
       # GPU 1 = RTX 4070 Ti SUPER (16 GB) — the pipeline's compute card
       # (GV-NLE / USLP / spectral). Shared with ollama's resident model;
-      # cuda:0 inside the container remaps to physical GPU 1.
+      # cuda:0 inside the container remaps to physical GPU 1.  GPU device
+      # scheduling is set in pipeline/hyperparams.yaml (gv_nle section).
       - NVIDIA_VISIBLE_DEVICES=1
-      - GV_NLE_GPU_DEVICES=cuda:0
       - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
       - RUN_MIGRATIONS=false
       - RUN_INIT_PLANET=false
@@ -178,7 +171,10 @@ services:
       - ./backend:/app
       - backend_venv:/app/.venv
       - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
-      - ${POLYGON_FILES_DIR}:/app/data/osm_polygon_files
+      # Nested under the OSM-PBF-FILES mount so the settings.py derivation
+      # (BASE_DATA_DIR/OSM-PBF-FILES/osm_polygon_files) resolves; shadows the
+      # outer mount's subdir when POLYGON_FILES_DIR lives outside the root.
+      - ${POLYGON_FILES_DIR}:/app/data/OSM-PBF-FILES/osm_polygon_files
       - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
       - ${MAPQA_DATASET_DIR}:/app/data/mapqa_parser/raw/MapQA-dataset-main:ro
       - ./backend/data:/app/data

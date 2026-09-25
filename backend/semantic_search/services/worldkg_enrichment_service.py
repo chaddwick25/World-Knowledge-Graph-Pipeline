@@ -2,7 +2,6 @@ import logging
 import requests
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
-from django.conf import settings
 from django.contrib.gis.geos import Polygon
 from django.db import transaction
 from django.utils import timezone
@@ -10,6 +9,7 @@ from django.utils import timezone
 from core.services.planet_init.osm_wikidata_resolver import (
     resolve_country_bbox,
 )
+from pipeline.envelopes import ModelHyperparams
 from worldkg_nca.models import OsmEntity
 from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 
@@ -663,8 +663,8 @@ class WorldKGEnrichmentService:
             skip_enriched: Skip entities already enriched
             limit: Limit total entities to process (useful for testing)
             num_workers: Number of parallel worker threads for local
-                         enrichment.  Defaults to ``ENRICHMENT_WORKERS`` env
-                         var or 2.
+                         enrichment.  Defaults to the ``enrichment.workers``
+                         value in ``pipeline/hyperparams.yaml``.
 
         Returns:
             Statistics dict
@@ -731,9 +731,9 @@ class WorldKGEnrichmentService:
             'local_predictions': 0
         }
 
-        # Resolve worker count: setting > parameter > default 2.
+        # Resolve worker count: hyperparams.yaml (enrichment.workers) > parameter > default 2.
         if num_workers is None:
-            num_workers = int(getattr(settings, "ENRICHMENT_WORKERS", "") or "2")
+            num_workers = ModelHyperparams.load_from_yaml().enrichment_workers
         if use_sparql:
             num_workers = 1  # SPARQL hits external endpoint — no parallelism
 

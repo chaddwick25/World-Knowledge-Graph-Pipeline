@@ -16,10 +16,9 @@ import dataclasses
 import logging
 import os
 from pathlib import Path
-from django.conf import settings
 from pipeline.tasks.helper import _log
 from pipeline.config import SubgraphConfig
-from pipeline.envelopes import CountryEnvelope
+from pipeline.envelopes import CountryEnvelope, ModelHyperparams
 from pipeline.task_decorator import pipeline_step
 from pipeline.celery_app import (
     pipeline_task,
@@ -30,13 +29,14 @@ logger = logging.getLogger("pipeline")
 
 
 def _parse_gpu_config():
-    """Parse GPU device + concurrency config from settings.
+    """Parse GPU device + concurrency config from hyperparams.yaml.
 
-    Shares the same settings as Step 5 (GV_NLE_GPU_DEVICES,
-    GV_NLE_GPU_CONCURRENCY) so USLP and NLE use the same GPU scheduling.
+    Shares the same YAML section as Step 5 (gv_nle.gpu_devices /
+    gv_nle.gpu_concurrency) so USLP and NLE use the same GPU scheduling.
     """
-    devices_str = getattr(settings, "GV_NLE_GPU_DEVICES", "cuda:0,cuda:1")
-    concurrency_str = getattr(settings, "GV_NLE_GPU_CONCURRENCY", "1,1")
+    hp = ModelHyperparams.load_from_yaml()
+    devices_str = hp.gv_nle_gpu_devices
+    concurrency_str = hp.gv_nle_gpu_concurrency
     devices = [d.strip() for d in devices_str.split(",") if d.strip()]
     concurrency = []
     for c in concurrency_str.split(","):

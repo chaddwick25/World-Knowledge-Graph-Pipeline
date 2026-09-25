@@ -97,13 +97,19 @@ def _truncate_leaf(snapshot_id: str, country_code: str) -> None:
 
 
 def _run_embed(workers: int, iso: str) -> Dict:
-    """Run EmbeddingService for ``iso`` with ``PARALLEL_UPSERT_WORKERS`` set.
+    """Run EmbeddingService for ``iso`` with the given worker count.
+
+    The worker count is applied via the hyperparams cache (parallel_upsert
+    section) — the YAML-loaded defaults are frozen per process.
 
     Returns the service result dict (``entity_count``, ``entropy``, ``has_nle``).
     """
-    from pipeline.envelopes import CountryEnvelope
+    from dataclasses import replace
+
     from core.services.snapshot.embedding_service import EmbeddingService
     from django.conf import settings
+    from pipeline import envelopes as _envelopes_mod
+    from pipeline.envelopes import CountryEnvelope, ModelHyperparams
 
     env = CountryEnvelope.from_db(iso, hyperparam_overrides={
         "skip_enrich": True,
@@ -114,7 +120,11 @@ def _run_embed(workers: int, iso: str) -> Dict:
     suffix = "p" if workers > 1 else "s"
     env.snapshot_date = f"{env.snapshot_date}_{suffix}"
 
-    settings.PARALLEL_UPSERT_WORKERS = str(workers)
+    hp = ModelHyperparams.load_from_yaml()
+    _envelopes_mod._HYPERPARAMS_CACHE = replace(
+        hp,
+        parallel_upsert_workers=workers,
+    )
 
     service = EmbeddingService(embeddings_root=getattr(settings, "EMBEDDINGS_ROOT", "/app/data/embeddings"))
     return service.run(

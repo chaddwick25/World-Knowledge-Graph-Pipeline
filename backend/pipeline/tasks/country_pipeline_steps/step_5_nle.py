@@ -9,9 +9,10 @@ Multi-GPU scheduling (2026-08-15):
   large IE subgraphs (kildare: 847K entities, leitrim: 1M entities)
   each need ~7-8 GB VRAM — two concurrent causes CUDA OOM on 16 GB.
   The GpuSlotLock queues subgraphs when the GPU is busy.
-  The GPU set and concurrency are configurable via env vars:
-    GV_NLE_GPU_DEVICES:   comma-separated list (default: "cuda:0,cuda:1")
-    GV_NLE_GPU_CONCURRENCY: comma-separated per-device limits (default: "1,1")
+  The GPU set and concurrency are configurable via hyperparams.yaml
+  (gv_nle section):
+    gpu_devices:   comma-separated list (default: "cuda:0,cuda:1")
+    gpu_concurrency: comma-separated per-device limits (default: "1,1")
 """
 
 from __future__ import annotations
@@ -21,9 +22,8 @@ import os
 import tempfile
 import fcntl
 from typing import List, Optional, Tuple
-from django.conf import settings
 from pipeline.config import SubgraphConfig
-from pipeline.envelopes import CountryEnvelope
+from pipeline.envelopes import CountryEnvelope, ModelHyperparams
 from pipeline.task_decorator import pipeline_step
 from pipeline.tasks.helper import _log
 from pipeline.celery_app import (
@@ -37,15 +37,16 @@ logger = logging.getLogger("pipeline")
 
 
 def _parse_gpu_config() -> Tuple[List[str], List[int]]:
-    """Parse GPU device list and concurrency from settings.
+    """Parse GPU device list and concurrency from hyperparams.yaml (gv_nle).
 
     Default concurrency=1 on cuda:0 because IE subgraphs like kildare
     (847K entities) and leitrim (1M entities) each need ~7-8 GB VRAM.
     Two of those concurrent on a 16 GB 4070 causes CUDA OOM.  Set to 2
     only for countries with uniformly small subgraphs (<100K entities).
     """
-    devices_str = getattr(settings, "GV_NLE_GPU_DEVICES", "cuda:0,cuda:1")
-    concurrency_str = getattr(settings, "GV_NLE_GPU_CONCURRENCY", "1,1")
+    hp = ModelHyperparams.load_from_yaml()
+    devices_str = hp.gv_nle_gpu_devices
+    concurrency_str = hp.gv_nle_gpu_concurrency
     devices = [d.strip() for d in devices_str.split(",") if d.strip()]
     concurrency = []
     for c in concurrency_str.split(","):
@@ -63,7 +64,7 @@ _GPU_DEVICES, _GPU_CONCURRENCY = _parse_gpu_config()
 # Size threshold (MB) for assigning subgraphs to the big GPU vs the small one.
 # Subgraphs with PBF > this go to cuda:0 (more VRAM); smaller ones can go to
 # cuda:1.  0.3 MB ≈ ~50K entities, which needs ~4-5 GB VRAM — fits on 8 GB.
-_SMALL_PBF_THRESHOLD_MB = float(getattr(settings, "GV_NLE_SMALL_PBF_MB", "0.3"))
+_SMALL_PBF_THRESHOLD_MB = ModelHyperparams.load_from_yaml().gv_nle_small_pbf_mb
 
 
 def _assign_gpu(subgraph: SubgraphConfig) -> str:
@@ -83,7 +84,7 @@ def _assign_gpu(subgraph: SubgraphConfig) -> str:
 
     # Send everything to the big GPU.  The GpuSlotLock handles queuing
     # when the GPU is at capacity.  The secondary GPU is reserved for
-    # future use or manual override via GV_NLE_GPU_DEVICES.
+    # future use or manual override via hyperparams.yaml (gv_nle.gpu_devices).
     return _GPU_DEVICES[0]
 
 

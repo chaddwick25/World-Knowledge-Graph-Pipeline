@@ -166,9 +166,12 @@ def _run_embed(workers: int, chunk_size: int, iso: str, run_label: str) -> Dict:
 
     Returns the service result dict (``entity_count``, ``entropy``, ``has_nle``).
     """
-    from pipeline.envelopes import CountryEnvelope
+    from dataclasses import replace
+
     from core.services.snapshot.embedding_service import EmbeddingService
     from django.conf import settings
+    from pipeline import envelopes as _envelopes_mod
+    from pipeline.envelopes import CountryEnvelope, ModelHyperparams
 
     # Build the base envelope, then patch snapshot_date on the mutable state.
     # snapshot_date lives on CountryRunState (mutable), accessed via env.state.
@@ -179,8 +182,15 @@ def _run_embed(workers: int, chunk_size: int, iso: str, run_label: str) -> Dict:
     base_snapshot = env.snapshot_date
     env.state.snapshot_date = f"{base_snapshot}_{run_label}"
 
-    settings.PARALLEL_UPSERT_WORKERS = str(workers)
-    settings.PARALLEL_UPSERT_CHUNK_SIZE = str(chunk_size)
+    # Patch the hyperparams cache (parallel_upsert section) so this run uses
+    # the sweep's workers + chunk_size.  The YAML-loaded defaults are frozen
+    # per process; replacing the cache is the per-run override mechanism.
+    hp = ModelHyperparams.load_from_yaml()
+    _envelopes_mod._HYPERPARAMS_CACHE = replace(
+        hp,
+        parallel_upsert_workers=workers,
+        parallel_upsert_chunk_size=chunk_size,
+    )
 
     service = EmbeddingService(
         embeddings_root=getattr(settings, "EMBEDDINGS_ROOT", "/app/data/embeddings")
@@ -352,7 +362,7 @@ class ChunkSizeBenchmark(unittest.TestCase):
             if winners:
                 best = max(winners, key=lambda r: r.rows_per_s)
                 print(f"\n>>> RECOMMENDATION: {best.label} is {best.rows_per_s / baseline.rows_per_s * 100 - 100:.0f}% faster than baseline")
-                print(f"    Set PARALLEL_UPSERT_WORKERS={best.workers} PARALLEL_UPSERT_CHUNK_SIZE={best.chunk_size}")
+                print(f"    Set parallel_upsert.workers={best.workers} parallel_upsert.chunk_size={best.chunk_size} in backend/pipeline/hyperparams.yaml")
             else:
                 print("\n>>> RECOMMENDATION: No config beat baseline by >10%. Keep single-threaded 20k.")
 

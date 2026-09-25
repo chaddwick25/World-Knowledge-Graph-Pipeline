@@ -2,8 +2,8 @@
 Management command to trigger the WorldKG Pipeline v2.
 
 Run inside the worker container for GPU stages (worker carries
-NVIDIA_VISIBLE_DEVICES=1 + GV_NLE_GPU_DEVICES=cuda:0; the backend
-container has no GPU):
+NVIDIA_VISIBLE_DEVICES=1; GPU scheduling comes from the gv_nle section
+of pipeline/hyperparams.yaml — the backend container has no GPU):
     docker compose exec worker python manage.py run_pipeline ...
 
 Usage:

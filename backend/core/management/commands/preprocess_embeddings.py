@@ -30,6 +30,7 @@ from core.services.snapshot.embedding_spatial_split_service import (
     load_embedding_splits_config,
 )
 from core.services.snapshot.embedding_shapely_splitter import ShapelySpatialSplitter
+from pipeline.envelopes import ModelHyperparams
 
 logger = logging.getLogger(__name__)
 
@@ -284,13 +285,9 @@ class Command(BaseCommand):
             self.stdout.write(f"{'=' * 60}")
             return
 
-        # Optional multi-core: control workers via EMBEDDING_SPLITS_WORKERS
-        workers_env = getattr(settings, "EMBEDDING_SPLITS_WORKERS", "")
-        try:
-            workers = int(workers_env) if workers_env else 1
-        except ValueError:
-            workers = 1
-
+        # Optional multi-core: control workers via hyperparams.yaml
+        # (embedding_splits.workers — the former EMBEDDING_SPLITS_WORKERS env).
+        workers = ModelHyperparams.load_from_yaml().embedding_splits_workers
         workers = max(1, workers)
         workers = min(workers, len(task_defs))
 
