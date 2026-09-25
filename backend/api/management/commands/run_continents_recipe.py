@@ -1,4 +1,3 @@
-import os
 from django.core.management.base import BaseCommand
 from django.core.management import call_command
 from django.conf import settings
@@ -36,12 +35,12 @@ class Command(BaseCommand):
         # Phase 2: Generate Continental PBFs (using RegionHierarchy-based extraction)
         self.stdout.write(self.style.MIGRATE_HEADING('Phase 2: Generating Continental PBFs...'))
 
-        if not os.getenv('FOLDER_PATH'):
-            os.environ['FOLDER_PATH'] = settings.POLYGON_FILES_DIR
-        if not os.getenv('SOURCE_PBF_PATH'):
-            os.environ['SOURCE_PBF_PATH'] = settings.PLANET_OSM_FILE_PATH
-        if not os.getenv('OUTPUT_BASE_DIR'):
-            os.environ['OUTPUT_BASE_DIR'] = getattr(
+        if not getattr(settings, 'FOLDER_PATH', None):
+            settings.FOLDER_PATH = settings.POLYGON_FILES_DIR
+        if not getattr(settings, 'SOURCE_PBF_PATH', None):
+            settings.SOURCE_PBF_PATH = settings.PLANET_OSM_FILE_PATH
+        if not getattr(settings, 'OUTPUT_BASE_DIR', None):
+            settings.OUTPUT_BASE_DIR = getattr(
                 settings,
                 'OSM_CONTINENTS_OUTPUT_DIR',
                 str(Path(settings.OSM_WIKIDATA_EXTRACTIONS_DIR) / 'continents'),

@@ -31,7 +31,6 @@ TRACE_SAMPLE_RATE (roll happens once per run). Sink failures are logged
 
 import json
 import logging
-import os
 import queue
 import random
 import threading
@@ -39,6 +38,8 @@ import time
 import uuid
 from datetime import datetime, timezone
 from contextlib import contextmanager
+
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -85,24 +86,26 @@ class TraceService:
 
     @classmethod
     def _load_cfg(cls) -> dict:
-        sink = (os.environ.get("TRACE_SINK") or "none").strip().lower()
+        sink = (getattr(settings, "TRACE_SINK", "") or "none").strip().lower()
         if sink not in _SINKS:
             sink = "none"
         try:
-            sample_rate = float(os.environ.get("TRACE_SAMPLE_RATE", "1.0"))
+            sample_rate = float(getattr(settings, "TRACE_SAMPLE_RATE", "") or "1.0")
             sample_rate = max(0.0, min(1.0, sample_rate))
         except (TypeError, ValueError):
             sample_rate = 1.0
-        deterministic = os.environ.get("TRACE_DETERMINISTIC_STAGES", "0") not in (
-            "0", "false", "False", "",
-        )
+        deterministic = str(
+            getattr(settings, "TRACE_DETERMINISTIC_STAGES", "0")
+        ) not in ("0", "false", "False", "")
         try:
-            queue_size = int(os.environ.get("TRACE_QUEUE_SIZE", "1024"))
+            queue_size = int(getattr(settings, "TRACE_QUEUE_SIZE", "") or "1024")
             queue_size = max(1, queue_size)
         except (TypeError, ValueError):
             queue_size = 1024
         try:
-            flush_interval = float(os.environ.get("TRACE_FLUSH_INTERVAL", "2.0"))
+            flush_interval = float(
+                getattr(settings, "TRACE_FLUSH_INTERVAL", "") or "2.0"
+            )
             flush_interval = max(0.0, flush_interval)
         except (TypeError, ValueError):
             flush_interval = 2.0
@@ -112,9 +115,9 @@ class TraceService:
             "deterministic_stages": deterministic,
             "queue_size": queue_size,
             "flush_interval": flush_interval,
-            "url": (os.environ.get("TRACE_SINK_URL") or "").strip(),
-            "public_key": (os.environ.get("TRACE_SINK_PUBLIC_KEY") or "").strip(),
-            "secret_key": (os.environ.get("TRACE_SINK_SECRET_KEY") or "").strip(),
+            "url": (getattr(settings, "TRACE_SINK_URL", "") or "").strip(),
+            "public_key": (getattr(settings, "TRACE_SINK_PUBLIC_KEY", "") or "").strip(),
+            "secret_key": (getattr(settings, "TRACE_SINK_SECRET_KEY", "") or "").strip(),
         }
 
     @classmethod

@@ -1,10 +1,7 @@
-import os
 from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
-from django.conf import settings
 from django.core.management import call_command
-from django.utils import timezone
 import logging
 
 from core.models import OSMWikiDataHierarchy, PbfFile, PlanetaryMetrics, RegionHierarchy
@@ -506,13 +503,14 @@ class PlanetInitializationService:
         """
         self.logger.info("Starting continent extraction")
         
-        # Set environment variables for continental extraction
+        # Set runtime params for continental extraction (read by the
+        # call_command'd extraction commands below).
         base_data_dir = Path(self.policy['file_structure']['base_dir'])
-        
-        if not os.getenv('SOURCE_PBF_PATH'):
-            os.environ['SOURCE_PBF_PATH'] = self.policy['parameters']['planet_pbf_path']
-        if not os.getenv('OUTPUT_BASE_DIR'):
-            os.environ['OUTPUT_BASE_DIR'] = str(base_data_dir / 'OSM-PBF-FILES' / 'osm_wikidata_extractions' / 'continents')
+
+        if not getattr(settings, 'SOURCE_PBF_PATH', None):
+            settings.SOURCE_PBF_PATH = self.policy['parameters']['planet_pbf_path']
+        if not getattr(settings, 'OUTPUT_BASE_DIR', None):
+            settings.OUTPUT_BASE_DIR = str(base_data_dir / 'OSM-PBF-FILES' / 'osm_wikidata_extractions' / 'continents')
         
         try:
             # Phase 1: Sync Polygon Regions

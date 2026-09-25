@@ -1,9 +1,10 @@
 import json
 import logging
-import os
 import requests
 from pathlib import Path
 from typing import Dict, Optional, List
+
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ class GeofabrikIndexService:
 
     def __init__(self, cache_path: str = None):
         if cache_path is None:
-            base = os.getenv("BASE_DATA_DIR")
+            base = getattr(settings, "BASE_DATA_DIR", None)
             cache_path = str(Path(base) / "geofabrik_index.json") if base else "data/geofabrik_index.json"
         self.cache_path = Path(cache_path)
         self.data = None

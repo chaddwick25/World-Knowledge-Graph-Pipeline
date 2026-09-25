@@ -44,11 +44,11 @@ unavailable.
 
 import json
 import logging
-import os
 import time
 from typing import List, Optional
 
 import requests
+from django.conf import settings
 
 from core.services.trace_service import TraceService
 
@@ -67,32 +67,32 @@ class LLMService:
 
     def __init__(self, base_url: str = None, model: str = None,
                  style: str = None, timeout: float = None):
-        """Constructor with per-instance overrides (env defaults for None).
+        """Constructor with per-instance overrides (settings defaults for None).
 
         The overrides let a second instance point at a different provider
-        without touching the platform env: the research orchestrator uses
+        without touching the platform config: the research orchestrator uses
         ``get_research_instance()`` (RESEARCH_LLM_*) while the interactive
         path keeps ``get_instance()`` (LLM_*).
         """
-        self.enabled = os.environ.get("LLM_ENABLED", "1") not in ("0", "false", "False", "")
-        self.style = (style or os.environ.get("LLM_API_STYLE") or "native").lower()
-        base = (base_url or os.environ.get("LLM_BASE_URL") or _DEFAULT_BASE_URL).rstrip("/")
+        self.enabled = str(getattr(settings, "LLM_ENABLED", "1")) not in ("0", "false", "False", "")
+        self.style = (style or getattr(settings, "LLM_API_STYLE", "") or "native").lower()
+        base = (base_url or getattr(settings, "LLM_BASE_URL", "") or _DEFAULT_BASE_URL).rstrip("/")
         self.base_url = base
         # Native Ollama endpoints live at /api/* (no /v1 prefix); the OpenAI
         # style keeps the base as given (typically including /v1).
         self.root_url = base[:-3] if base.endswith("/v1") else base
-        self.model = model or os.environ.get("LLM_MODEL") or _DEFAULT_MODEL
+        self.model = model or getattr(settings, "LLM_MODEL", "") or _DEFAULT_MODEL
         try:
             self.timeout = float(
                 timeout if timeout is not None
-                else os.environ.get("LLM_TIMEOUT", _DEFAULT_TIMEOUT)
+                else (getattr(settings, "LLM_TIMEOUT", "") or _DEFAULT_TIMEOUT)
             )
         except (TypeError, ValueError):
             self.timeout = _DEFAULT_TIMEOUT
         try:
             self._availability_cache_seconds = float(
-                os.environ.get("LLM_AVAILABILITY_CACHE_SECONDS",
-                               _DEFAULT_AVAILABILITY_CACHE_SECONDS)
+                getattr(settings, "LLM_AVAILABILITY_CACHE_SECONDS", "")
+                or _DEFAULT_AVAILABILITY_CACHE_SECONDS
             )
         except (TypeError, ValueError):
             self._availability_cache_seconds = _DEFAULT_AVAILABILITY_CACHE_SECONDS
@@ -124,14 +124,14 @@ class LLMService:
         research loop falls back to the platform instance, so it tests on
         the interactive card before the 2070 split is configured.
         """
-        base = os.environ.get("RESEARCH_LLM_BASE_URL")
+        base = getattr(settings, "RESEARCH_LLM_BASE_URL", "")
         if not base:
             return cls.get_instance()
         return cls(
             base_url=base,
-            model=os.environ.get("RESEARCH_LLM_MODEL") or _DEFAULT_MODEL,
-            style=os.environ.get("RESEARCH_LLM_API_STYLE") or "native",
-            timeout=os.environ.get("RESEARCH_LLM_TIMEOUT"),
+            model=getattr(settings, "RESEARCH_LLM_MODEL", "") or _DEFAULT_MODEL,
+            style=getattr(settings, "RESEARCH_LLM_API_STYLE", "") or "native",
+            timeout=getattr(settings, "RESEARCH_LLM_TIMEOUT", "") or None,
         )
 
     # ── Availability ──────────────────────────────────────────────────────

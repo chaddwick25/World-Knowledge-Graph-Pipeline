@@ -30,11 +30,12 @@ a single LLM call (see docs/plans/DIRECT_PATH_ENRICHMENT_PLAN.md).
 import hashlib
 import json
 import logging
-import os
 import threading
 import time
 from collections import Counter
 from typing import Optional
+
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,10 @@ _CACHE_DEFAULT_TTL_SECONDS = 1800.0
 
 def _cache_ttl() -> float:
     try:
-        return float(os.environ.get("LLM_ANSWER_CACHE_TTL_SECONDS",
-                                    _CACHE_DEFAULT_TTL_SECONDS))
+        return float(
+            getattr(settings, "LLM_ANSWER_CACHE_TTL_SECONDS", "")
+            or _CACHE_DEFAULT_TTL_SECONDS
+        )
     except (TypeError, ValueError):
         return _CACHE_DEFAULT_TTL_SECONDS
 

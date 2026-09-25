@@ -262,9 +262,9 @@ CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
 
-# Deployed frontend origins (Netlify domain), set on the homeserver env.
+# Deployed frontend origins (Netlify domain), set on the homeserver env via
+# CORS_EXTRA_ORIGINS; the literals below are the local dev defaults.
 _extra_origins = [o.strip() for o in os.getenv('CORS_EXTRA_ORIGINS', '').split(',') if o.strip()]
-# TODO: use ENVs
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:8080',
     'http://127.0.0.1:8080',
@@ -291,8 +291,7 @@ CORS_ALLOW_CREDENTIALS = True
 # failed").
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# CSRF Trusted Origins (required for Django 4.0+)
-# TODO: use ENVs
+# CSRF Trusted Origins (required for Django 4.0+) — same origin set as CORS.
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8080',
     'http://127.0.0.1:8080',
@@ -490,7 +489,6 @@ from django.utils import timezone
 
 DEFAULT_TEMPORAL_RANGE_END = datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
 
-# TODO: re-locate
 # Spatial Semantics Configuration
 SPATIAL_SEMANTICS_CONFIG = {
     'fasttext_model_path': FASTTEXT_MODEL_PATH,
@@ -522,3 +520,89 @@ SPATIAL_SEMANTICS_CONFIG = {
 }
 
 TIME_ZONE = 'America/Toronto'
+
+# ============================================================================
+# SERVICE-LEVEL + PIPELINE CONFIGURATION
+# ============================================================================
+# Single source of truth for env-backed service config. Services read these
+# via ``django.conf.settings`` — lazily (per instance / per call), so tests
+# override with ``monkeypatch.setattr(settings, ...)`` or ``override_settings``
+# instead of ``monkeypatch.setenv``. Empty string / None means "unset"; the
+# services apply their own defaults and fail-soft parsing.
+#
+# Framework runtime flags are exempt: DJANGO_SETTINGS_MODULE (bootstrap) and
+# RUN_MAIN (autoreloader sentinel) stay os.environ reads outside this file.
+
+# ── LLM services (Ollama native / OpenAI-compatible) ─────────────────────────
+# Interactive path (LLM_*) on the 4070; the batch research orchestrator uses
+# RESEARCH_LLM_* on the 2070 (falls back to the platform instance when
+# RESEARCH_LLM_BASE_URL is unset). Read per-instance by LLMService.
+LLM_ENABLED = os.getenv('LLM_ENABLED', '1')
+LLM_API_STYLE = os.getenv('LLM_API_STYLE', '')
+LLM_BASE_URL = os.getenv('LLM_BASE_URL', '')
+LLM_MODEL = os.getenv('LLM_MODEL', '')
+LLM_TIMEOUT = os.getenv('LLM_TIMEOUT', '')
+LLM_AVAILABILITY_CACHE_SECONDS = os.getenv('LLM_AVAILABILITY_CACHE_SECONDS', '')
+RESEARCH_LLM_BASE_URL = os.getenv('RESEARCH_LLM_BASE_URL', '')
+RESEARCH_LLM_MODEL = os.getenv('RESEARCH_LLM_MODEL', '')
+RESEARCH_LLM_API_STYLE = os.getenv('RESEARCH_LLM_API_STYLE', '')
+RESEARCH_LLM_TIMEOUT = os.getenv('RESEARCH_LLM_TIMEOUT', '')
+# Opt-in: research loop follow-up nameSearch/structuredSearch calls.
+RESEARCH_FOLLOWUP_TOOLS = os.getenv('RESEARCH_FOLLOWUP_TOOLS', '0')
+
+# ── Request-path caches + thresholds ─────────────────────────────────────────
+SNAPSHOT_ID_CACHE_TTL_SECONDS = os.getenv('SNAPSHOT_ID_CACHE_TTL_SECONDS', '')
+LLM_ANSWER_CACHE_TTL_SECONDS = os.getenv('LLM_ANSWER_CACHE_TTL_SECONDS', '')
+MAPQA_LLM_FALLBACK_CONFIDENCE = os.getenv('MAPQA_LLM_FALLBACK_CONFIDENCE', '')
+ENRICHMENT_WORKERS = os.getenv('ENRICHMENT_WORKERS', '')
+EMBEDDING_SPLITS_WORKERS = os.getenv('EMBEDDING_SPLITS_WORKERS', '')
+
+# ── Pipeline GPU / parallel tuning (Steps 4 USLP, 5 GV-NLE, embedding upsert) ─
+# Comma-separated device + concurrency lists; the step modules parse and pad
+# per device. PARALLEL_UPSERT_* empty = service defaults.
+GV_NLE_GPU_DEVICES = os.getenv('GV_NLE_GPU_DEVICES', 'cuda:0,cuda:1')
+GV_NLE_GPU_CONCURRENCY = os.getenv('GV_NLE_GPU_CONCURRENCY', '1,1')
+GV_NLE_SMALL_PBF_MB = os.getenv('GV_NLE_SMALL_PBF_MB', '0.3')
+PARALLEL_UPSERT_WORKERS = os.getenv('PARALLEL_UPSERT_WORKERS', '')
+PARALLEL_UPSERT_QUEUE_DEPTH = os.getenv('PARALLEL_UPSERT_QUEUE_DEPTH', '')
+PARALLEL_UPSERT_MIN_PBF_MB = os.getenv('PARALLEL_UPSERT_MIN_PBF_MB', '')
+PARALLEL_UPSERT_CHUNK_SIZE = os.getenv('PARALLEL_UPSERT_CHUNK_SIZE', '')
+
+# ── Trace adapter (core/services/trace_service.py) ───────────────────────────
+# Raw strings — the service normalizes/clamps. Sinks: none|console|file|
+# langfuse|memory.
+TRACE_SINK = os.getenv('TRACE_SINK', '')
+TRACE_SAMPLE_RATE = os.getenv('TRACE_SAMPLE_RATE', '')
+TRACE_DETERMINISTIC_STAGES = os.getenv('TRACE_DETERMINISTIC_STAGES', '')
+TRACE_QUEUE_SIZE = os.getenv('TRACE_QUEUE_SIZE', '')
+TRACE_FLUSH_INTERVAL = os.getenv('TRACE_FLUSH_INTERVAL', '')
+TRACE_SINK_URL = os.getenv('TRACE_SINK_URL', '')
+TRACE_SINK_PUBLIC_KEY = os.getenv('TRACE_SINK_PUBLIC_KEY', '')
+TRACE_SINK_SECRET_KEY = os.getenv('TRACE_SINK_SECRET_KEY', '')
+
+# ── Continent-extraction recipe runtime parameters ───────────────────────────
+# Env-overridable, and also set at runtime by run_continents_recipe /
+# PlanetInitializationService.extract_continents() before they call_command
+# the extraction commands.
+FOLDER_PATH = os.getenv('FOLDER_PATH')
+SOURCE_PBF_PATH = os.getenv('SOURCE_PBF_PATH')
+OUTPUT_BASE_DIR = os.getenv('OUTPUT_BASE_DIR')
+
+# ── Auth / host trust ────────────────────────────────────────────────────────
+# Empty invite code = registration closed.
+SIGNUP_INVITE_CODE = os.getenv('SIGNUP_INVITE_CODE', '')
+# Hosts treated as local by the admin gate + public auth guard.
+TRUSTED_LOCAL_HOSTS = os.getenv('TRUSTED_LOCAL_HOSTS', 'localhost,127.0.0.1')
+
+# ── Feature flags + model hyperparameter defaults ────────────────────────────
+# Single-pass PBF encoding (FastText + NLE in one traversal).
+GEOVECTORS_SINGLE_PASS = True
+# Link-candidate view: serve the precomputed table before on-the-fly scoring.
+ENABLE_PRECOMPUTED_LINK_CANDIDATES = True
+# Google Places enrichment key (secret — env-only).
+GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY', None)
+# DeepWalk defaults — overridden per-run by pipeline/hyperparams.yaml.
+DEEPWALK_K = 50
+DEEPWALK_WORKERS = 26
+DEEPWALK_USE_GPU = True
+DEEPWALK_GPU_DEVICE = 'cuda:0'

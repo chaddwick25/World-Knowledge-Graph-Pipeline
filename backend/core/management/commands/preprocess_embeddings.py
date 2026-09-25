@@ -17,7 +17,6 @@ Usage:
 """
 
 import logging
-import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -286,7 +285,7 @@ class Command(BaseCommand):
             return
 
         # Optional multi-core: control workers via EMBEDDING_SPLITS_WORKERS
-        workers_env = os.getenv("EMBEDDING_SPLITS_WORKERS")
+        workers_env = getattr(settings, "EMBEDDING_SPLITS_WORKERS", "")
         try:
             workers = int(workers_env) if workers_env else 1
         except ValueError:

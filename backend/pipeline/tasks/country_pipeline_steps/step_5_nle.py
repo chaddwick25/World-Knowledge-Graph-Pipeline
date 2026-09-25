@@ -21,6 +21,7 @@ import os
 import tempfile
 import fcntl
 from typing import List, Optional, Tuple
+from django.conf import settings
 from pipeline.config import SubgraphConfig
 from pipeline.envelopes import CountryEnvelope
 from pipeline.task_decorator import pipeline_step
@@ -36,15 +37,15 @@ logger = logging.getLogger("pipeline")
 
 
 def _parse_gpu_config() -> Tuple[List[str], List[int]]:
-    """Parse GPU device list and concurrency from env vars.
+    """Parse GPU device list and concurrency from settings.
 
     Default concurrency=1 on cuda:0 because IE subgraphs like kildare
     (847K entities) and leitrim (1M entities) each need ~7-8 GB VRAM.
     Two of those concurrent on a 16 GB 4070 causes CUDA OOM.  Set to 2
     only for countries with uniformly small subgraphs (<100K entities).
     """
-    devices_str = os.environ.get("GV_NLE_GPU_DEVICES", "cuda:0,cuda:1")
-    concurrency_str = os.environ.get("GV_NLE_GPU_CONCURRENCY", "1,1")
+    devices_str = getattr(settings, "GV_NLE_GPU_DEVICES", "cuda:0,cuda:1")
+    concurrency_str = getattr(settings, "GV_NLE_GPU_CONCURRENCY", "1,1")
     devices = [d.strip() for d in devices_str.split(",") if d.strip()]
     concurrency = []
     for c in concurrency_str.split(","):
@@ -62,7 +63,7 @@ _GPU_DEVICES, _GPU_CONCURRENCY = _parse_gpu_config()
 # Size threshold (MB) for assigning subgraphs to the big GPU vs the small one.
 # Subgraphs with PBF > this go to cuda:0 (more VRAM); smaller ones can go to
 # cuda:1.  0.3 MB ≈ ~50K entities, which needs ~4-5 GB VRAM — fits on 8 GB.
-_SMALL_PBF_THRESHOLD_MB = float(os.environ.get("GV_NLE_SMALL_PBF_MB", "0.3"))
+_SMALL_PBF_THRESHOLD_MB = float(getattr(settings, "GV_NLE_SMALL_PBF_MB", "0.3"))
 
 
 def _assign_gpu(subgraph: SubgraphConfig) -> str:

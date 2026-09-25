@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from django.core.management.base import BaseCommand
 from django.db.models import Count
@@ -10,8 +9,8 @@ class Command(BaseCommand):
     help = 'Sync polygon file hierarchy with RegionHierarchy and RegionalExtractionState models'
 
     def handle(self, *args, **options):
-        folder_path = Path(os.getenv('FOLDER_PATH') or settings.POLYGON_FILES_DIR)
-        source_planet_path = os.getenv('SOURCE_PBF_PATH') or os.getenv('PLANET_OSM_FILE_PATH')
+        folder_path = Path(getattr(settings, 'FOLDER_PATH', None) or settings.POLYGON_FILES_DIR)
+        source_planet_path = getattr(settings, 'SOURCE_PBF_PATH', None) or getattr(settings, 'PLANET_OSM_FILE_PATH', None)
 
         if not folder_path.exists():
             self.stdout.write(self.style.ERROR(f"Folder path does not exist: {folder_path}"))

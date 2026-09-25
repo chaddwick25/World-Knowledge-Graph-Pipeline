@@ -1,8 +1,8 @@
 import logging
-import os
 import requests
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+from django.conf import settings
 from django.contrib.gis.geos import Polygon
 from django.db import transaction
 from django.utils import timezone
@@ -731,9 +731,9 @@ class WorldKGEnrichmentService:
             'local_predictions': 0
         }
 
-        # Resolve worker count: env var > parameter > default 2.
+        # Resolve worker count: setting > parameter > default 2.
         if num_workers is None:
-            num_workers = int(os.environ.get("ENRICHMENT_WORKERS", "2"))
+            num_workers = int(getattr(settings, "ENRICHMENT_WORKERS", "") or "2")
         if use_sparql:
             num_workers = 1  # SPARQL hits external endpoint — no parallelism
 

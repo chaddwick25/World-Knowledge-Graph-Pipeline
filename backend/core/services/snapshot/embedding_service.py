@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import itertools
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict
+
+from django.conf import settings
 
 if TYPE_CHECKING:
     from pipeline.envelopes import CountryEnvelope
@@ -224,18 +225,18 @@ class EmbeddingService:
 
 
 # ----------------------------------------------------------------------
-# Parallel upsert env-var parsing (Approach B configuration).
-# Parsed here (not in settings.py) per the plan — no envelope changes,
-# no settings.py changes.  Logged at Step 1 start.
+# Parallel upsert knob parsing (Approach B configuration).
+# The knobs are declared env-backed in settings.py; parsed here lazily so
+# tests can setattr() per call.  Logged at Step 1 start.
 # ----------------------------------------------------------------------
 
-def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
-    if raw is None or raw.strip() == "":
+def _cfg_int(name: str, default: int) -> int:
+    raw = getattr(settings, name, None)
+    if raw is None or str(raw).strip() == "":
         return default
     try:
         return int(raw)
-    except ValueError:
+    except (TypeError, ValueError):
         logger.warning("Invalid int for %s=%r; using default %d", name, raw, default)
         return default
 
@@ -245,17 +246,17 @@ def _parallel_upsert_workers() -> int:
 
     Set to 1 to force the legacy single-threaded path.
     """
-    return max(1, _env_int("PARALLEL_UPSERT_WORKERS", 1))
+    return max(1, _cfg_int("PARALLEL_UPSERT_WORKERS", 1))
 
 
 def _parallel_upsert_queue_depth() -> int:
     """Batches in flight per worker (queue maxsize = workers * depth)."""
-    return max(1, _env_int("PARALLEL_UPSERT_QUEUE_DEPTH", 2))
+    return max(1, _cfg_int("PARALLEL_UPSERT_QUEUE_DEPTH", 2))
 
 
 def _parallel_upsert_min_pbf_mb() -> int:
     """Skip parallel path for PBFs smaller than this (overhead dominates)."""
-    return max(0, _env_int("PARALLEL_UPSERT_MIN_PBF_MB", 0))
+    return max(0, _cfg_int("PARALLEL_UPSERT_MIN_PBF_MB", 0))
 
 
 def _parallel_upsert_chunk_size() -> int:
@@ -273,7 +274,7 @@ def _parallel_upsert_chunk_size() -> int:
     encoded batch; with 2 workers + 1 upsert in flight ≈ 288 MB for encoded
     vectors alone (plus the ~2 GB FastText model).
     """
-    return max(1000, _env_int("PARALLEL_UPSERT_CHUNK_SIZE", 20000))
+    return max(1000, _cfg_int("PARALLEL_UPSERT_CHUNK_SIZE", 20000))
 
 
 def _pbf_size_mb(pbf_path: str):

@@ -16,6 +16,8 @@ import json
 import pytest
 import requests
 
+from django.conf import settings
+
 from core.services.llm_service import LLMService
 
 
@@ -43,14 +45,14 @@ class FakeStreamResponse:
 
 @pytest.fixture(autouse=True)
 def _reset_llm(monkeypatch):
-    """Every test starts with a fresh singleton and clean env."""
+    """Every test starts with a fresh singleton and unset LLM_* settings."""
     LLMService.reset_instance()
-    monkeypatch.delenv("LLM_BASE_URL", raising=False)
-    monkeypatch.delenv("LLM_MODEL", raising=False)
-    monkeypatch.delenv("LLM_ENABLED", raising=False)
-    monkeypatch.delenv("LLM_TIMEOUT", raising=False)
-    monkeypatch.delenv("LLM_API_STYLE", raising=False)
-    monkeypatch.delenv("LLM_AVAILABILITY_CACHE_SECONDS", raising=False)
+    for var, unset in (
+        ("LLM_BASE_URL", ""), ("LLM_MODEL", ""), ("LLM_ENABLED", "1"),
+        ("LLM_TIMEOUT", ""), ("LLM_API_STYLE", ""),
+        ("LLM_AVAILABILITY_CACHE_SECONDS", ""),
+    ):
+        monkeypatch.setattr(settings, var, unset)
     yield
     LLMService.reset_instance()
 
@@ -87,11 +89,11 @@ class TestConfig:
         assert svc.timeout == 60.0  # read timeout — cold model reloads take 5-15s
 
     def test_env_overrides(self, monkeypatch):
-        monkeypatch.setenv("LLM_BASE_URL", "http://ollama:11434/v1")
-        monkeypatch.setenv("LLM_MODEL", "qwen3:8b")
-        monkeypatch.setenv("LLM_ENABLED", "0")
-        monkeypatch.setenv("LLM_TIMEOUT", "7.5")
-        monkeypatch.setenv("LLM_API_STYLE", "openai")
+        monkeypatch.setattr(settings, "LLM_BASE_URL", "http://ollama:11434/v1")
+        monkeypatch.setattr(settings, "LLM_MODEL", "qwen3:8b")
+        monkeypatch.setattr(settings, "LLM_ENABLED", "0")
+        monkeypatch.setattr(settings, "LLM_TIMEOUT", "7.5")
+        monkeypatch.setattr(settings, "LLM_API_STYLE", "openai")
         svc = LLMService()
         assert svc.enabled is False
         assert svc.style == "openai"
@@ -100,7 +102,7 @@ class TestConfig:
         assert svc.timeout == 7.5
 
     def test_root_url_without_v1(self, monkeypatch):
-        monkeypatch.setenv("LLM_BASE_URL", "http://ollama:11434")
+        monkeypatch.setattr(settings, "LLM_BASE_URL", "http://ollama:11434")
         svc = LLMService()
         assert svc.root_url == "http://ollama:11434"
 
@@ -144,7 +146,7 @@ class TestChat:
             })
 
         monkeypatch.setattr(requests, "post", fake_post)
-        monkeypatch.setenv("LLM_API_STYLE", "openai")
+        monkeypatch.setattr(settings, "LLM_API_STYLE", "openai")
         out = LLMService().chat([{"role": "user", "content": "hi"}])
         assert out == "hi there"
         assert calls["url"] == "http://localhost:11434/v1/chat/completions"
@@ -176,7 +178,7 @@ class TestChat:
             raise AssertionError("chat must not fire when disabled")
 
         monkeypatch.setattr(requests, "post", should_not_be_called)
-        monkeypatch.setenv("LLM_ENABLED", "0")
+        monkeypatch.setattr(settings, "LLM_ENABLED", "0")
         assert LLMService().chat([{"role": "user", "content": "x"}]) is None
 
 
@@ -213,7 +215,7 @@ class TestChatStream:
             requests, "post",
             lambda *a, **k: FakeStreamResponse(200, lines),
         )
-        monkeypatch.setenv("LLM_API_STYLE", "openai")
+        monkeypatch.setattr(settings, "LLM_API_STYLE", "openai")
         out = "".join(LLMService().chat_stream([{"role": "user", "content": "hi"}]))
         assert out == "AB"
 
@@ -236,7 +238,7 @@ class TestChatStream:
             raise AssertionError("must not fire when disabled")
 
         monkeypatch.setattr(requests, "post", should_not_be_called)
-        monkeypatch.setenv("LLM_ENABLED", "0")
+        monkeypatch.setattr(settings, "LLM_ENABLED", "0")
         assert list(LLMService().chat_stream([{"role": "user", "content": "x"}])) == []
 
 
@@ -317,7 +319,7 @@ class TestEmbedAndAvailability:
             raise requests.exceptions.ConnectionError("refused")
 
         monkeypatch.setattr(requests, "get", fake_get)
-        monkeypatch.setenv("LLM_AVAILABILITY_CACHE_SECONDS", "0")
+        monkeypatch.setattr(settings, "LLM_AVAILABILITY_CACHE_SECONDS", "0")
         svc = LLMService()
         assert svc.is_available() is False
         assert svc.is_available() is False  # re-probed (cache 0)
@@ -490,5 +492,5 @@ class TestParserRefine:
             QueryParserService,
         )
         assert QueryParserService._llm_fallback_threshold() == 0.5
-        monkeypatch.setenv("MAPQA_LLM_FALLBACK_CONFIDENCE", "0.8")
+        monkeypatch.setattr(settings, "MAPQA_LLM_FALLBACK_CONFIDENCE", "0.8")
         assert QueryParserService._llm_fallback_threshold() == 0.8

@@ -15,6 +15,8 @@ import pytest
 from contextlib import contextmanager
 from unittest import mock
 
+from django.conf import settings
+
 from core.services.llm_service import LLMService
 from semantic_search.services.research_service import (
     MAX_QUESTIONS,
@@ -25,15 +27,16 @@ from semantic_search.services.research_service import (
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    """Every test starts with clean LLM_* and RESEARCH_LLM_* env."""
+    """Every test starts with unset LLM_* and RESEARCH_LLM_* settings."""
     LLMService.reset_instance()
-    for var in (
-        "LLM_BASE_URL", "LLM_MODEL", "LLM_ENABLED", "LLM_TIMEOUT",
-        "LLM_API_STYLE", "LLM_AVAILABILITY_CACHE_SECONDS",
-        "RESEARCH_LLM_BASE_URL", "RESEARCH_LLM_MODEL",
-        "RESEARCH_LLM_TIMEOUT", "RESEARCH_LLM_API_STYLE",
+    for var, unset in (
+        ("LLM_BASE_URL", ""), ("LLM_MODEL", ""), ("LLM_ENABLED", "1"),
+        ("LLM_TIMEOUT", ""), ("LLM_API_STYLE", ""),
+        ("LLM_AVAILABILITY_CACHE_SECONDS", ""),
+        ("RESEARCH_LLM_BASE_URL", ""), ("RESEARCH_LLM_MODEL", ""),
+        ("RESEARCH_LLM_TIMEOUT", ""), ("RESEARCH_LLM_API_STYLE", ""),
     ):
-        monkeypatch.delenv(var, raising=False)
+        monkeypatch.setattr(settings, var, unset)
     yield
     LLMService.reset_instance()
 
@@ -76,7 +79,7 @@ class TestConstructorOverrides:
         assert svc.timeout == 60.0
 
     def test_explicit_overrides_beat_env(self, monkeypatch):
-        monkeypatch.setenv("LLM_BASE_URL", "http://ollama:11434/v1")
+        monkeypatch.setattr(settings, "LLM_BASE_URL", "http://ollama:11434/v1")
         svc = LLMService(
             base_url="http://other:8080/v1",
             model="qwen3:4b",
@@ -90,7 +93,7 @@ class TestConstructorOverrides:
         assert svc.timeout == 7.5
 
     def test_partial_overrides_keep_env_defaults(self, monkeypatch):
-        monkeypatch.setenv("LLM_MODEL", "qwen3:14b")
+        monkeypatch.setattr(settings, "LLM_MODEL", "qwen3:14b")
         svc = LLMService(model=None, timeout="9.5")
         assert svc.model == "qwen3:14b"
         assert svc.timeout == 9.5
@@ -104,9 +107,9 @@ class TestResearchInstance:
         assert inst is LLMService.get_instance()
 
     def test_research_env_creates_second_instance(self, monkeypatch):
-        monkeypatch.setenv("RESEARCH_LLM_BASE_URL", "http://research:11435/v1")
-        monkeypatch.setenv("RESEARCH_LLM_MODEL", "qwen3:4b")
-        monkeypatch.setenv("RESEARCH_LLM_TIMEOUT", "120")
+        monkeypatch.setattr(settings, "RESEARCH_LLM_BASE_URL", "http://research:11435/v1")
+        monkeypatch.setattr(settings, "RESEARCH_LLM_MODEL", "qwen3:4b")
+        monkeypatch.setattr(settings, "RESEARCH_LLM_TIMEOUT", "120")
         inst = LLMService.get_research_instance()
         platform = LLMService.get_instance()
         assert inst is not platform

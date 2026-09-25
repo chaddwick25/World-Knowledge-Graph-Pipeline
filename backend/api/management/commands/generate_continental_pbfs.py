@@ -68,10 +68,11 @@ class Command(BaseCommand):
         # Validate required environment variables
         self.validate_environment()
         
-        # Get configuration from environment
-        folder_path = os.path.abspath(os.getenv('FOLDER_PATH') or settings.POLYGON_FILES_DIR)
-        source_pbf_path = os.getenv('SOURCE_PBF_PATH')
-        output_base_dir = os.getenv('OUTPUT_BASE_DIR')
+        # Get configuration from settings (env-backed; also set at runtime
+        # by run_continents_recipe / planet_initialization_service).
+        folder_path = os.path.abspath(getattr(settings, 'FOLDER_PATH', None) or settings.POLYGON_FILES_DIR)
+        source_pbf_path = getattr(settings, 'SOURCE_PBF_PATH', None)
+        output_base_dir = getattr(settings, 'OUTPUT_BASE_DIR', None)
         
         self.stdout.write("=== WorldKG Temporal Pipeline Orchestrator ===")
         self.stdout.write(f"Configuration:")
@@ -195,23 +196,26 @@ class Command(BaseCommand):
             raise CommandError(f"Command execution failed: {e}")
 
     def validate_environment(self):
-        """Validate required environment variables exist"""
+        """Validate required extraction parameters exist (env-backed
+        settings; also set at runtime by run_continents_recipe /
+        planet_initialization_service)."""
         required_vars = ['FOLDER_PATH', 'SOURCE_PBF_PATH', 'OUTPUT_BASE_DIR']
         missing_vars = []
-        
+
         for var in required_vars:
-            if not os.getenv(var):
+            if not getattr(settings, var, None):
                 missing_vars.append(var)
-        
+
         if missing_vars:
             raise CommandError(
-                f"Missing required environment variables: {', '.join(missing_vars)}\n"
-                "Please set these variables before running the command."
+                f"Missing required configuration: {', '.join(missing_vars)}\n"
+                "Set the env vars, or run via run_continents_recipe which "
+                "defaults them from settings."
             )
-        
+
         # Validate paths exist
-        folder_path = os.getenv('FOLDER_PATH')
-        source_pbf_path = os.getenv('SOURCE_PBF_PATH')
+        folder_path = getattr(settings, 'FOLDER_PATH', None)
+        source_pbf_path = getattr(settings, 'SOURCE_PBF_PATH', None)
         
         if not os.path.exists(folder_path):
             raise CommandError(f"FOLDER_PATH does not exist: {folder_path}")

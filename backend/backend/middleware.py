@@ -15,13 +15,12 @@ Local hosts are configurable via TRUSTED_LOCAL_HOSTS (default localhost,
 other trusted devices.
 """
 
-import os
-
+from django.conf import settings
 from django.http import Http404, JsonResponse
 
 _LOCAL_HOSTS = {
     h.strip().lower()
-    for h in os.getenv('TRUSTED_LOCAL_HOSTS', 'localhost,127.0.0.1').split(',')
+    for h in getattr(settings, 'TRUSTED_LOCAL_HOSTS', 'localhost,127.0.0.1').split(',')
     if h.strip()
 }
 

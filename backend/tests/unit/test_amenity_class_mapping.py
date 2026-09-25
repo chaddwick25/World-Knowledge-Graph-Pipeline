@@ -21,7 +21,7 @@ from semantic_search.services.factor_resolution_service import (
 from worldkg_nca.models import AmenityClassMapping, OsmEntity
 
 pytestmark = pytest.mark.django_db(
-    transaction=False, databases=["vectors"],
+    transaction=False, databases=["default", "vectors"],
 )
 
 TEST_CC = "ZZ"

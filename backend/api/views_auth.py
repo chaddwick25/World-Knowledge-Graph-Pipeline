@@ -8,8 +8,8 @@ the owner shares.
 """
 
 import json
-import os
 
+from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.http import JsonResponse
@@ -61,7 +61,7 @@ def logout_view(request):
 
 @require_POST
 def register_view(request):
-    invite_code = os.getenv('SIGNUP_INVITE_CODE', '')
+    invite_code = getattr(settings, 'SIGNUP_INVITE_CODE', '')
     if not invite_code:
         return JsonResponse({'detail': 'Registration is disabled.'}, status=403)
     body = _json_body(request)

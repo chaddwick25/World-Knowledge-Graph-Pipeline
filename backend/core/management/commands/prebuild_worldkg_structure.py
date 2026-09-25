@@ -14,7 +14,6 @@ Run once after planet init. Re-runnable (idempotent).
 """
 
 import json
-import os
 import subprocess
 from datetime import date
 from pathlib import Path
@@ -323,7 +322,6 @@ class Command(BaseCommand):
         """Find osmium-tool executable."""
         candidates = [
             getattr(settings, 'OSMIUM_EXECUTABLE', None),
-            os.environ.get('OSMIUM_EXECUTABLE'),
             '/usr/bin/osmium',
             '/usr/local/bin/osmium',
         ]
