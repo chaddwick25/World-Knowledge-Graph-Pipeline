@@ -10,6 +10,11 @@ exist for the country. On the first snapshot, the task body no-ops.
 
 **Non-fatal**: failures are logged and the pipeline continues to Step 6.
 
+**Parked 2026-09-26**: removed from the Celery canvas + registry —
+temporal drift is a scheduled-interval feature, not a per-run step.
+Module + services retained for the future feature. TODO: re-add with
+scheduling (periodic task or interval trigger) when the feature lands.
+
 References:
 - [STATS:Ch3] — Spectral distance, KL divergence
 - [STATS:Ch6] — Time series, forecasting, change-point detection

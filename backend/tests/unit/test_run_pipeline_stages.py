@@ -1,8 +1,9 @@
 """run_pipeline --stage fractional-key coverage.
 
 The CLI must reach every stage registered in the Celery canvas, including
-the fractional keys (1.5, 4.5, 5.5 chord callbacks, 5.7 graph spectral,
-5.8 temporal drift). Regression for the control-plane gap where --stage
+the fractional keys (1.5, 4.5, 5.5 chord callbacks, 5.7 graph spectral).
+5.8 (temporal drift) was removed 2026-09-26 — scheduled-interval feature,
+not a per-run step. Regression for the control-plane gap where --stage
 was hardcoded to int choices [1, 2, 3, 4, 5].
 """
 
@@ -11,7 +12,7 @@ from django.core.management.base import CommandError
 
 from pipeline.management.commands.run_pipeline import Command
 
-VALID_STAGES = [1, 1.5, 2, 3, 4, 4.5, 5, 5.5, 5.7, 5.8, 6]
+VALID_STAGES = [1, 1.5, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6]
 
 
 def _parse(argv):
@@ -25,7 +26,7 @@ def test_stage_choice_accepted(stage):
     assert args.stage == float(stage)
 
 
-@pytest.mark.parametrize('stage', [0, 0.5, 7, 9, 5.6])
+@pytest.mark.parametrize('stage', [0, 0.5, 7, 9, 5.6, 5.8])
 def test_stage_choice_rejected(stage):
     with pytest.raises(CommandError):
         _parse(['MZ', '--stage', str(stage)])

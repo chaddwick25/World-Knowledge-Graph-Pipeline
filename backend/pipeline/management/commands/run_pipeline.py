@@ -20,7 +20,8 @@ Usage:
     python manage.py run_pipeline GB --skip-entropy-gate
 
     # Single stage (for debugging / resume). Stages: 1, 1.5, 2, 3, 4, 4.5,
-    # 5, 5.5, 5.7 (graph spectral), 5.8 (temporal drift), 6.
+    # 5, 5.5, 5.7 (graph spectral), 6.  (5.8 temporal drift removed
+    # 2026-09-26 — scheduled-interval feature, not a per-run step.)
     python manage.py run_pipeline MZ --stage 3
     python manage.py run_pipeline MZ --stage 5.7
 
@@ -44,9 +45,9 @@ class Command(BaseCommand):
             '--stage',
             type=float,
             default=None,
-            choices=[1, 1.5, 2, 3, 4, 4.5, 5, 5.5, 5.7, 5.8, 6],
+            choices=[1, 1.5, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6],
             help='Run a single stage instead of the full pipeline (for debugging): '
-                 '1, 1.5, 2, 3, 4, 4.5, 5, 5.5, 5.7 (graph spectral), 5.8 (temporal drift), 6',
+                 '1, 1.5, 2, 3, 4, 4.5, 5, 5.5, 5.7 (graph spectral), 6',
         )
         parser.add_argument(
             '--skip-entropy-gate',
