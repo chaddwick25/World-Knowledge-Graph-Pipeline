@@ -1,30 +1,18 @@
 """
-query_enrichment_service.py — LLM-driven answer enrichment via tool research.
+query_enrichment_service.py — LLM-driven answer enrichment.
 
-After the primary template executor returns a terse answer (e.g. "Found 18
-entities within 50km."), the platform LLM is FORCED to do research with the
-other tools in the toolset — nameSearch / structuredSearch — before
-synthesizing the final enriched answer:
+The direct query path (execute-query/stream) calls ``synthesize()``: one LLM
+call grounded in pre-fetched entity context (EntityContextService: USLP
+links + communities + class distribution) — no tool selection
+(docs/plans/DIRECT_PATH_ENRICHMENT_PLAN.md).
 
-    primary result → LLM selects 1-2 research tools → tools execute
-    deterministically (the real search endpoint) → LLM synthesizes a
-    grounded enriched answer.
+The research orchestrator (research_service.py) reuses the tool helpers here
+(``_validate_tool_decision`` / ``_call_search_tool`` / ``_primary_digest``)
+for its opt-in follow-up tools. The old multi-tool ``enrich()`` loop was
+deleted 2026-09-26 — no production caller remained.
 
-If the LLM selects no valid tools, a default research action is derived from
-the result set (dominant amenity → structuredSearch, else top name →
-nameSearch), so enrichment always includes tool research when the model is
-up. Fail-soft: if the LLM is unavailable, an action errors, or synthesis
-fails, the caller keeps the primary (templated) answer.
-
-This realizes the "agent does research with the toolset" pattern
-(docs/plans/MCP_AGENT_MVP_PLAN.md §7.5) server-side for the MVP: the LLM
-picks the tools, execution stays deterministic.
-
-The direct query path (execute-query/stream) no longer uses this loop —
-``synthesize()`` synthesizes from pre-fetched entity context
-(EntityContextService: USLP links + communities + class distribution) in
-a single LLM call (see docs/plans/DIRECT_PATH_ENRICHMENT_PLAN.md).
-``enrich()`` is retained for agent-path / multi-tool orchestration.
+Fail-soft: if the LLM is unavailable or synthesis fails, the caller keeps
+the primary (templated) answer.
 """
 
 import hashlib
@@ -67,9 +55,8 @@ def _cache_key(question: str, template: str, country_code: str,
 
     ``v2|`` invalidates pre-direct-path cache entries (the cached output
     shape changed from research ``action_outputs`` to entity context).
-    The namespace separates the two methods — ``enrich()`` (agent path)
-    and ``synthesize()`` (direct path) cache different shapes and must
-    never share entries for the same question.
+    The namespace separates methods that cache different shapes (e.g. the
+    ``synthesize`` namespace); future methods must not share entries.
     """
     ns = f"{namespace}|" if namespace else ""
     raw = f"v2|{ns}{question}|{template}|{country_code}|{snapshot_date}"
@@ -110,127 +97,6 @@ RESEARCH_TOOLS = {
 
 class QueryEnrichmentService:
     """Stateless enrichment orchestrator — the LLM chooses, we execute."""
-
-    @classmethod
-    def enrich(cls, question: str, template: str, concepts: list,
-               results: list, country_code: str = None,
-               snapshot_date: str = None,
-               event_callback=None) -> Optional[dict]:
-        """Enrich a primary answer. Returns None (keep primary) on any failure.
-
-        ``event_callback`` (optional) receives progress events:
-            {"event": "research", "tool", "args"}
-            {"event": "research_out", "tool", "output"}
-            {"event": "answer_delta", "delta"}      (token stream, if streaming)
-        Cached answers replay the same events without any LLM call.
-
-        Returns:
-            {
-              "primary_answer": str,
-              "actions": [tool names executed],
-              "action_outputs": {tool: output},
-              "enriched_answer": str,
-            }
-        """
-        if not results or not isinstance(results, list):
-            return None
-
-        key = _cache_key(question, template, country_code or "", snapshot_date or "",
-                         namespace="enrich")
-        cached = _cache_get(key)
-        if cached is not None:
-            logger.info("LLM enrichment: cache hit for %r", question[:60])
-            cls._replay_events(event_callback, cached)
-            return cached
-
-        try:
-            from core.services.llm_service import LLMService
-            llm = LLMService.get_instance()
-            if not llm.is_available():
-                return None
-
-            primary_summary = cls._primary_summary(template, concepts, results)
-
-            # 1. LLM selects research tools (1-2).
-            decision = llm.chat_json([
-                {
-                    "role": "system",
-                    "content": (
-                        "You enrich geospatial answers by doing research with "
-                        "tools. Respond with STRICT JSON only: "
-                        '{"tools": [{"tool": "nameSearch", "args": {"naturalQuery": "..."}}, '
-                        '{"tool": "structuredSearch", "args": {"queryTags": {"amenity": "cafe"}}}]}. '
-                        "Select 1-2 tools whose results would most enrich the "
-                        "primary answer. No prose."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Question: {question}\n"
-                        f"Template: {template}\n"
-                        f"Primary result: {primary_summary}\n"
-                        f"Available tools: {json.dumps(RESEARCH_TOOLS)}\n"
-                        "Select research tool calls."
-                    ),
-                },
-            ], temperature=0.0, max_tokens=250)
-
-            actions = cls._validate_tool_decision(decision)
-
-            # 2. FORCE research: if the LLM selected nothing usable, derive a
-            #    default action from the result set so the enriched response
-            #    is never produced without at least one tool call.
-            if not actions:
-                actions = [cls._default_research_action(results, country_code)]
-                if actions == [None]:
-                    logger.info(
-                        "LLM enrichment: no research action derivable; keeping primary"
-                    )
-                    return None
-                logger.info("LLM enrichment: forcing default research action %s", actions[0][0])
-
-            # 3. Execute the selected tools deterministically.
-            outputs = {}
-            for tool, args in actions:
-                if event_callback:
-                    event_callback({"event": "research", "tool": tool, "args": args})
-                try:
-                    outputs[tool] = cls._call_search_tool(
-                        tool, args, results, country_code, snapshot_date,
-                    )
-                except Exception as exc:  # noqa: BLE001 — one bad action must not kill enrichment
-                    logger.warning("Enrichment action %s failed: %s", tool, exc)
-                    outputs[tool] = None
-                if event_callback:
-                    event_callback({
-                        "event": "research_out", "tool": tool, "output": outputs[tool],
-                    })
-
-            # 4. LLM synthesizes the enriched answer (token-streamed when a
-            #    callback is present so the user sees it arrive live).
-            enriched_answer = cls._synthesize(
-                llm, question, template, primary_summary, results, outputs,
-                stream=event_callback is not None,
-                on_delta=(lambda d: event_callback({"event": "answer_delta", "delta": d}))
-                if event_callback else None,
-            )
-            if not enriched_answer:
-                return None
-
-            result = {
-                "primary_answer": primary_summary,
-                "actions": [t for t, _ in actions],
-                "action_outputs": {
-                    k: v for k, v in outputs.items() if v is not None
-                },
-                "enriched_answer": enriched_answer,
-            }
-            _cache_put(key, result)
-            return result
-        except Exception as exc:  # noqa: BLE001 — enrichment must never break execute
-            logger.warning("Answer enrichment failed; keeping primary answer: %s", exc)
-            return None
 
     @classmethod
     def synthesize(cls, question: str, template: str, concepts: list,
@@ -305,20 +171,6 @@ class QueryEnrichmentService:
         """Re-emit answer deltas from a cached synthesis (no LLM calls)."""
         if not event_callback:
             return
-        answer = cached.get("enriched_answer") or ""
-        # Chunk the cached answer so the client still sees progressive text.
-        for i in range(0, len(answer), 32):
-            event_callback({"event": "answer_delta", "delta": answer[i:i + 32]})
-
-    @staticmethod
-    def _replay_events(event_callback, cached: dict) -> None:
-        """Re-emit progress events from a cached result (no LLM calls)."""
-        if not event_callback:
-            return
-        outputs = cached.get("action_outputs") or {}
-        for tool in cached.get("actions") or []:
-            event_callback({"event": "research", "tool": tool, "args": {}})
-            event_callback({"event": "research_out", "tool": tool, "output": outputs.get(tool)})
         answer = cached.get("enriched_answer") or ""
         # Chunk the cached answer so the client still sees progressive text.
         for i in range(0, len(answer), 32):
@@ -485,33 +337,6 @@ class QueryEnrichmentService:
             if len(chosen) == 2:
                 break
         return chosen
-
-    @staticmethod
-    def _default_research_action(results: list, country_code: str):
-        """Derive a research action from the result set when the LLM picks none.
-
-        Priority: dominant amenity tag → structuredSearch; else top named
-        entity → nameSearch. Returns (tool, args) or None.
-        """
-        if not country_code:
-            return None
-        dominant = QueryEnrichmentService._dominant_amenity(results)
-        if dominant:
-            key, value = dominant
-            return ("structuredSearch", {
-                "countryCode": country_code,
-                "queryTags": {key: value},
-                "topK": 5,
-            })
-        for r in results:
-            name = r.get("name") or (r.get("tags") or {}).get("name")
-            if name:
-                return ("nameSearch", {
-                    "countryCode": country_code,
-                    "naturalQuery": name,
-                    "topK": 5,
-                })
-        return None
 
     @classmethod
     def _call_search_tool(cls, tool: str, args: dict, results: list,
