@@ -22,9 +22,13 @@ from worldkg_nca.views.search import (
     worldkg_subdivisions,
     execute_query,
     execute_query_stream,
+)
+from worldkg_nca.views.research import (
     research_stream,
     research_chat,
     research_finalize,
+)
+from worldkg_nca.views.factor import (
     factor_availability,
 )
 from worldkg_nca.views.graph import (

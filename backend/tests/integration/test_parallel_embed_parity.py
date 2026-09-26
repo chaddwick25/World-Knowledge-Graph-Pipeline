@@ -108,7 +108,7 @@ def _run_embed(workers: int, iso: str) -> Dict:
 
     from core.services.snapshot.embedding_service import EmbeddingService
     from django.conf import settings
-    from pipeline import envelopes as _envelopes_mod
+    from pipeline import hyperparams as _hyperparams_mod
     from pipeline.envelopes import CountryEnvelope, ModelHyperparams
 
     env = CountryEnvelope.from_db(iso, hyperparam_overrides={
@@ -121,7 +121,7 @@ def _run_embed(workers: int, iso: str) -> Dict:
     env.snapshot_date = f"{env.snapshot_date}_{suffix}"
 
     hp = ModelHyperparams.load_from_yaml()
-    _envelopes_mod._HYPERPARAMS_CACHE = replace(
+    _hyperparams_mod._HYPERPARAMS_CACHE = replace(
         hp,
         parallel_upsert_workers=workers,
     )

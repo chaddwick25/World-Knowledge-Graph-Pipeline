@@ -136,7 +136,7 @@ class TestSummaryAggregationFoldsAliases:
             )
 
     def test_by_continent_has_only_canonical_buckets(self):
-        from api.views_system_summary import SystemSummaryView
+        from api.views.system_summary import SystemSummaryView
 
         self._seed()
         try:
