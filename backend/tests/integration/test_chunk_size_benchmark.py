@@ -170,7 +170,7 @@ def _run_embed(workers: int, chunk_size: int, iso: str, run_label: str) -> Dict:
 
     from core.services.snapshot.embedding_service import EmbeddingService
     from django.conf import settings
-    from pipeline import envelopes as _envelopes_mod
+    from pipeline import hyperparams as _hyperparams_mod
     from pipeline.envelopes import CountryEnvelope, ModelHyperparams
 
     # Build the base envelope, then patch snapshot_date on the mutable state.
@@ -186,7 +186,7 @@ def _run_embed(workers: int, chunk_size: int, iso: str, run_label: str) -> Dict:
     # the sweep's workers + chunk_size.  The YAML-loaded defaults are frozen
     # per process; replacing the cache is the per-run override mechanism.
     hp = ModelHyperparams.load_from_yaml()
-    _envelopes_mod._HYPERPARAMS_CACHE = replace(
+    _hyperparams_mod._HYPERPARAMS_CACHE = replace(
         hp,
         parallel_upsert_workers=workers,
         parallel_upsert_chunk_size=chunk_size,

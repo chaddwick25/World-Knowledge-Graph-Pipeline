@@ -41,123 +41,39 @@ from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 
 logger = logging.getLogger(__name__)
 
-# ── Template names ─────────────────────────────────────────────────────────
-TEMPLATE_FILTER_AGGREGATE = "FILTER-AGGREGATE-MEASURE (#1)"
-TEMPLATE_OBJECT_FIELD = "OBJECT-FIELD-MEASURE (#2)"
-TEMPLATE_GEOCODE_BATCH = "GEOCODE-BATCH-COMPARE (#4)"
-TEMPLATE_LOCATION_BEARING = "LOCATION-BEARING-CLASSIFY (#5)"
-TEMPLATE_PLACE_ATTRIBUTE = "PLACE-ATTRIBUTE-QUERY (#8)"
-
-TEMPLATE_BY_NUMBER = {
-    1: TEMPLATE_FILTER_AGGREGATE,
-    2: TEMPLATE_OBJECT_FIELD,
-    4: TEMPLATE_GEOCODE_BATCH,
-    5: TEMPLATE_LOCATION_BEARING,
-    8: TEMPLATE_PLACE_ATTRIBUTE,
-}
-
-# Concept-transformation / metric strings (mirror train_mapqa_parser.TEMPLATE_MAP)
-TEMPLATE_META = {
-    TEMPLATE_FILTER_AGGREGATE: (
-        "OBJECT(anchor) + SUB_COND(radius) → SUPPORT(within_radius) → MEASURE",
-        "Count of amenity entities within a radius",
-    ),
-    TEMPLATE_OBJECT_FIELD: (
-        "OBJECT(a) + OBJECT(b) → FIELD(haversine distance) → MEASURE",
-        "Distance in kilometers between two entities",
-    ),
-    TEMPLATE_GEOCODE_BATCH: (
-        "LOCATIONs → coordinates → SUPPORT(distance) × 2 → MEASURE(argmin)",
-        "Closer candidate / nearest entity of a given type",
-    ),
-    TEMPLATE_LOCATION_BEARING: (
-        "SUB_COND(direction) + SUPPORT(nearest in direction) → MEASURE",
-        "Cardinal direction / nearest entity in a direction cone",
-    ),
-    TEMPLATE_PLACE_ATTRIBUTE: (
-        "OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE",
-        "Amenity attribute / adjacent entity of a given type",
-    ),
-}
-
-# Question frames per template (slots: {amenity}, {name}, {a}, {b}, {x}, {y},
-# {z}, {r}, {dir}) — reproduces the lexical patterns of the MapQA-llm data
-# ([MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §4).
-FRAMES = {
-    TEMPLATE_FILTER_AGGREGATE: [
-        "What are the {amenity} within {r}m of {name}?",
-        "Which {amenity} are within {r}m of {name}?",
-        "What {amenity} can be found within {r}m of {name}?",
-        "List the {amenity} within {r}m of {name}.",
-    ],
-    TEMPLATE_OBJECT_FIELD: [
-        "How far is {a} from {b}?",
-        "What is the distance between {a} and {b}?",
-        "How far apart are {a} and {b}?",
-    ],
-    TEMPLATE_GEOCODE_BATCH: [
-        "Which is closer to {z}, {x} or {y}?",
-        "Which spot is closer to {z}, {x} or {y}?",
-        "What is the nearest {amenity} to {name}?",
-        "What is the closest {amenity} around {name}?",
-    ],
-    TEMPLATE_LOCATION_BEARING: [
-        "Which direction is {x} from {y}?",
-        "What is the nearest {amenity} {dir} of {name}?",
-        "What is the closest {amenity} {dir} of {name}?",
-    ],
-    TEMPLATE_PLACE_ATTRIBUTE: [
-        "What amenity is available at {name}?",
-        "What amenity is present in {name}?",
-        "What {amenity} is adjacent to {name}?",
-        "What {amenity} is right by {name}?",
-        "What {amenity} is beside {name}?",
-    ],
-}
-
-# Radius choices for #1 (meters) — [MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §3
-RADII_M = (50, 100, 200, 500)
-
-# 8-way cardinals (full words; matches the executor's N/NE/... sectors)
-CARDINALS = ["north", "northeast", "east", "southeast",
-             "south", "southwest", "west", "northwest"]
-
-# Per-question-type labels written to the CSV (informational — the parser
-# trains on question text + Macro-template, not this column).
-QUESTION_TYPES = {
-    TEMPLATE_FILTER_AGGREGATE: "self_supervised_radius_count",
-    TEMPLATE_OBJECT_FIELD: "self_supervised_distance",
-    TEMPLATE_GEOCODE_BATCH: "self_supervised_nearest",
-    TEMPLATE_LOCATION_BEARING: "self_supervised_bearing",
-    TEMPLATE_PLACE_ATTRIBUTE: "self_supervised_attribute",
-}
-
-# Canonical amenity vocabulary fallback (mirrors train_mapqa_parser.OBJECT_SIGNALS)
-COMMON_AMENITIES = {
-    "bar", "restaurant", "cafe", "hotel", "school", "hospital", "shop",
-    "amenity", "pub", "bank", "pharmacy", "park", "church", "library",
-    "cinema", "theatre", "gas", "fuel", "parking", "toilet", "atm",
-    "bus_station", "fast_food", "place_of_worship", "clinic", "police",
-    "post_office", "car_rental", "shelter", "telephone", "bench",
-}
-
-# Pool sizing: how many candidate entities to fetch per template before
-# sampling with the seeded RNG.
-POOL_PER_CLASS_MULTIPLIER = 12
-MIN_POOL_SIZE = 120
-MAX_POOL_SIZE = 2000
-
-# Distance-range gate for #2 (km) and minimum separation for #5a (m)
-MIN_PAIR_DISTANCE_KM = 0.5
-MAX_PAIR_DISTANCE_KM = 200.0
-MIN_BEARING_PAIR_DISTANCE_M = 100.0
-
-# Direction cone width for #5b (degrees, ± around the cardinal axis)
-DIRECTION_CONE_DEGREES = 45
-DIRECTION_NEAREST_RADIUS_M = 20000
-
-# Adjacency radius for #8b (plan: 50m)
-ADJACENCY_RADIUS_M = 50
+# Template constants + question frames live in mapqa_samplers/constants.py
+# and the per-template sampler mixins in mapqa_samplers/template_{1,2,4,5,8}.py
+# (monolith split, Phase 5 of PIPELINE_CONTROL_PLANE_AND_CLEANUP_PLAN).
+from semantic_search.services.mapqa_samplers.constants import (
+    ADJACENCY_RADIUS_M,
+    CARDINALS,
+    COMMON_AMENITIES,
+    DIRECTION_CONE_DEGREES,
+    DIRECTION_NEAREST_RADIUS_M,
+    FRAMES,
+    MAX_PAIR_DISTANCE_KM,
+    MAX_POOL_SIZE,
+    MIN_BEARING_PAIR_DISTANCE_M,
+    MIN_PAIR_DISTANCE_KM,
+    MIN_POOL_SIZE,
+    POOL_PER_CLASS_MULTIPLIER,
+    QUESTION_TYPES,
+    RADII_M,
+    TEMPLATE_BY_NUMBER,
+    TEMPLATE_FILTER_AGGREGATE,
+    TEMPLATE_GEOCODE_BATCH,
+    TEMPLATE_LOCATION_BEARING,
+    TEMPLATE_META,
+    TEMPLATE_OBJECT_FIELD,
+    TEMPLATE_PLACE_ATTRIBUTE,
+)
+from semantic_search.services.mapqa_samplers import (
+    Template1SamplerMixin,
+    Template2SamplerMixin,
+    Template4SamplerMixin,
+    Template5SamplerMixin,
+    Template8SamplerMixin,
+)
 
 
 def sanitize_name(name: str) -> str:
@@ -174,7 +90,13 @@ def sanitize_name(name: str) -> str:
     return name
 
 
-class MapQAQuestionGenerator:
+class MapQAQuestionGenerator(
+    Template1SamplerMixin,
+    Template2SamplerMixin,
+    Template4SamplerMixin,
+    Template5SamplerMixin,
+    Template8SamplerMixin,
+):
     """Deterministic self-supervised MapQA row generator.
 
     Public API:
@@ -290,389 +212,6 @@ class MapQAQuestionGenerator:
             8: self._sample_template_8,
         }
         return samplers.get(template_num)
-
-    def _sample_template_1(self, country_code, snapshot_id, budget, rng):
-        """FILTER-AGGREGATE-MEASURE: (amenity, named anchor, radius) → count.
-
-        Anchor-relative sampling: choose the anchor first, then pick an
-        amenity that actually has entities within the chosen radius (from the
-        grouped ST_DWithin count query) — guarantees count ≥ 1 by
-        construction instead of burning random (amenity, radius) draws.
-        """
-        pool = self._named_pool(country_code, snapshot_id, budget)
-        if not pool:
-            return []
-        rows = []
-        rng.shuffle(pool)
-        for anchor in pool:
-            if len(rows) >= budget:
-                break
-            for radius_m in rng.sample(RADII_M, len(RADII_M)):
-                nearby = self._amenities_near(
-                    anchor, radius_m, country_code, snapshot_id,
-                    named_only=False, limit=20,
-                )
-                if not nearby:
-                    continue
-                amenity, count = rng.choice(nearby)
-                if count < 1:
-                    continue
-                frame = rng.choice(FRAMES[TEMPLATE_FILTER_AGGREGATE])
-                question = frame.format(amenity=amenity, name=anchor["name"],
-                                        r=radius_m)
-                rows.append({
-                    "template": TEMPLATE_FILTER_AGGREGATE,
-                    "question": question,
-                    "answer": str(count),
-                    "slots": {
-                        "amenity": amenity,
-                        "name": anchor["name"],
-                        "r": f"{radius_m}m",
-                    },
-                    "meta": {
-                        "anchor": anchor["name"],
-                        "amenity": amenity,
-                        "radius_m": radius_m,
-                        "anchor_lat": anchor["lat"],
-                        "anchor_lon": anchor["lon"],
-                        "count": count,
-                    },
-                })
-                break
-        return rows
-
-    def _sample_template_2(self, country_code, snapshot_id, budget, rng):
-        """OBJECT-FIELD-MEASURE: named pair (A, B) 0.5–200 km apart → distance_km."""
-        pool = self._named_pool(country_code, snapshot_id, budget)
-        if len(pool) < 2:
-            return []
-        rows = []
-        rng.shuffle(pool)
-        attempts = 0
-        max_attempts = budget * 60
-        for a in pool:
-            if len(rows) >= budget or attempts >= max_attempts:
-                break
-            for _ in range(20):
-                attempts += 1
-                b = rng.choice(pool)
-                if b["osm_id"] == a["osm_id"] and b["osm_type"] == a["osm_type"]:
-                    continue
-                dist_km = self.haversine_km(
-                    a["lat"], a["lon"], b["lat"], b["lon"]
-                )
-                if MIN_PAIR_DISTANCE_KM <= dist_km <= MAX_PAIR_DISTANCE_KM:
-                    frame = rng.choice(FRAMES[TEMPLATE_OBJECT_FIELD])
-                    question = frame.format(a=a["name"], b=b["name"])
-                    rows.append({
-                        "template": TEMPLATE_OBJECT_FIELD,
-                        "question": question,
-                        "answer": f"{round(dist_km, 2)}",
-                        "slots": {"a": a["name"], "b": b["name"]},
-                        "meta": {
-                            "a": a["name"], "b": b["name"],
-                            "a_lat": a["lat"], "a_lon": a["lon"],
-                            "b_lat": b["lat"], "b_lon": b["lon"],
-                            "distance_km": dist_km,
-                        },
-                    })
-                    break
-        return rows
-
-    def _sample_template_4(self, country_code, snapshot_id, budget, rng):
-        """GEOCODE-BATCH-COMPARE: (a) triple argmin; (b) nearest amenity."""
-        rows = []
-        rows.extend(self._sample_template_4a(country_code, snapshot_id,
-                                             budget // 2, rng))
-        rows.extend(self._sample_template_4b(country_code, snapshot_id,
-                                             budget - budget // 2, rng))
-        return rows
-
-    def _sample_template_4a(self, country_code, snapshot_id, budget, rng):
-        """(a) anchor Z + candidates X, Y → name of the closer candidate."""
-        pool = self._named_pool(country_code, snapshot_id, budget)
-        if len(pool) < 3:
-            return []
-        rows = []
-        rng.shuffle(pool)
-        attempts = 0
-        max_attempts = max(budget * 60, 200)
-        for z in pool:
-            if len(rows) >= budget or attempts >= max_attempts:
-                break
-            for _ in range(20):
-                attempts += 1
-                x = rng.choice(pool)
-                y = rng.choice(pool)
-                if self._same_entity(x, z) or self._same_entity(y, z) or \
-                        self._same_entity(x, y):
-                    continue
-                d_x = self.haversine_km(
-                    z["lat"], z["lon"], x["lat"], x["lon"]
-                ) * 1000
-                d_y = self.haversine_km(
-                    z["lat"], z["lon"], y["lat"], y["lon"]
-                ) * 1000
-                if abs(d_x - d_y) < 1.0:
-                    continue  # too ambiguous
-                winner = x if d_x < d_y else y
-                frame = rng.choice(FRAMES[TEMPLATE_GEOCODE_BATCH][:2])
-                question = frame.format(z=z["name"], x=x["name"], y=y["name"])
-                rows.append({
-                    "template": TEMPLATE_GEOCODE_BATCH,
-                    "question": question,
-                    "answer": winner["name"],
-                    "slots": {"z": z["name"], "x": x["name"], "y": y["name"]},
-                    "meta": {
-                        "z": z["name"], "x": x["name"], "y": y["name"],
-                        "z_lat": z["lat"], "z_lon": z["lon"],
-                        "x_lat": x["lat"], "x_lon": x["lon"],
-                        "y_lat": y["lat"], "y_lon": y["lon"],
-                        "winner": winner["name"],
-                    },
-                })
-                break
-        return rows
-
-    def _sample_template_4b(self, country_code, snapshot_id, budget, rng):
-        """(b) (amenity, anchor) → nearest entity of the type → name.
-
-        Anchor-relative: pick the amenity from the named-amenity pool within
-        20 km of the anchor, then resolve the true (unbounded) nearest named
-        entity of that type — high hit rate, exact ground truth.
-        """
-        pool = self._named_pool(country_code, snapshot_id, budget)
-        if not pool:
-            return []
-        rows = []
-        rng.shuffle(pool)
-        for anchor in pool:
-            if len(rows) >= budget:
-                break
-            nearby = self._amenities_near(
-                anchor, DIRECTION_NEAREST_RADIUS_M, country_code, snapshot_id,
-                named_only=True, limit=20,
-            )
-            if not nearby:
-                continue
-            amenity = rng.choice(nearby)[0]
-            name = self._nearest_amenity(
-                anchor, amenity, country_code, snapshot_id
-            )
-            if not name:
-                continue
-            frame = rng.choice(FRAMES[TEMPLATE_GEOCODE_BATCH][2:])
-            question = frame.format(amenity=amenity, name=anchor["name"])
-            rows.append({
-                "template": TEMPLATE_GEOCODE_BATCH,
-                "question": question,
-                "answer": name,
-                "slots": {"amenity": amenity, "name": anchor["name"]},
-                "meta": {
-                    "anchor": anchor["name"],
-                    "amenity": amenity,
-                    "anchor_lat": anchor["lat"],
-                    "anchor_lon": anchor["lon"],
-                    "answer": name,
-                },
-            })
-        return rows
-
-    def _sample_template_5(self, country_code, snapshot_id, budget, rng):
-        """LOCATION-BEARING-CLASSIFY: (a) bearing pair; (b) nearest in cone."""
-        rows = []
-        rows.extend(self._sample_template_5a(country_code, snapshot_id,
-                                             budget // 2, rng))
-        rows.extend(self._sample_template_5b(country_code, snapshot_id,
-                                             budget - budget // 2, rng))
-        return rows
-
-    def _sample_template_5a(self, country_code, snapshot_id, budget, rng):
-        """(a) pair (X, Y) → bearing → cardinal word (executor convention:
-        bearing from X to Y for 'Which direction is X from Y?')."""
-        pool = self._named_pool(country_code, snapshot_id, budget)
-        if len(pool) < 2:
-            return []
-        rows = []
-        rng.shuffle(pool)
-        attempts = 0
-        max_attempts = budget * 60
-        for x in pool:
-            if len(rows) >= budget or attempts >= max_attempts:
-                break
-            for _ in range(20):
-                attempts += 1
-                y = rng.choice(pool)
-                if self._same_entity(x, y):
-                    continue
-                dist_m = self.haversine_km(
-                    x["lat"], x["lon"], y["lat"], y["lon"]
-                ) * 1000
-                if dist_m < MIN_BEARING_PAIR_DISTANCE_M:
-                    continue
-                theta = self.bearing_degrees(x["lat"], x["lon"],
-                                             y["lat"], y["lon"])
-                cardinal = self.cardinal_from_bearing(theta)
-                frame = FRAMES[TEMPLATE_LOCATION_BEARING][0]
-                question = frame.format(x=x["name"], y=y["name"])
-                rows.append({
-                    "template": TEMPLATE_LOCATION_BEARING,
-                    "question": question,
-                    "answer": cardinal,
-                    "slots": {"x": x["name"], "y": y["name"]},
-                    "meta": {
-                        "x": x["name"], "y": y["name"],
-                        "x_lat": x["lat"], "x_lon": x["lon"],
-                        "y_lat": y["lat"], "y_lon": y["lon"],
-                        "bearing_deg": theta,
-                        "cardinal": cardinal,
-                    },
-                })
-                break
-        return rows
-
-    def _sample_template_5b(self, country_code, snapshot_id, budget, rng):
-        """(b) (amenity, anchor, direction cone ±45°) → nearest in cone → name.
-
-        Anchor-relative: fetch the named-amenity entities within 20 km of the
-        anchor once, pick a cardinal direction whose cone contains at least
-        one entity, and use the nearest entity in that cone. The nearest
-        entity of its own amenity type is guaranteed to be the cone's nearest
-        by construction (a closer same-type entity would have been the
-        nearest entity).
-        """
-        pool = self._named_pool(country_code, snapshot_id, budget)
-        if not pool:
-            return []
-        rows = []
-        rng.shuffle(pool)
-        for anchor in pool:
-            if len(rows) >= budget:
-                break
-            nearby = self._named_amenities_near(
-                anchor, DIRECTION_NEAREST_RADIUS_M, country_code, snapshot_id,
-                limit=300,
-            )
-            if not nearby:
-                continue
-            directions = list(CARDINALS)
-            rng.shuffle(directions)
-            for cardinal in directions:
-                target_deg = CARDINALS.index(cardinal) * 45
-                in_cone = [
-                    e for e in nearby
-                    if self._angular_diff(
-                        self.bearing_degrees(anchor["lat"], anchor["lon"],
-                                             e["lat"], e["lon"]),
-                        target_deg,
-                    ) <= DIRECTION_CONE_DEGREES
-                ]
-                if not in_cone:
-                    continue
-                nearest = min(in_cone, key=lambda e: e["distance_m"])
-                frame = rng.choice(FRAMES[TEMPLATE_LOCATION_BEARING][1:])
-                question = frame.format(amenity=nearest["amenity"],
-                                        dir=cardinal, name=anchor["name"])
-                rows.append({
-                    "template": TEMPLATE_LOCATION_BEARING,
-                    "question": question,
-                    "answer": nearest["name"],
-                    "slots": {"amenity": nearest["amenity"], "dir": cardinal,
-                              "name": anchor["name"]},
-                    "meta": {
-                        "anchor": anchor["name"],
-                        "amenity": nearest["amenity"],
-                        "dir": cardinal,
-                        "anchor_lat": anchor["lat"],
-                        "anchor_lon": anchor["lon"],
-                        "answer": nearest["name"],
-                    },
-                })
-                break
-        return rows
-
-    def _sample_template_8(self, country_code, snapshot_id, budget, rng):
-        """PLACE-ATTRIBUTE-QUERY: (a) named entity → amenity attribute;
-        (b) (amenity, anchor) adjacency at 50m → name."""
-        rows = []
-        rows.extend(self._sample_template_8a(country_code, snapshot_id,
-                                             budget // 2, rng))
-        rows.extend(self._sample_template_8b(country_code, snapshot_id,
-                                             budget - budget // 2, rng))
-        return rows
-
-    def _sample_template_8a(self, country_code, snapshot_id, budget, rng):
-        """(a) named entity with tags.amenity → the amenity value."""
-        pool = self._named_pool(country_code, snapshot_id, budget)
-        rows = []
-        rng.shuffle(pool)
-        for entity in pool:
-            if len(rows) >= budget:
-                break
-            amenity = (entity["tags"] or {}).get("amenity")
-            if not amenity:
-                continue
-            frame = rng.choice(FRAMES[TEMPLATE_PLACE_ATTRIBUTE][:2])
-            question = frame.format(name=entity["name"])
-            rows.append({
-                "template": TEMPLATE_PLACE_ATTRIBUTE,
-                "question": question,
-                "answer": amenity,
-                "slots": {"name": entity["name"]},
-                "meta": {
-                    "name": entity["name"],
-                    "amenity": amenity,
-                    "lat": entity["lat"],
-                    "lon": entity["lon"],
-                },
-            })
-        return rows
-
-    def _sample_template_8b(self, country_code, snapshot_id, budget, rng):
-        """(b) (amenity, anchor) → nearest amenity entity within 50m → name.
-
-        Anchor-relative: pick a named amenity entity within 50 m of the
-        anchor, then resolve the exact nearest of its amenity type within
-        50 m (covers the edge where an unnamed closer entity of the same
-        type exists) — the plan's ST_DWithin 50m excl. self, LIMIT 1.
-        """
-        pool = self._named_pool(country_code, snapshot_id, budget)
-        if not pool:
-            return []
-        rows = []
-        rng.shuffle(pool)
-        for anchor in pool:
-            if len(rows) >= budget:
-                break
-            nearby = self._named_amenities_near(
-                anchor, ADJACENCY_RADIUS_M, country_code, snapshot_id,
-                limit=10,
-            )
-            if not nearby:
-                continue
-            e = rng.choice(nearby)
-            name = self._nearest_amenity(
-                anchor, e["amenity"], country_code, snapshot_id,
-                max_radius_m=ADJACENCY_RADIUS_M,
-            )
-            if not name:
-                continue
-            frame = rng.choice(FRAMES[TEMPLATE_PLACE_ATTRIBUTE][2:])
-            question = frame.format(amenity=e["amenity"], name=anchor["name"])
-            rows.append({
-                "template": TEMPLATE_PLACE_ATTRIBUTE,
-                "question": question,
-                "answer": name,
-                "slots": {"amenity": e["amenity"], "name": anchor["name"]},
-                "meta": {
-                    "anchor": anchor["name"],
-                    "amenity": e["amenity"],
-                    "anchor_lat": anchor["lat"],
-                    "anchor_lon": anchor["lon"],
-                    "answer": name,
-                },
-            })
-        return rows
 
     # ── Data access (vectors DB) ───────────────────────────────────────────
 

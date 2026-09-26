@@ -1,15 +1,15 @@
 from django.urls import path
 from . import views
-from . import views_auth
 from . import country_search_views
-from . import views_augmented_data
-from . import views_system_summary
 from .services import views_app_state
 from .views import (
     InitialStatusView,
     SystemStatusView,
     RegionMapDataView,
 )
+from .views import auth as views_auth
+from .views import augmented_data as views_augmented_data
+from .views import system_summary as views_system_summary
 
 # Core API Endpoints - E2E Tested
 urlpatterns = [
