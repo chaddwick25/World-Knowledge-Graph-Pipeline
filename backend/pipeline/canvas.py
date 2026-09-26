@@ -167,7 +167,6 @@ def _get_step_tasks():
         step_5_train_gv_nle,
         step_5b_finalize_subgraph_nle,
         step_5c_graph_spectral_analysis,
-        step_5d_temporal_drift,
         step_6_mark_search_ready,
     )
     return {
@@ -180,7 +179,10 @@ def _get_step_tasks():
         5: step_5_train_gv_nle,
         5.5: step_5b_finalize_subgraph_nle,         ***REMOVED*** Chord callback for Step 5 subgraphs
         5.7: step_5c_graph_spectral_analysis,       ***REMOVED*** Graph & spectral analysis (non-fatal)
-        5.8: step_5d_temporal_drift,                ***REMOVED*** Temporal drift (conditional: >=2 snapshots)
+        ***REMOVED*** 5.8 (step_5d_temporal_drift) removed from the canvas 2026-09-26 —
+        ***REMOVED*** temporal drift is a scheduled-interval feature, not a per-run step.
+        ***REMOVED*** TODO: re-add as its own feature; module + services retained at
+        ***REMOVED*** pipeline/tasks/country_pipeline_steps/step_5d_temporal_drift.py.
         6: step_6_mark_search_ready,
     }
 
@@ -395,7 +397,7 @@ def _run_eager(cfg, run, steps) -> None:
     )
     tasks_list = [
         steps[1], steps[2], steps[3], steps[4], steps[5],
-        steps[5.7], steps[5.8], steps[6],
+        steps[5.7], steps[6],
     ]
     config_dict = cfg.to_dict()
 
@@ -471,12 +473,9 @@ def _run_eager(cfg, run, steps) -> None:
         ***REMOVED*** Step 5c: graph & spectral analysis (non-fatal — failures logged,
         ***REMOVED*** pipeline continues).  Step 5c is new (GRAPH_SPECTRAL_TEMPORAL_PLAN.md).
         config_dict = _run_sync_step('graph_spectral_analysis', tasks_list[5], config_dict)
-        ***REMOVED*** Step 5d: temporal drift (conditional — only runs when >=2 snapshots
-        ***REMOVED*** exist for this country; the task body no-ops otherwise).
-        config_dict = _run_sync_step('temporal_drift', tasks_list[6], config_dict)
         ***REMOVED*** Step 6: mark search ready
         step_name = _STEP_NAMES.get(6, 'step_6')
-        config_dict = _run_sync_step(step_name, tasks_list[7], config_dict)
+        config_dict = _run_sync_step(step_name, tasks_list[6], config_dict)
 
         run.status = PipelineRun.PipelineStatus.COMPLETED
         run.completed_at = datetime.now(timezone.utc)
@@ -587,13 +586,14 @@ def _run_async(cfg, run, steps) -> None:
         ***REMOVED*** step_4b is skipped (no-op without subgraph results).
         canvas_parts.append(steps[4].s())
     canvas_parts.append(steps[5].s())
-    ***REMOVED*** Step 5c (graph & spectral analysis) + Step 5d (temporal drift) run
-    ***REMOVED*** after Step 5 and before Step 6.  Both are non-fatal / conditional —
-    ***REMOVED*** their task bodies log warnings and no-op when prerequisites are missing
-    ***REMOVED*** (e.g. <2 snapshots for 5d).  See GRAPH_SPECTRAL_TEMPORAL_PLAN.md.
+    ***REMOVED*** Step 5c (graph & spectral analysis) runs after Step 5 and before
+    ***REMOVED*** Step 6.  Non-fatal — its task body logs warnings and no-ops when
+    ***REMOVED*** prerequisites are missing.  See GRAPH_SPECTRAL_TEMPORAL_PLAN.md.
+    ***REMOVED*** Step 5d (temporal drift) was removed from the canvas 2026-09-26 — it is
+    ***REMOVED*** a scheduled-interval feature, not a per-run step.  TODO: re-add as its
+    ***REMOVED*** own feature; module kept at step_5d_temporal_drift.py.
     canvas_parts.extend([
         steps[5.7].s(),   ***REMOVED*** step_5c_graph_spectral_analysis
-        steps[5.8].s(),   ***REMOVED*** step_5d_temporal_drift
     ])
     canvas_parts.append(steps[6].s())
 
