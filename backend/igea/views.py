@@ -1,5 +1,4 @@
 import logging
-from django.conf import settings
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
@@ -116,14 +115,15 @@ def predict_triplets(request):
     raw_slug = country_data.get('slug') or country_name
     country_slug = normalize_country_slug(raw_slug)
 
-    # USLP parameters (hyperparams.yaml uslp.threshold default, allow request override)
-    threshold = float(request.data.get('threshold', ModelHyperparams.load_from_yaml().uslp_threshold))
-    top_k = int(request.data.get('top_k', settings.USLP_TOP_K))
-    limit = int(request.data.get('limit', settings.USLP_LIMIT))
-    max_heads = int(request.data.get('max_heads', settings.USLP_MAX_HEADS))
+    # USLP parameters (hyperparams.yaml uslp section default, allow request override)
+    hp = ModelHyperparams.load_from_yaml()
+    threshold = float(request.data.get('threshold', hp.uslp_threshold))
+    top_k = int(request.data.get('top_k', hp.uslp_top_k))
+    limit = int(request.data.get('limit', hp.uslp_limit))
+    max_heads = int(request.data.get('max_heads', hp.uslp_max_heads))
 
     # GPU handling: 'auto' means detect, 'true'/'false' means force
-    use_gpu_setting = request.data.get('use_gpu', settings.USLP_USE_GPU)
+    use_gpu_setting = request.data.get('use_gpu', str(hp.uslp_use_gpu).lower())
     if use_gpu_setting == 'auto':
         try:
             import torch
@@ -135,8 +135,8 @@ def predict_triplets(request):
     else:
         use_gpu = bool(use_gpu_setting)
 
-    gpu_device = request.data.get('gpu_device', settings.USLP_GPU_DEVICE)
-    use_fp64 = bool(request.data.get('use_fp64', settings.USLP_USE_FP64))
+    gpu_device = request.data.get('gpu_device', hp.uslp_gpu_device)
+    use_fp64 = bool(request.data.get('use_fp64', hp.uslp_use_fp64))
 
     # Optional existing ProcessingSession for websocket tracking
     session_id = request.data.get('session_id')
