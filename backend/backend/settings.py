@@ -1,34 +1,24 @@
-from pathlib import Path
 import os
-from dotenv import load_dotenv
+import sys
+from datetime import datetime
+from pathlib import Path
 import dj_database_url
+from django.utils import timezone
+from dotenv import load_dotenv
 
-***REMOVED*** Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-***REMOVED*** Load environment variables from .env file in the project root
 PROJECT_ROOT = BASE_DIR.parent
 load_dotenv(os.path.join(PROJECT_ROOT, '.env'))
-
 ***REMOVED*** Add the project root to the Python path to allow imports from the root
-import sys
 sys.path.insert(0, str(PROJECT_ROOT))
-
-***REMOVED*** Quick-start development settings - unsuitable for production
-***REMOVED*** See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 ***REMOVED*** SECURITY WARNING: keep the secret key used in production secret!
 ***REMOVED*** Set DJANGO_SECRET_KEY in production; the insecure value is a dev default.
-SECRET_KEY = os.getenv(
-    'DJANGO_SECRET_KEY',
-    'REMOVED',
-)
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 
 ***REMOVED*** SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-***REMOVED*** Deployed backend hosts (Tailscale funnel / custom domain), set on the
-***REMOVED*** homeserver env. Without this, Django answers 400 DisallowedHost for the
-***REMOVED*** funnel hostname.
+***REMOVED*** Extra hosts come from the homeserver env (Tailscale funnel / custom domain).
 _extra_hosts = [h.strip() for h in os.getenv('ALLOWED_EXTRA_HOSTS', '').split(',') if h.strip()]
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', *_extra_hosts]
 
@@ -38,25 +28,20 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', *_extra_hosts]
 ***REMOVED*** BASE DATA DIRECTORY (HOT Storage)
 BASE_DATA_DIR = os.getenv('BASE_DATA_DIR')
 
-***REMOVED*** OSM Planet File Path, this is the groundtruth for the WorldKG Pipeline.
-***REMOVED*** Derived from BASE_DATA_DIR — the history PBF is the file the pipeline
-***REMOVED*** actually consumes (was env-overridable pre-2026-09-25; compose and .env
-***REMOVED*** both pointed here).
+***REMOVED*** History PBF — the file the pipeline actually consumes.
 _default_planet_osm = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/planet/history-260209.osm.pbf') if BASE_DATA_DIR else None
 PLANET_OSM_FILE_PATH = _default_planet_osm
 
-***REMOVED*** OSM Polygon Files Directory, this is the directory where the polygon files are stored
 _default_polygon_files_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/osm_polygon_files') if BASE_DATA_DIR else None
 POLYGON_FILES_DIR = _default_polygon_files_dir
 
-***REMOVED*** Optional legacy polygon files directory (e.g., pre-existing tree with subgraphs)
+***REMOVED*** Legacy tree with subgraphs (pre-existing layout)
 _default_legacy_polygon_files_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/osm_polygon_files_old') if BASE_DATA_DIR else None
 LEGACY_POLYGON_FILES_DIR = _default_legacy_polygon_files_dir
 
 ***REMOVED*** Geofabrik index URL used for polygon discovery
 GEOFABRIK_INDEX_URL = 'https://download.geofabrik.de/index-v1.json'
 
-***REMOVED*** OSM Wikidata Extractions Directory, this is the directory where the wikidata extractions are stored
 _default_osm_wikidata_extractions = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/osm_wikidata_extractions') if BASE_DATA_DIR else None
 OSM_WIKIDATA_EXTRACTIONS_DIR = _default_osm_wikidata_extractions
 
@@ -70,14 +55,12 @@ PBF_CACHE_DIR = _default_pbf_cache_dir
 _default_preprocessed_dir = os.path.join(BASE_DATA_DIR, 'preprocessed') if BASE_DATA_DIR else None
 PREPROCESSED_DIR = _default_preprocessed_dir
 
-***REMOVED*** OSM Wikidata Extractions for Continents
+***REMOVED*** Continents extractions + PBF files
 _default_continents_output_dir = os.path.join(OSM_WIKIDATA_EXTRACTIONS_DIR, 'continents') if OSM_WIKIDATA_EXTRACTIONS_DIR else None
 OSM_CONTINENTS_OUTPUT_DIR = _default_continents_output_dir
 
 _default_osm_wikidata_temp_dir = os.path.join(OSM_WIKIDATA_EXTRACTIONS_DIR, 'temp') if OSM_WIKIDATA_EXTRACTIONS_DIR else None
 OSM_WIKIDATA_TEMP_DIR = _default_osm_wikidata_temp_dir
-
-
 
 ***REMOVED*** FastText Model Configuration
 _default_fasttext_model_path = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/models/fasttext/cc.en.300.bin') if BASE_DATA_DIR else None
@@ -95,10 +78,8 @@ WORLDKG_REDIS_DB = int(os.getenv('WORLDKG_REDIS_DB', '2'))
 WS_HOST = os.getenv('WS_HOST', 'localhost')
 WS_PORT = os.getenv('WS_PORT', '8000')
 
-***REMOVED*** Single Snapshot Configuration for Temporal Pipeline
-***REMOVED*** Used by Vue-triggered preprocessing to generate only one snapshot per country
+***REMOVED*** Single snapshot per country (Vue-triggered preprocessing)
 SINGLE_SNAPSHOT_DATE = '2025_12_31'
-***REMOVED*** Derive year from date (e.g., '2025_12_31' -> 2025)
 SINGLE_SNAPSHOT_YEAR = int(SINGLE_SNAPSHOT_DATE.split('_')[0])
 
 ***REMOVED*** Osmium Tool Configuration
@@ -114,13 +95,8 @@ OSMIUM_EXECUTABLE = os.getenv(
 ***REMOVED*** ============================================================================
 ***REMOVED*** PRE-FLIGHT ENTROPY GATING (WorldKG Pipeline)
 ***REMOVED*** ============================================================================
-***REMOVED*** Skip full pipeline if Shannon entropy of WorldKG class distribution is below this.
-***REMOVED*** Low entropy = few dominant classes = semantically homogeneous region.
-MIN_PREFLIGHT_SHANNON_ENTROPY = 1.5
-
-***REMOVED*** Skip full pipeline if entropy delta vs previous fingerprint is below this.
-***REMOVED*** Low delta = no meaningful semantic change since last run.
-MIN_PREFLIGHT_ENTROPY_DELTA = 0.2
+***REMOVED*** Values: entropy section of pipeline/hyperparams.yaml; dataclass defaults
+***REMOVED*** (1.5 / 0.2) are the code-level fallback.
 
 ***REMOVED*** ============================================================================
 ***REMOVED*** GOOGLE PLACES VALIDATION (Stage 10 — Amplification Layer)
@@ -133,124 +109,74 @@ GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', None)
 ***REMOVED*** ============================================================================
 COLD_STORAGE_BASE_DIR = os.getenv('COLD_STORAGE_BASE_DIR')
 
-***REMOVED*** OSM corpus used for fine-tuning and retraining.
-***REMOVED*** Repo-local corpus (backend/data/corpus) — matches the former
-***REMOVED*** CORPUS_DIR=.env value; derived, not env-overridable.
+***REMOVED*** Repo-local corpus (backend/data/corpus) — derived, not env-overridable.
 _default_corpus_dir = os.path.join(BASE_DIR, 'data', 'corpus')
 CORPUS_DIR = _default_corpus_dir
 
 _default_graph_assets_dir = os.path.join(COLD_STORAGE_BASE_DIR, 'graph_assets') if COLD_STORAGE_BASE_DIR else None
 GRAPH_ASSETS_DIR = _default_graph_assets_dir
 
-***REMOVED*** GeoVectors Embeddings Root (for TSV files used in pickle generation)
-***REMOVED*** This is the primary source directory for the scan_embeddings command.
+***REMOVED*** GeoVectors embeddings root (TSV files used in pickle generation)
 _default_embeddings_dir = os.path.join(COLD_STORAGE_BASE_DIR, 'embeddings') if COLD_STORAGE_BASE_DIR else None
 EMBEDDINGS_ROOT = _default_embeddings_dir
 
-***REMOVED*** Fallback embeddings root for systems where embeddings live elsewhere
-***REMOVED*** (e.g. on a separate mount). The scan_embeddings command checks this
-***REMOVED*** before falling back to EMBEDDINGS_ROOT. Machine-specific opt-in — env-only.
+***REMOVED*** Fallback embeddings root (separate mount); machine-specific opt-in — env-only.
 _extra_embeddings_dir = os.getenv('EXTRA_EMBEDDINGS_ROOT', None)
 EXTRA_EMBEDDINGS_ROOT = _extra_embeddings_dir
 
-***REMOVED*** Country overrides JSON path (cold storage) — now also contains embedding_splits section
+***REMOVED*** Country overrides JSON path (cold storage)
 _default_overrides_json = os.path.join(COLD_STORAGE_BASE_DIR, 'overrides.json') if COLD_STORAGE_BASE_DIR else None
 OVERRIDES_JSON_PATH = _default_overrides_json
 
 _default_downloads_dir = os.path.join(BASE_DATA_DIR, 'downloads') if BASE_DATA_DIR else str(BASE_DIR / 'downloads')
 DOWNLOADS_DIR = _default_downloads_dir
 
-***REMOVED*** WorldKG ontology TTL path (lives under the OSM-PBF-FILES mount, matching
-***REMOVED*** the former WORLDKG_ONTOLOGY_PATH=.env / compose values)
+***REMOVED*** WorldKG ontology TTL (under the OSM-PBF-FILES mount)
 _default_worldkg_ontology = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/world_kg_ontology/WorldKG_Ontolgy.ttl') if BASE_DATA_DIR else None
 WORLDKG_ONTOLOGY_PATH = _default_worldkg_ontology
 
-***REMOVED*** Continents root directory (for continent PBF files) — same directory as
-***REMOVED*** OSM_CONTINENTS_OUTPUT_DIR (continents extractions); matches the compose
-***REMOVED*** override that was previously required.
+***REMOVED*** Continents root (same directory as the continents extractions)
 _default_continents_root = os.path.join(OSM_WIKIDATA_EXTRACTIONS_DIR, 'continents') if OSM_WIKIDATA_EXTRACTIONS_DIR else None
 CONTINENTS_ROOT = _default_continents_root
 
-***REMOVED*** Pipeline logs directory (categorized run logs: gv-nle, pipeline, tests, uslp)
+***REMOVED*** Categorized run logs (gv-nle, pipeline, tests, uslp)
 _default_logs_dir = os.path.join(BASE_DATA_DIR, 'logs') if BASE_DATA_DIR else None
 LOGS_DIR = _default_logs_dir
 
-***REMOVED*** Wikidata candidate cache directory (JSON caches per country)
+***REMOVED*** Wikidata candidate cache (JSON caches per country)
 _default_wikidata_cache_dir = os.path.join(BASE_DATA_DIR, 'data/wikidata_cache') if BASE_DATA_DIR else None
 WIKIDATA_CACHE_DIR = _default_wikidata_cache_dir
 
-***REMOVED*** MapQA parser data directory — training data + model artifacts.
-***REMOVED*** Layout (see docs/plans/MAPQA_PARSER_BUILD_ORDER.md §8):
-***REMOVED***   {MAPQA_PARSER_DATA_DIR}/raw/           — MapQA dataset (mounted from host via MAPQA_DATASET_DIR)
-***REMOVED***   {MAPQA_PARSER_DATA_DIR}/training_data/ — mapqa_template_mapping.csv (generated)
-***REMOVED***   {MAPQA_PARSER_DATA_DIR}/artifacts/     — vectorizer.pkl, classifier.pkl, etc.
-***REMOVED*** Env-driven: defaults to BASE_DATA_DIR/mapqa_parser (the /app/data mount in Docker).
+***REMOVED*** MapQA parser data — training data + model artifacts (layout in
+***REMOVED*** docs/plans/MAPQA_PARSER_BUILD_ORDER.md §8).
 _default_mapqa_parser_dir = os.path.join(BASE_DATA_DIR, 'mapqa_parser') if BASE_DATA_DIR else None
 MAPQA_PARSER_DATA_DIR = _default_mapqa_parser_dir
 
-***REMOVED*** k-NN graph artifact directory — serialized graphs from Step 5c.
-***REMOVED*** Layout:
-***REMOVED***   {GRAPH_ARTIFACT_DIR}/{country_code}_{snapshot_id}.graphml
-***REMOVED*** These are loaded at query time by QueryExecutorService for graph-based
-***REMOVED*** operators (heat kernel diffusion, Dijkstra, BFS) per the Spatial-Agent
-***REMOVED*** paper's GeoFlow Graph execution model.
+***REMOVED*** k-NN graph artifacts from Step 5c, loaded at query time for graph-based
+***REMOVED*** operators (heat kernel diffusion, Dijkstra, BFS).
 _default_graph_artifact_dir = os.path.join(BASE_DIR, 'data', 'graph_artifacts')
 GRAPH_ARTIFACT_DIR = _default_graph_artifact_dir
 
-***REMOVED*** Step 5c run report directory — JSON reports capturing solver selection,
-***REMOVED*** timing, graph dimensions, eigenvalue quality, and factor-row write status.
-***REMOVED*** Layout:
-***REMOVED***   {SPECTRAL_REPORT_DIR}/step5c_{country}_{snapshot}_{run_id}.json
+***REMOVED*** Step 5c run reports (solver selection, timing, eigenvalue quality).
 _default_spectral_report_dir = os.path.join(BASE_DIR, 'data', 'spectral_reports')
 SPECTRAL_REPORT_DIR = _default_spectral_report_dir
 
 ***REMOVED*** Factor-node tables (docs/plans/FACTOR_NODE_RUNTIME_JOINS_PLAN.md).
-***REMOVED*** The MapQA executor resolves SUPPORT/factor nodes via SQL joins against
-***REMOVED*** the factor_* tables (written by Steps 5c/5d) instead of loading GraphML
-***REMOVED*** + NetworkX + scipy at request time.  The legacy runtime graph path has
-***REMOVED*** been removed; the table path is authoritative.  PostGIS remains as a
-***REMOVED*** spatial fallback for templates without factor-table coverage.
 FACTOR_NODE_TABLES_ENABLED = True
 
 ***REMOVED*** Eigenbasis coherence (GRAPH_SPECTRAL_FEEDBACK_HARDENING_PLAN Phase 1):
-***REMOVED*** False (default) = lenient — NULL fingerprint_id (pre-migration rows) still
-***REMOVED*** resolves with a trace note. True = strict — NULL is treated as a mismatch,
-***REMOVED*** forcing the PostGIS fallback during the transition window.
+***REMOVED*** strict = NULL fingerprint_id forces the PostGIS fallback.
 FACTOR_EIGENBASIS_STRICT = False
 
-***REMOVED*** USLP (Unsupervised Spatial Link Prediction) Configuration
-***REMOVED*** USLP_THRESHOLD lives in hyperparams.yaml (uslp.threshold); the value below
-***REMOVED*** is the code fallback when the YAML key is absent. USLP_USE_GPU /
-***REMOVED*** USLP_GPU_DEVICE stay env-driven (per deployment / per country tuning).
-***REMOVED*** The scale limits are code constants.
-USLP_THRESHOLD = 0.7
-USLP_TOP_K = 50
-USLP_LIMIT = 1000000000
-USLP_MAX_HEADS = 1000000000
-***REMOVED*** USLP_USE_GPU: 'auto' (default), 'true', or 'false'
-USLP_USE_GPU = os.getenv('USLP_USE_GPU', 'true').lower()
-USLP_GPU_DEVICE = os.getenv('USLP_GPU_DEVICE', 'cuda:0')
-USLP_USE_FP64 = False
+***REMOVED*** USLP — runtime truth in pipeline/hyperparams.yaml (uslp section);
+***REMOVED*** dataclass defaults are the code-level fallback.
 
 CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{REDIS_PORT}/0"
 
 ***REMOVED*** ── Celery Result Backend ──
-***REMOVED*** Custom Django DB backend with chord-in-chain fix.
-***REMOVED***
-***REMOVED*** django-celery-results 2.0.0's DatabaseBackend has a bug where
-***REMOVED*** ChordCounter records are not reliably created for chords embedded in a
-***REMOVED*** chain (Step 5 NLE chord). This caused on_chord_part_return to raise
-***REMOVED*** ChordCounter.DoesNotExist, marking tasks as FAILURE and triggering
-***REMOVED*** re-delivery — each subgraph was trained 2-7x instead of once (Norway:
-***REMOVED*** 9h47m instead of ~4h50m).
-***REMOVED***
-***REMOVED*** Our PatchedDatabaseBackend (pipeline/celery_results_backend.py) fixes
-***REMOVED*** this by replacing ChordCounter with the standard Celery
-***REMOVED*** fallback_chord_unlock() polling task. TaskResult records are still
-***REMOVED*** written to Django's DB, so /api/snapshot-jobs/<country>/<date>/results/
-***REMOVED*** works.
-***REMOVED***
-***REMOVED*** See: docs/issues/CHORDCOUNTER_DOES_NOT_EXIST_BUG.md
+***REMOVED*** Custom Django DB backend with chord-in-chain fix (django-celery-results
+***REMOVED*** 2.0.0's DatabaseBackend loses ChordCounter records for chords in a chain,
+***REMOVED*** re-training subgraphs 2-7x; see docs/issues/CHORDCOUNTER_DOES_NOT_EXIST_BUG.md).
 CELERY_RESULT_BACKEND = os.environ.get(
     "CELERY_RESULT_BACKEND",
     "pipeline.celery_results_backend:PatchedDatabaseBackend",
@@ -263,17 +189,14 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 
-***REMOVED*** Ack tasks on completion (not receipt) so they survive worker death/crash.
-***REMOVED*** Without this, a worker freeze/kill silently loses the in-flight task —
-***REMOVED*** Celery never re-delivers it.  This caused Step 6 to vanish during the
-***REMOVED*** 2026-08-21 IE freeze, requiring manual re-dispatch.
+***REMOVED*** Ack on completion (not receipt) so worker death re-delivers in-flight tasks
+***REMOVED*** (Step 6 vanished during the 2026-08-21 IE freeze without this).
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
-
-***REMOVED*** Deployed frontend origins (Netlify domain), set on the homeserver env via
-***REMOVED*** CORS_EXTRA_ORIGINS; the literals below are the local dev defaults.
+***REMOVED*** Deployed frontend origins (Netlify domain) via CORS_EXTRA_ORIGINS; the
+***REMOVED*** literals below are the local dev defaults.
 _extra_origins = [o.strip() for o in os.getenv('CORS_EXTRA_ORIGINS', '').split(',') if o.strip()]
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:8080',
@@ -293,15 +216,11 @@ CORS_ALLOW_HEADERS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
-***REMOVED*** Behind the Tailscale Funnel + nginx: TLS terminates upstream, so tell
-***REMOVED*** Django to trust the X-Forwarded-Proto header (nginx sets it from $scheme,
-***REMOVED*** overriding any client-supplied value). Without this, request.is_secure()
-***REMOVED*** is False on public requests and Django's CSRF Origin check rejects the
-***REMOVED*** browser's https:// Origin on every unsafe request ("Origin checking
-***REMOVED*** failed").
+***REMOVED*** TLS terminates at nginx upstream (Tailscale Funnel) — trust X-Forwarded-Proto
+***REMOVED*** so request.is_secure() and Django's CSRF Origin check work on public requests.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-***REMOVED*** CSRF Trusted Origins (required for Django 4.0+) — same origin set as CORS.
+***REMOVED*** Same origin set as CORS (required for Django 4.0+).
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8080',
     'http://127.0.0.1:8080',
@@ -312,7 +231,6 @@ CSRF_TRUSTED_ORIGINS = [
     *_extra_origins,
 ]
 
-***REMOVED*** REST Framework Configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -320,9 +238,6 @@ REST_FRAMEWORK = {
     ],
     'UNAUTHENTICATED_USER': None,
 }
-
-
-***REMOVED*** Application definition
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -354,7 +269,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [(os.getenv('REDIS_HOST', '127.0.0.1'), REDIS_PORT)],
+            'hosts': [(REDIS_HOST, REDIS_PORT)],
         },
     },
 }
@@ -395,13 +310,9 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 ***REMOVED*** WorldKG Pipeline snapshot date range defaults
 WORLDKG_SNAPSHOT_START_YEAR = 2021
 WORLDKG_SNAPSHOT_END_YEAR = 2025
-***REMOVED*** Short aliases used by SnapshotDatesView and SnapshotJobStatusView
-***REMOVED*** (TEMPORAL_SNAPSHOT_REFACTOR.md Phase C). Fall back to the WORLDKG_* names.
+***REMOVED*** Short aliases for SnapshotDatesView / SnapshotJobStatusView.
 SNAPSHOT_START_YEAR = WORLDKG_SNAPSHOT_START_YEAR
 SNAPSHOT_END_YEAR = WORLDKG_SNAPSHOT_END_YEAR
-
-***REMOVED*** Database
-***REMOVED*** https://docs.djangoproject.com/en/4.2/ref/settings/***REMOVED***databases
 
 DATABASES = {
     'default': dj_database_url.config(
@@ -433,16 +344,10 @@ DATABASE_ROUTERS = [
     'backend.database_router.VectorDBRouter',
 ]
 
-***REMOVED*** MapQA self-supervised training-data generation
-***REMOVED*** (docs/plans/completed/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md §4 — paraphrase tiers).
-***REMOVED*** The rule-based paraphrase tier is always on; this env var gates the optional
-***REMOVED*** LLM tier (Ollama via LLMService — no external API). Default off: generation
-***REMOVED*** must be deterministic and offline-safe.
+***REMOVED*** MapQA self-supervised training-data generation — gates the optional LLM
+***REMOVED*** paraphrase tier (rule-based tier always on; see
+***REMOVED*** docs/plans/completed/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md §4).
 MAPQA_LLM_AUGMENTATION_ENABLED = False
-
-
-***REMOVED*** Password validation
-***REMOVED*** https://docs.djangoproject.com/en/4.2/ref/settings/***REMOVED***auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -459,44 +364,20 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
-***REMOVED*** Internationalization
-***REMOVED*** https://docs.djangoproject.com/en/4.2/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
-
 USE_I18N = True
-
 USE_TZ = True
-
-
-***REMOVED*** Static files (CSS, JavaScript, Images)
-***REMOVED*** https://docs.djangoproject.com/en/4.2/howto/static-files/
-
 STATIC_URL = 'static/'
-
-***REMOVED*** Default primary key field type
-***REMOVED*** https://docs.djangoproject.com/en/4.2/ref/settings/***REMOVED***default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-***REMOVED*** Geodata Configuration (replaces the legacy TORONTO_CKAN_CONFIG /
-***REMOVED*** TORONTO_DATA_DIR / TORONTO_BULK_INSERT_BATCH_SIZE settings)
 GEODATA_CONFIG = {
-    ***REMOVED*** Download dir lives under BASE_DIR/data (resolves to /app/data in
-    ***REMOVED*** containers — see docs/.devin rules §2.7).
     'download_dir': os.getenv('GEODATA_DIR', os.path.join(BASE_DIR, 'data', 'geodata')),
     'bulk_insert_batch_size': 1000,
     'default_ssl_verify': False,
     'default_timeout': 30,
 }
 
-***REMOVED*** Temporal Snapshot Configuration
 ***REMOVED*** Default maximum temporal range for PBF files without explicit max_timestamp
-***REMOVED*** Set this to your planet file's last update date
-from datetime import datetime
-from django.utils import timezone
-
 DEFAULT_TEMPORAL_RANGE_END = datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
 
 ***REMOVED*** Spatial Semantics Configuration
@@ -506,12 +387,8 @@ SPATIAL_SEMANTICS_CONFIG = {
     'target_amenities': ['cafe', 'restaurant', 'fast_food', 'bar', 'pub'],
     'hnsw_m': 16,
     'hnsw_ef_construction': 64,
-    ***REMOVED*** ── Name-search noise filtering ──────────────────────────────────────
-    ***REMOVED*** OSM tag keys that assert an entity's type/identity.  Entities without
-    ***REMOVED*** ANY of these keys are treated as noise in name-based search (e.g. a
-    ***REMOVED*** node with only {"name": "벤치"} — a bench whose "name" is literally
-    ***REMOVED*** "bench", or traffic-sign text leaked into name=).  Requiring at least
-    ***REMOVED*** one type-asserting key eliminates the bulk of mis-tagged noise.
+    ***REMOVED*** Type-asserting tag keys — entities without any are noise in name search
+    ***REMOVED*** (e.g. a bench whose name= is literally "벤치", or traffic-sign text).
     'type_asserting_keys': [
         'amenity', 'shop', 'tourism', 'place', 'highway', 'building',
         'office', 'leisure', 'natural', 'landuse', 'railway', 'aeroway',
@@ -519,13 +396,10 @@ SPATIAL_SEMANTICS_CONFIG = {
         'public_transport', 'route', 'craft', 'healthcare', 'education',
         'addr:housenumber', 'addr:street', 'contact:phone', 'ref',
     ],
-    ***REMOVED*** Default cosine-distance threshold for semantic name matching.
-    ***REMOVED*** Lowered from 0.75 (which let FastText OOV-collapse noise through) to
-    ***REMOVED*** 0.5 — a tighter cutoff that still keeps genuine semantic matches.
+    ***REMOVED*** Cosine-distance threshold for semantic name matching (0.5; lowered from
+    ***REMOVED*** 0.75 to keep FastText OOV-collapse noise out).
     'name_distance_threshold_default': 0.5,
-    ***REMOVED*** Score boost added when a query term appears as a substring of the
-    ***REMOVED*** entity's name= tag (case-insensitive).  Helps cross-script and
-    ***REMOVED*** misspelling cases where FastText embedding alone is insufficient.
+    ***REMOVED*** Substring match boost for cross-script / misspelled names.
     'name_substring_boost': 1.0,
 }
 
@@ -535,18 +409,11 @@ TIME_ZONE = 'America/Toronto'
 ***REMOVED*** SERVICE-LEVEL + PIPELINE CONFIGURATION
 ***REMOVED*** ============================================================================
 ***REMOVED*** Single source of truth for env-backed service config. Services read these
-***REMOVED*** via ``django.conf.settings`` — lazily (per instance / per call), so tests
-***REMOVED*** override with ``monkeypatch.setattr(settings, ...)`` or ``override_settings``
-***REMOVED*** instead of ``monkeypatch.setenv``. Empty string / None means "unset"; the
-***REMOVED*** services apply their own defaults and fail-soft parsing.
-***REMOVED***
-***REMOVED*** Framework runtime flags are exempt: DJANGO_SETTINGS_MODULE (bootstrap) and
-***REMOVED*** RUN_MAIN (autoreloader sentinel) stay os.environ reads outside this file.
+***REMOVED*** via django.conf.settings (lazily), so tests patch settings, not os.environ.
+***REMOVED*** Framework flags DJANGO_SETTINGS_MODULE / RUN_MAIN are the only exempt reads.
 
-***REMOVED*** ── LLM services (Ollama native / OpenAI-compatible) ─────────────────────────
-***REMOVED*** Interactive path (LLM_*) on the 4070; the batch research orchestrator uses
-***REMOVED*** RESEARCH_LLM_* on the 2070 (falls back to the platform instance when
-***REMOVED*** RESEARCH_LLM_BASE_URL is unset). Read per-instance by LLMService.
+***REMOVED*** ── LLM services (Ollama native / OpenAI-compatible) ──
+***REMOVED*** LLM_* interactive on the 4070; RESEARCH_LLM_* batch orchestrator on the 2070.
 LLM_ENABLED = os.getenv('LLM_ENABLED', '1')
 LLM_API_STYLE = os.getenv('LLM_API_STYLE', '')
 LLM_BASE_URL = os.getenv('LLM_BASE_URL', '')
@@ -560,30 +427,18 @@ RESEARCH_LLM_TIMEOUT = os.getenv('RESEARCH_LLM_TIMEOUT', '')
 ***REMOVED*** Opt-in: research loop follow-up nameSearch/structuredSearch calls.
 RESEARCH_FOLLOWUP_TOOLS = os.getenv('RESEARCH_FOLLOWUP_TOOLS', '0')
 
-***REMOVED*** ── Request-path caches + thresholds ─────────────────────────────────────────
+***REMOVED*** ── Request-path caches + thresholds ──
 SNAPSHOT_ID_CACHE_TTL_SECONDS = os.getenv('SNAPSHOT_ID_CACHE_TTL_SECONDS', '')
 LLM_ANSWER_CACHE_TTL_SECONDS = os.getenv('LLM_ANSWER_CACHE_TTL_SECONDS', '')
 MAPQA_LLM_FALLBACK_CONFIDENCE = os.getenv('MAPQA_LLM_FALLBACK_CONFIDENCE', '')
 
-***REMOVED*** ── Pipeline GPU / parallel tuning (Steps 4 USLP, 5 GV-NLE, embedding upsert) ─
-***REMOVED*** Operator-edited source: backend/pipeline/hyperparams.yaml (gv_nle /
-***REMOVED*** parallel_upsert / enrichment / embedding_splits sections), loaded once at
-***REMOVED*** startup into ModelHyperparams.  The values below are code defaults only —
-***REMOVED*** they apply when the YAML key is absent (services read the dataclass, which
-***REMOVED*** falls back to these via pipeline/envelopes.py load_from_yaml()).
-ENRICHMENT_WORKERS = 2
-EMBEDDING_SPLITS_WORKERS = 1
-GV_NLE_GPU_DEVICES = 'cuda:0,cuda:1'
-GV_NLE_GPU_CONCURRENCY = '1,1'
-GV_NLE_SMALL_PBF_MB = 0.3
-PARALLEL_UPSERT_WORKERS = 1
-PARALLEL_UPSERT_QUEUE_DEPTH = 2
-PARALLEL_UPSERT_MIN_PBF_MB = 0
-PARALLEL_UPSERT_CHUNK_SIZE = 20000
+***REMOVED*** ── Pipeline GPU / parallel tuning ──
+***REMOVED*** Operator-edited source: pipeline/hyperparams.yaml (uslp / deepwalk / entropy
+***REMOVED*** / gv_nle / parallel_upsert / enrichment / embedding_splits sections);
+***REMOVED*** dataclass field defaults are the code-level fallback.
 
-***REMOVED*** ── Trace adapter (core/services/trace_service.py) ───────────────────────────
-***REMOVED*** Raw strings — the service normalizes/clamps. Sinks: none|console|file|
-***REMOVED*** langfuse|memory.
+***REMOVED*** ── Trace adapter (core/services/trace_service.py) ──
+***REMOVED*** Raw strings; sinks: none|console|file|langfuse|memory.
 TRACE_SINK = os.getenv('TRACE_SINK', '')
 TRACE_SAMPLE_RATE = os.getenv('TRACE_SAMPLE_RATE', '')
 TRACE_DETERMINISTIC_STAGES = os.getenv('TRACE_DETERMINISTIC_STAGES', '')
@@ -593,29 +448,23 @@ TRACE_SINK_URL = os.getenv('TRACE_SINK_URL', '')
 TRACE_SINK_PUBLIC_KEY = os.getenv('TRACE_SINK_PUBLIC_KEY', '')
 TRACE_SINK_SECRET_KEY = os.getenv('TRACE_SINK_SECRET_KEY', '')
 
-***REMOVED*** ── Continent-extraction recipe runtime parameters ───────────────────────────
-***REMOVED*** Env-overridable, and also set at runtime by run_continents_recipe /
-***REMOVED*** PlanetInitializationService.extract_continents() before they call_command
-***REMOVED*** the extraction commands.
+***REMOVED*** ── Continent-extraction recipe runtime parameters ──
+***REMOVED*** Env-overridable; also set at runtime by run_continents_recipe /
+***REMOVED*** PlanetInitializationService.extract_continents().
 FOLDER_PATH = os.getenv('FOLDER_PATH')
 SOURCE_PBF_PATH = os.getenv('SOURCE_PBF_PATH')
 OUTPUT_BASE_DIR = os.getenv('OUTPUT_BASE_DIR')
 
-***REMOVED*** ── Auth / host trust ────────────────────────────────────────────────────────
+***REMOVED*** ── Auth / host trust ──
 ***REMOVED*** Empty invite code = registration closed.
 SIGNUP_INVITE_CODE = os.getenv('SIGNUP_INVITE_CODE', '')
-***REMOVED*** Hosts treated as local by the admin gate + public auth guard.
 TRUSTED_LOCAL_HOSTS = os.getenv('TRUSTED_LOCAL_HOSTS', 'localhost,127.0.0.1')
 
-***REMOVED*** ── Feature flags + model hyperparameter defaults ────────────────────────────
+***REMOVED*** ── Feature flags ──
 ***REMOVED*** Single-pass PBF encoding (FastText + NLE in one traversal).
 GEOVECTORS_SINGLE_PASS = True
-***REMOVED*** Link-candidate view: serve the precomputed table before on-the-fly scoring.
+***REMOVED*** Serve the precomputed link-candidate table before on-the-fly scoring.
 ENABLE_PRECOMPUTED_LINK_CANDIDATES = True
 ***REMOVED*** Google Places enrichment key (secret — env-only).
 GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY', None)
-***REMOVED*** DeepWalk defaults — overridden per-run by pipeline/hyperparams.yaml.
-DEEPWALK_K = 50
-DEEPWALK_WORKERS = 26
-DEEPWALK_USE_GPU = True
-DEEPWALK_GPU_DEVICE = 'cuda:0'
+***REMOVED*** DeepWalk — see the deepwalk section of pipeline/hyperparams.yaml.
