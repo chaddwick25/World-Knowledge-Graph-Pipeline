@@ -381,6 +381,123 @@ class LLMService:
             return None
         return self._extract_json(text)
 
+    def chat_tools(self, messages, tools, temperature: float = 0.0,
+                   max_tokens: int = 512):
+        """Native tool-calling chat. Returns (content, tool_calls) or (None, None).
+
+        The native Ollama ``/api/chat`` accepts a ``tools`` list (OpenAI
+        function schema) and returns ``message.tool_calls`` alongside
+        content; the openai style uses ``/v1/chat/completions``
+        ``tool_calls``. Calls are normalized to
+        ``[{"id", "name", "arguments": dict}, ...]`` (arguments parsed from
+        the OpenAI JSON-string form). Fail-soft: (None, None) on any error.
+        """
+        if not self.enabled:
+            return None, None
+        attrs = {
+            "model": self.model, "style": self.style,
+            "temperature": temperature, "max_tokens": max_tokens,
+            "tools": [
+                (t or {}).get("function", {}).get("name")
+                for t in (tools or [])
+            ],
+        }
+        span = TraceService.begin_span("chat_tools", attributes=attrs)
+        error = None
+        usage_attrs = {}
+        try:
+            if self.style == "native":
+                payload = {
+                    "model": self.model,
+                    "messages": messages,
+                    "stream": False,
+                    "think": False,
+                    "tools": tools,
+                    "options": {
+                        "temperature": temperature,
+                        "num_predict": max_tokens,
+                    },
+                }
+                resp = requests.post(
+                    f"{self.root_url}/api/chat",
+                    json=payload,
+                    timeout=(2.0, self.timeout),
+                )
+                if resp.status_code != 200:
+                    logger.warning(
+                        "LLM chat_tools HTTP %s: %s",
+                        resp.status_code, resp.text[:200],
+                    )
+                    return None, None
+                data = resp.json()
+                msg = data.get("message") or {}
+                content = (msg.get("content") or "").strip() or None
+                if isinstance(data, dict):
+                    usage_attrs["prompt_tokens"] = data.get("prompt_eval_count")
+                    usage_attrs["output_tokens"] = data.get("eval_count")
+                return content, self._normalize_tool_calls(msg.get("tool_calls"))
+            else:
+                payload = {
+                    "model": self.model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "tools": tools,
+                }
+                resp = requests.post(
+                    f"{self.base_url}/chat/completions",
+                    json=payload,
+                    timeout=(2.0, self.timeout),
+                )
+                if resp.status_code != 200:
+                    logger.warning("LLM chat_tools HTTP %s", resp.status_code)
+                    return None, None
+                data = resp.json()
+                choice = (data.get("choices") or [{}])[0]
+                message = choice.get("message") or {}
+                content = (message.get("content") or "").strip() or None
+                usage = (data or {}).get("usage") or {}
+                if isinstance(usage, dict):
+                    usage_attrs["prompt_tokens"] = usage.get("prompt_tokens")
+                    usage_attrs["output_tokens"] = usage.get("completion_tokens")
+                return content, self._normalize_tool_calls(
+                    message.get("tool_calls"),
+                )
+        except (requests.RequestException, KeyError, IndexError, ValueError) as exc:
+            logger.warning("LLM chat_tools failed: %s", exc)
+            error = str(exc)
+            return None, None
+        finally:
+            TraceService.end_span(span, error=error, attributes=usage_attrs)
+
+    @staticmethod
+    def _normalize_tool_calls(raw) -> list:
+        """Normalize Ollama/OpenAI tool_calls → [{id, name, arguments: dict}].
+
+        Ollama native arguments arrive as a dict; the OpenAI style sends a
+        JSON string. Malformed entries are skipped.
+        """
+        calls = []
+        for call in raw or []:
+            if not isinstance(call, dict):
+                continue
+            fn = call.get("function") or {}
+            name = fn.get("name")
+            arguments = fn.get("arguments")
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except ValueError:
+                    continue
+            if not name or not isinstance(arguments, dict):
+                continue
+            calls.append({
+                "id": call.get("id"),
+                "name": name,
+                "arguments": arguments,
+            })
+        return calls
+
     @staticmethod
     def _extract_json(text: str) -> Optional[dict]:
         """Best-effort JSON-object extraction from an LLM response."""
