@@ -7,9 +7,12 @@ links + communities + class distribution) — no tool selection
 (docs/plans/DIRECT_PATH_ENRICHMENT_PLAN.md).
 
 The research orchestrator (research_service.py) reuses the tool helpers here
-(``_validate_tool_decision`` / ``_call_search_tool`` / ``_primary_digest``)
-for its opt-in follow-up tools. The old multi-tool ``enrich()`` loop was
-deleted 2026-09-26 — no production caller remained.
+(``_validate_tool_calls`` / ``_call_search_tool`` / ``_primary_digest``) for
+its opt-in follow-up tools. ``RESEARCH_TOOLS`` is a JSON-schema manifest —
+the model sees it as the Ollama/OpenAI ``tools`` payload and the executor
+validates against the same schema. ``_call_search_tool`` is traced as an
+``execute_tool`` span (gen_ai.tool.* attributes). The old multi-tool
+``enrich()`` loop was deleted 2026-09-26 — no production caller remained.
 
 Fail-soft: if the LLM is unavailable or synthesis fails, the caller keeps
 the primary (templated) answer.
@@ -20,6 +23,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 from collections import Counter
 from typing import Optional
 
@@ -86,12 +90,50 @@ def _cache_put(key: str, value: dict) -> None:
 AMENITY_KEYS = ("amenity", "shop", "tourism", "leisure", "office", "craft")
 
 # The research tools the LLM may call — the same endpoints the MCP tools and
-# the human UI use.
+# the human UI use. JSON-schema manifest: the model receives it as the
+# Ollama/OpenAI ``tools`` payload, and the executor validates calls against
+# the same schema (``_validate_tool_calls``). The country code is not an
+# argument — it comes from the run scope (``_call_search_tool`` payloads
+# use the service-level country_code).
 RESEARCH_TOOLS = {
-    "nameSearch": "Find entities by name in any language/script (romanizer). "
-                  "Args: {countryCode, naturalQuery, topK?}.",
-    "structuredSearch": "Find entities by OSM tags. "
-                        "Args: {countryCode, queryTags: {key: value}, topK?}.",
+    "nameSearch": {
+        "description": (
+            "Find entities by name in any language/script (romanizer)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "naturalQuery": {
+                    "type": "string",
+                    "description": "Entity name to search for, in any language.",
+                },
+                "topK": {
+                    "type": "integer",
+                    "description": "Max results to return (default 5).",
+                },
+            },
+            "required": ["naturalQuery"],
+        },
+    },
+    "structuredSearch": {
+        "description": "Find entities by OSM tags.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "queryTags": {
+                    "type": "object",
+                    "description": (
+                        "OSM tag key-value map, e.g. {\"amenity\": \"cafe\"}."
+                    ),
+                },
+                "topK": {
+                    "type": "integer",
+                    "description": "Max results to return (default 5).",
+                },
+            },
+            "required": ["queryTags"],
+        },
+    },
 }
 
 
@@ -312,28 +354,79 @@ class QueryEnrichmentService:
         return f"Found {len(results)} entities{radius}."
 
     @staticmethod
-    def _validate_tool_decision(decision) -> list:
-        """Validate the LLM's tool selection → [(tool, args), ...] (max 2)."""
-        if not isinstance(decision, dict):
-            return []
-        raw = decision.get("tools")
-        if not isinstance(raw, list):
-            return []
+    def _research_tools_schema() -> list:
+        """The RESEARCH_TOOLS manifest in Ollama/OpenAI tools format."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": spec["description"],
+                    "parameters": spec["parameters"],
+                },
+            }
+            for name, spec in RESEARCH_TOOLS.items()
+        ]
+
+    @staticmethod
+    def _validate_args(schema: dict, args) -> dict:
+        """Validate tool args against a JSON-schema subset → cleaned args or None.
+
+        Checks required presence and property types/enums (the subset the
+        RESEARCH_TOOLS manifest uses). Unknown properties are dropped.
+        """
+        if not isinstance(args, dict):
+            return None
+        schema = schema or {}
+        properties = schema.get("properties") or {}
+        for key in schema.get("required") or []:
+            if key not in args:
+                return None
+        cleaned = {}
+        for key, value in args.items():
+            prop = properties.get(key)
+            if prop is None:
+                continue
+            ptype = prop.get("type")
+            if ptype == "string" and not isinstance(value, str):
+                return None
+            elif ptype == "integer" and (
+                isinstance(value, bool) or not isinstance(value, int)
+            ):
+                return None
+            elif ptype == "number" and (
+                isinstance(value, bool) or not isinstance(value, (int, float))
+            ):
+                return None
+            elif ptype == "boolean" and not isinstance(value, bool):
+                return None
+            elif ptype == "object" and not isinstance(value, dict):
+                return None
+            elif ptype == "array" and not isinstance(value, list):
+                return None
+            if "enum" in prop and value not in prop["enum"]:
+                return None
+            cleaned[key] = value
+        return cleaned
+
+    @classmethod
+    def _validate_tool_calls(cls, calls) -> list:
+        """Validate native tool_calls → [(tool, args), ...] (max 2).
+
+        Whitelist + JSON-schema arg validation — the same contract the
+        model saw in the tools payload. One bad call is skipped, not fatal.
+        """
         chosen = []
-        for item in raw:
-            if not isinstance(item, dict):
+        for call in calls or []:
+            if not isinstance(call, dict):
                 continue
-            tool = item.get("tool")
-            if tool not in RESEARCH_TOOLS:
+            spec = RESEARCH_TOOLS.get(call.get("name"))
+            if spec is None:
                 continue
-            args = item.get("args") or {}
-            if not isinstance(args, dict):
-                args = {}
-            if tool == "nameSearch" and not args.get("naturalQuery"):
+            args = cls._validate_args(spec.get("parameters"), call.get("arguments"))
+            if args is None:
                 continue
-            if tool == "structuredSearch" and not args.get("queryTags"):
-                continue
-            chosen.append((tool, args))
+            chosen.append((call["name"], args))
             if len(chosen) == 2:
                 break
         return chosen
@@ -344,64 +437,88 @@ class QueryEnrichmentService:
         """Execute nameSearch / structuredSearch against the real endpoint.
 
         Uses Django's test client internally (no HTTP hop) so the research
-        tools are literally the same code path as the MCP tools.
+        tools are literally the same code path as the MCP tools. Traced as
+        an ``execute_tool`` span (gen_ai.tool.* attributes) so the langfuse
+        trace shows the decision → call → result chain.
         """
-        if not country_code:
-            return None
-        if tool == "nameSearch":
-            payload = {
-                "country_code": country_code,
-                "natural_query": args.get("naturalQuery"),
-                "top_k": int(args.get("topK") or 5),
-            }
-        elif tool == "structuredSearch":
-            query_tags = args.get("queryTags") or {}
-            if not query_tags:
-                dominant = cls._dominant_amenity(results)
-                if not dominant:
-                    return None
-                query_tags = dict([dominant])
-            payload = {
-                "country_code": country_code,
-                "query_tags": query_tags,
-                "top_k": int(args.get("topK") or 5),
-            }
-        else:
-            return None
-        if snapshot_date:
-            payload["snapshot_date"] = snapshot_date
-
-        from django.test import Client
-        resp = Client().post(
-            "/api/nca/semantic-triplet-search/",
-            data=json.dumps(payload),
-            content_type="application/json",
-            # The test client defaults to host "testserver", which the live
-            # backend's ALLOWED_HOSTS rejects (400 HTML response). "localhost"
-            # is the same host the browser uses against this endpoint.
-            HTTP_HOST="localhost",
-        )
+        from core.services.trace_service import TraceService
+        token = TraceService.begin_span("execute_tool", attributes={
+            "gen_ai.tool.name": tool,
+            "gen_ai.tool.call.id": uuid.uuid4().hex,
+            "gen_ai.tool.call.arguments": args,
+        })
+        error = None
+        output = None
         try:
-            data = resp.json()
-        except ValueError:
-            logger.warning(
-                "Enrichment search returned non-JSON (status %s)", resp.status_code,
+            if not country_code:
+                return None
+            if tool == "nameSearch":
+                payload = {
+                    "country_code": country_code,
+                    "natural_query": args.get("naturalQuery"),
+                    "top_k": int(args.get("topK") or 5),
+                }
+            elif tool == "structuredSearch":
+                query_tags = args.get("queryTags") or {}
+                if not query_tags:
+                    dominant = cls._dominant_amenity(results)
+                    if not dominant:
+                        return None
+                    query_tags = dict([dominant])
+                payload = {
+                    "country_code": country_code,
+                    "query_tags": query_tags,
+                    "top_k": int(args.get("topK") or 5),
+                }
+            else:
+                return None
+            if snapshot_date:
+                payload["snapshot_date"] = snapshot_date
+
+            from django.test import Client
+            resp = Client().post(
+                "/api/nca/semantic-triplet-search/",
+                data=json.dumps(payload),
+                content_type="application/json",
+                # The test client defaults to host "testserver", which the
+                # live backend's ALLOWED_HOSTS rejects (400 HTML response).
+                # "localhost" is the same host the browser uses against this
+                # endpoint.
+                HTTP_HOST="localhost",
             )
-            return None
-        if data.get("error"):
-            logger.warning("Enrichment search error: %s", data["error"])
-            return None
-        return [
-            {
-                "name": (r.get("tags") or {}).get("name")
-                or f"{r.get('osm_type', 'osm')}/{r.get('osm_id', '')}",
-                "wkg_class": r.get("wkg_class"),
-                "lat": r.get("geom", {}).get("lat") if r.get("geom") else None,
-                "lon": r.get("geom", {}).get("lon") if r.get("geom") else None,
-                "score": (r.get("scores") or {}).get("final_score"),
-            }
-            for r in (data.get("results") or [])[:5]
-        ]
+            try:
+                data = resp.json()
+            except ValueError:
+                error = "non-JSON response (status %s)" % resp.status_code
+                logger.warning(
+                    "Enrichment search returned non-JSON (status %s)",
+                    resp.status_code,
+                )
+                return None
+            if data.get("error"):
+                error = str(data["error"])
+                logger.warning("Enrichment search error: %s", data["error"])
+                return None
+            output = [
+                {
+                    "name": (r.get("tags") or {}).get("name")
+                    or f"{r.get('osm_type', 'osm')}/{r.get('osm_id', '')}",
+                    "wkg_class": r.get("wkg_class"),
+                    "lat": r.get("geom", {}).get("lat") if r.get("geom") else None,
+                    "lon": r.get("geom", {}).get("lon") if r.get("geom") else None,
+                    "score": (r.get("scores") or {}).get("final_score"),
+                }
+                for r in (data.get("results") or [])[:5]
+            ]
+            return output
+        except Exception as exc:  # noqa: BLE001 — the caller decides failure handling
+            error = str(exc)
+            raise
+        finally:
+            TraceService.end_span(
+                token, error=error,
+                attributes={"gen_ai.tool.call.result": output},
+            )
 
     @staticmethod
     def _dominant_amenity(results: list):

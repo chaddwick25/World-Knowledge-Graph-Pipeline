@@ -73,53 +73,70 @@ def _results():
     ]
 
 
-# ── Tool decision validation ─────────────────────────────────────────────
+# ── Tool call validation (native tool_calls + JSON-schema args) ──────────
 
-class TestToolDecision:
+class TestToolCallValidation:
     def test_valid_selection(self):
-        out = QueryEnrichmentService._validate_tool_decision({
-            "tools": [
-                {"tool": "nameSearch", "args": {"naturalQuery": "Cafe A", "topK": 5}},
-                {"tool": "structuredSearch", "args": {"queryTags": {"amenity": "cafe"}}},
-            ],
-        })
+        out = QueryEnrichmentService._validate_tool_calls([
+            {"name": "nameSearch",
+             "arguments": {"naturalQuery": "Cafe A", "topK": 5}},
+            {"name": "structuredSearch",
+             "arguments": {"queryTags": {"amenity": "cafe"}}},
+        ])
         assert out == [
             ("nameSearch", {"naturalQuery": "Cafe A", "topK": 5}),
             ("structuredSearch", {"queryTags": {"amenity": "cafe"}}),
         ]
 
     def test_invalid_tools_filtered(self):
-        out = QueryEnrichmentService._validate_tool_decision({
-            "tools": [
-                {"tool": "delete-everything", "args": {}},
-                {"tool": "structuredSearch", "args": {"queryTags": {"amenity": "cafe"}}},
-            ],
-        })
+        out = QueryEnrichmentService._validate_tool_calls([
+            {"name": "delete-everything", "arguments": {}},
+            {"name": "structuredSearch",
+             "arguments": {"queryTags": {"amenity": "cafe"}}},
+        ])
         assert out == [("structuredSearch", {"queryTags": {"amenity": "cafe"}})]
 
     def test_missing_required_args_rejected(self):
-        assert QueryEnrichmentService._validate_tool_decision({
-            "tools": [
-                {"tool": "nameSearch", "args": {}},               # no naturalQuery
-                {"tool": "structuredSearch", "args": {}},         # no queryTags
-            ],
-        }) == []
+        assert QueryEnrichmentService._validate_tool_calls([
+            {"name": "nameSearch", "arguments": {}},        # no naturalQuery
+            {"name": "structuredSearch", "arguments": {}},  # no queryTags
+        ]) == []
+
+    def test_wrong_type_rejected(self):
+        assert QueryEnrichmentService._validate_tool_calls([
+            {"name": "nameSearch", "arguments": {"naturalQuery": 42}},
+        ]) == []
+
+    def test_unknown_props_dropped(self):
+        out = QueryEnrichmentService._validate_tool_calls([
+            {"name": "nameSearch",
+             "arguments": {"naturalQuery": "Cafe A", "dropMe": True}},
+        ])
+        assert out == [("nameSearch", {"naturalQuery": "Cafe A"})]
 
     def test_capped_at_two(self):
-        out = QueryEnrichmentService._validate_tool_decision({
-            "tools": [
-                {"tool": "nameSearch", "args": {"naturalQuery": "a"}},
-                {"tool": "structuredSearch", "args": {"queryTags": {"a": "b"}}},
-                {"tool": "nameSearch", "args": {"naturalQuery": "c"}},
-            ],
-        })
+        out = QueryEnrichmentService._validate_tool_calls([
+            {"name": "nameSearch", "arguments": {"naturalQuery": "a"}},
+            {"name": "structuredSearch", "arguments": {"queryTags": {"a": "b"}}},
+            {"name": "nameSearch", "arguments": {"naturalQuery": "c"}},
+        ])
         assert len(out) == 2
 
-    def test_non_dict_returns_empty(self):
-        assert QueryEnrichmentService._validate_tool_decision([]) == []
-        assert QueryEnrichmentService._validate_tool_decision(
-            {"tools": "nameSearch"},
-        ) == []
+    def test_non_list_returns_empty(self):
+        assert QueryEnrichmentService._validate_tool_calls(None) == []
+        assert QueryEnrichmentService._validate_tool_calls("nameSearch") == []
+
+    def test_tools_schema_shape(self):
+        schema = QueryEnrichmentService._research_tools_schema()
+        assert [t["function"]["name"] for t in schema] == [
+            "nameSearch", "structuredSearch",
+        ]
+        for entry in schema:
+            fn = entry["function"]
+            assert entry["type"] == "function"
+            assert fn["description"]
+            assert fn["parameters"]["type"] == "object"
+            assert fn["parameters"]["required"]
 
 
 # ── Search tool payload construction (fake client — no DB) ───────────────

@@ -98,10 +98,8 @@ _DECOMPOSE_SYSTEM_PROMPT = (
 
 _FOLLOWUP_SYSTEM_PROMPT = (
     "You enrich research findings by selecting 0-2 additional searches "
-    "that fill gaps. Respond with STRICT JSON only: "
-    '{"tools": [{"tool": "nameSearch", "args": {"naturalQuery": "..."}}, '
-    '{"tool": "structuredSearch", "args": {"queryTags": {"amenity": "cafe"}}}]}. '
-    "Select zero tools when the answers already cover the request. No prose."
+    "that fill gaps. Select zero tools when the answers already cover the "
+    "request. Use the provided tools only."
 )
 
 _ASSEMBLE_SYSTEM_PROMPT = (
@@ -699,30 +697,39 @@ class ResearchOrchestratorService:
     def _followup_tools(cls, llm, prompt: str, records: list,
                         last_results: list, country_code: str,
                         snapshot_date: str, event_callback) -> list:
-        """Optional LLM-selected nameSearch / structuredSearch follow-ups."""
+        """Optional LLM-selected nameSearch / structuredSearch follow-ups.
+
+        Uses native Ollama tool calling (``tools`` in the request,
+        ``tool_calls`` in the response) instead of prompt-injected JSON;
+        the tools schema lives in ``RESEARCH_TOOLS`` and each executed tool
+        is traced as an ``execute_tool`` span by ``_call_search_tool``.
+        """
         if not _FOLLOWUP_ENABLED:
             return []
 
         from semantic_search.services.query_enrichment_service import (
-            RESEARCH_TOOLS,
             QueryEnrichmentService,
         )
 
-        decision = llm.chat_json([
-            {"role": "system", "content": _FOLLOWUP_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"Research request: {prompt}\n"
-                    f"Answers so far:\n{cls._answers_text(records)}\n"
-                    f"Available tools: {json.dumps(RESEARCH_TOOLS)}\n"
-                    "Select 0-2 follow-up searches that would fill gaps."
-                ),
-            },
-        ], temperature=0.0, max_tokens=300)
+        _, calls = llm.chat_tools(
+            [
+                {"role": "system", "content": _FOLLOWUP_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Research request: {prompt}\n"
+                        f"Answers so far:\n{cls._answers_text(records)}\n"
+                        "Select 0-2 follow-up searches that would fill gaps."
+                    ),
+                },
+            ],
+            tools=QueryEnrichmentService._research_tools_schema(),
+            temperature=0.0,
+            max_tokens=300,
+        )
 
         tool_calls = []
-        for tool, args in QueryEnrichmentService._validate_tool_decision(decision):
+        for tool, args in QueryEnrichmentService._validate_tool_calls(calls):
             if event_callback:
                 event_callback({"event": "tool", "tool": tool, "args": args})
             output = None

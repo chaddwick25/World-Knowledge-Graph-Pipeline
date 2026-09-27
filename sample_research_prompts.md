@@ -78,7 +78,7 @@ widen, 2026-09-19), `done, summary len: N elapsed: Xs errors: M`.
 Every run also has a `trace_id` (in the SSE `done` payload and the
 `X-Trace-Id` header) — set `TRACE_SINK=langfuse` to push the run's LLM
 spans to the self-hosted Langfuse
-(`docs/plans/next-stage/UNIFIED_LLM_TRACE_PLAN.md`).
+(`docs/plans/completed/UNIFIED_LLM_TRACE_PLAN.md`).
 
 ## Countries (anchors verified in sample_questions.md)
 

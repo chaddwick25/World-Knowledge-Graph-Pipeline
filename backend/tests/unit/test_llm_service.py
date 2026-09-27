@@ -276,6 +276,137 @@ class TestChatJson:
         assert LLMService._extract_json(None) is None
 
 
+# ── LLMService: chat_tools (native tool calling) ─────────────────────────
+
+class TestChatTools:
+    def test_native_tool_calls_normalized(self, monkeypatch):
+        calls = {}
+        payload = {
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "function": {
+                            "name": "nameSearch",
+                            "arguments": {"naturalQuery": "Cafe A", "topK": 5},
+                        },
+                    },
+                    {
+                        "function": {
+                            "name": "structuredSearch",
+                            "arguments": '{"queryTags": {"amenity": "cafe"}}',
+                        },
+                    },
+                ],
+            },
+        }
+
+        def fake_post(url, json=None, timeout=None):
+            calls["url"] = url
+            calls["json"] = json
+            return FakeResponse(200, payload)
+
+        monkeypatch.setattr(requests, "post", fake_post)
+        content, tool_calls = LLMService().chat_tools(
+            [{"role": "user", "content": "x"}],
+            tools=[{"type": "function", "function": {"name": "nameSearch"}}],
+        )
+        assert calls["url"] == "http://localhost:11434/api/chat"
+        assert calls["json"]["think"] is False       # thinking disabled
+        assert calls["json"]["stream"] is False
+        assert calls["json"]["tools"][0]["function"]["name"] == "nameSearch"
+        assert content is None
+        assert tool_calls == [
+            {"id": "call-1", "name": "nameSearch",
+             "arguments": {"naturalQuery": "Cafe A", "topK": 5}},
+            # Ollama native args arrive as a dict; OpenAI-style string parsed.
+            {"id": None, "name": "structuredSearch",
+             "arguments": {"queryTags": {"amenity": "cafe"}}},
+        ]
+
+    def test_native_content_without_tools(self, monkeypatch):
+        monkeypatch.setattr(
+            requests, "post",
+            lambda *a, **k: FakeResponse(
+                200, {"message": {"content": "no tools needed"}},
+            ),
+        )
+        content, tool_calls = LLMService().chat_tools(
+            [{"role": "user", "content": "x"}], tools=[],
+        )
+        assert content == "no tools needed"
+        assert tool_calls == []
+
+    def test_openai_tool_calls_parsed(self, monkeypatch):
+        monkeypatch.setattr(
+            requests, "post",
+            lambda *a, **k: FakeResponse(200, {
+                "choices": [{
+                    "message": {
+                        "content": None,
+                        "tool_calls": [{
+                            "id": "call-9",
+                            "type": "function",
+                            "function": {
+                                "name": "structuredSearch",
+                                "arguments": '{"queryTags": {"amenity": "bank"}}',
+                            },
+                        }],
+                    },
+                }],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+            }),
+        )
+        monkeypatch.setattr(settings, "LLM_API_STYLE", "openai")
+        content, tool_calls = LLMService().chat_tools(
+            [{"role": "user", "content": "x"}], tools=[],
+        )
+        assert content is None
+        assert tool_calls == [
+            {"id": "call-9", "name": "structuredSearch",
+             "arguments": {"queryTags": {"amenity": "bank"}}},
+        ]
+
+    def test_malformed_tool_call_skipped(self, monkeypatch):
+        monkeypatch.setattr(
+            requests, "post",
+            lambda *a, **k: FakeResponse(200, {
+                "message": {"tool_calls": [
+                    {"function": {"name": "nameSearch", "arguments": "not json"}},
+                    {"function": {"name": "nameSearch", "arguments": {"naturalQuery": "ok"}}},
+                ]},
+            }),
+        )
+        content, tool_calls = LLMService().chat_tools([], tools=[])
+        assert content is None
+        assert tool_calls == [
+            {"id": None, "name": "nameSearch", "arguments": {"naturalQuery": "ok"}},
+        ]
+
+    def test_connection_error_returns_none_none(self, monkeypatch):
+        def boom(*args, **kwargs):
+            raise requests.exceptions.ConnectionError("refused")
+
+        monkeypatch.setattr(requests, "post", boom)
+        assert LLMService().chat_tools([], tools=[]) == (None, None)
+
+    def test_non_200_returns_none_none(self, monkeypatch):
+        monkeypatch.setattr(
+            requests, "post",
+            lambda *a, **k: FakeResponse(503, None, "boom"),
+        )
+        assert LLMService().chat_tools([], tools=[]) == (None, None)
+
+    def test_disabled_returns_none_none(self, monkeypatch):
+        def should_not_be_called(*args, **kwargs):
+            raise AssertionError("must not fire when disabled")
+
+        monkeypatch.setattr(requests, "post", should_not_be_called)
+        monkeypatch.setattr(settings, "LLM_ENABLED", "0")
+        assert LLMService().chat_tools([], tools=[]) == (None, None)
+
+
 # ── LLMService: embeddings + availability ────────────────────────────────
 
 class TestEmbedAndAvailability:

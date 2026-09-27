@@ -45,12 +45,15 @@ class FakeLLM:
     """Minimal stand-in for LLMService used by plan() tests."""
 
     def __init__(self, available=True, chat_json_result=None,
+                 tools_result=None,
                  stream_parts=("summary part 1 ", "summary part 2")):
         self._available = available
         self._chat_json_result = chat_json_result
+        self._tools_result = tools_result
         self._stream_parts = stream_parts
         self.chat_json_calls = 0
         self.chat_calls = 0
+        self.chat_tools_calls = 0
 
     def is_available(self):
         return self._available
@@ -58,6 +61,10 @@ class FakeLLM:
     def chat_json(self, *args, **kwargs):
         self.chat_json_calls += 1
         return self._chat_json_result
+
+    def chat_tools(self, *args, **kwargs):
+        self.chat_tools_calls += 1
+        return None, self._tools_result
 
     def chat_stream(self, *args, **kwargs):
         for part in self._stream_parts:
@@ -503,14 +510,17 @@ class TestPlan:
         assert result["questions"][0].get("radius_escalated") is None
 
     def test_plan_followup_tools(self):
-        fake_llm = FakeLLM(chat_json_result={
-            "questions": [
-                {"question": "Which hotels are within 2km of Belize City?", "why": ""},
+        fake_llm = FakeLLM(
+            chat_json_result={
+                "questions": [
+                    {"question": "Which hotels are within 2km of Belize City?", "why": ""},
+                ],
+            },
+            tools_result=[
+                {"name": "structuredSearch",
+                 "arguments": {"queryTags": {"amenity": "restaurant"}}},
             ],
-            "tools": [
-                {"tool": "structuredSearch", "args": {"queryTags": {"amenity": "restaurant"}}},
-            ],
-        })
+        )
         events = []
         with mock.patch(
             "semantic_search.services.research_service._FOLLOWUP_ENABLED", True,
@@ -519,7 +529,9 @@ class TestPlan:
                 "Plan a trip", "BZ", None, event_callback=events.append,
             )
 
-        assert fake_llm.chat_json_calls == 2  # decompose + follow-up pick
+        # Decompose stays chat_json; the follow-up pick is native tools now.
+        assert fake_llm.chat_json_calls == 1
+        assert fake_llm.chat_tools_calls == 1
         assert len(result["tool_calls"]) == 1
         assert result["tool_calls"][0]["tool"] == "structuredSearch"
         event_names = [e["event"] for e in events]
