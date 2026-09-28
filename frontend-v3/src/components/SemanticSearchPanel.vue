@@ -255,7 +255,7 @@ export default {
       default: null,
     },
   },
-  emits: ['search-results', 'query-graph'],
+  emits: ['search-results', 'query-graph', 'template-visualization'],
   data() {
     return {
       // ── Query state (component-local) ──
@@ -442,6 +442,7 @@ export default {
       this.eventSource = null
       this.enrichedAnswer = ''
       this.enrichingContext = null
+      this.$emit('template-visualization', null)
     },
 
     async performSearch() {
@@ -785,12 +786,42 @@ export default {
       }
     },
 
+    /** Parse optional map metadata from executor trace/results for deck viz. */
+    buildTemplateVisualization(entities, graph) {
+      if (!this.isTemplateMode || !this.parsedQuery?.template) return null
+      const template = this.parsedQuery.template
+      const trace = Array.isArray(this.executeTrace) ? this.executeTrace : []
+      const radiusStep = trace.find((s) => s?.step === 'default_radius')
+      const coneStep = trace.find((s) => s?.step === 'cone_search')
+      const amountConcept = (this.parsedQuery.concepts || []).find((c) => c?.type === 'AMOUNT')
+      const amountText = amountConcept?.text || ''
+      const amountMatch = String(amountText).match(/(\d+(?:\.\d+)?)\s*(km|m)\b/i)
+      const radiusFromAmount = amountMatch
+        ? Math.round(parseFloat(amountMatch[1]) * (amountMatch[2].toLowerCase() === 'km' ? 1000 : 1))
+        : null
+      const firstDirectionalEntity = entities.find((e) => e.direction)
+      const direction = firstDirectionalEntity?.direction || null
+      return {
+        template,
+        question: this.templateQuery.trim(),
+        anchors: graph.anchors || [],
+        entities: graph.entities || [],
+        links: graph.links || [],
+        anchorLines: graph.anchorLines || [],
+        radiusM: radiusFromAmount || radiusStep?.radius_m || null,
+        coneRadiusM: coneStep?.radius_m || null,
+        direction,
+      }
+    },
+
     /** Emit normalized, top-k-capped entities + the anchor/entity graph. */
     publishResults() {
       const entities = this.displayResults
+      const graph = this.buildQueryGraph(entities)
       // Map markers (+ backward-compat circle fallback) — only entities with coords.
       this.$emit('search-results', entities.filter((e) => e.geom))
-      this.$emit('query-graph', this.buildQueryGraph(entities))
+      this.$emit('query-graph', graph)
+      this.$emit('template-visualization', this.buildTemplateVisualization(entities, graph))
     },
 
     formatTags(tags) {

@@ -17,6 +17,16 @@ import { MapView } from '@deck.gl/core'
 
 let deckOverlay = null
 let mapInstance = null
+const layerGroups = new Map()
+
+function rebuildLayers() {
+  if (!deckOverlay) return
+  const mergedLayers = []
+  for (const groupLayers of layerGroups.values()) {
+    mergedLayers.push(...groupLayers)
+  }
+  deckOverlay.setProps({ layers: mergedLayers })
+}
 
 export const labelManager = {
   /**
@@ -47,12 +57,29 @@ export const labelManager = {
     }
     deckOverlay = null
     mapInstance = null
+    layerGroups.clear()
   },
 
   /** Proxy to deckOverlay.setProps({layers}). No-op when not attached. */
   setLayers(layers) {
-    if (!deckOverlay) return
-    deckOverlay.setProps({ layers })
+    this.setLayerGroup('map-labels', layers || [])
+  },
+
+  /**
+   * Set/replace one logical layer group. Groups are flattened in insertion
+   * order so map labels and template-result overlays can coexist.
+   */
+  setLayerGroup(groupId, layers) {
+    if (!groupId) return
+    layerGroups.set(groupId, layers || [])
+    rebuildLayers()
+  },
+
+  /** Remove one logical group from the deck overlay. */
+  clearLayerGroup(groupId) {
+    if (!groupId) return
+    layerGroups.delete(groupId)
+    rebuildLayers()
   },
 
   /** Proxy to deckOverlay.setProps({layerFilter}). No-op when not attached. */

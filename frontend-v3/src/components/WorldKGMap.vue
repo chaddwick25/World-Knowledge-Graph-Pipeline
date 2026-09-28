@@ -61,6 +61,7 @@ import { useOverlayStore } from '../stores/overlayStore'
 import { useMapLabelsStore } from '../stores/mapLabelsStore'
 import { labelManager } from '../mapLabels/labelManager'
 import { createClassLabels, createEntityLabels } from '../mapLabels/textLayerConfig'
+import { buildTemplateDeckLayers, isTemplateDeckSupported, templateVizBounds } from '../mapViz/templateDeckLayers'
 import {
   RELATION_COLORS,
   getRelationColor,
@@ -116,6 +117,11 @@ export default {
     // { anchors: [{name, lat, lon}], entities: [{..., geom}],
     //   links: [{anchorIdx, entityIdx}], anchorLines: [{from, to, label}] }
     queryGraph: {
+      type: Object,
+      default: null,
+    },
+    // Deck.gl visualization payload for Kuhn-template question results.
+    templateVisualization: {
       type: Object,
       default: null,
     },
@@ -192,6 +198,7 @@ export default {
     this.mapLabelsUnsub = this.mapLabelsStore.$subscribe(() => {
       this.renderMapLabels()
     })
+    this.renderTemplateVisualization()
   },
   beforeUnmount() {
     if (this.overlayUnsub) {
@@ -239,6 +246,12 @@ export default {
     queryGraph: {
       handler() {
         this.renderQueryGraph()
+      },
+      deep: true,
+    },
+    templateVisualization: {
+      handler() {
+        this.renderTemplateVisualization()
       },
       deep: true,
     },
@@ -339,7 +352,27 @@ export default {
           sizeScale: this.mapLabelsStore.entitySizeScale,
         }))
       }
-      labelManager.setLayers(layers)
+      labelManager.setLayerGroup('map-labels', layers)
+    },
+
+    renderTemplateVisualization() {
+      const viz = this.templateVisualization
+      const isSupported = isTemplateDeckSupported(viz?.template)
+      if (!viz || !isSupported) {
+        labelManager.clearLayerGroup('template-results')
+        this.renderQueryGraph()
+        this.renderSearchResults()
+        return
+      }
+
+      const layers = buildTemplateDeckLayers(viz)
+      labelManager.setLayerGroup('template-results', layers)
+      this.overlayLayers.renderQueryGraph(null)
+      if (searchMarkersLayer) searchMarkersLayer.clearLayers()
+      const bounds = templateVizBounds(viz)
+      if (bounds.length && mapInstance) {
+        mapInstance.fitBounds(bounds, { padding: [90, 90], maxZoom: 14 })
+      }
     },
 
     renderCountries(countries) {
@@ -435,6 +468,7 @@ export default {
       searchMarkersLayer.clearLayers()
 
       // The anchor/entity graph supersedes the plain-circle fallback.
+      if (this.isTemplateDeckVizActive()) return
       if (this.queryGraph && (this.queryGraph.entities?.length || this.queryGraph.anchors?.length)) {
         return
       }
@@ -471,6 +505,10 @@ export default {
 
     // ── Overlay layer rendering — delegated to useMapOverlayLayers ──
     renderQueryGraph() {
+      if (this.isTemplateDeckVizActive()) {
+        this.overlayLayers.renderQueryGraph(null)
+        return
+      }
       this.overlayLayers.renderQueryGraph(this.queryGraph)
     },
 
@@ -525,6 +563,10 @@ export default {
         geoJsonLayer.resetStyle(layer)
       }
       layer.unbindTooltip()
+    },
+
+    isTemplateDeckVizActive() {
+      return isTemplateDeckSupported(this.templateVisualization?.template)
     },
   },
 }
