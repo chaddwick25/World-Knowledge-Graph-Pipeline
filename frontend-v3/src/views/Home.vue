@@ -46,6 +46,7 @@
             :selected-ids="selectedCountryIds"
             :search-results="searchResults"
             :query-graph="queryGraph"
+            :template-visualization="templateVisualization"
             :augmented-links="augmentedLinks"
             :show-accepted-links="showAcceptedLinks"
             :show-rejected-links="showRejectedLinks"
@@ -168,6 +169,7 @@
               :snapshot-date="selectedSnapshotDate"
               @search-results="onSearchResults"
               @query-graph="onQueryGraph"
+              @template-visualization="onTemplateVisualization"
             />
             <!-- Metrics tab -->
             <PipelineMetricsPanel
@@ -293,6 +295,7 @@ export default {
       activeTab: 'query',
       searchResults: [],
       queryGraph: null,
+      templateVisualization: null,
 
       // ── Augmented links map overlay ──
       augmentedLinks: null,
@@ -412,6 +415,7 @@ export default {
         this.isPipelineRunning = false
         this.searchResults = []
         this.queryGraph = null
+        this.templateVisualization = null
         this.augmentedLinks = null
         this.showAcceptedLinks = false
         this.showRejectedLinks = false
@@ -656,6 +660,9 @@ export default {
     },
     onQueryGraph(graph) {
       this.queryGraph = graph
+    },
+    onTemplateVisualization(viz) {
+      this.templateVisualization = viz
     },
     onLinksToggle({ links, showAccepted, showRejected, visibleRelations }) {
       this.augmentedLinks = links
