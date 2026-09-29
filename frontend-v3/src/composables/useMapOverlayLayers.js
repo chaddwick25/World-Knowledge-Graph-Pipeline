@@ -38,7 +38,6 @@ export function getRelationColor(relation) {
 // ── Agent overlay tool colors (docs/plans/MCP_AGENT_MVP_PLAN.md §9.2) ──
 const TOOL_COLORS = {
   structuredSearch: '***REMOVED***3b82f6',  // blue
-  nameSearch: '***REMOVED***ef4444',        // red
   templateQuery: '***REMOVED***10b981',     // green
 }
 

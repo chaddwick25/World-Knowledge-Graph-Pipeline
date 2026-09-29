@@ -25,17 +25,6 @@
             v-model="queryMode"
           >
           <label class="btn btn-outline-secondary" for="query-mode-tags">OSM Tag Query</label>
-
-          <input
-            type="radio"
-            class="btn-check"
-            name="query-mode"
-            id="query-mode-natural"
-            autocomplete="off"
-            value="natural"
-            v-model="queryMode"
-          >
-          <label class="btn btn-outline-secondary" for="query-mode-natural">Natural language</label>
         </div>
       </div>
 
@@ -64,17 +53,6 @@
             placeholder="e.g. cafe (empty = has key)"
           />
         </div>
-      </div>
-
-      <!-- Natural language name search input -->
-      <div v-if="isNaturalMode" class="d-flex flex-column gap-1">
-        <label class="form-label small text-secondary mb-0">Name search (any language)</label>
-        <textarea
-          v-model="naturalQuery"
-          class="form-control form-control-sm font-monospace"
-          rows="2"
-          placeholder="paris bagueete  /  파리바게뜨  /  café  /  원탕"
-        ></textarea>
       </div>
 
       <!-- Natural language template input (MapQA parser) -->
@@ -263,7 +241,6 @@ export default {
       // OSM Tag Query mode: key dropdown + free-text value → query_tags.
       tagKey: 'amenity',
       tagValue: 'cafe',
-      naturalQuery: '',
       templateQuery: '',
       lat: '',
       lon: '',
@@ -338,9 +315,6 @@ export default {
     isTagsMode() {
       return this.queryMode === 'tags'
     },
-    isNaturalMode() {
-      return this.queryMode === 'natural'
-    },
     isTemplateMode() {
       return this.queryMode === 'template'
     },
@@ -350,10 +324,7 @@ export default {
         // backend treats it as a has-key filter).
         return !!this.tagKey
       }
-      if (this.isTemplateMode) {
-        return this.templateQuery.trim().length > 0
-      }
-      return this.naturalQuery.trim().length > 0
+      return this.templateQuery.trim().length > 0
     },
     isLoading() {
       return this.loading
@@ -424,7 +395,6 @@ export default {
       this.queryMode = 'tags'
       this.tagKey = 'amenity'
       this.tagValue = 'cafe'
-      this.naturalQuery = ''
       this.templateQuery = ''
       this.lat = ''
       this.lon = ''
@@ -481,7 +451,7 @@ export default {
       }
 
       try {
-        // OSM Tag Query and Natural language modes both use triplet search
+        // OSM Tag Query mode uses triplet search
         const payload = {
           country_code: this.countryName,
           top_k: this.topKClamped,
@@ -491,12 +461,6 @@ export default {
           // Key from dropdown + free-text value → query_tags; empty value
           // means has-key matching on the backend.
           payload.query_tags = { [this.tagKey]: this.tagValue.trim() }
-        } else if (this.isNaturalMode) {
-          // Natural language name search: romanizer + FastText
-          if (!this.naturalQuery.trim()) {
-            throw new Error('Please enter a name to search')
-          }
-          payload.natural_query = this.naturalQuery.trim()
         }
 
         if (this.lat) payload.lat = parseFloat(this.lat)
