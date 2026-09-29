@@ -325,3 +325,109 @@ class TestEdgeCases:
         long_q = "Which bars are within 50m of Hollywood Blvd? " * 20
         result = parser.parse(long_q)
         assert "template" in result
+
+
+# ── Class-verified OBJECT recovery (Stage 2c) ────────────────────────
+
+class TestObjectRecovery:
+    """Stage 2c: recover the OBJECT slot for open-vocabulary brand names.
+
+    The ML concept extractor misses brand names ("kfc", "juici patties")
+    and the heuristic amenity list doesn't cover them, so the OBJECT slot
+    comes back empty and the executor has no search target. When the
+    caller injects an object_oracle (data plane), a span that resolves to
+    a POI-class entity is emitted as OBJECT with the original span. No
+    retraining — the oracle is the class enrichment layer.
+    """
+
+    def test_injects_brand_name_object(self, parser):
+        """'Juici Patties within 150km of KFC' — the ML misses OBJECT; the
+        oracle (geocode → wkgs:Amenity) recovers it with the original span."""
+        result = parser.parse(
+            "Juici Patties within 150km of KFC",
+            country_code="JM",
+            object_oracle=lambda span, cc: (True, 0.6),
+        )
+        objects = [c for c in result["concepts"] if c["type"] == "OBJECT"]
+        assert len(objects) == 1, result["concepts"]
+        assert objects[0]["text"] == "juici patties"
+        assert objects[0]["confidence"] == pytest.approx(0.6)
+        # Roles and DAG must flow through the recovered concept.
+        assert any(r["concept_type"] == "OBJECT" for r in result["roles"])
+        assert any(
+            n.get("concept_type") == "OBJECT" and n.get("concept_text") == "juici patties"
+            for n in result["dag"]
+        )
+        assert result["validation"]["valid"]
+
+    def test_rejects_non_poi_span(self, parser):
+        """Oracle says the span is not a POI (e.g. a highway) → no OBJECT."""
+        result = parser.parse(
+            "Juici Patties within 150km of KFC",
+            country_code="JM",
+            object_oracle=lambda span, cc: (False, 0.0),
+        )
+        objects = [c for c in result["concepts"] if c["type"] == "OBJECT"]
+        assert objects == []
+
+    def test_no_oracle_no_recovery(self, parser):
+        """Without an oracle the parse is unchanged (no OBJECT for brands)."""
+        result = parser.parse("Juici Patties within 150km of KFC")
+        objects = [c for c in result["concepts"] if c["type"] == "OBJECT"]
+        assert objects == []
+
+    def test_recovery_skipped_when_object_present(self, parser):
+        """In-vocabulary OBJECTs are untouched — the oracle is never asked."""
+        oracle_calls = []
+
+        def oracle(span, cc):
+            oracle_calls.append(span)
+            return (True, 0.6)
+
+        result = parser.parse(
+            "Which bars are within 50m of Hollywood Blvd?",
+            country_code="US",
+            object_oracle=oracle,
+        )
+        objects = [c for c in result["concepts"] if c["type"] == "OBJECT"]
+        assert objects[0]["text"] == "bar"
+        assert oracle_calls == []
+
+    def test_recovery_gated_to_template_1(self, parser):
+        """Recovery fires only for FILTER-AGGREGATE-MEASURE (#1): the oracle
+        is never consulted for other templates."""
+        oracle_calls = []
+
+        def oracle(span, cc):
+            oracle_calls.append(span)
+            return (True, 0.6)
+
+        result = parser.parse(
+            "How far is Union Station from downtown LA?",
+            country_code="US",
+            object_oracle=oracle,
+        )
+        assert result["template"] == "OBJECT-FIELD-MEASURE (#2)"
+        assert oracle_calls == []
+
+
+class TestIsPoiWkgClass:
+    """The class discriminator behind the recovery oracle."""
+
+    def test_poi_classes_accepted(self):
+        from semantic_search.services.query_parser_service import is_poi_wkg_class
+        for cls in ("wkgs:Amenity", "wkgs:Restaurant", "wkgs:Cafe",
+                    "wkgs:Shop", "wkgs:Hotel", "wkgs:Building"):
+            assert is_poi_wkg_class(cls), cls
+
+    def test_structural_classes_rejected(self):
+        from semantic_search.services.query_parser_service import is_poi_wkg_class
+        for cls in ("wkgs:Highway", "wkgs:Place", "wkgs:Waterway",
+                    "wkgs:Natural", "wkgs:Boundary", "wkgs:Route"):
+            assert not is_poi_wkg_class(cls), cls
+
+    def test_empty_and_root_rejected(self):
+        from semantic_search.services.query_parser_service import is_poi_wkg_class
+        assert not is_poi_wkg_class(None)
+        assert not is_poi_wkg_class("")
+        assert not is_poi_wkg_class("wkgs:WKGObject")

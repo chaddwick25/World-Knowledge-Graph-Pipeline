@@ -4,6 +4,8 @@ import logging
 import math
 import re
 
+import numpy as np
+
 from semantic_search.services.query_executor_service._constants import (
     USLP_GEOHASH_PRECISION,
     USLP_FALLBACK_D_MAX_KM,
@@ -18,8 +20,9 @@ class GeoUslpMixin:
     @classmethod
     def _enrich_with_geo_and_uslp(cls, results, template, anchor_coords,
                                    radius_m, anchor_osm_id, country_code,
-                                   snapshot_date, trace):
-        """Add geo_score (template-aware) and USLP boost to results, re-rank.
+                                   snapshot_date, trace, name_query=None):
+        """Add geo_score (template-aware), USLP boost, and optional name
+        alignment to results, then re-rank.
 
         geo_score uses the USLP geohash-based formula (Mann et al. 2023 §3.3):
         encode anchor and candidate at P4 precision, compute haversine between
@@ -27,6 +30,12 @@ class GeoUslpMixin:
         an explicit radius, uses raw haversine with the user's radius as d_max.
         USLP boost adds a small score for entities that appear as predicted
         link tails from the anchor entity.
+
+        name_query: when the OBJECT concept is a proper name (the parser
+        extracted "island grill" but the amenity tiers resolve tag values,
+        never names), align it against each entity's ``name`` field via
+        FastText cosine (name_score, [0,1]). Absent (amenity-category
+        queries), name_score stays unset and behavior is unchanged.
 
         Modifies results in-place and re-sorts by combined_score.
         """
@@ -89,15 +98,55 @@ class GeoUslpMixin:
             for r in results:
                 r["uslp_boost"] = 0.0
 
-        # Re-rank by combined score: diffusion_score + geo_score + uslp_boost
+        # Name alignment — the parser's OBJECT text vs entity names. The
+        # amenity tiers resolve tag values, never names; a proper-name
+        # query ("island grill") must align against entity `name` fields
+        # or the nearest-by-distance entity wins regardless of identity.
+        if name_query:
+            cls._apply_name_scores(results, name_query)
+
+        # Re-rank by combined score: diffusion + name + geo + uslp
         for r in results:
             diff = r.get("diffusion_score", 0.0)
+            name = r.get("name_score", 0.0)
             geo = r.get("geo_score", 0.0)
             uslp = r.get("uslp_boost", 0.0)
-            r["combined_score"] = round(diff + geo + uslp, 6)
+            r["combined_score"] = round(diff + name + geo + uslp, 6)
 
         results.sort(key=lambda r: r.get("combined_score", 0.0), reverse=True)
         return results
+
+    @classmethod
+    def _apply_name_scores(cls, results, name_query):
+        """Align the OBJECT concept text against entity names.
+
+        name_score = cosine(embed(name_query), embed(entity.name)), clamped
+        to [0,1], 0.0 for entities without a name. The query embedding is
+        computed once; entity names are embedded at query time (no stored
+        name embedding column).
+        """
+        from semantic_search.services.fasttext_service import (
+            FastTextEmbeddingService,
+        )
+
+        query_vec = FastTextEmbeddingService.calculate_text_embedding(name_query)
+        if np.linalg.norm(query_vec) == 0.0:
+            for r in results:
+                r["name_score"] = 0.0
+            return
+
+        for r in results:
+            name = (r.get("name") or "").strip()
+            if not name:
+                r["name_score"] = 0.0
+                continue
+            name_vec = FastTextEmbeddingService.calculate_text_embedding(name)
+            if np.linalg.norm(name_vec) == 0.0:
+                r["name_score"] = 0.0
+                continue
+            cosine = float(np.dot(query_vec, name_vec))
+            r["name_score"] = round(max(0.0, min(1.0, cosine)), 4)
+
     @classmethod
     def _get_uslp_predicted_tails(cls, head_osm_id, country_code,
                                    snapshot_date, trace):

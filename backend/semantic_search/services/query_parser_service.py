@@ -38,6 +38,32 @@ CONCEPT_TYPES = [
     "NETWORK", "AMOUNT", "PROPORTION",
 ]
 
+# WorldKG depth-1 key classes that denote structure/location rather than a
+# searchable point of interest. A span that geocodes to one of these is an
+# anchor (LOCATION slot), not a search target (OBJECT slot).
+_NON_POI_CLASS_SUFFIXES = frozenset({
+    "HIGHWAY", "PLACE", "WATERWAY", "NATURAL", "BOUNDARY", "ROUTE",
+    "RAILWAY", "LANDUSE",
+})
+
+
+def is_poi_wkg_class(wkg_class: str) -> bool:
+    """True when a WorldKG class denotes a searchable point of interest.
+
+    The ontology's depth-1 key classes split into POI keys (amenity, shop,
+    tourism, leisure, healthcare, craft, building) and structural/location
+    keys (highway, place, waterway, natural, boundary, route, railway,
+    landuse). Stage 2c OBJECT recovery accepts only POI classes: "KFC"
+    geocodes to wkgs:Amenity (accept), "Hollywood Blvd" to wkgs:Highway
+    (reject — it is the anchor).
+    """
+    if not wkg_class:
+        return False
+    key = str(wkg_class).split(":")[-1].strip().upper()
+    if not key or key == "WKGOBJECT":
+        return False
+    return key not in _NON_POI_CLASS_SUFFIXES
+
 
 class QueryParserService:
     """Parse a natural-language geospatial question into a DAG spec.
@@ -93,7 +119,8 @@ class QueryParserService:
 
     # ── Public API ──────────────────────────────────────────────────────────
 
-    def parse(self, question: str) -> dict:
+    def parse(self, question: str, country_code: str = None,
+              object_oracle: callable = None) -> dict:
         """Parse a NL question → {template, concepts, roles, dag, confidence, validation}.
 
         Following [SPATIAL_AGENT:§3.2-3.4]:
@@ -102,6 +129,12 @@ class QueryParserService:
           3. Assign functional roles
           4. Compose GeoFlow Graph
           5. Validate well-formedness (G2)
+
+        object_oracle: optional data-plane callback for Stage 2c recovery.
+        Called as ``object_oracle(span, country_code)`` → ``(is_poi, confidence)``
+        when the ML + heuristic both miss the OBJECT slot for a
+        FILTER-AGGREGATE-MEASURE query. The parser stays no-DB: the oracle
+        (e.g. geocode + wkg_class check) is injected by the caller.
         """
         # Stage 1: classify template
         X = self.vectorizer.transform([question])
@@ -140,6 +173,29 @@ class QueryParserService:
                 # FILTER-AGGREGATE-MEASURE (#1).
                 if re.search(r"\bwithin\s+\d+\s*(km|m)\b", question, re.IGNORECASE):
                     template = "FILTER-AGGREGATE-MEASURE (#1)"
+
+        # Stage 2c: class-verified OBJECT recovery — no retraining. The ML
+        # concept extractor misses open-vocabulary brand names ("kfc",
+        # "juici patties") and the heuristic amenity list doesn't cover
+        # them, so the OBJECT slot comes back empty and the executor has
+        # no search target. When the caller provides an object_oracle
+        # (data plane), verify the pre-preposition span resolves to a
+        # POI-class entity and emit it as OBJECT with the original span.
+        # The span extraction is deterministic; the executor's FastText +
+        # name-score path already finds brand names once the parser lets
+        # them through.
+        if object_oracle is not None and template == "FILTER-AGGREGATE-MEASURE (#1)":
+            if not any(c.get("type") == "OBJECT" for c in concepts):
+                span = self._extract_concept_span(question, "OBJECT", template)
+                if span:
+                    is_poi, oracle_conf = object_oracle(span, country_code)
+                    if is_poi:
+                        concepts.append({
+                            "type": "OBJECT",
+                            "text": span,
+                            "confidence": float(oracle_conf or 0.6),
+                            "resolved_value": None,
+                        })
 
         # Stage 3: assign roles
         roles = self._assign_roles(question, template, concepts)

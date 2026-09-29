@@ -171,12 +171,6 @@
               @query-graph="onQueryGraph"
               @template-visualization="onTemplateVisualization"
             />
-            <!-- Metrics tab -->
-            <PipelineMetricsPanel
-              v-else-if="activeTab === 'metrics'"
-              :country-name="singleCountry.name"
-              :snapshot-date="selectedSnapshotDate"
-            />
             <!-- Augmented Data tab -->
             <AugmentedDataPanel
               v-else-if="activeTab === 'augmented'"
@@ -225,7 +219,6 @@ import WorldKGMap from '../components/WorldKGMap.vue'
 import PipelineProgressPanelV3 from '../components/PipelineProgressPanelV3.vue'
 import SnapshotCalendar from '../components/SnapshotCalendar.vue'
 import SemanticSearchPanel from '../components/SemanticSearchPanel.vue'
-import PipelineMetricsPanel from '../components/PipelineMetricsPanel.vue'
 import AugmentedDataPanel from '../components/AugmentedDataPanel.vue'
 import MapLabelsPanel from '../components/MapLabelsPanel.vue'
 import MapLabelsControls from '../components/MapLabelsControls.vue'
@@ -242,7 +235,6 @@ export default {
     PipelineProgressPanelV3,
     SnapshotCalendar,
     SemanticSearchPanel,
-    PipelineMetricsPanel,
     AugmentedDataPanel,
     MapLabelsPanel,
     MapLabelsControls,
@@ -257,7 +249,6 @@ export default {
       // ── Tab definitions ──
       tabs: [
         { key: 'query', label: 'Query' },
-        { key: 'metrics', label: 'Metrics' },
         { key: 'augmented', label: 'USLP' },
         { key: 'map-labels', label: 'Map Labels' },
         { key: 'research', label: 'Research' },
