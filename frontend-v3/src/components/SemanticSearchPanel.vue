@@ -109,6 +109,38 @@
       </div>
     </form>
 
+    <!-- Sample questions (OSM RAG mode learning aid — from the bundled
+         sample_questions.csv, country-filtered; shown right below the
+         search form so they're handy before searching; the chevron
+         collapses the list) -->
+    <div v-if="isTemplateMode && filteredSampleQuestions.length" class="d-flex flex-column gap-1 border-top pt-2">
+      <button
+        type="button"
+        class="btn btn-sm btn-link p-0 text-secondary d-flex align-items-center"
+        style="width: fit-content;"
+        :aria-expanded="showSampleQuestions"
+        aria-label="Toggle sample questions"
+        @click="showSampleQuestions = !showSampleQuestions"
+      >
+        <i :class="showSampleQuestions ? 'bi bi-chevron-up' : 'bi bi-chevron-down'"></i>
+      </button>
+      <div v-if="showSampleQuestions" class="d-flex flex-column gap-1">
+        <div
+          v-for="(q, idx) in filteredSampleQuestions"
+          :key="`${q.question}-${idx}`"
+          class="d-flex align-items-center gap-2 border rounded p-1 px-2"
+          style="font-size: 0.72rem;"
+        >
+          <span class="flex-grow-1 text-truncate" :title="q.question">{{ q.question }}</span>
+          <button
+            class="btn btn-sm btn-outline-primary text-nowrap py-0 px-2"
+            :class="{ 'btn-success': copiedQuestion === q.question }"
+            @click="copyQuestion(q.question)"
+          >{{ copiedQuestion === q.question ? 'Copied!' : 'Copy' }}</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Error -->
     <div v-if="displayError" class="alert alert-danger small py-1 px-2 mb-0">
       {{ displayError }}
@@ -196,38 +228,6 @@
 
     <div v-else-if="searched" class="small text-secondary">
       No results found for this query.
-    </div>
-
-    <!-- Sample questions (OSM RAG mode learning aid — from the bundled
-         sample_questions.csv, country-filtered; shown below the results
-         table, which is height-capped so both fit; the chevron collapses
-         the list) -->
-    <div v-if="isTemplateMode && filteredSampleQuestions.length" class="d-flex flex-column gap-1 border-top pt-2">
-      <button
-        type="button"
-        class="btn btn-sm btn-link p-0 text-secondary d-flex align-items-center"
-        style="width: fit-content;"
-        :aria-expanded="showSampleQuestions"
-        aria-label="Toggle sample questions"
-        @click="showSampleQuestions = !showSampleQuestions"
-      >
-        <i :class="showSampleQuestions ? 'bi bi-chevron-up' : 'bi bi-chevron-down'"></i>
-      </button>
-      <div v-if="showSampleQuestions" class="d-flex flex-column gap-1">
-        <div
-          v-for="(q, idx) in filteredSampleQuestions"
-          :key="`${q.question}-${idx}`"
-          class="d-flex align-items-center gap-2 border rounded p-1 px-2"
-          style="font-size: 0.72rem;"
-        >
-          <span class="flex-grow-1 text-truncate" :title="q.question">{{ q.question }}</span>
-          <button
-            class="btn btn-sm btn-outline-primary text-nowrap py-0 px-2"
-            :class="{ 'btn-success': copiedQuestion === q.question }"
-            @click="copyQuestion(q.question)"
-          >{{ copiedQuestion === q.question ? 'Copied!' : 'Copy' }}</button>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -335,7 +335,7 @@ export default {
       showScores: false,
       subdivisionQid: null,
       // Sample questions (OSM RAG mode learning aid) — expanded on mount,
-      // hidden once results arrive; chevron toggles the list.
+      // chevron toggles the list.
       showSampleQuestions: true,
       copiedQuestion: null,
       copyTimer: null,
