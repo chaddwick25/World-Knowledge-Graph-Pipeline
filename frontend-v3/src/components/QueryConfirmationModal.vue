@@ -233,7 +233,7 @@ export default {
 }
 
 .qcm-modal__template-name {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: ***REMOVED***a5b4fc;
 }
@@ -300,7 +300,7 @@ export default {
   border: 1px solid ***REMOVED***334155;
   background: ***REMOVED***020617;
   color: ***REMOVED***e2e8f0;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .qcm-modal__concept-input:focus {
@@ -312,7 +312,7 @@ export default {
   padding: 0.6rem 0.75rem;
   border-radius: 0.4rem;
   background: ***REMOVED***1e293b;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: ***REMOVED***cbd5e1;
 }
 
@@ -332,7 +332,7 @@ export default {
   padding: 0.4rem 1rem;
   border-radius: 0.5rem;
   border: none;
-  font-size: 0.82rem;
+  font-size: 0.875rem;
   cursor: pointer;
   font-weight: 500;
 }

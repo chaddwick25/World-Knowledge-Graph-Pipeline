@@ -19,4 +19,4 @@ services:
     environment:
       TZ: ${TZ:-America/Toronto}
       ***REMOVED*** Optional: override per-worker GPU assignment
-      ***REMOVED*** NVIDIA_VISIBLE_DEVICES: "0"
+      ***REMOVED*** NVIDIA_VISIBLE_DEVICES: "0" 

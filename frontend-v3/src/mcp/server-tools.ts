@@ -86,28 +86,6 @@ export const serverTools = {
   },
 
   /**
-   * Natural-language name search — POST /api/nca/semantic-triplet-search/
-   * with natural_query. The romanizer handles cross-script matching
-   * (Hangul↔Latin, diacritic stripping) transparently.
-   */
-  async nameSearch(params: {
-    countryCode: string;
-    naturalQuery: string;
-    lat?: number;
-    lon?: number;
-    rdfType?: string;
-    topK?: number;
-    snapshotDate?: string;
-    subdivisionQid?: string;
-  }): Promise<any> {
-    const { naturalQuery, ...rest } = params;
-    return postJson("/nca/semantic-triplet-search/", {
-      ...searchBody(rest, {}),
-      natural_query: naturalQuery,
-    });
-  },
-
-  /**
    * Kuhn's-template query — POST /api/nca/execute-query/. Runs the MapQA
    * parser (template classification) + executor against the factor tables
    * and PostGIS. Returns { query, parsed, result: { answer, trace, results } }.

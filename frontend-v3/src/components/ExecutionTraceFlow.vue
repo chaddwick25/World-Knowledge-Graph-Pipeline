@@ -153,7 +153,7 @@ export default {
   line-height: 1;
 }
 .trace-status i {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
 }
 .trace-status--error {
   color: var(--bs-danger);
@@ -178,7 +178,7 @@ export default {
   flex-shrink: 0;
 }
 .trace-icon i {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   line-height: 1;
 }
 

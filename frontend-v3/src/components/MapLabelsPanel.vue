@@ -27,29 +27,18 @@
     <div class="d-flex align-items-center gap-2 small">
       <span
         class="badge rounded-pill"
-        :class="labelsAttached ? 'text-bg-success' : 'text-bg-secondary'"
-      >labels {{ labelsAttached ? 'attached' : 'detached' }}</span>
-      <span v-if="hasLabels" class="text-secondary">
-        <span class="num">{{ classLabelCount }}</span> classes · <span class="num">{{ entityLabelCount }}</span> entities
-      </span>
-      <span v-else class="text-secondary">no labels</span>
+        :class="labelsAttached && hasLabels ? 'text-bg-success' : 'text-bg-secondary'"
+      >{{ labelsAttached && hasLabels ? 'labels attached' : 'no labels' }}</span>
     </div>
 
     <!-- Data controls -->
     <div class="d-flex gap-2 flex-wrap">
       <button
         class="btn btn-sm btn-outline-primary"
-        :disabled="!countryCode || loadingClasses"
-        @click="loadClassLabels"
-      >
-        {{ loadingClasses ? 'Loading classes…' : 'Load Class Labels' }}
-      </button>
-      <button
-        class="btn btn-sm btn-outline-primary"
-        :disabled="!countryCode || loadingEntities"
+        :disabled="!countryCode || loadingEntities || loadingClasses"
         @click="loadEntityLabels"
       >
-        {{ loadingEntities ? 'Loading entities…' : 'Load Entity Labels' }}
+        {{ loadingEntities || loadingClasses ? 'Loading…' : 'Load Entity Labels' }}
       </button>
       <button
         class="btn btn-sm btn-outline-secondary"
@@ -63,12 +52,12 @@
     <p v-if="errorMessage" class="small text-danger mb-0">{{ errorMessage }}</p>
 
     <p class="small text-secondary mb-0">
-      Class labels cover all WKG classes (amenities <em>and</em> GIS classes
-      like Natural, Waterway, Highway) at their geometric centroid, sized by
-      count. Entity labels come from <code>entities/</code> for the top
-      classes, skipping unnamed features. The map frames the country on load;
-      class labels show below zoom 10, entity labels at 10 and above, and
-      collision filtering hides overlapping labels.
+      Labels cover the country in two layers: category markers for every
+      feature type (amenities, natural, waterway, highway), centered on each
+      type and sized by how many there are, plus named entities for the most
+      common types, skipping unnamed features. The map frames the country
+      when labels load; categories show while zoomed out, entity names when
+      zoomed in, and overlapping labels hide automatically.
     </p>
   </div>
 </template>
@@ -107,8 +96,6 @@ export default {
     const loadingClasses = ref(false)
     const loadingEntities = ref(false)
     const errorMessage = ref('')
-    const classLabelCount = computed(() => store.classLabelCount)
-    const entityLabelCount = computed(() => store.entityLabelCount)
     const hasLabels = computed(() => store.hasLabels)
 
     async function loadClassLabels() {
@@ -207,8 +194,6 @@ export default {
       loadingClasses,
       loadingEntities,
       errorMessage,
-      classLabelCount,
-      entityLabelCount,
       hasLabels,
       loadClassLabels,
       loadEntityLabels,

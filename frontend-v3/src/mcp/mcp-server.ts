@@ -167,52 +167,6 @@ export function createMcpServer(mcpHandlers: McpHandlers): McpServer {
   );
 
   server.registerTool(
-    "nameSearch",
-    {
-      description:
-        "Natural-language name search (any language/script) against the WorldKG " +
-        "pipeline. The romanizer handles cross-script matching transparently " +
-        "(e.g. English 'paris bagueete' matches Korean '파리바게뜨'). Returns the " +
-        "same result shape as structuredSearch.",
-      inputSchema: {
-        countryCode: z
-          .string()
-          .describe("Country name or ISO code (e.g. 'Belize', 'US')"),
-        naturalQuery: z
-          .string()
-          .describe("Name to search for in any language or script"),
-        lat: z.number().optional().describe("Optional geographic anchor latitude"),
-        lon: z.number().optional().describe("Optional geographic anchor longitude"),
-        rdfType: z
-          .string()
-          .optional()
-          .describe("Optional WorldKG class filter (e.g. 'wkgs:Cafe')"),
-        topK: z
-          .number()
-          .int()
-          .min(1)
-          .max(100)
-          .optional()
-          .describe("Max results (default 20)"),
-        snapshotDate: z
-          .string()
-          .optional()
-          .describe("Snapshot date string, e.g. '2025_12_31'"),
-        subdivisionQid: z
-          .string()
-          .optional()
-          .describe("Wikidata QID to scope the search to a subdivision"),
-      },
-    },
-    async (params) => {
-      const result = await serverTools.nameSearch(params);
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result) }],
-      };
-    },
-  );
-
-  server.registerTool(
     "templateQuery",
     {
       description:
@@ -283,7 +237,7 @@ export function createMcpServer(mcpHandlers: McpHandlers): McpServer {
         "to anchor). Returns {status, id, overlayCount}.",
       inputSchema: {
         tool: z
-          .enum(["structuredSearch", "nameSearch", "templateQuery", "other"])
+          .enum(["structuredSearch", "templateQuery", "other"])
           .describe("Which tool produced this overlay (drives the color)"),
         kind: z
           .enum(["markers", "scaled-markers", "radius", "markers-line"])

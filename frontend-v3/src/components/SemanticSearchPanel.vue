@@ -25,17 +25,6 @@
             v-model="queryMode"
           >
           <label class="btn btn-outline-secondary" for="query-mode-tags">OSM Tag Query</label>
-
-          <input
-            type="radio"
-            class="btn-check"
-            name="query-mode"
-            id="query-mode-natural"
-            autocomplete="off"
-            value="natural"
-            v-model="queryMode"
-          >
-          <label class="btn btn-outline-secondary" for="query-mode-natural">Natural language</label>
         </div>
       </div>
 
@@ -64,17 +53,6 @@
             placeholder="e.g. cafe (empty = has key)"
           />
         </div>
-      </div>
-
-      <!-- Natural language name search input -->
-      <div v-if="isNaturalMode" class="d-flex flex-column gap-1">
-        <label class="form-label small text-secondary mb-0">Name search (any language)</label>
-        <textarea
-          v-model="naturalQuery"
-          class="form-control form-control-sm font-monospace"
-          rows="2"
-          placeholder="paris bagueete  /  파리바게뜨  /  café  /  원탕"
-        ></textarea>
       </div>
 
       <!-- Natural language template input (MapQA parser) -->
@@ -175,7 +153,7 @@
           {{ showScores ? 'Hide' : 'Show' }} scores
         </button>
       </div>
-      <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+      <div class="table-responsive" style="max-height: 360px; overflow-y: auto;">
         <table class="table table-sm table-borderless results-table mb-0" style="font-size: 0.72rem;">
           <thead class="table-dark">
             <tr>
@@ -196,6 +174,8 @@
                   target="_blank"
                   class="results-name-link"
                   style="color: var(--bs-info-text-emphasis);"
+                  @mouseenter="onResultNameHover(item)"
+                  @mouseleave="onResultNameLeave(item)"
                 >
                   {{ item.name || '—' }}
                 </a>
@@ -216,6 +196,38 @@
 
     <div v-else-if="searched" class="small text-secondary">
       No results found for this query.
+    </div>
+
+    <!-- Sample questions (OSM RAG mode learning aid — from the bundled
+         sample_questions.csv, country-filtered; shown below the results
+         table, which is height-capped so both fit; the chevron collapses
+         the list) -->
+    <div v-if="isTemplateMode && filteredSampleQuestions.length" class="d-flex flex-column gap-1 border-top pt-2">
+      <button
+        type="button"
+        class="btn btn-sm btn-link p-0 text-secondary d-flex align-items-center"
+        style="width: fit-content;"
+        :aria-expanded="showSampleQuestions"
+        aria-label="Toggle sample questions"
+        @click="showSampleQuestions = !showSampleQuestions"
+      >
+        <i :class="showSampleQuestions ? 'bi bi-chevron-up' : 'bi bi-chevron-down'"></i>
+      </button>
+      <div v-if="showSampleQuestions" class="d-flex flex-column gap-1">
+        <div
+          v-for="(q, idx) in filteredSampleQuestions"
+          :key="`${q.question}-${idx}`"
+          class="d-flex align-items-center gap-2 border rounded p-1 px-2"
+          style="font-size: 0.72rem;"
+        >
+          <span class="flex-grow-1 text-truncate" :title="q.question">{{ q.question }}</span>
+          <button
+            class="btn btn-sm btn-outline-primary text-nowrap py-0 px-2"
+            :class="{ 'btn-success': copiedQuestion === q.question }"
+            @click="copyQuestion(q.question)"
+          >{{ copiedQuestion === q.question ? 'Copied!' : 'Copy' }}</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -241,21 +253,69 @@
 import axios from 'axios'
 import ExecutionTraceFlow from './ExecutionTraceFlow.vue'
 import SubdivisionSelector from './SubdivisionSelector.vue'
+import { useEntityInfoStore } from '../stores/entityInfoStore'
+import sampleQuestionsCsv from '../assets/sample_questions.csv?raw'
+
+/**
+ * Minimal CSV parse (RFC4180 subset) — handles double-quoted fields
+ * (sample questions may contain commas and apostrophes).
+ */
+function parseCsv(text) {
+  const rows = []
+  let row = []
+  let field = ''
+  let inQuotes = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++ } else inQuotes = false
+      } else field += ch
+    } else if (ch === '"') {
+      inQuotes = true
+    } else if (ch === ',') {
+      row.push(field); field = ''
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++
+      row.push(field); field = ''
+      if (row.length && row.some((c) => c !== '')) rows.push(row)
+      row = []
+    } else {
+      field += ch
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row) }
+  return rows
+}
+
+/** Parsed sample questions from the bundled CSV: {country_code, question, template}. */
+const SAMPLE_QUESTIONS = parseCsv(sampleQuestionsCsv)
+  .slice(1) // drop the header row
+  .filter((r) => r.length >= 2 && r[1])
+  .map((r) => ({ country_code: (r[0] || '').toUpperCase(), question: r[1], template: r[2] || '' }))
 
 export default {
   name: 'SemanticSearchPanel',
   components: { ExecutionTraceFlow, SubdivisionSelector },
+  setup() {
+    const entityInfoStore = useEntityInfoStore()
+    return { entityInfoStore }
+  },
   props: {
     countryName: {
       type: String,
       required: true,
+    },
+    countryCode: {
+      type: String,
+      default: '',
     },
     snapshotDate: {
       type: String,
       default: null,
     },
   },
-  emits: ['search-results', 'query-graph'],
+  emits: ['search-results', 'query-graph', 'template-visualization'],
   data() {
     return {
       // ── Query state (component-local) ──
@@ -263,7 +323,6 @@ export default {
       // OSM Tag Query mode: key dropdown + free-text value → query_tags.
       tagKey: 'amenity',
       tagValue: 'cafe',
-      naturalQuery: '',
       templateQuery: '',
       lat: '',
       lon: '',
@@ -275,6 +334,11 @@ export default {
       searched: false,
       showScores: false,
       subdivisionQid: null,
+      // Sample questions (OSM RAG mode learning aid) — expanded on mount,
+      // hidden once results arrive; chevron toggles the list.
+      showSampleQuestions: true,
+      copiedQuestion: null,
+      copyTimer: null,
       // MapQA parser state (sync template mode)
       parsedQuery: null,
       executeAnswer: null,
@@ -338,11 +402,19 @@ export default {
     isTagsMode() {
       return this.queryMode === 'tags'
     },
-    isNaturalMode() {
-      return this.queryMode === 'natural'
-    },
     isTemplateMode() {
       return this.queryMode === 'template'
+    },
+    /** Sample questions for the selected country (falls back to generic
+     *  rows when the country has none) — from the bundled CSV. */
+    filteredSampleQuestions() {
+      if (!this.countryCode) {
+        return SAMPLE_QUESTIONS.filter((q) => !q.country_code).slice(0, 8)
+      }
+      const iso = this.countryCode.toUpperCase()
+      const country = SAMPLE_QUESTIONS.filter((q) => q.country_code === iso)
+      const generic = SAMPLE_QUESTIONS.filter((q) => !q.country_code)
+      return (country.length ? country : generic).slice(0, 8)
     },
     isValid() {
       if (this.isTagsMode) {
@@ -350,10 +422,7 @@ export default {
         // backend treats it as a has-key filter).
         return !!this.tagKey
       }
-      if (this.isTemplateMode) {
-        return this.templateQuery.trim().length > 0
-      }
-      return this.naturalQuery.trim().length > 0
+      return this.templateQuery.trim().length > 0
     },
     isLoading() {
       return this.loading
@@ -376,9 +445,16 @@ export default {
     topKClamped() {
       return Math.min(100, Math.max(1, parseInt(this.topK, 10) || 20))
     },
-    /** Normalized + top-k-capped results (table rows and map entities). */
+    /** Normalized + top-k-capped results (table rows and map entities).
+     *  Nameless entities are filtered out (2026-09-28): unnamed noise
+     *  (traffic islands, generic multipolygons) ranked high with no name
+     *  to show. Presentation-only — the re-rank and backend are untouched;
+     *  the remaining rows keep their exact order. */
     displayResults() {
-      return this.results.map((r) => this.normalizeResult(r)).slice(0, this.topKClamped)
+      return this.results
+        .map((r) => this.normalizeResult(r))
+        .filter((r) => (r.name || '').trim().length > 0)
+        .slice(0, this.topKClamped)
     },
     /** Score columns that have at least one non-zero value in the current
      *  result set. Columns that are always 0 for a given search mode
@@ -418,13 +494,13 @@ export default {
   unmounted() {
     this.eventSource?.close()
     this.eventSource = null
+    clearTimeout(this.copyTimer)
   },
   methods: {
     reset() {
       this.queryMode = 'tags'
       this.tagKey = 'amenity'
       this.tagValue = 'cafe'
-      this.naturalQuery = ''
       this.templateQuery = ''
       this.lat = ''
       this.lon = ''
@@ -442,10 +518,31 @@ export default {
       this.eventSource = null
       this.enrichedAnswer = ''
       this.enrichingContext = null
+      this.$emit('template-visualization', null)
     },
 
     async performSearch() {
       await this.executeSync()
+    },
+
+    /** Copy a sample question to the clipboard with a brief confirmation. */
+    copyQuestion(question) {
+      navigator.clipboard?.writeText(question).catch(() => {})
+      this.copiedQuestion = question
+      clearTimeout(this.copyTimer)
+      this.copyTimer = setTimeout(() => {
+        this.copiedQuestion = null
+      }, 1500)
+    },
+
+    /** Hovering a result name pops the same info card as a marker click
+     *  (both write entityInfoStore). The name link already underlines on
+     *  hover via .results-name-link. */
+    onResultNameHover(item) {
+      this.entityInfoStore.setEntity(item, 'table')
+    },
+    onResultNameLeave(item) {
+      this.entityInfoStore.clearEntity(`${item.osm_type}:${item.osm_id}`)
     },
 
     /** Execute the query — SSE stream (template) or POST (triplet search). */
@@ -480,7 +577,7 @@ export default {
       }
 
       try {
-        // OSM Tag Query and Natural language modes both use triplet search
+        // OSM Tag Query mode uses triplet search
         const payload = {
           country_code: this.countryName,
           top_k: this.topKClamped,
@@ -490,12 +587,6 @@ export default {
           // Key from dropdown + free-text value → query_tags; empty value
           // means has-key matching on the backend.
           payload.query_tags = { [this.tagKey]: this.tagValue.trim() }
-        } else if (this.isNaturalMode) {
-          // Natural language name search: romanizer + FastText
-          if (!this.naturalQuery.trim()) {
-            throw new Error('Please enter a name to search')
-          }
-          payload.natural_query = this.naturalQuery.trim()
         }
 
         if (this.lat) payload.lat = parseFloat(this.lat)
@@ -785,12 +876,42 @@ export default {
       }
     },
 
+    /** Parse optional map metadata from executor trace/results for deck viz. */
+    buildTemplateVisualization(entities, graph) {
+      if (!this.isTemplateMode || !this.parsedQuery?.template) return null
+      const template = this.parsedQuery.template
+      const trace = Array.isArray(this.executeTrace) ? this.executeTrace : []
+      const radiusStep = trace.find((s) => s?.step === 'default_radius')
+      const coneStep = trace.find((s) => s?.step === 'cone_search')
+      const amountConcept = (this.parsedQuery.concepts || []).find((c) => c?.type === 'AMOUNT')
+      const amountText = amountConcept?.text || ''
+      const amountMatch = String(amountText).match(/(\d+(?:\.\d+)?)\s*(km|m)\b/i)
+      const radiusFromAmount = amountMatch
+        ? Math.round(parseFloat(amountMatch[1]) * (amountMatch[2].toLowerCase() === 'km' ? 1000 : 1))
+        : null
+      const firstDirectionalEntity = entities.find((e) => e.direction)
+      const direction = firstDirectionalEntity?.direction || null
+      return {
+        template,
+        question: this.templateQuery.trim(),
+        anchors: graph.anchors || [],
+        entities: graph.entities || [],
+        links: graph.links || [],
+        anchorLines: graph.anchorLines || [],
+        radiusM: radiusFromAmount || radiusStep?.radius_m || null,
+        coneRadiusM: coneStep?.radius_m || null,
+        direction,
+      }
+    },
+
     /** Emit normalized, top-k-capped entities + the anchor/entity graph. */
     publishResults() {
       const entities = this.displayResults
+      const graph = this.buildQueryGraph(entities)
       // Map markers (+ backward-compat circle fallback) — only entities with coords.
       this.$emit('search-results', entities.filter((e) => e.geom))
-      this.$emit('query-graph', this.buildQueryGraph(entities))
+      this.$emit('query-graph', graph)
+      this.$emit('template-visualization', this.buildTemplateVisualization(entities, graph))
     },
 
     formatTags(tags) {
