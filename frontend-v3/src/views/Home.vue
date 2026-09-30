@@ -245,7 +245,7 @@ export default {
       tabs: [
         { key: 'query', label: 'OSM RAG' },
         { key: 'osm-entities', label: 'OSM Entities' },
-        { key: 'research', label: 'Agentic Researcher' },
+        { key: 'research', label: 'OSM Agentic Researcher' },
       ],
 
       // ── System state ──
