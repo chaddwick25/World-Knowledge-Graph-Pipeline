@@ -181,6 +181,16 @@ class TemplateExecutorsMixin:
         radius_m = cls._parse_radius(radius_concept["text"] if radius_concept else None)
         amenity_text = amenity["text"] if amenity else None
 
+        # Proper-name OBJECTs (brands): the FastText pool is name-blind for
+        # out-of-vocabulary names ("juici patties" admits ~1 entity), so
+        # build the pool name-first (trigram tier) alongside the embedding
+        # tier. Categories ("cafes") resolve to an amenity tag → no name tier.
+        name_pool_query = None
+        if amenity_text and cls._resolve_amenity_tag(
+            amenity_text, country_code, snapshot_date,
+        ) is None:
+            name_pool_query = amenity_text
+
         # 1. SUPPORT: geocode the anchor — unless it is a generic amenity
         #    category ("police stations", "schools"), which the
         #    multi-anchor path resolves instead. Geocoding a category as a
@@ -225,8 +235,12 @@ class TemplateExecutorsMixin:
                 amenity_text, country_code, snapshot_date,
                 anchor_point=anchor_point,
                 radius_m=radius_m, top_k=200, trace=trace,
+                name_pool_query=name_pool_query,
             )
-            return entities
+            return cls._rerank_with_name_alignment(
+                entities, amenity_text, anchor_coords, radius_m,
+                country_code, snapshot_date, trace,
+            )
 
         # 3. Multi-anchor fallback: the anchor text may be a generic
         #    amenity category (e.g. "schools", "hospitals") rather than
@@ -257,8 +271,46 @@ class TemplateExecutorsMixin:
         # No anchor or radius — return unfiltered amenity search
         entities = cls._search_by_amenity(
             amenity_text, country_code, snapshot_date, top_k=200, trace=trace,
+            name_pool_query=name_pool_query,
         )
-        return entities
+        return cls._rerank_with_name_alignment(
+            entities, amenity_text, anchor_coords, radius_m,
+            country_code, snapshot_date, trace,
+        )
+
+    @classmethod
+    def _rerank_with_name_alignment(cls, entities, amenity_text, anchor_coords,
+                                     radius_m, country_code, snapshot_date,
+                                     trace):
+        """Re-rank FILTER-AGGREGATE-MEASURE results with geo + USLP scores,
+        plus name alignment when the OBJECT concept is a proper name.
+
+        The parser extracts the OBJECT text as typed ("island grill"); the
+        amenity tiers resolve tag values, never entity names. When the text
+        is not a resolvable amenity category, it is a proper name: align it
+        against each entity's ``name`` field (FastText cosine) so exact-name
+        entities rank on top regardless of distance. Category queries
+        ("cafes") keep the geo + uslp re-rank only.
+        """
+        if not entities:
+            return entities
+        name_query = None
+        if amenity_text and cls._resolve_amenity_tag(
+            amenity_text, country_code, snapshot_date,
+        ) is None:
+            name_query = amenity_text
+        if trace is not None:
+            trace.append({
+                "step": "name_alignment",
+                "input": amenity_text,
+                "name_query": name_query,
+            })
+        anchor_osm_id = anchor_coords.get("osm_id") if anchor_coords else None
+        return cls._enrich_with_geo_and_uslp(
+            entities, "FILTER-AGGREGATE-MEASURE (#1)", anchor_coords, radius_m,
+            anchor_osm_id, country_code, snapshot_date, trace,
+            name_query=name_query,
+        )
     @classmethod
     def _multi_anchor_amenity_search(cls, amenity_text, anchor_text,
                                       country_code, snapshot_date,

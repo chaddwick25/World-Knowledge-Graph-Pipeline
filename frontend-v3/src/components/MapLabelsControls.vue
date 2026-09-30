@@ -18,7 +18,7 @@
 <template>
   <div class="map-labels-controls">
     <div class="map-labels-controls__header" @click="collapsed = !collapsed">
-      <span class="map-labels-controls__title">Map Labels</span>
+      <span class="map-labels-controls__title">OSM Entities</span>
       <span class="map-labels-controls__badge">{{ collapsed ? 'show' : 'hide' }}</span>
     </div>
 
@@ -145,7 +145,7 @@ export default {
 
 .map-labels-controls__title {
   /* Micro-header: 11px semibold uppercase with tracking. */
-  font-size: 0.69rem;
+  font-size: 0.68rem;
   font-weight: 600;
   color: var(--bs-meta-strong);
   text-transform: uppercase;
@@ -178,12 +178,12 @@ export default {
 }
 
 .map-labels-controls__label {
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   color: var(--bs-meta-color);
 }
 
 .map-labels-controls__value {
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   color: var(--bs-readout-color);
   font-variant-numeric: tabular-nums;
 }
@@ -221,7 +221,7 @@ export default {
 .map-labels-controls__save {
   width: 100%;
   margin-top: 0.35rem;
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   padding: 0.15rem 0;
 }
 </style>

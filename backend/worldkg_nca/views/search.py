@@ -920,7 +920,10 @@ def worldkg_semantic_query_plan(request):
 
     # ── MapQA parser (replaces class_keyword_map heuristic) ──
     parser = QueryParserService.get_instance()
-    parsed = parser.parse(query_text)
+    parsed = parser.parse(
+        query_text, country_code=country_code,
+        object_oracle=_object_recovery_oracle,
+    )
 
     # Extract OBJECT concept as primary amenity for backward-compat rdf_type
     primary_rdf_type = None
@@ -996,6 +999,29 @@ def worldkg_semantic_query_plan(request):
     return Response(plan)
 
 
+def _object_recovery_oracle(span, country_code):
+    """Data-plane oracle for the parser's Stage 2c OBJECT recovery.
+
+    Geocode the candidate span; entities whose WorldKG class is a
+    searchable POI are OBJECT material ("KFC" → wkgs:Amenity). A span that
+    geocodes to a highway or place is a location — it stays in the LOCATION
+    slot. Returns (is_poi, confidence).
+    """
+    if not span or not country_code:
+        return (False, 0.0)
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    from semantic_search.services.query_parser_service import is_poi_wkg_class
+    try:
+        entity = EntityGeocoder.geocode(span, country_code)
+    except Exception:
+        return (False, 0.0)
+    if not entity:
+        return (False, 0.0)
+    if is_poi_wkg_class(entity.get("wkg_class")):
+        return (True, 0.6)
+    return (False, 0.0)
+
+
 @api_view(["POST"])
 def execute_query(request):
     """Execute a natural-language geospatial query end-to-end.
@@ -1028,9 +1054,13 @@ def execute_query(request):
         except Exception:
             pass  # use as-is if resolution fails
 
-    # Phase 1: parse
+    # Phase 1: parse (with class-verified OBJECT recovery — brand names
+    # like "kfc" that the ML concept extractor misses)
     parser = QueryParserService.get_instance()
-    parsed = parser.parse(query_text)
+    parsed = parser.parse(
+        query_text, country_code=country_code,
+        object_oracle=_object_recovery_oracle,
+    )
 
     # Phase 2: execute
     result = QueryExecutorService.execute(
@@ -1124,7 +1154,10 @@ def execute_query_stream(request):
                     },
                 ):
                     parser = QueryParserService.get_instance()
-                    parsed = parser.parse(query_text)
+                    parsed = parser.parse(
+                        query_text, country_code=cc,
+                        object_oracle=_object_recovery_oracle,
+                    )
                     emit("parsed", parsed=parsed)
 
                     result = QueryExecutorService.execute(

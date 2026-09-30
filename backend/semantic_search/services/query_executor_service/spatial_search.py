@@ -23,7 +23,8 @@ class SpatialSearchMixin:
     @classmethod
     def _search_by_amenity(cls, amenity_type: str, country_code: str,
                            snapshot_date: str, top_k: int = 50,
-                           trace: list = None) -> list:
+                           trace: list = None,
+                           name_pool_query: str = None) -> list:
         """Search for OSM entities by amenity tag value.
 
         Strategy:
@@ -33,6 +34,10 @@ class SpatialSearchMixin:
 
         Uses direct PostGIS/JSONB queries on OsmEntity for steps 1-2,
         then pgvector for step 3.
+
+        name_pool_query: when the OBJECT is a proper name (brand), merge
+        the fuzzy name pool into the FastText tier — the embedding pool is
+        name-blind for out-of-vocabulary brands.
         """
         if not amenity_type:
             if trace is not None:
@@ -134,6 +139,18 @@ class SpatialSearchMixin:
         fasttext_results = cls._search_by_fasttext(
             amenity_type, country_code, snapshot_date, top_k, trace
         )
+        if name_pool_query:
+            name_results = cls._search_by_name(
+                name_pool_query, country_code, snapshot_date,
+                top_k=max(top_k * 5, 200),
+            )
+            if trace is not None:
+                trace.append({
+                    "step": "place_search_name_pool",
+                    "input": name_pool_query,
+                    "output_count": len(name_results),
+                })
+            fasttext_results = cls._merge_pools(name_results, fasttext_results)
         return fasttext_results
     @classmethod
     def _search_by_ontology_class(cls, amenity_type: str, country_code: str,
@@ -285,7 +302,8 @@ class SpatialSearchMixin:
                                     anchor_point: Point,
                                     radius_m: int = None,
                                     top_k: int = 50,
-                                    trace: list = None) -> list:
+                                    trace: list = None,
+                                    name_pool_query: str = None) -> list:
         """Search for OSM entities by amenity tag, filtered/ordered by PostGIS.
 
         Uses ST_DWithin (GiST index-backed) for radius filtering and
@@ -304,6 +322,11 @@ class SpatialSearchMixin:
         ([MAPQA_TO_EXECUTION_PLAN:§4.1] — parser extracts the raw phrase,
         executor's data plane resolves it via 3-tier fallback)
 
+        name_pool_query: when the OBJECT is a proper name (brand), merge
+        the fuzzy name pool into the FastText tier before the radius
+        filter — the embedding pool admits ~1 entity for out-of-vocabulary
+        brands ("juici patties"), while the name tier finds every branch.
+
         Args:
             amenity_type: Amenity tag value or natural-language phrase
             country_code: ISO 3166-1 alpha-2 code
@@ -312,6 +335,7 @@ class SpatialSearchMixin:
             radius_m: Optional radius in meters for ST_DWithin filter
             top_k: Maximum results to return
             trace: Optional execution trace list
+            name_pool_query: Optional proper-name span for the name tier
         """
         if not amenity_type:
             if trace is not None:
@@ -446,6 +470,18 @@ class SpatialSearchMixin:
             amenity_type, country_code, snapshot_date,
             top_k=max(top_k * 5, 200), trace=trace,
         )
+        if name_pool_query:
+            name_pool = cls._search_by_name(
+                name_pool_query, country_code, snapshot_date,
+                top_k=max(top_k * 5, 200),
+            )
+            if trace is not None:
+                trace.append({
+                    "step": "place_search_name_pool",
+                    "input": name_pool_query,
+                    "output_count": len(name_pool),
+                })
+            fasttext_pool = cls._merge_pools(name_pool, fasttext_pool)
         if not fasttext_pool:
             return []
 
@@ -476,6 +512,85 @@ class SpatialSearchMixin:
                 "output_count": len(results),
             })
         return results
+    # ── Name tier — proper-name OBJECTs (brands) ────────────────────────────
+
+    @classmethod
+    def _search_by_name(cls, name: str, country_code: str,
+                        snapshot_date: str, top_k: int = 200) -> list:
+        """Fuzzy name pool for proper-name OBJECTs (brand names).
+
+        The FastText pool is built from tag embeddings and is name-blind
+        for out-of-vocabulary brands ("juici patties" admits ~1 entity).
+        This tier matches ``name_romanized`` with the index-assisted
+        trigram operator (the same machinery as EntityGeocoder) plus an
+        exact-name fallback, so every branch is found regardless of
+        embedding coverage. Cross-script: a Hangul query is romanized via
+        RomanizerRegistry before the trigram comparison.
+        """
+        from django.contrib.postgres.search import TrigramSimilarity
+        from semantic_search.services.romanizing_names.registry import (
+            RomanizerRegistry,
+        )
+
+        snapshot_id = cls._get_snapshot_id(snapshot_date)
+
+        variants = [name.strip()]
+        romanized = RomanizerRegistry.auto_romanize(name.strip())
+        if romanized and romanized.lower() != variants[0].lower():
+            variants.append(romanized)
+
+        qs = OsmEntity.objects.using("vectors").filter(
+            snapshot_id=snapshot_id,
+        ).exclude(geom__isnull=True)
+        if country_code:
+            qs = qs.filter(country_code=country_code.upper())
+
+        seen = {}
+        for variant in variants:
+            v = variant.lower()
+            if not v:
+                continue
+            # Trigram tier — `%%` is index-assisted; the >= 0.4 similarity
+            # guard and the fragment guard mirror EntityGeocoder.
+            qs_fuzzy = qs.extra(
+                where=[
+                    "name_romanized %% %s AND "
+                    "similarity(name_romanized, %s) >= 0.4 AND "
+                    "NOT (similarity(name_romanized, %s) < 0.6 AND "
+                    "     length(name_romanized) > %s)"
+                ],
+                params=[v, v, v, int(1.6 * len(v))],
+            ).annotate(
+                sim=TrigramSimilarity("name_romanized", v),
+            ).order_by("-sim")[:top_k]
+            for e in qs_fuzzy:
+                key = (e.osm_type, e.osm_id)
+                if key not in seen:
+                    seen[key] = cls._entity_to_result(e)
+            # Exact-name tier — catches rows whose name_romanized is missing.
+            qs_exact = qs.filter(tags__name__iexact=v)[:top_k]
+            for e in qs_exact:
+                key = (e.osm_type, e.osm_id)
+                if key not in seen:
+                    seen[key] = cls._entity_to_result(e)
+
+        return list(seen.values())
+
+    @staticmethod
+    def _merge_pools(*pools) -> list:
+        """Dedupe pool entries by (osm_type, osm_id); first occurrence wins.
+
+        The name tier and the FastText tier both return the executor result
+        shape; an entity matched by both must appear once.
+        """
+        seen = {}
+        for pool in pools:
+            for r in pool or []:
+                key = (r.get("osm_type"), r.get("osm_id"))
+                if key not in seen:
+                    seen[key] = r
+        return list(seen.values())
+
     @classmethod
     def _search_by_ontology_class_spatial(cls, amenity_type: str,
                                            country_code: str,
