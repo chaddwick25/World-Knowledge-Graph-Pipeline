@@ -1,0 +1,42 @@
+Macro-template,Concept transformation,What metric it produces,MapQA question,Question type,Region,Answer
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,italian food near a bus station,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,chinese food near a school,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,mexican food near a hospital,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,indian food near a park,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,japanese food near a hotel,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,thai food near downtown,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,greek food near the beach,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,french food near a museum,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,korean food near a university,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,vietnamese food near a train station,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,coffee shop near a bus station,natural_language,augmented,cafe
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,coffee shop near a school,natural_language,augmented,cafe
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,coffee near downtown,natural_language,augmented,cafe
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,gas station near a highway,natural_language,augmented,fuel
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,gas station near a hotel,natural_language,augmented,fuel
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,bus station near a airport,natural_language,augmented,bus_station
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,train station near a hotel,natural_language,augmented,train_station
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,pizza near a cinema,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,sushi near a park,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,burgers near a stadium,natural_language,augmented,fast_food
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,italian food near a pharmacy,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,coffee shop near a library,natural_language,augmented,cafe
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,chinese food near a bank,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,mexican food near a gas station,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,indian food near a shopping mall,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,italian food near downtown,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,coffee shop near a train station,natural_language,augmented,cafe
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,thai food near a hospital,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,japanese food near a university,natural_language,augmented,restaurant
+PLACE-ATTRIBUTE-QUERY (#8),OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE,Adjacent entity of a given type,greek food near a hotel,natural_language,augmented,restaurant
+FILTER-AGGREGATE-MEASURE (#1),SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE,List of specific amenity type within a radius,italian food within 100m of a bus station,natural_language,augmented,restaurant
+FILTER-AGGREGATE-MEASURE (#1),SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE,List of specific amenity type within a radius,coffee shop within 200m of a school,natural_language,augmented,cafe
+FILTER-AGGREGATE-MEASURE (#1),SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE,List of specific amenity type within a radius,gas station within 500m of a highway exit,natural_language,augmented,fuel
+FILTER-AGGREGATE-MEASURE (#1),SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE,List of specific amenity type within a radius,chinese food within 150m of a park,natural_language,augmented,restaurant
+FILTER-AGGREGATE-MEASURE (#1),SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE,List of specific amenity type within a radius,pizza within 300m of a cinema,natural_language,augmented,restaurant
+FILTER-AGGREGATE-MEASURE (#1),SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE,List of specific amenity type within a radius,sushi within 250m of a university,natural_language,augmented,restaurant
+FILTER-AGGREGATE-MEASURE (#1),SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE,List of specific amenity type within a radius,burgers within 400m of a stadium,natural_language,augmented,fast_food
+FILTER-AGGREGATE-MEASURE (#1),SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE,List of specific amenity type within a radius,coffee within 100m of a library,natural_language,augmented,cafe
+FILTER-AGGREGATE-MEASURE (#1),SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE,List of specific amenity type within a radius,italian food within 500m of downtown,natural_language,augmented,restaurant
+FILTER-AGGREGATE-MEASURE (#1),SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE,List of specific amenity type within a radius,mexican food within 200m of a hospital,natural_language,augmented,restaurant
+FILTER-AGGREGATE-MEASURE (#1),SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE,List of specific amenity type within a radius,indian food within 300m of a hotel,natural_language,augmented,restaurant

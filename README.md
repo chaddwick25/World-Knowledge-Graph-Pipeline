@@ -1,93 +1,113 @@
-# World Knowledge Graph Pipeline
+# World KG & Geo Spatial Reasoning
+
+Search places worldwide and get AI-powered answers. The app turns raw
+OpenStreetMap data into a searchable knowledge base, then lets you ask
+questions about any country it has processed and get grounded answers
+on an interactive map.
+
+Pick a country, run the pipeline, and ask a question like "Which cafes
+are within 2km of a school?" The app parses the question, finds the
+matching places, shows them on the map, and writes a short AI summary
+that explains what it found and why.
 
 
+## What it does
 
-## Getting started
+Three things, each building on the last:
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+1. **Processes a country.** The pipeline reads OpenStreetMap data for
+   a country, builds vector embeddings of every place, aligns places
+   with Wikidata, and predicts spatial relationships between them. One
+   run takes a few minutes on a GPU; the results are stored and ready
+   to query.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+2. **Searches the results three ways.** Search by OSM tag, by name in
+   any language or script, or by a full natural-language question. The
+   first two are fast lookups; the third is the AI-powered mode that
+   parses your question, runs it against the stored data, and
+   summarizes the answer.
 
-## Add your files
+3. **Answers questions with grounded AI.** The AI summary cites the
+   actual places, their tags, and the spatial relationships the
+   pipeline predicted. It is not a generic chatbot answer. It is
+   grounded in the data the pipeline produced for the country you
+   selected.
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
 
+## Try it
+
+```bash
+docker compose -f docker-compose.yml -f compose.override.yml up -d
+cd frontend-v3 && npm install && npm run dev
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/cbailey25/world-knowledge-graph-pipeline.git
-git branch -M main
-git push -uf origin main
-```
 
-## Integrate with your tools
+Open the app, pick a country that is already processed (green badge),
+and try one of the three search modes below.
 
-* [Set up project integrations](https://gitlab.com/cbailey25/world-knowledge-graph-pipeline/-/settings/integrations)
 
-## Collaborate with your team
+## Three ways to search
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+### 1. Search by tag
 
-## Test and Deploy
+Enter OSM tags as JSON (e.g. `{"amenity": "cafe"}`) or a name in any
+language (e.g. `{"name": "파리바게뜨"}`). The romanizer auto-detects the
+script for cross-script name matching. FastText provides semantic type
+matching.
 
-Use the built-in continuous integration in GitLab.
+![Query by OSM Tag](frontend-v3/src/assets/Query_By_OSM_Tag.png)
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+### 2. Search by name
 
-***
+Type a name in any language or script (e.g. "paris bagueete",
+"파리바게뜨", "café", "원탕"). The romanizer handles cross-script matching;
+FastText adds semantic type matching.
 
-# Editing this README
+![Query by Natural Language](frontend-v3/src/assets/Query_By_Natural_Language.png)
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+### 3. Ask a question (AI summary)
 
-## Suggestions for a good README
+Type a full geospatial question (e.g. "Which bars are within 50m of
+Hollywood Blvd?"). The app shows you what it understood, you approve
+or edit, and it runs.
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+![AI summary](frontend-v3/src/assets/Kuhns_Template.png)
 
-## Name
-Choose a self-explaining name for your project.
+Here is what the experience looks like end to end:
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+1. **Type a question.** Anything from "Which cafes are within 2km of a
+   school?" to "How far is Betelnut Cafe from Limerick?"
+2. **Review what the app understood.** A confirmation modal shows the
+   extracted pieces of your question: the amenity, the location, the
+   radius. You can approve, edit a slot, or reject and rephrase.
+3. **Watch it run.** Results stream back in stages: the parsed query,
+   then the matching places, then the entity context the AI will use.
+4. **Read the answer.** A short AI summary appears token by token,
+   grounded in the actual places, their tags, and the spatial
+   relationships the pipeline predicted. It cites what it found, not
+   what it guessed.
+5. **Explore the map.** Every matching place renders on the map with a
+   popup showing its metadata. The answer and the map stay in sync.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+*How a question becomes an answer: the app extracts the concepts in
+your question, composes them into a structured plan, and maps that
+plan to real data lookups. Source: [Spatial-Agent
+paper](docs/papers/WernerKuhn/Spatial-Agent:%20Agentic%20Geo-spatial%20Reasoning%20with%20Scientific%20Core%20Concepts.pdf)*
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+## What the AI handles well
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+Questions that map to the data the pipeline produces: place types,
+spatial relationships, semantic similarity, and cross-script names.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+| Question type | Example |
+|---|---|
+| Find things near a place | "Which cafes are within 2km of a school?" |
+| Find the nearest | "What is the nearest cafe to Shandon Bells?" |
+| Compare distances | "Which is closer to Moher Cottage: Cliff Coast Coffee or the Cliffs of Moher?" |
+| What is around here | "What amenities are around Tully Mill?" |
+| Direction from a place | "What is west of Tullygally Tavern?" |
+| How far is X from Y | "How far is Betelnut Cafe from Limerick?" |
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Routing and navigation questions ("What turns do I take to get to the
+pub?") are future work; there is no training data for those yet.

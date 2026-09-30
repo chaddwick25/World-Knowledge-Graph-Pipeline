@@ -1,0 +1,334 @@
+services:
+  postgres-default:
+    build:
+      context: .
+      dockerfile: postgres-default.Dockerfile
+    container_name: postgres-default
+    shm_size: 1g  
+    command: ["postgres", "-c", "synchronous_commit=off", "-c", "maintenance_work_mem=512MB", "-c", "max_wal_size=4GB", "-c", "checkpoint_timeout=1h", "-c", "shared_buffers=1GB", "-c", "work_mem=64MB", "-c", "effective_cache_size=4GB", "-c", "max_parallel_workers=2", "-c", "max_parallel_maintenance_workers=2"]
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ${POSTGRES_DEFAULT_DATA_DIR}:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-vectors:
+    build:
+      context: .
+      dockerfile: postgres-vectors.Dockerfile
+    container_name: postgres-vectors
+    # /dev/shm must be large enough for maintenance_work_mem (16GB) used by
+    # parallel HNSW index builds + shared_buffers DSM overhead. The former
+    # 1g cap caused "No space left on device" during CREATE INDEX ... USING hnsw.
+    shm_size: 48g
+    command: ["postgres", "-c", "synchronous_commit=off", "-c", "maintenance_work_mem=32GB", "-c", "max_wal_size=32GB", "-c", "checkpoint_timeout=1h", "-c", "shared_buffers=32GB", "-c", "work_mem=256MB", "-c", "effective_cache_size=96GB", "-c", "random_page_cost=1.1", "-c", "effective_io_concurrency=200", "-c", "max_parallel_maintenance_workers=8", "-c", "max_parallel_workers=12", "-c", "max_parallel_workers_per_gather=4", "-c", "max_worker_processes=16", "-c", "max_connections=100"]
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${PGVECTOR_DB}
+      POSTGRES_USER: ${PGVECTOR_USER}
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - ${POSTGRES_VECTORS_DATA_DIR}:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGVECTOR_USER} -d ${PGVECTOR_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: eda-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ${REDIS_DATA_DIR}:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: eda-backend
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=backend.settings
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-django-insecure-i%)wb*%s81#y-rrf!fw9v$quoo0!&@)-2f0o9os!b*i&53xtqj}
+      - POSTGRES_HOST=postgres-default
+      - PGVECTOR_HOST=postgres-vectors
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # Storage roots only — per-leaf paths (planet PBF, polygon dir, ontology
+      # TTL, embeddings, overrides.json, ...) are derived from these two in
+      # settings.py.  Pipeline GPU/parallel tuning lives in
+      # pipeline/hyperparams.yaml (gv_nle / parallel_upsert sections).
+      - BASE_DATA_DIR=/app/data
+      - OSMIUM_EXECUTABLE=/usr/bin/osmium
+      - OSMIUM_BINARY_PATH=/usr/bin/osmium
+      - COLD_STORAGE_BASE_DIR=${COLD_STORAGE_BASE_DIR}
+      - RUN_MIGRATIONS=true
+      - RUN_INIT_PLANET=true
+      - LLM_BASE_URL=http://ollama:11434/v1
+      - LLM_MODEL=qwen3:8b
+      # Research orchestrator LLM (batch path) — the RTX 2070 instance.
+      # Unset → the research loop falls back to the platform LLM (the 4070).
+      - RESEARCH_LLM_BASE_URL=${RESEARCH_LLM_BASE_URL:-http://ollama-research:11435/v1}
+      - RESEARCH_LLM_MODEL=${RESEARCH_LLM_MODEL:-qwen3:8b}
+      - RESEARCH_LLM_TIMEOUT=${RESEARCH_LLM_TIMEOUT:-120}
+      - RESEARCH_FOLLOWUP_TOOLS=${RESEARCH_FOLLOWUP_TOOLS:-0}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/.venv
+      - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
+      # Nested under the OSM-PBF-FILES mount so the settings.py derivation
+      # (BASE_DATA_DIR/OSM-PBF-FILES/osm_polygon_files) resolves; shadows the
+      # outer mount's subdir when POLYGON_FILES_DIR lives outside the root.
+      - ${POLYGON_FILES_DIR}:/app/data/OSM-PBF-FILES/osm_polygon_files
+      - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
+      - ${MAPQA_DATASET_DIR}:/app/data/mapqa_parser/raw/MapQA-dataset-main:ro
+      - ./backend/data:/app/data
+    depends_on:
+      postgres-default:
+        condition: service_healthy
+      postgres-vectors:
+        condition: service_healthy
+    restart: unless-stopped
+    command: python manage.py runserver 0.0.0.0:8000
+
+  # Self-hosted SPA frontend — serves frontend-v3/dist statically and
+  # proxies /api + /ws to the backend. The Tailscale Funnel targets this
+  # service (host port 80) instead of the backend directly.
+  nginx:
+    image: nginx:alpine
+    container_name: eda-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend-v3/dist:/usr/share/nginx/html:ro
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  # Optional: Worker service for background tasks
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: eda-worker
+    runtime: nvidia
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=backend.settings
+      - POSTGRES_HOST=postgres-default
+      - PGVECTOR_HOST=postgres-vectors
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # Storage roots only — per-leaf paths (planet PBF, polygon dir, ontology
+      # TTL, embeddings, overrides.json, ...) are derived from these two in
+      # settings.py.  Pipeline GPU/parallel tuning lives in
+      # pipeline/hyperparams.yaml (gv_nle / parallel_upsert sections).
+      - BASE_DATA_DIR=/app/data
+      - OSMIUM_EXECUTABLE=/usr/bin/osmium
+      - OSMIUM_BINARY_PATH=/usr/bin/osmium
+      - COLD_STORAGE_BASE_DIR=${COLD_STORAGE_BASE_DIR}
+      # GPU 1 = RTX 4070 Ti SUPER (16 GB) — the pipeline's compute card
+      # (GV-NLE / USLP / spectral). Shared with ollama's resident model;
+      # cuda:0 inside the container remaps to physical GPU 1.  GPU device
+      # scheduling is set in pipeline/hyperparams.yaml (gv_nle section).
+      - NVIDIA_VISIBLE_DEVICES=1
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+      - RUN_MIGRATIONS=false
+      - RUN_INIT_PLANET=false
+      - LLM_BASE_URL=http://ollama:11434/v1
+      - LLM_MODEL=qwen3:8b
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/.venv
+      - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
+      # Nested under the OSM-PBF-FILES mount so the settings.py derivation
+      # (BASE_DATA_DIR/OSM-PBF-FILES/osm_polygon_files) resolves; shadows the
+      # outer mount's subdir when POLYGON_FILES_DIR lives outside the root.
+      - ${POLYGON_FILES_DIR}:/app/data/OSM-PBF-FILES/osm_polygon_files
+      - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
+      - ${MAPQA_DATASET_DIR}:/app/data/mapqa_parser/raw/MapQA-dataset-main:ro
+      - ./backend/data:/app/data
+    depends_on:
+      backend:
+        condition: service_started
+      postgres-default:
+        condition: service_healthy
+      postgres-vectors:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    # --max-tasks-per-child=1: recycle each prefork process after one task so
+    # the OS reclaims ALL GPU memory (CUDA context, allocated tensors, cached
+    # reserved memory) when the process exits.  torch.cuda.empty_cache() only
+    # releases *cached* memory — it cannot free the CUDA context (~300-500MB)
+    # or memory held by surviving tensor references.  Without this, a worker
+    # process that ran a GPU-intensive task (GV-NLE training, spectral
+    # analysis LOBPCG) retains VRAM and starves the next pipeline run,
+    # causing CUDA OOM on the 8GB RTX 2070.  The ~2-5s process startup
+    # overhead per task is negligible vs. the 10-60+ minute pipeline runtime.
+    command: celery -A pipeline.celery_app worker --loglevel=info --pool=prefork --concurrency=4 --max-memory-per-child=8589934592 --max-tasks-per-child=1
+
+  # Local LLM server (RTX 4070 Ti) — OpenAI-compatible API on :11434.
+  # The MCP agent (goose) uses this for the reasoning model.
+  ollama:
+    image: ollama/ollama
+    container_name: eda-ollama
+    runtime: nvidia
+    environment:
+      # Shares the 4070 Ti SUPER (16 GB) with the pipeline worker — the
+      # resident 14B Q4 model (~9 GB) leaves ~7 GB for pipeline compute.
+      # IE-scale spectral runs may still need the app idle (see rules §5.7).
+      - NVIDIA_VISIBLE_DEVICES=1
+      - OLLAMA_KEEP_ALIVE=-1
+      - OLLAMA_NUM_PARALLEL=6
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_MAX_QUEUE=32
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Batch research orchestrator LLM (RTX 2070, 8 GB — idle/spare card).
+  # The research loop (RESEARCH_ORCHESTRATOR_MVP_PLAN.md) decomposes big
+  # prompts and assembles summaries on this card; the 4070's interactive
+  # slots never see research traffic. Separate models volume: two Ollama
+  # daemons on one models dir can lock each other's writes.
+  ollama-research:
+    image: ollama/ollama
+    container_name: eda-ollama-research
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - OLLAMA_HOST=0.0.0.0:11435
+      - OLLAMA_KEEP_ALIVE=-1
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_MAX_QUEUE=8
+    ports:
+      - "11435:11435"
+    volumes:
+      - ollama_models_research:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Local MCP agent (Block Goose) — connects to the Vite MCP server at
+  # /__mcp and to Ollama. host networking: localhost reaches both the
+  # Vite dev server (:5173) and Ollama (:11434) directly on Linux.
+  #
+  # NOTE: this is an ON-DEMAND service, not a daemon — the goose image's
+  # default command (`goose --help`) exits immediately, so it must NOT have
+  # `restart: unless-stopped` (crash-loop). Use:
+  #   docker compose run --rm goose session            # interactive TUI
+  #   docker compose run --rm goose run -t "..."       # headless
+  #
+  # The config dir is mounted as a DIRECTORY (not a file): goose rewrites
+  # config.yaml on session start (telemetry choice, paths), and atomic
+  # renames fail against a single-file bind mount ("Device or resource
+  # busy").
+  goose:
+    image: ghcr.io/block/goose:latest
+    container_name: eda-goose
+    network_mode: host
+    environment:
+      - GOOSE_PROVIDER=ollama
+      - GOOSE_MODEL=qwen3:8b
+      - OLLAMA_HOST=http://localhost:11434
+      - GOOSE_TELEMETRY_OPT_IN=false
+    volumes:
+      - ./goose/config:/home/goose/.config/goose
+      - ./goose:/workspace/goose
+    working_dir: /workspace/goose
+    stdin_open: true
+    tty: true
+    depends_on:
+      ollama:
+        condition: service_started
+    restart: "no"
+
+  # Self-hosted Langfuse (LLM trace observability, UNIFIED_LLM_TRACE_PLAN.md).
+  # Not started by default: `docker compose --profile observability up -d`.
+  # Backend env for the HTTP sink: TRACE_SINK=langfuse,
+  # TRACE_SINK_URL=http://langfuse:3000/api/public, TRACE_SINK_PUBLIC_KEY /
+  # TRACE_SINK_SECRET_KEY (project keys from the Langfuse UI).
+  langfuse:
+    image: langfuse/langfuse:3
+    profiles: ["observability"]
+    container_name: eda-langfuse
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-langfuse}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
+      - NEXTAUTH_URL=${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:-change-me-nextauth-secret}
+      - SALT=${LANGFUSE_SALT:-change-me-salt}
+      - ENCRYPTION_KEY=${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      - HOSTNAME=0.0.0.0
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  langfuse-db:
+    image: postgres:15
+    profiles: ["observability"]
+    container_name: eda-langfuse-db
+    environment:
+      - POSTGRES_USER=${LANGFUSE_DB_USER:-langfuse}
+      - POSTGRES_PASSWORD=${LANGFUSE_DB_PASSWORD:-langfuse}
+      - POSTGRES_DB=${LANGFUSE_DB_NAME:-langfuse}
+    volumes:
+      - langfuse_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LANGFUSE_DB_USER:-langfuse} -d ${LANGFUSE_DB_NAME:-langfuse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  backend_venv:
+  polygon_files:
+  ollama_models:
+  ollama_models_research:
+  langfuse_pgdata:
