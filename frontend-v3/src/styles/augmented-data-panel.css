@@ -176,7 +176,7 @@
 
 .histogram__value {
   display: block;
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   color: #9ca3af;
 }
 
@@ -191,7 +191,7 @@
 
 .histogram__label {
   display: block;
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   color: #6b7280;
   margin-top: 0.05rem;
 }

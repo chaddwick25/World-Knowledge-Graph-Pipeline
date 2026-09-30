@@ -276,7 +276,7 @@ export default {
 /* Inline re-run icon inside list items. */
 .rerun-icon-btn {
   line-height: 1;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   text-decoration: none;
 }
 
@@ -294,7 +294,7 @@ export default {
   display: none;
 }
 .processed-jobs__chevron {
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   transition: transform 0.15s;
 }
 .processed-jobs[open] .processed-jobs__chevron {
@@ -322,7 +322,7 @@ export default {
   border: 1px solid var(--bs-success, #22c55e);
   background: var(--bs-success, #22c55e);
   color: #fff;
-  font-size: 0.82rem;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;

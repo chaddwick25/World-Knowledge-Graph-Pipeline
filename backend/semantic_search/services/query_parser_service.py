@@ -65,6 +65,26 @@ def is_poi_wkg_class(wkg_class: str) -> bool:
     return key not in _NON_POI_CLASS_SUFFIXES
 
 
+# Amenity signal words for the OBJECT/FIELD heuristics. Also the
+# canonical-vocabulary gate for plural→singular normalization: a candidate
+# singular is accepted only when it appears here or in the loaded
+# amenity_vocab artifact, so "amenities"→"amenity" but "gas"→"ga",
+# "news"→"new", "address"→"addres", "bus"→"bu" are all rejected.
+# Incident: 2026-09-19 "Which museums are within 2km of Belfast?" extracted
+# no OBJECT (trained model missed it, this list lacked it) → the executor
+# skipped the search and the summary reported "no museums found". The list
+# carries the documented sample_questions.md amenity vocabulary.
+_AMENITY_SIGNAL_WORDS = frozenset({
+    "bar", "restaurant", "cafe", "hotel", "school", "hospital",
+    "shop", "amenity", "pub", "bank", "pharmacy",
+    "bus", "station", "train", "taxi", "airport", "ferry",
+    "museum", "beach", "park", "supermarket", "gas station",
+    "bakery", "library", "cinema", "clinic", "church",
+    "university", "gallery", "theatre", "theater", "stadium",
+    "swimming", "playground", "brewery", "distillery",
+})
+
+
 class QueryParserService:
     """Parse a natural-language geospatial question into a DAG spec.
 
@@ -100,6 +120,13 @@ class QueryParserService:
         self.label_encoder = self._load(art / "label_encoder.pkl")
         self.template_specs = self._load_json(art / "template_specs.json")
         self.amenity_vocab = self._load_json(art / "amenity_vocab.json")
+        # Canonical amenity terms (vocab artifact, underscore→space, plus
+        # the signal words) — the gate for plural→singular normalization.
+        self._amenity_terms = set(_AMENITY_SIGNAL_WORDS)
+        for entry in (self.amenity_vocab or []):
+            term = str(entry).lower().replace("_", " ").strip()
+            if term:
+                self._amenity_terms.add(term)
         # Concept/role models are optional (trained with --no-concept-models skips them)
         self.concept_extractor = self._load_optional(art / "concept_extractor.pkl")
         self.role_assigner = self._load_optional(art / "role_assigner.pkl")
@@ -136,6 +163,11 @@ class QueryParserService:
         FILTER-AGGREGATE-MEASURE query. The parser stays no-DB: the oracle
         (e.g. geocode + wkg_class check) is injected by the caller.
         """
+        # Stage 0: canonicalize plural amenity nouns ("amenities" → "amenity")
+        # so the classifier, concept extractor, and span extraction all see
+        # one surface form. Vocab-gated — see _singularize_amenity_plurals.
+        question = self._singularize_amenity_plurals(question)
+
         # Stage 1: classify template
         X = self.vectorizer.transform([question])
         label_idx = self.classifier.predict(X)[0]
@@ -217,6 +249,45 @@ class QueryParserService:
             "validation": validation,
         }
 
+    # ── Question normalization ─────────────────────────────────────────────
+
+    def _singularize_amenity_plurals(self, question: str) -> str:
+        """Canonicalize plural amenity nouns to their singular forms.
+
+        Vocab-gated, three-rule (ies→y, es→∅, s→∅): a candidate singular
+        is accepted only when it is a known amenity term (the loaded
+        amenity_vocab artifact + _AMENITY_SIGNAL_WORDS), so
+        "amenities"→"amenity" and "restaurants"→"restaurant", but
+        "gas"→"ga", "news"→"new", "address"→"addres", and "bus"→"bu" are
+        rejected. The ies rule is the trap: naive rstrip("s") yields
+        "amenitie", not "amenity". Applied at the top of parse() so every
+        downstream component (classifier, concept extractor, span
+        extraction) sees one canonical token; the executor already
+        singularizes, the parser was the only surface-form gate.
+        """
+        tokens = question.split()
+        out = []
+        for tok in tokens:
+            lower = tok.lower()
+            if not lower.endswith("s") or len(lower) <= 3:
+                out.append(tok)
+                continue
+            candidates = []
+            if lower.endswith("ies"):
+                candidates.append(lower[:-3] + "y")
+            if lower.endswith("es"):
+                candidates.append(lower[:-2])
+            candidates.append(lower[:-1])
+            for cand in candidates:
+                if cand in self._amenity_terms:
+                    if tok[0].isupper():
+                        cand = cand[0].upper() + cand[1:]
+                    out.append(cand)
+                    break
+            else:
+                out.append(tok)
+        return " ".join(out)
+
     # ── Concept extraction ──────────────────────────────────────────────────
 
     def _extract_concepts(self, question: str, template: str) -> list:
@@ -266,19 +337,7 @@ class QueryParserService:
             idx = CONCEPT_TYPES.index("AMOUNT")
             present[idx] = 1
             probs[idx] = 0.9
-        if any(sig in q_lower for sig in
-               ("bar", "restaurant", "cafe", "hotel", "school", "hospital",
-                "shop", "amenity", "pub", "bank", "pharmacy",
-                "bus", "station", "train", "taxi", "airport", "ferry",
-                # 2026-09-19: "Which museums are within 2km of Belfast?"
-                # extracted no OBJECT (trained model missed it, list below
-                # lacked it) → the executor skipped the search entirely and
-                # the research summary reported "no museums found".
-                # The documented sample_questions.md amenity vocabulary:
-                "museum", "beach", "park", "supermarket", "gas station",
-                "bakery", "library", "cinema", "clinic", "church",
-                "university", "gallery", "theatre", "theater", "stadium",
-                "swimming", "playground", "brewery", "distillery")):
+        if any(sig in q_lower for sig in _AMENITY_SIGNAL_WORDS):
             idx = CONCEPT_TYPES.index("OBJECT")
             present[idx] = 1
             probs[idx] = 0.85

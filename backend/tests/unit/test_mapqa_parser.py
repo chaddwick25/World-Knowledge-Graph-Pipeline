@@ -431,3 +431,62 @@ class TestIsPoiWkgClass:
         assert not is_poi_wkg_class(None)
         assert not is_poi_wkg_class("")
         assert not is_poi_wkg_class("wkgs:WKGObject")
+
+
+# ── Plural→singular normalization (Stage 0) ────────────────────────────
+
+class TestPluralNormalization:
+    """Regression: "What amenities are around Negril?" returned nothing
+    while "What amenity are around Negril?" worked — "amenity" is not a
+    substring of "amenities" (amenit-ies vs amenit-y), so the parser's
+    substring heuristics missed the plural. Fixed by a vocab-gated
+    plural→singular pass (ies→y, es→∅, s→∅) at the top of parse()."""
+
+    def test_amenities_parse_matches_singular(self, parser):
+        singular = parser.parse("What amenity are around Negril?")
+        plural = parser.parse("What amenities are around Negril?")
+        assert plural["template"] == singular["template"]
+        assert plural["concepts"] == singular["concepts"]
+        fields = [c for c in plural["concepts"] if c["type"] == "FIELD"]
+        assert fields and fields[0]["text"] == "amenity"
+
+    def test_ies_rule_not_naive_rstrip(self, parser):
+        """The trap: rstrip("s") yields "amenitie"; the ies rule gives
+        "amenity"."""
+        assert parser._singularize_amenity_plurals("amenities") == "amenity"
+        assert parser._singularize_amenity_plurals(
+            "What amenities are around Negril?"
+        ) == "What amenity are around Negril?"
+
+    def test_es_and_s_rules(self, parser):
+        assert parser._singularize_amenity_plurals(
+            "Which buses are near Union Station?"
+        ) == "Which bus are near Union Station?"
+        assert parser._singularize_amenity_plurals(
+            "Which restaurants are near Negril?"
+        ) == "Which restaurant are near Negril?"
+        assert parser._singularize_amenity_plurals(
+            "How far are the museums from the school?"
+        ) == "How far are the museum from the school?"
+        assert parser._singularize_amenity_plurals(
+            "Which gas stations are near Ocho Rios?"
+        ) == "Which gas station are near Ocho Rios?"
+
+    def test_false_positives_guarded(self, parser):
+        """"gas"→"ga", "news"→"new", "address"→"addres", "bus"→"bu",
+        "is"→"i" must all be rejected — the candidate singular is not a
+        known amenity term."""
+        for q in (
+            "What is near the gas station?",
+            "What is the news?",
+            "What is the address of X?",
+            "Is Belize near Honduras?",
+            "How far is the bus station from X?",
+            "What is at the beach?",
+        ):
+            assert parser._singularize_amenity_plurals(q) == q, q
+
+    def test_plural_restaurant_extracts_object(self, parser):
+        result = parser.parse("Which restaurants are within 50m of Negril?")
+        objects = [c for c in result["concepts"] if c["type"] == "OBJECT"]
+        assert objects and objects[0]["text"] == "restaurant"

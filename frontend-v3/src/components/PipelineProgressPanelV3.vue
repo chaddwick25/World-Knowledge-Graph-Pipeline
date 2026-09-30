@@ -257,7 +257,7 @@ export default {
   border-radius: 0.9rem;
   background: #020617;
   border: 1px solid #111827;
-  font-size: 0.82rem;
+  font-size: 0.875rem;
 }
 
 .pipeline--running {
@@ -394,7 +394,7 @@ export default {
 
 .step-label {
   font-weight: 500;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .step-label--active {
@@ -441,7 +441,7 @@ export default {
 
 .pipeline__step-message {
   margin: 0.05rem 0 0;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: #6b7280;
   white-space: nowrap;
   overflow: hidden;

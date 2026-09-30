@@ -162,7 +162,7 @@
 
 .summary-card__label {
   /* Micro-header: 11px uppercase with tracking. */
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--bs-meta-color);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -177,7 +177,7 @@
 }
 
 .summary-card__sub {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--bs-meta-color);
 }
 
@@ -187,7 +187,7 @@
 }
 
 .summary-section__title {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--bs-success-text-emphasis);
   margin: 0 0 0.35rem;
@@ -208,7 +208,7 @@
 }
 
 .summary-section__subhead {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--bs-success-text-emphasis);
   margin: 0.75rem 0 0.25rem;
@@ -286,7 +286,7 @@
 }
 
 .summary-step__icon {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   width: 1.2rem;
   text-align: center;
   flex-shrink: 0;
@@ -307,7 +307,7 @@
 
 .summary-step__name {
   display: block;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--bs-meta-strong);
   font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, 'Courier New', monospace);
@@ -320,7 +320,7 @@
 }
 
 .summary-step__count {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--bs-meta-color);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
@@ -371,7 +371,7 @@
   text-decoration: underline;
 }
 .summary-table__sort i {
-  font-size: 0.65rem;
+  font-size: 0.68rem;
 }
 
 .summary-table {
@@ -403,7 +403,7 @@
 }
 
 .summary-table__key code {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--bs-meta-color);
   word-break: break-all;
 }
@@ -419,7 +419,7 @@
 }
 
 .summary-table__iso {
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   color: var(--bs-meta-color);
   margin-left: 0.3rem;
 }
@@ -460,7 +460,7 @@
 .summary-bar__label {
   position: relative;
   z-index: 1;
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   color: var(--bs-body-color);
   padding: 0 0.3rem;
   font-weight: 500;
@@ -509,7 +509,7 @@
 }
 
 .summary-storage__path code {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--bs-meta-color);
   word-break: break-all;
 }
@@ -524,13 +524,13 @@
 
 .summary-storage__contents {
   margin: 0.25rem 0 0;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--bs-meta-color);
 }
 
 /* ── Empty ── */
 .summary-empty {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--bs-meta-color);
   padding: 0.5rem 0;
 }
