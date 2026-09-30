@@ -51,6 +51,104 @@ AMENITY_TO_WKGS = {
     "bar": "wkgs:Amenity", "pub": "wkgs:Amenity",
 }
 
+# ── Category → real OSM tag target ───────────────────────────────────────
+# Natural category token → the OSM key=value the entity actually carries.
+# The executor's class filter is amenity-key-only today; these targets let
+# "Which hotels/peaks/waterfalls..." filter by the correct key
+# (tourism=hotel, natural=peak, waterway=waterfall) instead of falling to
+# the fuzzy embedding tier. Keys are space-normalized ("guest house",
+# "nature reserve") so the resolver's singularize+underscore normalization
+# round-trips.
+CATEGORY_TAG_TARGETS = {
+    "hotel": ("tourism", "hotel"),
+    "guest house": ("tourism", "guest_house"),
+    "resort": ("tourism", "resort"),
+    "hostel": ("tourism", "hostel"),
+    "motel": ("tourism", "motel"),
+    "apartment": ("tourism", "apartment"),
+    "chalet": ("tourism", "chalet"),
+    "attraction": ("tourism", "attraction"),
+    "viewpoint": ("tourism", "viewpoint"),
+    "museum": ("tourism", "museum"),
+    "camp site": ("tourism", "camp_site"),
+    "peak": ("natural", "peak"),
+    "cave": ("natural", "cave_entrance"),
+    "cave entrance": ("natural", "cave_entrance"),
+    "beach": ("natural", "beach"),
+    "reef": ("natural", "reef"),
+    "cliff": ("natural", "cliff"),
+    "spring": ("natural", "spring"),
+    "lagoon": ("natural", "lagoon"),
+    "waterfall": ("waterway", "waterfall"),
+    "river": ("waterway", "river"),
+    "nature reserve": ("leisure", "nature_reserve"),
+    "marina": ("leisure", "marina"),
+    "park": ("leisure", "park"),
+    "dive centre": ("leisure", "dive_centre"),
+    "campsite": ("tourism", "camp_site"),
+    "restaurant": ("amenity", "restaurant"),
+    "cafe": ("amenity", "cafe"),
+    "bar": ("amenity", "bar"),
+    "pub": ("amenity", "pub"),
+    "school": ("amenity", "school"),
+    "bank": ("amenity", "bank"),
+    "pharmacy": ("amenity", "pharmacy"),
+    "church": ("amenity", "place_of_worship"),
+    "hospital": ("amenity", "hospital"),
+    "clinic": ("amenity", "clinic"),
+}
+
+# Intent → candidate OSM tag families, in priority order. The research
+# matcher checks an entity's tags against these BEFORE the coarse
+# wkg_class (Grand Lido Negril is wkgs:Building with tourism=hotel).
+# Multi-value tags are ";"-joined in OSM (cuisine="regional;chicken") —
+# substring match on the value covers that form.
+TAG_RULES = {
+    "hotel": (("tourism", ("hotel", "guest_house", "resort", "hostel",
+                           "motel", "apartment", "chalet")),),
+    "cafe": (("amenity", ("cafe",)),),
+    "restaurant": (("amenity", ("restaurant", "fast_food")),),
+    "bar": (("amenity", ("bar", "pub", "nightclub")),),
+    "museum": (("tourism", ("museum",)), ("historic", ("museum",))),
+    "church": (("amenity", ("place_of_worship",)),
+               ("historic", ("church",))),
+    "school": (("amenity", ("school", "college", "university",
+                            "kindergarten")),),
+    "beach": (("natural", ("beach",)), ("leisure", ("beach_resort",))),
+    "park": (("leisure", ("park",)),
+             ("landuse", ("recreation_ground", "village_green"))),
+    "peak": (("natural", ("peak",)),),
+    "waterfall": (("waterway", ("waterfall",)),),
+    "cave": (("natural", ("cave_entrance",)),),
+    "viewpoint": (("tourism", ("viewpoint",)),),
+    "attraction": (("tourism", ("attraction",)),),
+    "nature reserve": (("leisure", ("nature_reserve",)),),
+    "marina": (("leisure", ("marina",)),),
+    "reef": (("natural", ("reef",)),),
+    "dive": (("leisure", ("dive_centre",)), ("shop", ("dive",)),
+             ("sport", ("scuba_diving",))),
+    # Cuisine intents match the cuisine tag (multi-value "regional;chicken")
+    # in addition to the restaurant amenity — a grocery store (Hi-Lo Food
+    # Store, 2026-09-30) must not pass as a "jerk restaurant".
+    "jerk": (("amenity", ("restaurant", "fast_food")),
+             ("cuisine", ("jerk", "jamaican", "caribbean", "regional",
+                          "chicken"))),
+    "jamaican": (("cuisine", ("jerk", "jamaican", "caribbean", "regional",
+                              "chicken")),),
+    "caribbean": (("cuisine", ("jerk", "jamaican", "caribbean", "regional",
+                               "chicken")),),
+    "hike": (("natural", ("peak",)),
+             ("waterway", ("waterfall",)),
+             ("tourism", ("viewpoint", "attraction")),
+             ("leisure", ("nature_reserve",))),
+    "mountain": (("natural", ("peak",)), ("tourism", ("viewpoint",))),
+    "trail": (("route", ("hiking", "foot")),
+              ("highway", ("path", "footway")),
+              ("tourism", ("viewpoint",))),
+    "bank": (("amenity", ("bank",)),),
+    "pharmacy": (("amenity", ("pharmacy",)),),
+}
+
 # Generic plural phrases → "any entity asserting an amenity-type key".
 # Resolved via the GIN-indexed `tags ?|` operator — never an embedding scan.
 GENERIC_AMENITY_PHRASES = {

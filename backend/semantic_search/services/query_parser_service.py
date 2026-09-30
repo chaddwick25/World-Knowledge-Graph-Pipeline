@@ -82,6 +82,17 @@ _AMENITY_SIGNAL_WORDS = frozenset({
     "bakery", "library", "cinema", "clinic", "church",
     "university", "gallery", "theatre", "theater", "stadium",
     "swimming", "playground", "brewery", "distillery",
+    # Adventure/tourism categories (2026-09-30): "Which peaks are within
+    # 40km of Kingston?" extracted no OBJECT because this list lacked
+    # them → the executor skipped the search and "hikes" fell through to
+    # amenities. Mirrors the 2026-09-19 museums incident; the executor's
+    # _resolve_tag_target maps the tokens to their real OSM keys
+    # (natural=peak, waterway=waterfall, ...).
+    "peak", "waterfall", "cave", "viewpoint", "attraction", "reef",
+    "cliff", "river", "marina", "lighthouse", "spring", "lagoon",
+    "nature reserve", "dive centre", "campsite", "camp site",
+    "hostel", "motel", "resort", "guest house", "guesthouse",
+    "ruins", "harbour", "harbor",
 })
 
 
@@ -401,7 +412,14 @@ class QueryParserService:
             # real OSM tag value.
             best = None
             for amenity in self.amenity_vocab:
-                if amenity.lower().replace("_", " ") in object_part:
+                # Word-boundary match, not substring: the trained vocab
+                # artifact carries junk entries ("ho") that would otherwise
+                # shadow any phrase containing them ("which hostels are" →
+                # OBJECT "ho"). The question is singularized before span
+                # extraction, so plural forms already match their singular
+                # vocab entries.
+                norm = re.escape(amenity.lower().replace("_", " "))
+                if re.search(rf"\b{norm}\b", object_part):
                     if best is None or len(amenity) > len(best):
                         best = amenity
             if best is not None:

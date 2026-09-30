@@ -50,7 +50,7 @@ def _reset_llm(monkeypatch):
     for var, unset in (
         ("LLM_BASE_URL", ""), ("LLM_MODEL", ""), ("LLM_ENABLED", "1"),
         ("LLM_TIMEOUT", ""), ("LLM_API_STYLE", ""),
-        ("LLM_AVAILABILITY_CACHE_SECONDS", ""),
+        ("LLM_AVAILABILITY_CACHE_SECONDS", ""), ("LLM_THINK", ""),
     ):
         monkeypatch.setattr(settings, var, unset)
     yield
@@ -134,6 +134,36 @@ class TestChat:
         assert calls["json"]["think"] is False       # thinking disabled
         assert calls["json"]["stream"] is False
         assert calls["json"]["options"]["num_predict"] == 512
+
+    def test_native_chat_think_override(self, monkeypatch):
+        calls = {}
+
+        def fake_post(url, json=None, timeout=None):
+            calls["json"] = json
+            return FakeResponse(200, {"message": {"content": "ok"}})
+
+        monkeypatch.setattr(requests, "post", fake_post)
+        svc = LLMService()
+        # Per-call Qwen3 hybrid-thinking override (planning steps think).
+        svc.chat([{"role": "user", "content": "hi"}], think=True)
+        assert calls["json"]["think"] is True
+        # Default stays off.
+        svc.chat([{"role": "user", "content": "hi"}])
+        assert calls["json"]["think"] is False
+
+    def test_native_chat_env_think_default(self, monkeypatch):
+        calls = {}
+
+        def fake_post(url, json=None, timeout=None):
+            calls["json"] = json
+            return FakeResponse(200, {"message": {"content": "ok"}})
+
+        monkeypatch.setattr(requests, "post", fake_post)
+        monkeypatch.setattr(settings, "LLM_THINK", "1")
+        svc = LLMService()
+        assert svc.think is True
+        svc.chat([{"role": "user", "content": "hi"}])
+        assert calls["json"]["think"] is True
 
     def test_openai_chat_builds_request(self, monkeypatch):
         calls = {}

@@ -420,10 +420,17 @@ LLM_BASE_URL = os.getenv('LLM_BASE_URL', '')
 LLM_MODEL = os.getenv('LLM_MODEL', '')
 LLM_TIMEOUT = os.getenv('LLM_TIMEOUT', '')
 LLM_AVAILABILITY_CACHE_SECONDS = os.getenv('LLM_AVAILABILITY_CACHE_SECONDS', '')
+# Qwen3 hybrid-thinking default per instance (off unless opted in): the
+# research loop routes thinking on for planning steps, off for assembly.
+LLM_THINK = os.getenv('LLM_THINK', '')
 RESEARCH_LLM_BASE_URL = os.getenv('RESEARCH_LLM_BASE_URL', '')
 RESEARCH_LLM_MODEL = os.getenv('RESEARCH_LLM_MODEL', '')
 RESEARCH_LLM_API_STYLE = os.getenv('RESEARCH_LLM_API_STYLE', '')
 RESEARCH_LLM_TIMEOUT = os.getenv('RESEARCH_LLM_TIMEOUT', '')
+RESEARCH_LLM_THINK = os.getenv('RESEARCH_LLM_THINK', '')
+# LLM follow-up replan for empty research slots (default ON, bounded):
+# one rewrite per empty slot, max 2 per run.
+RESEARCH_REPLAN_LLM = os.getenv('RESEARCH_REPLAN_LLM', '1')
 # Opt-in: research loop follow-up nameSearch/structuredSearch calls.
 RESEARCH_FOLLOWUP_TOOLS = os.getenv('RESEARCH_FOLLOWUP_TOOLS', '0')
 

@@ -99,7 +99,9 @@
             :class="q.error ? 'border-danger' : 'border-secondary-subtle'"
           >
             <div class="d-flex align-items-center gap-1">
-              <span class="badge bg-secondary">{{ q.index + 1 }}</span>
+              <span class="badge bg-secondary">{{ q.follow_up ? '→' : q.index + 1 }}</span>
+              <span v-if="q.follow_up" class="badge bg-success">follow-up</span>
+              <span v-else-if="q.round > 1" class="badge bg-warning text-dark">round {{ q.round }}</span>
               <span class="flex-grow-1">{{ q.question }}</span>
               <span v-if="q.error" class="badge bg-danger">error</span>
               <span v-else-if="q.template" class="badge bg-info text-dark">{{ q.template }}</span>
@@ -333,14 +335,44 @@ export default {
       es.addEventListener('question', (e) => {
         const d = JSON.parse(e.data)
         const i = d.index
-        console.log('[Research] question:', i, d.template, 'count:', d.result_count, d.error || '', '@', Date.now())
+        console.log('[Research] question:', i, d.template, 'count:', d.result_count, d.error || '', 'round:', d.round || 1, '@', Date.now())
         if (this.questions[i]) {
           this.questions[i].template = d.template || null
           this.questions[i].answer = d.answer || ''
           this.questions[i].digest = d.digest || ''
           this.questions[i].result_count = d.result_count != null ? d.result_count : null
           this.questions[i].error = d.error || ''
+        } else {
+          // Round-2 continuation rows (indexes continue past round 1).
+          this.questions.push({
+            index: i,
+            question: d.question || '',
+            template: d.template || null,
+            answer: d.answer || '',
+            digest: d.digest || '',
+            result_count: d.result_count != null ? d.result_count : null,
+            error: d.error || '',
+            round: d.round || 1,
+          })
         }
+      })
+
+      es.addEventListener('follow_up', (e) => {
+        const d = JSON.parse(e.data)
+        console.log('[Research] follow-up:', d.kind, d.question, 'count:', d.result_count, '@', Date.now())
+        // Visible gap-repair re-ask: probe / class-swap / llm_replan rows
+        // append to the trace so the user sees the follow-up questions.
+        this.questions.push({
+          index: this.questions.length,
+          question: d.question || '',
+          template: d.template || null,
+          answer: d.answer || '',
+          digest: '',
+          result_count: d.result_count != null ? d.result_count : null,
+          error: d.error || '',
+          follow_up: true,
+          repair_of: d.repair_of,
+        })
       })
 
       es.addEventListener('tool', (e) => {
