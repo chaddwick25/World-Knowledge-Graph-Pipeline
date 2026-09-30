@@ -89,6 +89,22 @@ export const labelManager = {
   },
 
   /**
+   * Wire interaction props (getTooltip / onClick / onHover) onto the
+   * DeckOverlay. The community DeckOverlay supports Tooltip + onHover +
+   * onClick; the callbacks fire for pickable layers (template results,
+   * search results, query graph, agent overlays, countries). No-op when
+   * not attached.
+   */
+  setInteraction({ getTooltip, onClick, onHover } = {}) {
+    if (!deckOverlay) return
+    deckOverlay.setProps({
+      getTooltip: getTooltip || null,
+      onClick: onClick || null,
+      onHover: onHover || null,
+    })
+  },
+
+  /**
    * Force the deck camera back in sync with Leaflet (Leaflet 256px world vs
    * deck 512px: deckZoom = leafletZoom - 1). The bridge does this on its own
    * moveend/zoomend handlers; this is idempotent insurance for any Leaflet

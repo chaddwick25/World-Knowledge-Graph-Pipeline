@@ -1,4 +1,4 @@
-import { ArcLayer, PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
+import { LineLayer, PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
 
 const EARTH_RADIUS_M = 6371000
 const SUPPORTED_TEMPLATES = new Set([
@@ -13,6 +13,12 @@ function toRad(degrees) {
   return (degrees * Math.PI) / 180
 }
 
+function formatDistance(m) {
+  if (m == null) return ''
+  if (m >= 1000) return `${(m / 1000).toFixed(1)} km`
+  return `${Math.round(m)} m`
+}
+
 function toDeg(radians) {
   return (radians * 180) / Math.PI
 }
@@ -24,7 +30,7 @@ function normalizeLng(lng) {
   return value
 }
 
-function destinationPoint(lat, lon, bearingDeg, distanceM) {
+export function destinationPoint(lat, lon, bearingDeg, distanceM) {
   const angularDistance = distanceM / EARTH_RADIUS_M
   const bearing = toRad(bearingDeg)
   const lat1 = toRad(lat)
@@ -42,7 +48,7 @@ function destinationPoint(lat, lon, bearingDeg, distanceM) {
   return [normalizeLng(toDeg(lon2)), toDeg(lat2)]
 }
 
-function buildCirclePolygon(lon, lat, radiusM, segments = 64) {
+export function buildCirclePolygon(lon, lat, radiusM, segments = 64) {
   const ring = Array.from({ length: segments + 1 }, (_, i) => {
     const bearing = (360 * i) / segments
     return destinationPoint(lat, lon, bearing, radiusM)
@@ -50,7 +56,7 @@ function buildCirclePolygon(lon, lat, radiusM, segments = 64) {
   return [ring]
 }
 
-function buildConePolygon(lon, lat, bearingDeg, radiusM, halfAngleDeg = 45, segments = 32) {
+export function buildConePolygon(lon, lat, bearingDeg, radiusM, halfAngleDeg = 45, segments = 32) {
   const start = bearingDeg - halfAngleDeg
   const step = (halfAngleDeg * 2) / segments
   const arc = Array.from({ length: segments + 1 }, (_, i) => (
@@ -127,16 +133,18 @@ export function buildTemplateDeckLayers(viz) {
       id: 'template-anchor-points',
       data: anchors,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 85,
+      getRadius: 255,
       radiusUnits: 'meters',
-      radiusMinPixels: 6,
-      radiusMaxPixels: 14,
+      radiusMinPixels: 18,
+      radiusMaxPixels: 42,
       filled: true,
       stroked: true,
-      getFillColor: [99, 102, 241, 220],
-      getLineColor: [224, 231, 255, 255],
+      // Anchors are orange (flipped from indigo 2026-09-28)
+      getFillColor: [249, 115, 22, 220],
+      getLineColor: [255, 237, 213, 255],
       lineWidthMinPixels: 2,
-      pickable: false,
+      pickable: true,
+      autoHighlight: true,
     }))
   }
 
@@ -145,30 +153,56 @@ export function buildTemplateDeckLayers(viz) {
       id: 'template-entity-points',
       data: entities,
       getPosition: (d) => [d.geom.lon, d.geom.lat],
-      getRadius: (d) => d.distance_m != null ? 55 : 70,
+      getRadius: (d) => d.distance_m != null ? 165 : 210,
       radiusUnits: 'meters',
-      radiusMinPixels: 4,
-      radiusMaxPixels: 10,
+      radiusMinPixels: 12,
+      radiusMaxPixels: 30,
       filled: true,
       stroked: true,
-      getFillColor: [249, 115, 22, 210],
-      getLineColor: [255, 237, 213, 255],
+      // Entities are indigo/purple (flipped from orange 2026-09-28)
+      getFillColor: [99, 102, 241, 210],
+      getLineColor: [224, 231, 255, 255],
       lineWidthMinPixels: 1,
+      pickable: true,
+      autoHighlight: true,
+    }))
+    // Per-entity name + distance labels (same TextLayer pattern as the
+    // map labels and the distance-line labels).
+    layers.push(new TextLayer({
+      id: 'template-entity-labels',
+      data: entities.filter((e) => e.name),
+      getPosition: (d) => [d.geom.lon, d.geom.lat],
+      getText: (d) => `${d.name}${d.distance_m != null ? ` · ${formatDistance(d.distance_m)}` : ''}`,
+      getSize: 13,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 11,
+      sizeMaxPixels: 15,
+      padding: 4,
+      getColor: [226, 232, 240, 230],
+      getPixelOffset: [8, -8],
+      getTextAnchor: 'start',
+      getAlignmentBaseline: 'bottom',
+      background: true,
+      getBackgroundColor: [15, 23, 42, 160],
+      getBorderColor: [99, 102, 241, 120],
+      getBorderWidth: 1,
       pickable: false,
     }))
   }
 
   const arcs = buildArcRows(viz)
   if (arcs.length) {
-    layers.push(new ArcLayer({
+    // Straight anchor→entity links (2026-09-28 — the curved ArcLayer edges
+    // were replaced with straight LineLayer rows; color family unchanged).
+    layers.push(new LineLayer({
       id: 'template-anchor-links',
       data: arcs,
       getSourcePosition: (d) => d.sourcePosition,
       getTargetPosition: (d) => d.targetPosition,
-      getSourceColor: [165, 180, 252, 170],
-      getTargetColor: [251, 146, 60, 130],
-      getWidth: 1.5,
-      widthMinPixels: 1,
+      getColor: [165, 180, 252, 220],
+      widthUnits: 'pixels',
+      getWidth: 2,
+      widthMinPixels: 1.5,
       widthMaxPixels: 3,
       pickable: false,
     }))

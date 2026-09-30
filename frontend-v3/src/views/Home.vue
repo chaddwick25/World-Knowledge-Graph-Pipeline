@@ -54,8 +54,9 @@
             @countries-loaded="onCountriesLoaded"
             @country-toggled="onCountryToggled"
           />
-          <!-- Map Labels controls — only while the Map Labels tab is active -->
-          <MapLabelsControls v-if="activeTab === 'map-labels'" />
+          <!-- Map Labels controls — only while the OSM Entities tab is in
+               the labels sub-mode -->
+          <MapLabelsControls v-if="activeTab === 'osm-entities' && osmEntitiesMode === 'labels'" />
         </template>
         <div v-else class="h-100 d-flex align-items-center justify-content-center p-3">
           <PlanetInitPanel
@@ -166,24 +167,20 @@
             <SemanticSearchPanel
               v-if="activeTab === 'query'"
               :country-name="singleCountry.name"
+              :country-code="singleCountry.iso_code"
               :snapshot-date="selectedSnapshotDate"
               @search-results="onSearchResults"
               @query-graph="onQueryGraph"
               @template-visualization="onTemplateVisualization"
             />
-            <!-- Augmented Data tab -->
-            <AugmentedDataPanel
-              v-else-if="activeTab === 'augmented'"
-              :country-name="singleCountry.name"
-              :snapshot-date="selectedSnapshotDate"
-              @links-toggle="onLinksToggle"
-            />
-            <!-- Map Labels tab -->
-            <MapLabelsPanel
-              v-else-if="activeTab === 'map-labels'"
+            <!-- OSM Entities tab (merged USLP + Map Labels) -->
+            <OsmEntitiesPanel
+              v-else-if="activeTab === 'osm-entities'"
               :country-name="singleCountry.name"
               :country-code="singleCountry.iso_code"
               :snapshot-date="selectedSnapshotDate"
+              @links-toggle="onLinksToggle"
+              @mode-change="onOsmEntitiesModeChange"
             />
             <!-- Research tab -->
             <ResearchPanel
@@ -219,8 +216,7 @@ import WorldKGMap from '../components/WorldKGMap.vue'
 import PipelineProgressPanelV3 from '../components/PipelineProgressPanelV3.vue'
 import SnapshotCalendar from '../components/SnapshotCalendar.vue'
 import SemanticSearchPanel from '../components/SemanticSearchPanel.vue'
-import AugmentedDataPanel from '../components/AugmentedDataPanel.vue'
-import MapLabelsPanel from '../components/MapLabelsPanel.vue'
+import OsmEntitiesPanel from '../components/OsmEntitiesPanel.vue'
 import MapLabelsControls from '../components/MapLabelsControls.vue'
 import ResearchPanel from '../components/ResearchPanel.vue'
 import PlanetInitPanel from '../components/PlanetInitPanel.vue'
@@ -235,8 +231,7 @@ export default {
     PipelineProgressPanelV3,
     SnapshotCalendar,
     SemanticSearchPanel,
-    AugmentedDataPanel,
-    MapLabelsPanel,
+    OsmEntitiesPanel,
     MapLabelsControls,
     ResearchPanel,
     PlanetInitPanel,
@@ -248,10 +243,9 @@ export default {
     return {
       // ── Tab definitions ──
       tabs: [
-        { key: 'query', label: 'Query' },
-        { key: 'augmented', label: 'USLP' },
-        { key: 'map-labels', label: 'Map Labels' },
-        { key: 'research', label: 'Research' },
+        { key: 'query', label: 'OSM RAG' },
+        { key: 'osm-entities', label: 'OSM Entities' },
+        { key: 'research', label: 'Agentic Researcher' },
       ],
 
       // ── System state ──
@@ -293,6 +287,9 @@ export default {
       showAcceptedLinks: false,
       showRejectedLinks: false,
       visibleRelations: null,
+      // OSM Entities tab sub-mode: 'labels' (default) | 'uslp'
+      // (gates MapLabelsControls)
+      osmEntitiesMode: 'labels',
 
       // ── Country search ──
       countrySearchQuery: '',
@@ -460,14 +457,11 @@ export default {
         is_geovectors_supported: c.is_geovectors_supported,
       }))
     },
-    onCountryToggled({ countryId }) {
-      const idx = this.selectedCountryIds.indexOf(countryId)
-      if (idx >= 0) {
-        this.selectedCountryIds.splice(idx, 1)
-      } else {
-        // Replace selection (single-select)
-        this.selectedCountryIds = [countryId]
-      }
+    onCountryToggled({ countryId, selectOnly }) {
+      // Always select (2026-09-28): map clicks select, never deselect —
+      // the deselection overlay was removed and Clear in the sidebar is
+      // the only way to drop the selection.
+      this.selectedCountryIds = [countryId]
     },
     clearSelection() {
       this.selectedCountryIds = []
@@ -637,14 +631,18 @@ export default {
     },
     // ── Semantic search ──
     switchTab(tab) {
-      // Clear augmented links from map when leaving the Augmented tab
-      if (this.activeTab === 'augmented' && tab !== 'augmented') {
+      // Clear augmented links from map when leaving the OSM Entities tab
+      // (its USLP sub-view also clears via AugmentedDataPanel beforeUnmount)
+      if (this.activeTab === 'osm-entities' && tab !== 'osm-entities') {
         this.augmentedLinks = null
         this.showAcceptedLinks = false
         this.showRejectedLinks = false
         this.visibleRelations = null
       }
       this.activeTab = tab
+    },
+    onOsmEntitiesModeChange(mode) {
+      this.osmEntitiesMode = mode
     },
     onSearchResults(results) {
       this.searchResults = results

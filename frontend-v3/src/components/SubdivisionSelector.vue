@@ -101,7 +101,7 @@ export default {
 .subdivision-selector__label {
   /* Micro-header: 11px uppercase with tracking. */
   display: block;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--bs-meta-color);
   margin-bottom: 0.2rem;
   text-transform: uppercase;
@@ -115,7 +115,7 @@ export default {
   border: 1px solid var(--bs-border-color);
   border-radius: 0.25rem;
   color: var(--bs-body-color);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   cursor: pointer;
 }
 
