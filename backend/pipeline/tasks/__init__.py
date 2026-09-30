@@ -1,0 +1,45 @@
+"""
+WorldKG Pipeline — Celery Tasks Package
+
+Planet initialization (formerly step_0a..step_0m) is now handled by the
+``init_planet`` management command, run as a Docker entrypoint step on
+the backend container after migrations. See
+``docs/plans/CORE_APP_CONSOLIDATION_PLAN.md`` and
+``core/management/commands/init_planet.py``.
+"""
+from __future__ import annotations
+
+***REMOVED*** ══════════════════════════════════════════════════════════════════════════
+***REMOVED*** Steps 1–6 — Country Pipeline
+***REMOVED*** ══════════════════════════════════════════════════════════════════════════
+from pipeline.tasks.country_pipeline_steps.step_1_embed import (  ***REMOVED*** noqa: F401
+    step_1_embed_osm_entities,
+    _embed_subgraph,
+    step_1b_finalize_subgraph_embeds,
+)
+from pipeline.tasks.country_pipeline_steps.step_2_harvest import (  ***REMOVED*** noqa: F401
+    step_2_harvest_wikidata,
+)
+from pipeline.tasks.country_pipeline_steps.step_3_igea import (  ***REMOVED*** noqa: F401
+    step_3_run_igea,
+)
+from pipeline.tasks.country_pipeline_steps.step_4_uslp import (  ***REMOVED*** noqa: F401
+    step_4_predict_spatial_links,
+    _run_subgraph_uslp,
+    step_4b_finalize_subgraph_uslp,
+)
+from pipeline.tasks.country_pipeline_steps.step_5_nle import (  ***REMOVED*** noqa: F401
+    step_5_train_gv_nle,
+    _train_subgraph_gv_nle,
+    step_5b_finalize_subgraph_nle,
+)
+from pipeline.tasks.country_pipeline_steps.step_5c_graph_spectral import (  ***REMOVED*** noqa: F401
+    step_5c_graph_spectral_analysis,
+)
+***REMOVED*** Step 5d (step_5d_temporal_drift) removed from the Celery registry 2026-09-26 —
+***REMOVED*** temporal drift is a scheduled-interval feature, not a per-run step.
+***REMOVED*** TODO: re-add as its own feature; module + services retained at
+***REMOVED*** pipeline/tasks/country_pipeline_steps/step_5d_temporal_drift.py.
+from pipeline.tasks.country_pipeline_steps.step_6_ready import (  ***REMOVED*** noqa: F401
+    step_6_mark_search_ready,
+)
