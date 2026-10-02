@@ -41,6 +41,7 @@ def research_stream(request):
     prompt_text = (request.GET.get("prompt") or "").strip()
     country_code = request.GET.get("country_code") or None
     snapshot_date = request.GET.get("snapshot_date") or None
+    subdivision_qid = request.GET.get("subdivision_qid") or None
 
     if not prompt_text:
         return JsonResponse({"error": "prompt required"}, status=400)
@@ -82,10 +83,12 @@ def research_stream(request):
                     metadata={
                         "prompt": prompt_text[:200], "country_code": cc,
                         "snapshot_date": snapshot_date,
+                        "subdivision_qid": subdivision_qid,
                     },
                 ):
                     result = ResearchOrchestratorService.plan(
                         prompt_text, cc, snapshot_date, event_callback=emit,
+                        subdivision_qid=subdivision_qid,
                     )
                     if isinstance(result, dict):
                         result["trace_id"] = trace_id
@@ -146,6 +149,7 @@ def research_chat(request):
         return JsonResponse({"error": "messages required"}, status=400)
     country_code = body.get("country_code") or None
     snapshot_date = body.get("snapshot_date") or None
+    subdivision_qid = body.get("subdivision_qid") or None
     trace_id = body.get("trace_id") or uuid.uuid4().hex
 
     from core.services.llm_service import LLMService
@@ -159,6 +163,7 @@ def research_chat(request):
 
     full_messages = ResearchOrchestratorService.chat_messages(
         messages, country_code, snapshot_date,
+        subdivision_qid=subdivision_qid,
     )
 
     def _part(part_dict):
@@ -181,6 +186,7 @@ def research_chat(request):
                     metadata={
                         "country_code": country_code,
                         "snapshot_date": snapshot_date,
+                        "subdivision_qid": subdivision_qid,
                     },
                 ):
                     emit(_part({"type": "start"}))
@@ -241,6 +247,7 @@ def research_finalize(request):
         return JsonResponse({"error": "messages required"}, status=400)
     country_code = body.get("country_code") or None
     snapshot_date = body.get("snapshot_date") or None
+    subdivision_qid = body.get("subdivision_qid") or None
 
     from semantic_search.services.research_service import (
         ResearchOrchestratorService,
@@ -248,6 +255,7 @@ def research_finalize(request):
 
     result = ResearchOrchestratorService.finalize_brief(
         messages, country_code, snapshot_date,
+        subdivision_qid=subdivision_qid,
     )
     if not result:
         return JsonResponse({"error": "no brief extractable"}, status=422)

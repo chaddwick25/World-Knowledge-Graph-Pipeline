@@ -82,6 +82,33 @@ _AMENITY_SIGNAL_WORDS = frozenset({
     "bakery", "library", "cinema", "clinic", "church",
     "university", "gallery", "theatre", "theater", "stadium",
     "swimming", "playground", "brewery", "distillery",
+    ***REMOVED*** Adventure/tourism categories (2026-09-30): "Which peaks are within
+    ***REMOVED*** 40km of Kingston?" extracted no OBJECT because this list lacked
+    ***REMOVED*** them → the executor skipped the search and "hikes" fell through to
+    ***REMOVED*** amenities. Mirrors the 2026-09-19 museums incident; the executor's
+    ***REMOVED*** _resolve_tag_target maps the tokens to their real OSM keys
+    ***REMOVED*** (natural=peak, waterway=waterfall, ...).
+    "peak", "waterfall", "cave", "viewpoint", "attraction", "reef",
+    "cliff", "river", "marina", "lighthouse", "spring", "lagoon",
+    "nature reserve", "dive centre", "campsite", "camp site",
+    "hostel", "motel", "resort", "guest house", "guesthouse",
+    "ruins", "harbour", "harbor",
+    ***REMOVED*** Commercial / services / transit / infrastructure (2026-10-01) — the
+    ***REMOVED*** place-report recipe's slots ("Which fuel stations are within 5km of
+    ***REMOVED*** Belmopan?", "Which bus stops are near the market?"). Mirrors the
+    ***REMOVED*** CATEGORY_TAG_TARGETS entries so _resolve_tag_target round-trips
+    ***REMOVED*** each token to its real OSM key (amenity=fuel, highway=bus_stop, ...).
+    "fuel", "fuel station", "gas station", "charging station",
+    "parking", "atm", "post office", "fast food", "marketplace",
+    "bus stop", "bus station", "police", "library", "cinema",
+    "kindergarten",
+    ***REMOVED*** Commercial generalization (2026-10-01): markets, bakeries, kiosks,
+    ***REMOVED*** food courts/vendors, and the taco/mexican cuisine family — the
+    ***REMOVED*** OBJECT span match keeps these so "Which taco vendors..." does not
+    ***REMOVED*** collapse to a name search.
+    "market", "bakery", "kiosk", "food court", "food truck",
+    "vending machine", "convenience store", "mall", "taco", "tacos",
+    "taqueria", "mexican",
 })
 
 
@@ -401,7 +428,14 @@ class QueryParserService:
             ***REMOVED*** real OSM tag value.
             best = None
             for amenity in self.amenity_vocab:
-                if amenity.lower().replace("_", " ") in object_part:
+                ***REMOVED*** Word-boundary match, not substring: the trained vocab
+                ***REMOVED*** artifact carries junk entries ("ho") that would otherwise
+                ***REMOVED*** shadow any phrase containing them ("which hostels are" →
+                ***REMOVED*** OBJECT "ho"). The question is singularized before span
+                ***REMOVED*** extraction, so plural forms already match their singular
+                ***REMOVED*** vocab entries.
+                norm = re.escape(amenity.lower().replace("_", " "))
+                if re.search(rf"\b{norm}\b", object_part):
                     if best is None or len(amenity) > len(best):
                         best = amenity
             if best is not None:

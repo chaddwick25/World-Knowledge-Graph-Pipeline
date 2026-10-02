@@ -160,8 +160,8 @@ Verified places: Rome, Venice, Milan, Florence, Naples, Colosseum.
 
 Verified places: Kingston, Montego Bay, Ocho Rios, Negril.
 
-- Which bars are within 2km of Montego Bay?
-- What is the nearest restaurant to Ocho Rios?
+- Which cafes are within 20km of Montego Bay?
+- What is the nearest restaurant to Ocho Rios High School?
 - Which is closer to Kingston: Montego Bay or Negril?
 - What amenities are around Negril?
 - What is north of Kingston?
