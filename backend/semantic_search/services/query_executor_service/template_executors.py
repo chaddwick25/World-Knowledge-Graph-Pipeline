@@ -14,6 +14,7 @@ import time
 from semantic_search.services.query_executor_service._constants import (
     AMENITY_TAG_ALIASES,
     AMENITY_TO_WKGS,
+    CATEGORY_TAG_TARGETS,
     GENERIC_AMENITY_PHRASES,
     GENERIC_AMENITY_KEYS,
     DEFAULT_NEAR_RADIUS_M,
@@ -80,7 +81,7 @@ class TemplateExecutorsMixin:
             entities = cls._search_by_amenity_spatial(
                 amenity_text, country_code, snapshot_date,
                 anchor_point=anchor_point,
-                radius_m=spatial_radius, top_k=50, trace=trace,
+                radius_m=spatial_radius, top_k=5, trace=trace,
             )
             if entities:
                 trace.append({"step": "rank_by_distance",
@@ -90,7 +91,7 @@ class TemplateExecutorsMixin:
 
         # No anchor — return unfiltered amenity search
         entities = cls._search_by_amenity(
-            amenity_text, country_code, snapshot_date, top_k=50, trace=trace,
+            amenity_text, country_code, snapshot_date, top_k=5, trace=trace,
         )
         return entities
     @classmethod
@@ -181,12 +182,19 @@ class TemplateExecutorsMixin:
         radius_m = cls._parse_radius(radius_concept["text"] if radius_concept else None)
         amenity_text = amenity["text"] if amenity else None
 
+        # Category → real OSM tag target ("hotel" → ("tourism", "hotel"),
+        # "peak" → ("natural", "peak")). The amenity-only class filter can't
+        # express these; the tag target filters tags @> {key: value} so the
+        # exact-tag tier matches instead of the fuzzy embedding tier.
+        tag_target = cls._resolve_tag_target(amenity_text)
+
         # Proper-name OBJECTs (brands): the FastText pool is name-blind for
         # out-of-vocabulary names ("juici patties" admits ~1 entity), so
         # build the pool name-first (trigram tier) alongside the embedding
-        # tier. Categories ("cafes") resolve to an amenity tag → no name tier.
+        # tier. Categories ("cafes", tag-targeted "hotels") resolve to a
+        # tag → no name tier.
         name_pool_query = None
-        if amenity_text and cls._resolve_amenity_tag(
+        if amenity_text and tag_target is None and cls._resolve_amenity_tag(
             amenity_text, country_code, snapshot_date,
         ) is None:
             name_pool_query = amenity_text
@@ -235,11 +243,11 @@ class TemplateExecutorsMixin:
                 amenity_text, country_code, snapshot_date,
                 anchor_point=anchor_point,
                 radius_m=radius_m, top_k=200, trace=trace,
-                name_pool_query=name_pool_query,
+                name_pool_query=name_pool_query, tag_target=tag_target,
             )
             return cls._rerank_with_name_alignment(
                 entities, amenity_text, anchor_coords, radius_m,
-                country_code, snapshot_date, trace,
+                country_code, snapshot_date, trace, tag_target=tag_target,
             )
 
         # 3. Multi-anchor fallback: the anchor text may be a generic
@@ -271,17 +279,17 @@ class TemplateExecutorsMixin:
         # No anchor or radius — return unfiltered amenity search
         entities = cls._search_by_amenity(
             amenity_text, country_code, snapshot_date, top_k=200, trace=trace,
-            name_pool_query=name_pool_query,
+            name_pool_query=name_pool_query, tag_target=tag_target,
         )
         return cls._rerank_with_name_alignment(
             entities, amenity_text, anchor_coords, radius_m,
-            country_code, snapshot_date, trace,
+            country_code, snapshot_date, trace, tag_target=tag_target,
         )
 
     @classmethod
     def _rerank_with_name_alignment(cls, entities, amenity_text, anchor_coords,
                                      radius_m, country_code, snapshot_date,
-                                     trace):
+                                     trace, tag_target=None):
         """Re-rank FILTER-AGGREGATE-MEASURE results with geo + USLP scores,
         plus name alignment when the OBJECT concept is a proper name.
 
@@ -290,12 +298,12 @@ class TemplateExecutorsMixin:
         is not a resolvable amenity category, it is a proper name: align it
         against each entity's ``name`` field (FastText cosine) so exact-name
         entities rank on top regardless of distance. Category queries
-        ("cafes") keep the geo + uslp re-rank only.
+        ("cafes", tag-targeted "hotels") keep the geo + uslp re-rank only.
         """
         if not entities:
             return entities
         name_query = None
-        if amenity_text and cls._resolve_amenity_tag(
+        if tag_target is None and amenity_text and cls._resolve_amenity_tag(
             amenity_text, country_code, snapshot_date,
         ) is None:
             name_query = amenity_text
@@ -539,6 +547,37 @@ class TemplateExecutorsMixin:
         if corrected:
             return corrected[0]
         return None
+
+    @classmethod
+    def _resolve_tag_target(cls, text: str):
+        """Category token → the real OSM (key, value) target, or None.
+
+        "hotels" → ("tourism", "hotel"), "peaks" → ("natural", "peak"),
+        "waterfalls" → ("waterway", "waterfall"). These categories live
+        outside the amenity key, so the amenity-only class filter can't
+        express them; the spatial search uses the target to filter
+        ``tags @> {key: value}`` and the exact-tag tier matches instead of
+        the fuzzy embedding tier.
+
+        Trailing verb/copula fragments from the parser's open-vocabulary
+        OBJECT span are stripped first ("peak are" → "peak"), mirroring
+        ``_generic_amenity_keys``.
+        """
+        if not text:
+            return None
+        phrase = text.lower().strip()
+        for frag in (" are", " is", " near", " around", " close",
+                     " nearby", " within", " in", " of", " at",
+                     # 2026-10-01: "taco vendors" / "food vendors" —
+                     # the planner rephrases vague intents, but the
+                     # executor stays resilient when one slips through.
+                     " vendors of", " vendors"):
+            if phrase.endswith(frag):
+                phrase = phrase[:-len(frag)].rstrip()
+                break
+        key = phrase.rstrip("s").replace("_", " ")
+        return CATEGORY_TAG_TARGETS.get(key)
+
     @staticmethod
     def _generic_amenity_keys(text) -> Optional[tuple]:
         """Normalize a phrase to generic-amenity OSM keys, or None.

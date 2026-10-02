@@ -1,38 +1,64 @@
 <template>
   <div class="d-flex flex-column gap-2">
-    <form class="d-flex flex-column gap-2" @submit.prevent="performSearch">
-      <!-- Query mode radio group (was pill buttons) -->
-      <div class="d-flex flex-column gap-1">
-        <div class="btn-group btn-group-sm" role="group" aria-label="Query mode">
-          <input
-            type="radio"
-            class="btn-check"
-            name="query-mode"
-            id="query-mode-template"
-            autocomplete="off"
-            value="template"
-            v-model="queryMode"
-          >
-          <label class="btn btn-outline-secondary" for="query-mode-template">AI query</label>
+    <!-- Query mode radio group — always visible (the mode switcher; only
+         the sub-mode content below swaps). Kept OUT of the v-else block
+         so the Researcher mode can switch back (2026-10-01). -->
+    <div class="d-flex flex-column gap-1">
+      <div class="btn-group btn-group-sm" role="group" aria-label="Query mode">
+        <input
+          type="radio"
+          class="btn-check"
+          name="query-mode"
+          id="query-mode-template"
+          autocomplete="off"
+          value="template"
+          v-model="queryMode"
+        >
+        <label class="btn btn-outline-secondary" for="query-mode-template">AI query</label>
 
-          <input
-            type="radio"
-            class="btn-check"
-            name="query-mode"
-            id="query-mode-tags"
-            autocomplete="off"
-            value="tags"
-            v-model="queryMode"
-          >
-          <label class="btn btn-outline-secondary" for="query-mode-tags">OSM Tag Query</label>
-        </div>
+        <input
+          type="radio"
+          class="btn-check"
+          name="query-mode"
+          id="query-mode-tags"
+          autocomplete="off"
+          value="tags"
+          v-model="queryMode"
+        >
+        <label class="btn btn-outline-secondary" for="query-mode-tags">OSM Tag Query</label>
+
+        <input
+          type="radio"
+          class="btn-check"
+          name="query-mode"
+          id="query-mode-research"
+          autocomplete="off"
+          value="researcher"
+          v-model="queryMode"
+        >
+        <label class="btn btn-outline-secondary" for="query-mode-research">Researcher</label>
       </div>
+    </div>
 
-      <!-- Subdivision selector -->
-      <SubdivisionSelector
-        :country-name="countryName"
-        @subdivision-selected="subdivisionQid = $event"
-      />
+    <!-- Subdivision selector — always visible (2026-10-01): scopes the
+         sample questions, the structured/template searches, AND the
+         Researcher sub-mode (its QID rides the research endpoints). -->
+    <SubdivisionSelector
+      :country-name="countryName"
+      @subdivision-selected="subdivisionQid = $event"
+    />
+
+    <!-- Researcher sub-mode (2026-10-01): the general research loop
+         (KE interview → brief → decompose → execute → assemble) folded
+         in from the removed standalone Research tab. -->
+    <ResearchPanel
+      v-if="isResearcherMode"
+      :country-name="countryName"
+      :snapshot-date="snapshotDate"
+      :subdivision-qid="subdivisionQid"
+    />
+    <template v-else>
+    <form class="d-flex flex-column gap-2" @submit.prevent="performSearch">
 
       <!-- Tag key/value (OSM Tag Query mode) -->
       <div v-if="isTagsMode" class="row g-2">
@@ -109,6 +135,38 @@
       </div>
     </form>
 
+    <!-- Sample questions (OSM RAG mode learning aid — from the bundled
+         sample_questions.csv, country-filtered; shown right below the
+         search form so they're handy before searching; the chevron
+         collapses the list) -->
+    <div v-if="isTemplateMode && filteredSampleQuestions.length" class="d-flex flex-column gap-1 border-top pt-2">
+      <button
+        type="button"
+        class="btn btn-sm btn-link p-0 text-secondary d-flex align-items-center"
+        style="width: fit-content;"
+        :aria-expanded="showSampleQuestions"
+        aria-label="Toggle sample questions"
+        @click="showSampleQuestions = !showSampleQuestions"
+      >
+        <i :class="showSampleQuestions ? 'bi bi-chevron-up' : 'bi bi-chevron-down'"></i>
+      </button>
+      <div v-if="showSampleQuestions" class="d-flex flex-column gap-1">
+        <div
+          v-for="(q, idx) in filteredSampleQuestions"
+          :key="`${q.question}-${idx}`"
+          class="d-flex align-items-center gap-2 border rounded p-1 px-2"
+          style="font-size: 0.72rem;"
+        >
+          <span class="flex-grow-1 text-truncate" :title="q.question">{{ q.question }}</span>
+          <button
+            class="btn btn-sm btn-outline-primary text-nowrap py-0 px-2"
+            :class="{ 'btn-success': copiedQuestion === q.question }"
+            @click="copyQuestion(q.question)"
+          >{{ copiedQuestion === q.question ? 'Copied!' : 'Copy' }}</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Error -->
     <div v-if="displayError" class="alert alert-danger small py-1 px-2 mb-0">
       {{ displayError }}
@@ -145,7 +203,25 @@
     <!-- Results table -->
     <div v-if="displayResults.length > 0" class="d-flex flex-column gap-1">
       <div class="d-flex align-items-center justify-content-between">
-        <h6 class="small fw-semibold mb-0">Results ({{ displayResults.length }})</h6>
+        <div class="d-flex align-items-center gap-1">
+          <h6 class="small fw-semibold mb-0">
+            Results ({{ displayResults.length }}<template v-if="cappedResults.length > displayResults.length"> / {{ cappedResults.length }}</template>)
+          </h6>
+          <!-- Unnamed-entity toggle (2026-10-01): the AI answer can cite
+               entities the table hides (bars without a name tag, filtered
+               2026-09-28). Visible whenever nameless rows EXIST — not
+               only while they are hidden — so the filter can be
+               re-applied after showing them. -->
+          <button
+            v-if="hasNameless"
+            class="btn btn-link btn-sm text-secondary p-0"
+            :title="showNameless ? 'Hide unnamed results' : 'Show unnamed results'"
+            :aria-pressed="showNameless"
+            @click="showNameless = !showNameless"
+          >
+            <i :class="showNameless ? 'bi bi-funnel-fill' : 'bi bi-funnel'"></i>
+          </button>
+        </div>
         <button
           class="btn btn-link btn-sm text-secondary p-0"
           @click="showScores = !showScores"
@@ -197,38 +273,7 @@
     <div v-else-if="searched" class="small text-secondary">
       No results found for this query.
     </div>
-
-    <!-- Sample questions (OSM RAG mode learning aid — from the bundled
-         sample_questions.csv, country-filtered; shown below the results
-         table, which is height-capped so both fit; the chevron collapses
-         the list) -->
-    <div v-if="isTemplateMode && filteredSampleQuestions.length" class="d-flex flex-column gap-1 border-top pt-2">
-      <button
-        type="button"
-        class="btn btn-sm btn-link p-0 text-secondary d-flex align-items-center"
-        style="width: fit-content;"
-        :aria-expanded="showSampleQuestions"
-        aria-label="Toggle sample questions"
-        @click="showSampleQuestions = !showSampleQuestions"
-      >
-        <i :class="showSampleQuestions ? 'bi bi-chevron-up' : 'bi bi-chevron-down'"></i>
-      </button>
-      <div v-if="showSampleQuestions" class="d-flex flex-column gap-1">
-        <div
-          v-for="(q, idx) in filteredSampleQuestions"
-          :key="`${q.question}-${idx}`"
-          class="d-flex align-items-center gap-2 border rounded p-1 px-2"
-          style="font-size: 0.72rem;"
-        >
-          <span class="flex-grow-1 text-truncate" :title="q.question">{{ q.question }}</span>
-          <button
-            class="btn btn-sm btn-outline-primary text-nowrap py-0 px-2"
-            :class="{ 'btn-success': copiedQuestion === q.question }"
-            @click="copyQuestion(q.question)"
-          >{{ copiedQuestion === q.question ? 'Copied!' : 'Copy' }}</button>
-        </div>
-      </div>
-    </div>
+    </template>
   </div>
 </template>
 
@@ -253,6 +298,7 @@
 import axios from 'axios'
 import ExecutionTraceFlow from './ExecutionTraceFlow.vue'
 import SubdivisionSelector from './SubdivisionSelector.vue'
+import ResearchPanel from './ResearchPanel.vue'
 import { useEntityInfoStore } from '../stores/entityInfoStore'
 import sampleQuestionsCsv from '../assets/sample_questions.csv?raw'
 
@@ -296,7 +342,7 @@ const SAMPLE_QUESTIONS = parseCsv(sampleQuestionsCsv)
 
 export default {
   name: 'SemanticSearchPanel',
-  components: { ExecutionTraceFlow, SubdivisionSelector },
+  components: { ExecutionTraceFlow, SubdivisionSelector, ResearchPanel },
   setup() {
     const entityInfoStore = useEntityInfoStore()
     return { entityInfoStore }
@@ -333,9 +379,17 @@ export default {
       results: [],
       searched: false,
       showScores: false,
+      // Unnamed-entity toggle (2026-10-01): off by default — the
+      // nameless filter hides noise; the funnel icon beside Results
+      // shows them when the AI answer cites entities the table hides.
+      showNameless: false,
       subdivisionQid: null,
+      // Sample questions served by the backend (country or subdivision
+      // scope); empty until the fetch resolves — the bundled CSV is the
+      // fallback only when the API is unreachable.
+      sampleQuestions: [],
       // Sample questions (OSM RAG mode learning aid) — expanded on mount,
-      // hidden once results arrive; chevron toggles the list.
+      // chevron toggles the list.
       showSampleQuestions: true,
       copiedQuestion: null,
       copyTimer: null,
@@ -405,13 +459,19 @@ export default {
     isTemplateMode() {
       return this.queryMode === 'template'
     },
-    /** Sample questions for the selected country (falls back to generic
-     *  rows when the country has none) — from the bundled CSV. */
+    /** Researcher sub-mode (2026-10-01): the general research loop that
+     *  was folded in from the removed standalone Research tab. */
+    isResearcherMode() {
+      return this.queryMode === 'researcher'
+    },
+    /** Sample questions served by the backend (country or subdivision
+     *  scope — the service generates subdivision questions from the
+     *  entities inside the subdivision). Falls back to the bundled CSV
+     *  only when the API fetch fails. */
     filteredSampleQuestions() {
-      if (!this.countryCode) {
-        return SAMPLE_QUESTIONS.filter((q) => !q.country_code).slice(0, 8)
-      }
-      const iso = this.countryCode.toUpperCase()
+      if (this.sampleQuestions.length) return this.sampleQuestions.slice(0, 8)
+      // Fallback: bundled CSV (backend unreachable) — country-filtered.
+      const iso = (this.countryCode || '').toUpperCase()
       const country = SAMPLE_QUESTIONS.filter((q) => q.country_code === iso)
       const generic = SAMPLE_QUESTIONS.filter((q) => !q.country_code)
       return (country.length ? country : generic).slice(0, 8)
@@ -445,16 +505,29 @@ export default {
     topKClamped() {
       return Math.min(100, Math.max(1, parseInt(this.topK, 10) || 20))
     },
-    /** Normalized + top-k-capped results (table rows and map entities).
-     *  Nameless entities are filtered out (2026-09-28): unnamed noise
-     *  (traffic islands, generic multipolygons) ranked high with no name
-     *  to show. Presentation-only — the re-rank and backend are untouched;
-     *  the remaining rows keep their exact order. */
-    displayResults() {
+    /** All normalized results capped at Top K — before the nameless
+     *  filter, so the header can show "Results (1 / 4)" when some rows
+     *  are hidden. */
+    cappedResults() {
       return this.results
         .map((r) => this.normalizeResult(r))
-        .filter((r) => (r.name || '').trim().length > 0)
         .slice(0, this.topKClamped)
+    },
+    /** Whether any capped result lacks a name — the funnel toggle is
+     *  only meaningful then, and it stays visible in both states so the
+     *  filter can be turned back on (2026-10-01). */
+    hasNameless() {
+      return this.cappedResults.some((r) => !(r.name || '').trim())
+    },
+    /** Normalized + top-k-capped results (table rows and map entities).
+     *  Nameless entities are filtered out by default (2026-09-28):
+     *  unnamed noise (traffic islands, generic multipolygons) ranked high
+     *  with no name to show. Presentation-only — the re-rank and backend
+     *  are untouched. The funnel toggle (showNameless, 2026-10-01) opts
+     *  into showing them — the AI answer may cite bars the table hides. */
+    displayResults() {
+      if (this.showNameless) return this.cappedResults
+      return this.cappedResults.filter((r) => (r.name || '').trim().length > 0)
     },
     /** Score columns that have at least one non-zero value in the current
      *  result set. Columns that are always 0 for a given search mode
@@ -485,10 +558,21 @@ export default {
     countryName() {
       this.reset()
     },
+    countryCode() {
+      this.fetchSampleQuestions()
+    },
+    // Subdivision selection changes the question scope — refetch so the
+    // sample questions reflect operations within the subdivision.
+    subdivisionQid() {
+      this.fetchSampleQuestions()
+    },
     // Live control: re-slice the emitted graph without re-querying.
     topK() {
       this.publishResults()
     },
+  },
+  mounted() {
+    this.fetchSampleQuestions()
   },
   // Lifecycle balance — close any open SSE stream (rules §1.2).
   unmounted() {
@@ -523,6 +607,28 @@ export default {
 
     async performSearch() {
       await this.executeSync()
+    },
+
+    /** Fetch the sample questions from the backend (country scope, or the
+     *  subdivision scope when one is selected — the service generates
+     *  subdivision questions from the entities inside the subdivision).
+     *  On failure the bundled CSV remains the fallback. */
+    async fetchSampleQuestions() {
+      try {
+        const params = new URLSearchParams({ country_code: this.countryCode || '' })
+        if (this.subdivisionQid) params.set('subdivision_qid', this.subdivisionQid)
+        if (this.snapshotDate) params.set('snapshot_date', this.snapshotDate)
+        const { data } = await axios.get(`/nca/sample-questions/?${params}`)
+        this.sampleQuestions = (data.questions || []).map((q) => ({
+          question: q.question,
+          template: q.template || '',
+          source: q.source || '',
+        }))
+      } catch (err) {
+        // Backend unreachable → the bundled CSV fallback in
+        // filteredSampleQuestions covers the panel.
+        this.sampleQuestions = []
+      }
     },
 
     /** Copy a sample question to the clipboard with a brief confirmation. */

@@ -24,11 +24,13 @@ class SpatialSearchMixin:
     def _search_by_amenity(cls, amenity_type: str, country_code: str,
                            snapshot_date: str, top_k: int = 50,
                            trace: list = None,
-                           name_pool_query: str = None) -> list:
+                           name_pool_query: str = None,
+                           tag_target: tuple = None) -> list:
         """Search for OSM entities by amenity tag value.
 
         Strategy:
-          1. Exact tag match (tags__amenity=value)
+          1. Exact tag match (tags__amenity=value, or tags @> tag_target
+             when a non-amenity category like tourism=hotel resolves)
           2. WorldKG ontology class resolution (wkgs: class → canonical OSM tag)
           3. FastText semantic search fallback (pgvector cosine similarity)
 
@@ -38,6 +40,8 @@ class SpatialSearchMixin:
         name_pool_query: when the OBJECT is a proper name (brand), merge
         the fuzzy name pool into the FastText tier — the embedding pool is
         name-blind for out-of-vocabulary brands.
+        tag_target: optional (key, value) — filter tags @> {key: value}
+            instead of the amenity-only key.
         """
         if not amenity_type:
             if trace is not None:
@@ -53,9 +57,13 @@ class SpatialSearchMixin:
         # ── Step 1: Exact amenity tag match ──
         # `tags__contains` renders `@>` (GIN-accelerated); `tags__amenity=`
         # renders `->>` equality and full-scans the partition.
+        filter_tags = (
+            {tag_target[0]: tag_target[1]} if tag_target
+            else {"amenity": amenity_type}
+        )
         qs = OsmEntity.objects.using("vectors").filter(
             snapshot_id=snapshot_id,
-            tags__contains={"amenity": amenity_type},
+            tags__contains=filter_tags,
         )
         if country_code:
             qs = qs.filter(country_code=country_code.upper())
@@ -70,6 +78,20 @@ class SpatialSearchMixin:
                               "match_type": "exact_tag",
                               "output_count": len(results)})
             return results
+
+        # Precise category (tag_target) → exact-tag tier only; the
+        # fallback tiers would return wrong-class entities (same rule as
+        # _search_by_amenity_spatial).
+        if tag_target:
+            if trace is not None:
+                trace.append({
+                    "step": "tag_target_exact_only",
+                    "input": amenity_type,
+                    "tag_target": list(tag_target),
+                    "reason": "precise category: fallback tiers would return wrong-class entities",
+                    "output_count": 0,
+                })
+            return []
 
         # ── Step 2: WorldKG ontology class resolution ──
         ontology_results = cls._search_by_ontology_class(
@@ -303,7 +325,8 @@ class SpatialSearchMixin:
                                     radius_m: int = None,
                                     top_k: int = 50,
                                     trace: list = None,
-                                    name_pool_query: str = None) -> list:
+                                    name_pool_query: str = None,
+                                    tag_target: tuple = None) -> list:
         """Search for OSM entities by amenity tag, filtered/ordered by PostGIS.
 
         Uses ST_DWithin (GiST index-backed) for radius filtering and
@@ -336,6 +359,11 @@ class SpatialSearchMixin:
             top_k: Maximum results to return
             trace: Optional execution trace list
             name_pool_query: Optional proper-name span for the name tier
+        tag_target: Optional (key, value) — filter tags @> {key: value}
+            instead of the amenity-only key ("hotel" → ("tourism",
+            "hotel"); "peak" → ("natural", "peak")). Categories whose
+            real OSM key is not amenity resolve here so the exact-tag
+            tier matches instead of falling to the fuzzy embedding tier.
         """
         if not amenity_type:
             if trace is not None:
@@ -355,9 +383,13 @@ class SpatialSearchMixin:
         # misses them) must be dropped: ST_Distance on NaN coordinates
         # returns 0, ranking coordinate-less entities as "nearest (0m
         # away)" ahead of real matches.
+        filter_tags = (
+            {tag_target[0]: tag_target[1]} if tag_target
+            else {"amenity": amenity_type}
+        )
         qs = OsmEntity.objects.using("vectors").filter(
             snapshot_id=snapshot_id,
-            tags__contains={"amenity": amenity_type},
+            tags__contains=filter_tags,
         ).exclude(geom__isnull=True).extra(
             where=["NOT (ST_X(geom) = 'NaN' AND ST_Y(geom) = 'NaN')"],
         )
@@ -404,6 +436,25 @@ class SpatialSearchMixin:
                     "output_count": len(results),
                 })
             return results
+
+        # A resolved tag target is a precise category: the exact-tag tier is
+        # the ONLY tier that may answer it. The ontology/FastText fallbacks
+        # return wrong-class entities ("Which hotels are within 3km of
+        # Kingston?" → healthcare facilities; "beaches" → an attraction
+        # named "beach", 2026-09-30), which the loop must then flag as
+        # class_mismatch. An honest empty feeds the repair/continuation
+        # instead. Unresolved phrases ("italian food") keep the full
+        # fallback chain.
+        if tag_target:
+            if trace is not None:
+                trace.append({
+                    "step": "tag_target_exact_only",
+                    "input": amenity_type,
+                    "tag_target": list(tag_target),
+                    "reason": "precise category: fallback tiers would return wrong-class entities",
+                    "output_count": 0,
+                })
+            return []
 
         # ── Step 2: Ontology class resolution with spatial filter ──
         ontology_results = cls._search_by_ontology_class_spatial(

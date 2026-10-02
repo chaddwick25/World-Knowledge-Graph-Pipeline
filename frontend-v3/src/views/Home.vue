@@ -182,12 +182,6 @@
               @links-toggle="onLinksToggle"
               @mode-change="onOsmEntitiesModeChange"
             />
-            <!-- Research tab -->
-            <ResearchPanel
-              v-else-if="activeTab === 'research'"
-              :country-name="singleCountry.name"
-              :snapshot-date="selectedSnapshotDate"
-            />
           </div>
         </div>
       </aside>
@@ -218,7 +212,6 @@ import SnapshotCalendar from '../components/SnapshotCalendar.vue'
 import SemanticSearchPanel from '../components/SemanticSearchPanel.vue'
 import OsmEntitiesPanel from '../components/OsmEntitiesPanel.vue'
 import MapLabelsControls from '../components/MapLabelsControls.vue'
-import ResearchPanel from '../components/ResearchPanel.vue'
 import PlanetInitPanel from '../components/PlanetInitPanel.vue'
 import SystemSummaryModal from '../components/SystemSummaryModal.vue'
 import RerunConfirmModal from '../components/RerunConfirmModal.vue'
@@ -233,7 +226,6 @@ export default {
     SemanticSearchPanel,
     OsmEntitiesPanel,
     MapLabelsControls,
-    ResearchPanel,
     PlanetInitPanel,
     SystemSummaryModal,
     RerunConfirmModal,
@@ -242,10 +234,11 @@ export default {
   data() {
     return {
       // ── Tab definitions ──
+      // The standalone Research tab was removed 2026-10-01 — the general
+      // researcher lives inside the OSM RAG tab as a sub-mode.
       tabs: [
         { key: 'query', label: 'OSM RAG' },
         { key: 'osm-entities', label: 'OSM Entities' },
-        { key: 'research', label: 'Agentic Researcher' },
       ],
 
       // ── System state ──

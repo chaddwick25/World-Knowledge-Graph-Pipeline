@@ -66,13 +66,19 @@ class LLMService:
     _instance = None
 
     def __init__(self, base_url: str = None, model: str = None,
-                 style: str = None, timeout: float = None):
+                 style: str = None, timeout: float = None,
+                 think: bool = None):
         """Constructor with per-instance overrides (settings defaults for None).
 
         The overrides let a second instance point at a different provider
         without touching the platform config: the research orchestrator uses
         ``get_research_instance()`` (RESEARCH_LLM_*) while the interactive
         path keeps ``get_instance()`` (LLM_*).
+
+        ``think`` is the Qwen3 hybrid-thinking default for this instance
+        (LLM_THINK / RESEARCH_LLM_THINK). Per-call ``think=`` overrides it —
+        the research loop routes thinking on for planning steps and off for
+        the grounded summary assembly.
         """
         self.enabled = str(getattr(settings, "LLM_ENABLED", "1")) not in ("0", "false", "False", "")
         self.style = (style or getattr(settings, "LLM_API_STYLE", "") or "native").lower()
@@ -98,10 +104,23 @@ class LLMService:
             self._availability_cache_seconds = _DEFAULT_AVAILABILITY_CACHE_SECONDS
         self._available = None
         self._available_at = 0.0
+        if think is not None:
+            self.think = bool(think)
+        else:
+            self.think = str(
+                getattr(settings, "LLM_THINK", "") or ""
+            ) not in ("", "0", "false", "False")
         logger.info(
-            "LLMService: enabled=%s style=%s base_url=%s model=%s timeout=%ss",
+            "LLMService: enabled=%s style=%s base_url=%s model=%s timeout=%ss "
+            "think=%s",
             self.enabled, self.style, self.base_url, self.model, self.timeout,
+            self.think,
         )
+
+    def _resolve_think(self, think: bool = None) -> bool:
+        """Per-call thinking override: explicit kwarg wins, else the
+        instance default (LLM_THINK / RESEARCH_LLM_THINK)."""
+        return bool(think) if think is not None else self.think
 
     @classmethod
     def get_instance(cls) -> "LLMService":
@@ -132,6 +151,9 @@ class LLMService:
             model=getattr(settings, "RESEARCH_LLM_MODEL", "") or _DEFAULT_MODEL,
             style=getattr(settings, "RESEARCH_LLM_API_STYLE", "") or "native",
             timeout=getattr(settings, "RESEARCH_LLM_TIMEOUT", "") or None,
+            think=str(
+                getattr(settings, "RESEARCH_LLM_THINK", "") or ""
+            ) not in ("", "0", "false", "False"),
         )
 
     # ── Availability ──────────────────────────────────────────────────────
@@ -163,8 +185,13 @@ class LLMService:
     # ── Chat ──────────────────────────────────────────────────────────────
 
     def chat(self, messages, temperature: float = 0.2,
-             max_tokens: int = 512) -> Optional[str]:
-        """Chat completion. Returns the text or None (never raises)."""
+             max_tokens: int = 512, think: bool = None) -> Optional[str]:
+        """Chat completion. Returns the text or None (never raises).
+
+        ``think`` — Qwen3 hybrid-thinking override (defaults to the
+        instance setting). qwen3 thinking mode eats the token budget on
+        /v1; the native endpoint honors the flag.
+        """
         if not self.enabled:
             return None
         attrs = {
@@ -180,9 +207,7 @@ class LLMService:
                     "model": self.model,
                     "messages": messages,
                     "stream": False,
-                    # qwen3 thinking mode eats the token budget on /v1; the
-                    # native endpoint honors think:false.
-                    "think": False,
+                    "think": self._resolve_think(think),
                     "options": {
                         "temperature": temperature,
                         "num_predict": max_tokens,
@@ -232,7 +257,7 @@ class LLMService:
             TraceService.end_span(span, error=error, attributes=usage_attrs)
 
     def chat_stream(self, messages, temperature: float = 0.2,
-                    max_tokens: int = 512):
+                    max_tokens: int = 512, think: bool = None):
         """Stream chat completion text deltas (generator).
 
         Native Ollama ``/api/chat`` with ``stream: true`` (NDJSON lines);
@@ -255,7 +280,7 @@ class LLMService:
                     "model": self.model,
                     "messages": messages,
                     "stream": True,
-                    "think": False,
+                    "think": self._resolve_think(think),
                     "options": {
                         "temperature": temperature,
                         "num_predict": max_tokens,
@@ -327,7 +352,7 @@ class LLMService:
                 )
 
     def chat_json(self, messages, temperature: float = 0.0,
-                  max_tokens: int = 512) -> Optional[dict]:
+                  max_tokens: int = 512, think: bool = None) -> Optional[dict]:
         """Chat completion parsed as JSON. Returns dict or None (never raises).
 
         On the native Ollama path uses ``format: "json"`` so the model emits
@@ -348,7 +373,7 @@ class LLMService:
                     "model": self.model,
                     "messages": messages,
                     "stream": False,
-                    "think": False,
+                    "think": self._resolve_think(think),
                     "format": "json",
                     "options": {
                         "temperature": temperature,
@@ -382,7 +407,7 @@ class LLMService:
         return self._extract_json(text)
 
     def chat_tools(self, messages, tools, temperature: float = 0.0,
-                   max_tokens: int = 512):
+                   max_tokens: int = 512, think: bool = None):
         """Native tool-calling chat. Returns (content, tool_calls) or (None, None).
 
         The native Ollama ``/api/chat`` accepts a ``tools`` list (OpenAI
@@ -411,7 +436,7 @@ class LLMService:
                     "model": self.model,
                     "messages": messages,
                     "stream": False,
-                    "think": False,
+                    "think": self._resolve_think(think),
                     "tools": tools,
                     "options": {
                         "temperature": temperature,

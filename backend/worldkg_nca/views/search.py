@@ -285,21 +285,28 @@ def worldkg_semantic_triplet_search(request):
     )
 
     # If subdivision_qid is provided, use the subdivision bbox directly and
-    # infer the country_code if not explicitly given.
+    # infer the country_code if not explicitly given. A subdivision without
+    # boundary data (SPARQL gap — `backfill_subdivision_bboxes` closes it)
+    # DEGRADES to a country-wide search with a note instead of failing the
+    # request (2026-09-30).
+    subdivision_fallback = False
+    bbox = None
     if subdivision_qid:
         bbox = _resolve_subdivision_bbox(subdivision_qid)
-        if not bbox:
-            return Response(
-                {"error": f"Could not resolve subdivision_qid={subdivision_qid}. "
-                          "Ensure SubgraphProfile is populated with bbox for this QID."},
-                status=status.HTTP_400_BAD_REQUEST,
+        if bbox:
+            # Infer country_code from the subdivision if not provided
+            if not country_code:
+                inferred_iso = resolve_subdivision_country_code(subdivision_qid)
+                if inferred_iso:
+                    country_code = inferred_iso
+        else:
+            subdivision_fallback = True
+            logger.warning(
+                "Subdivision %s has no bbox; searching country-wide",
+                subdivision_qid,
             )
-        # Infer country_code from the subdivision if not provided
-        if not country_code:
-            inferred_iso = resolve_subdivision_country_code(subdivision_qid)
-            if inferred_iso:
-                country_code = inferred_iso
-    else:
+    if subdivision_fallback or not bbox:
+        bbox = None
         # Prefer OsmBoundary bbox (same as enrichment service).
         # Be robust to slug-style identifiers like "ireland_and_northern_ireland".
         human_name = (
@@ -860,6 +867,14 @@ def worldkg_semantic_triplet_search(request):
         "results": results,
         "search_mode": "triple_space",
     }
+    if subdivision_fallback:
+        # No boundary data for the requested subdivision — the search ran
+        # country-wide; surface it so the client knows it was not scoped.
+        response_payload["subdivision_fallback"] = subdivision_qid
+        response_payload["warning"] = (
+            f"Subdivision {subdivision_qid} has no boundary data; "
+            "results are country-wide, not subdivision-scoped."
+        )
     if use_learned_weights:
         response_payload["projection_weights"] = {
             "w_geo": w_geo,
@@ -1261,6 +1276,11 @@ def worldkg_subdivisions(request):
         has_bbox = all(v is not None for v in (
             sg.bbox_min_lon, sg.bbox_min_lat, sg.bbox_max_lon, sg.bbox_max_lat,
         ))
+        # Only offer subdivisions that can actually scope the search — a
+        # bbox-less subdivision would otherwise 400 on selection
+        # (backfill with `backfill_subdivision_bboxes` to close gaps).
+        if not has_bbox:
+            continue
         subdivisions.append({
             "wikidata_id": sg.wikidata_id,
             "name": sg.name,
@@ -1278,3 +1298,40 @@ def worldkg_subdivisions(request):
         "count": len(subdivisions),
         "subdivisions": subdivisions,
     })
+
+
+@api_view(['GET'])
+def sample_questions(request):
+    """Sample questions for a country or subdivision (OSM RAG panel).
+
+    GET /api/nca/sample-questions/?country_code=BZ[&subdivision_qid=Q123]
+
+    Country scope serves the curated question bank; a subdivision_qid
+    serves its GENERATED questions (entities inside the subdivision
+    polygon) when present, else falls back to the country's curated set.
+    The service is the single source — the frontend no longer bundles a
+    CSV.
+
+    Response:
+        {
+            "scope": "country" | "subdivision",
+            "subdivision_qid": "Q123",          // subdivision scope only
+            "questions": [{"question", "template", "source", "anchor"}]
+        }
+    """
+    from semantic_search.services.sample_question_service import (
+        SampleQuestionService,
+    )
+
+    country_code = request.query_params.get('country_code')
+    if not country_code:
+        return Response(
+            {"error": "country_code query parameter required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    subdivision_qid = request.query_params.get('subdivision_qid') or None
+    snapshot_date = request.query_params.get('snapshot_date') or None
+    result = SampleQuestionService.list_questions(
+        country_code, subdivision_qid, snapshot_date,
+    )
+    return Response(result)

@@ -1,12 +1,28 @@
 services:
   backend:
     # Example local overrides. Copy this file to compose.override.yml and edit
-    # values that differ from your machine or workflow.
+    # values that differ from your machine or workflow. compose.override.yml
+    # is gitignored — machine-specific paths never get released.
     environment:
       TZ: ${TZ:-America/Toronto}
-      # Uncomment and adjust if your planet file name differs from the default:
+      # Uncomment and adjust if your planet file name differs from the
+      # settings.py default (history-260209.osm.pbf):
       # PLANET_OSM_FILE_PATH: /app/data/OSM-PBF-FILES/planet/latest.osm.pbf
-    # Optional: add extra host binds, GPU reservations, or debugging ports.
+    # The most common override: bind your host data disks into the app.
+    # volumes:
+    #   - /path/to/OSM-PBF-FILES:/app/data/OSM-PBF-FILES
+    #   - /path/to/osm_polygon_files:/app/data/osm_polygon_files
+
+  worker:
+    environment:
+      TZ: ${TZ:-America/Toronto}
+      # The base compose pins the worker to GPU 1 (the pipeline compute
+      # card, see docker-compose.yml comments). Override only to move it
+      # to another card, e.g. the idle RTX 2070:
+      # NVIDIA_VISIBLE_DEVICES: "0"
+    # Optional: GPU reservations via deploy (valid alongside runtime:
+    # nvidia in docker-compose.yml). The backend itself does no GPU work —
+    # GPU compute lives in worker / ollama / ollama-research.
     # deploy:
     #   resources:
     #     reservations:
@@ -14,9 +30,3 @@ services:
     #         - driver: nvidia
     #           count: all
     #           capabilities: [gpu]
-
-  worker:
-    environment:
-      TZ: ${TZ:-America/Toronto}
-      # Optional: override per-worker GPU assignment
-      # NVIDIA_VISIBLE_DEVICES: "0" 

@@ -20,6 +20,7 @@ from worldkg_nca.views.search import (
     worldkg_semantic_triplet_search,
     worldkg_semantic_query_plan,
     worldkg_subdivisions,
+    sample_questions,
     execute_query,
     execute_query_stream,
 )
@@ -56,6 +57,7 @@ __all__ = [
     'worldkg_semantic_triplet_search',
     'worldkg_semantic_query_plan',
     'worldkg_subdivisions',
+    'sample_questions',
     'execute_query',
     'execute_query_stream',
     'research_stream',

@@ -15,7 +15,9 @@
  * Emits:
  *   links-toggle - Pass-through from AugmentedDataPanel (accepted/rejected
  *                  link visibility; also fires null on unmount to clear).
- *   mode-change  - 'uslp' | 'labels' when the sub-mode toggle changes.
+ *   mode-change  - 'uslp' | 'labels', emitted on mount and whenever the
+ *                  sub-mode toggle changes (mount emit keeps Home's
+ *                  osmEntitiesMode gate in sync across tab switches).
  */
 
 <template>
@@ -94,6 +96,14 @@ export default {
     mode(mode) {
       this.$emit('mode-change', mode)
     },
+  },
+  // The panel is destroyed and recreated on every tab switch (Home.vue
+  // v-if), so its mode resets to the default on each mount. Report it on
+  // mount too — otherwise Home's osmEntitiesMode flag goes stale (e.g.
+  // left on 'uslp') and the MapLabelsControls legend stays hidden even
+  // though the labels view is active.
+  mounted() {
+    this.$emit('mode-change', this.mode)
   },
   methods: {
     onLinksToggle(payload) {

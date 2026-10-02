@@ -15,8 +15,10 @@
  * UI-message-stream protocol.
  *
  * Props:
- *   countryName  - Required. Country to research within.
- *   snapshotDate - Optional. Snapshot date string (e.g. "2025_12_31").
+ *   countryName    - Required. Country to research within.
+ *   snapshotDate   - Optional. Snapshot date string (e.g. "2025_12_31").
+ *   subdivisionQid - Optional. Wikidata QID — scopes the run's results to
+ *                    the subdivision polygon (2026-10-01).
  */
 <template>
   <div class="d-flex flex-column gap-2">
@@ -48,7 +50,7 @@
           v-model="draft"
           type="text"
           class="form-control form-control-sm"
-          placeholder="e.g. plan a 2-day trip to Belize City"
+          placeholder="e.g. how well is Belize City served by public transit?"
           :disabled="isChatLoading"
         />
         <button
@@ -90,7 +92,9 @@
          is visible; auto-collapses when the summary starts. -->
     <div v-if="questions.length" class="d-flex flex-column gap-1">
       <details ref="questionsDetails" class="research-details small text-secondary" open>
-        <summary class="cursor-pointer">Execution Trace - Research questions ({{ questions.length }})</summary>
+        <summary class="cursor-pointer">
+          Execution Trace - Research questions ({{ questions.length }}<template v-if="tools.length"> + {{ tools.length }} follow-up searches</template>)
+        </summary>
         <div class="research-questions-flow d-flex flex-column gap-1 mt-1">
           <div
             v-for="q in questions"
@@ -99,7 +103,9 @@
             :class="q.error ? 'border-danger' : 'border-secondary-subtle'"
           >
             <div class="d-flex align-items-center gap-1">
-              <span class="badge bg-secondary">{{ q.index + 1 }}</span>
+              <span class="badge bg-secondary">{{ q.follow_up ? '→' : q.index + 1 }}</span>
+              <span v-if="q.follow_up" class="badge bg-success">follow-up</span>
+              <span v-else-if="q.round > 1" class="badge bg-warning text-dark">round {{ q.round }}</span>
               <span class="flex-grow-1">{{ q.question }}</span>
               <span v-if="q.error" class="badge bg-danger">error</span>
               <span v-else-if="q.template" class="badge bg-info text-dark">{{ q.template }}</span>
@@ -118,18 +124,21 @@
             </div>
             <div v-else-if="isRunning" class="text-secondary mt-1">parsing…</div>
           </div>
+          <!-- Follow-up tool calls (the OSM tag query / structuredSearch
+               rows) live INSIDE the trace so the full decision flow is
+               visible in one place (2026-10-01). -->
+          <div v-if="tools.length" class="d-flex flex-column gap-1 border-top pt-1">
+            <div class="small text-secondary fw-semibold">Follow-up searches</div>
+            <div v-for="(t, i) in tools" :key="i" class="border rounded small p-2 border-secondary-subtle">
+              <div class="d-flex align-items-center gap-1">
+                <span class="badge bg-success">{{ t.tool }}</span>
+                <code class="flex-grow-1 text-truncate" :title="JSON.stringify(t.args)">{{ JSON.stringify(t.args) }}</code>
+              </div>
+              <div v-if="toolOutputSummary(t)" class="text-secondary mt-1">{{ toolOutputSummary(t) }}</div>
+            </div>
+          </div>
         </div>
       </details>
-    </div>
-
-    <!-- Follow-up tool calls -->
-    <div v-if="tools.length" class="d-flex flex-column gap-1">
-      <div class="small text-secondary">Follow-up searches</div>
-      <div v-for="(t, i) in tools" :key="i" class="border rounded small p-2 border-secondary-subtle">
-        <span class="badge bg-success">{{ t.tool }}</span>
-        <code class="ms-1">{{ JSON.stringify(t.args) }}</code>
-        <div v-if="t.output" class="text-secondary mt-1">{{ JSON.stringify(t.output).slice(0, 300) }}</div>
-      </div>
     </div>
 
     <!-- Streamed final summary -->
@@ -156,6 +165,10 @@ export default {
       type: String,
       default: null,
     },
+    subdivisionQid: {
+      type: String,
+      default: '',
+    },
   },
   setup(props) {
     // Rule 1.3 hybrid: acquire the composable (and its transport) here,
@@ -167,6 +180,7 @@ export default {
         body: () => ({
           country_code: props.countryName,
           snapshot_date: props.snapshotDate,
+          subdivision_qid: props.subdivisionQid || undefined,
         }),
       }),
     })
@@ -277,6 +291,7 @@ export default {
         const payload = { messages: msgs }
         if (this.countryName) payload.country_code = this.countryName
         if (this.snapshotDate) payload.snapshot_date = this.snapshotDate
+        if (this.subdivisionQid) payload.subdivision_qid = this.subdivisionQid
         const { data } = await axios.post(
           `${axios.defaults.baseURL || ''}/nca/research/finalize/`,
           payload,
@@ -308,6 +323,7 @@ export default {
       const params = new URLSearchParams({ prompt })
       if (this.countryName) params.set('country_code', this.countryName)
       if (this.snapshotDate) params.set('snapshot_date', this.snapshotDate)
+      if (this.subdivisionQid) params.set('subdivision_qid', this.subdivisionQid)
 
       const base = axios.defaults.baseURL || ''
       const url = `${base}/nca/research/stream/?${params}`
@@ -333,14 +349,44 @@ export default {
       es.addEventListener('question', (e) => {
         const d = JSON.parse(e.data)
         const i = d.index
-        console.log('[Research] question:', i, d.template, 'count:', d.result_count, d.error || '', '@', Date.now())
+        console.log('[Research] question:', i, d.template, 'count:', d.result_count, d.error || '', 'round:', d.round || 1, '@', Date.now())
         if (this.questions[i]) {
           this.questions[i].template = d.template || null
           this.questions[i].answer = d.answer || ''
           this.questions[i].digest = d.digest || ''
           this.questions[i].result_count = d.result_count != null ? d.result_count : null
           this.questions[i].error = d.error || ''
+        } else {
+          // Round-2 continuation rows (indexes continue past round 1).
+          this.questions.push({
+            index: i,
+            question: d.question || '',
+            template: d.template || null,
+            answer: d.answer || '',
+            digest: d.digest || '',
+            result_count: d.result_count != null ? d.result_count : null,
+            error: d.error || '',
+            round: d.round || 1,
+          })
         }
+      })
+
+      es.addEventListener('follow_up', (e) => {
+        const d = JSON.parse(e.data)
+        console.log('[Research] follow-up:', d.kind, d.question, 'count:', d.result_count, '@', Date.now())
+        // Visible gap-repair re-ask: probe / class-swap / llm_replan rows
+        // append to the trace so the user sees the follow-up questions.
+        this.questions.push({
+          index: this.questions.length,
+          question: d.question || '',
+          template: d.template || null,
+          answer: d.answer || '',
+          digest: '',
+          result_count: d.result_count != null ? d.result_count : null,
+          error: d.error || '',
+          follow_up: true,
+          repair_of: d.repair_of,
+        })
       })
 
       es.addEventListener('tool', (e) => {
@@ -403,6 +449,27 @@ export default {
     collapseQuestions() {
       const el = this.$refs.questionsDetails
       if (el) el.open = false
+    },
+    /**
+     * Compact summary of a follow-up tool's output: for structuredSearch
+     * (the OSM tag query) "N results — top names…"; otherwise the raw
+     * output truncated. Empty string when there is no output yet.
+     */
+    toolOutputSummary(t) {
+      const out = t.output
+      if (!out) return ''
+      if (typeof out === 'object' && out.count != null) {
+        const names = (out.results || [])
+          .map((r) => r.tags?.name || r.name)
+          .filter(Boolean)
+          .slice(0, 3)
+        const total = out.results?.length || out.count
+        const suffix = names.length
+          ? ' — ' + names.join(', ') + (total > names.length ? '…' : '')
+          : ''
+        return `${out.count} results${suffix}`
+      }
+      return JSON.stringify(out).slice(0, 300)
     },
     /**
      * True when the executor found nothing ("No results found." with a
