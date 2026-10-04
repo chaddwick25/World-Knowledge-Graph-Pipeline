@@ -30,7 +30,8 @@
  *   countryName  - Required. Country name or ISO-2 code.
  *
  * Emits:
- *   subdivision-selected  - Wikidata QID string, or null when "All" is selected.
+ *   subdivision-selected  - (Wikidata QID, subdivision name) — both null
+ *                           when "All" is selected.
  */
 
 import axios from 'axios'
@@ -87,7 +88,10 @@ export default {
     },
 
     onSelect() {
-      this.$emit('subdivision-selected', this.selectedQid)
+      const sd = this.subdivisions.find(
+        (s) => s.wikidata_id === this.selectedQid,
+      )
+      this.$emit('subdivision-selected', this.selectedQid, sd?.name || null)
     },
   },
 }

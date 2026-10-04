@@ -714,6 +714,23 @@ def worldkg_semantic_triplet_search(request):
     else:
         candidates = list(qs.order_by("name_distance")[:initial_limit])
 
+    ***REMOVED*** Exact tag-value matches bypass the embedding window. Rare values
+    ***REMOVED*** (e.g. cuisine=bubble_tea) embed far from the query vector and never
+    ***REMOVED*** enter the top-N candidates, so the tag_match boost could never
+    ***REMOVED*** surface them — a Tag Query with an explicit value must find them.
+    _exact_pairs = {k: v for k, v in query_tags.items() if v}
+    if _exact_pairs:
+        exact_matches = list(
+            qs.filter(tags__contains=_exact_pairs)
+            .order_by("name_distance")[:initial_limit]
+        )
+        if exact_matches:
+            exact_ids = {(e.osm_type, e.osm_id) for e in exact_matches}
+            candidates = exact_matches + [
+                e for e in candidates
+                if (e.osm_type, e.osm_id) not in exact_ids
+            ]
+
     results = []
     for entity in candidates:
         name_distance = getattr(entity, "name_distance", None)
@@ -752,12 +769,24 @@ def worldkg_semantic_triplet_search(request):
                 if term in name_lower:
                     name_boost_score += _NAME_SUBSTRING_BOOST
 
-        ***REMOVED*** Apply semantic distance threshold, but allow cross-script or
-        ***REMOVED*** name-substring matches to bypass it — FastText cc.en.300 distance
-        ***REMOVED*** is meaningless for Korean text (OOV collapse), and substring
-        ***REMOVED*** matches are exact by definition.
+        ***REMOVED*** Tag match boost — when query_tags has specific values, boost
+        ***REMOVED*** entities whose tag value exactly matches. This ensures that
+        ***REMOVED*** {"cuisine": "jamaican"} ranks cuisine=jamaican above cuisine=indian
+        ***REMOVED*** even when their FastText embeddings are semantically similar.
+        tag_match_score = 0.0
+        if query_tags:
+            for qk, qv in query_tags.items():
+                if qv and entity.tags.get(qk) == qv:
+                    tag_match_score += 1.0
+
+        ***REMOVED*** Apply semantic distance threshold, but allow cross-script,
+        ***REMOVED*** name-substring, or exact tag-value matches to bypass it — all
+        ***REMOVED*** three are exact signals. FastText cc.en.300 distance is
+        ***REMOVED*** meaningless for Korean text (OOV collapse), and rare tag values
+        ***REMOVED*** embed far from the query vector (bubble_tea sits at dist 0.4+
+        ***REMOVED*** while generic cuisine rows cluster at ~0.25).
         if name_distance > name_distance_threshold:
-            if xscript_score <= 0.0 and name_boost_score <= 0.0:
+            if xscript_score <= 0.0 and name_boost_score <= 0.0 and tag_match_score <= 0.0:
                 continue
 
         name_score = 1.0 - name_distance
@@ -795,16 +824,6 @@ def worldkg_semantic_triplet_search(request):
                 entity.wkg_superclasses and rdf_type in entity.wkg_superclasses
             ):
                 class_score = 1.0
-
-        ***REMOVED*** Tag match boost — when query_tags has specific values, boost
-        ***REMOVED*** entities whose tag value exactly matches. This ensures that
-        ***REMOVED*** {"cuisine": "jamaican"} ranks cuisine=jamaican above cuisine=indian
-        ***REMOVED*** even when their FastText embeddings are semantically similar.
-        tag_match_score = 0.0
-        if query_tags:
-            for qk, qv in query_tags.items():
-                if qv and entity.tags.get(qk) == qv:
-                    tag_match_score += 1.0
 
         if use_learned_weights:
             final_score = (

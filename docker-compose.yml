@@ -197,7 +197,11 @@ services:
     ***REMOVED*** analysis LOBPCG) retains VRAM and starves the next pipeline run,
     ***REMOVED*** causing CUDA OOM on the 8GB RTX 2070.  The ~2-5s process startup
     ***REMOVED*** overhead per task is negligible vs. the 10-60+ minute pipeline runtime.
-    command: celery -A pipeline.celery_app worker --loglevel=info --pool=prefork --concurrency=4 --max-memory-per-child=8589934592 --max-tasks-per-child=1
+    ***REMOVED*** (--max-memory-per-child removed 2026-10-03: Celery reads it in
+    ***REMOVED*** kilobytes — 8589934592 was ~8 TiB, never 8 GiB — and it is only
+    ***REMOVED*** checked after a task completes, so max-tasks-per-child=1 already
+    ***REMOVED*** made it a no-op.)
+    command: celery -A pipeline.celery_app worker --loglevel=info --pool=prefork --concurrency=4 --max-tasks-per-child=1
 
   ***REMOVED*** Local LLM server (RTX 4070 Ti) — OpenAI-compatible API on :11434.
   ***REMOVED*** The MCP agent (goose) uses this for the reasoning model.
