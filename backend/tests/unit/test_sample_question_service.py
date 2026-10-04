@@ -92,7 +92,9 @@ class TestGenerateSubdivision:
 
     def test_sparse_subdivision_skipped(self):
         # Fewer named entities than min_entities → skip (country fallback
-        # serves it), not an error.
+        # serves it), not an error. Prior generated rows are cleared so a
+        # stale bank does not keep serving.
+        delete = mock.Mock()
         with mock.patch(
             "semantic_search.services.sample_question_service.resolve_subdivision_polygon",
             return_value=self._poly(),
@@ -101,12 +103,16 @@ class TestGenerateSubdivision:
             return_value="2025_12_31",
         ), mock.patch.object(
             SampleQuestionService, "_named_entities_in", return_value=[],
+        ), mock.patch.object(
+            SampleQuestion, "objects",
+            mock.Mock(filter=mock.Mock(return_value=mock.Mock(delete=delete))),
         ):
             result = SampleQuestionService.generate_subdivision(
                 "BZ", "Q999999", min_entities=2,
             )
         assert result["skipped"] is True
         assert result["generated"] == 0
+        delete.assert_called_once()
 
     def test_duplicate_anchor_names_deduped(self):
         # Two anchors with the same name produce the same question — the

@@ -216,6 +216,7 @@ import PlanetInitPanel from '../components/PlanetInitPanel.vue'
 import SystemSummaryModal from '../components/SystemSummaryModal.vue'
 import RerunConfirmModal from '../components/RerunConfirmModal.vue'
 import PipelinePasswordModal from '../components/PipelinePasswordModal.vue'
+import * as pipelineGate from '../services/pipelineRunGate'
 
 export default {
   name: 'Home',
@@ -454,6 +455,10 @@ export default {
       // Always select (2026-09-28): map clicks select, never deselect —
       // the deselection overlay was removed and Clear in the sidebar is
       // the only way to drop the selection.
+      // Re-selecting the same country must not reassign the array — the
+      // watcher below fires on every assignment and wipes search/viz
+      // state (searchResults, queryGraph, templateVisualization).
+      if (this.selectedCountryIds.length === 1 && this.selectedCountryIds[0] === countryId) return
       this.selectedCountryIds = [countryId]
     },
     clearSelection() {
@@ -530,97 +535,20 @@ export default {
         this.pipelineDoneStatus = 'completed'
       }
     },
-    // ── Pipeline ──
-    async handleRunPipeline() {
-      if (!this.singleCountry || this.isPipelineRunning) return
-      if (!this.singleCountry.is_geovectors_supported) {
-        this.errorMessage = 'No embeddings available for this country — pipeline cannot run'
-        this.pipelineDoneStatus = 'failed'
-        return
-      }
-
-      // If the selected date is already completed, confirm via modal
-      const isCompleted = this.storeUsedDates.has(this.selectedSnapshotDate)
-      if (isCompleted) {
-        this.rerunConfirmDate = this.selectedSnapshotDate
-        this.showRerunConfirm = true
-        return
-      }
-
-      this.requestPassword(false)
+    // ── Pipeline — gate chain lives in services/pipelineRunGate.js
+    // (completed-date confirm → password gate → store.startPipeline);
+    // these are template-bound delegates. ──
+    handleRunPipeline() {
+      pipelineGate.handleRunPipeline(this)
     },
     confirmRerun() {
-      this.showRerunConfirm = false
-      this.requestPassword(true)
-    },
-    requestPassword(force) {
-      const expected = import.meta.env.VITE_PIPELINE_PASSWORD
-      if (!expected) {
-        this._startPipelineRun(force)
-        return
-      }
-      this.pendingPasswordForce = force
-      this.pipelinePasswordError = ''
-      this.showPipelinePassword = true
+      pipelineGate.confirmRerun(this)
     },
     onPipelinePasswordSubmit(password) {
-      const expected = (import.meta.env.VITE_PIPELINE_PASSWORD || '').trim()
-      if (password !== expected) {
-        this.pipelinePasswordError = 'Incorrect password'
-        return
-      }
-      this.pipelinePasswordError = ''
-      this.showPipelinePassword = false
-      this._startPipelineRun(this.pendingPasswordForce)
-    },
-    async _startPipelineRun(force) {
-      this.isPipelineRunning = true
-      this.pipelineDoneStatus = null
-      this.errorMessage = ''
-      try {
-        const store = usePipelineStore()
-        const sessionId = await store.startPipeline(
-          this.singleCountry.name,
-          this.selectedSnapshotDate,
-          { force }
-        )
-        this.pipelineSessionId = sessionId || null
-      } catch (err) {
-        const status = err.response?.status
-        const reason = err.response?.data?.error || err.message || 'Failed to start pipeline'
-        this.errorMessage = reason
-        this.isPipelineRunning = false
-        if (status === 409) {
-          this.pipelineDoneStatus = 'skipped'
-          // Refresh DB-backed snapshot jobs so the year badge updates.
-          if (this.singleCountry?.iso_code) {
-            const store = usePipelineStore()
-            await store.fetchSnapshotJobs(
-              this.singleCountry.name,
-              this.singleCountry.iso_code,
-            )
-          }
-        } else {
-          this.pipelineDoneStatus = 'failed'
-        }
-      }
+      pipelineGate.onPipelinePasswordSubmit(this, password)
     },
     onPipelineDone(event) {
-      this.isPipelineRunning = false
-      this.pipelineDoneStatus = event.status || 'failed'
-
-      if (event.status === 'completed') {
-        // Refresh country status to see new data
-        this.fetchCountryStatus()
-        // Refresh DB-backed snapshot jobs so the year badge updates
-        if (this.singleCountry?.iso_code) {
-          const store = usePipelineStore()
-          store.fetchSnapshotJobs(
-            this.singleCountry.name,
-            this.singleCountry.iso_code,
-          )
-        }
-      }
+      pipelineGate.onPipelineDone(this, event)
     },
     // ── Semantic search ──
     switchTab(tab) {

@@ -5,8 +5,9 @@ One big prompt ("how well is Belize City served by public transit?")
 decomposes into parser-ready questions, each executed deterministically
 through MapQA, and the orchestrator assembles a final summary grounded in
 the primary answers. The plan type is a recipe
-(``research_recipes.py``): the default is the domain-neutral PLACE_REPORT
-(commercial / services / transit / infrastructure). Adapts the K80 plan's
+(``research_recipes.py``): the default is the food & drink FOOD_REPORT
+(vendor census, popular-brand tally, local-vs-international cuisine,
+distances/clustering between food spots). Adapts the K80 plan's
 orchestrator role
 (docs/plans/later-stages/K80_LLM_MIGRATION_PLAN.md) to this box: the
 orchestrator LLM runs on the RTX 2070 (RESEARCH_LLM_*, env-switchable),
@@ -56,8 +57,13 @@ from semantic_search.services.research_recipes import (
 
 # (key, value) → natural category token ("natural","peak" → "peak").
 # The class-swap re-asks with the natural token so the executor's
-# _resolve_tag_target round-trips it to the same tag filter.
-_TAG_TARGET_TO_TOKEN = {v: k for k, v in CATEGORY_TAG_TARGETS.items()}
+# _resolve_tag_target round-trips it to the same tag filter. First
+# registration wins: coarse aliases registered later ("tavern" →
+# amenity=pub, "club" → amenity=nightclub) must not steal the canonical
+# token from the plain category name (2026-10-02).
+_TAG_TARGET_TO_TOKEN = {}
+for _k, _v in CATEGORY_TAG_TARGETS.items():
+    _TAG_TARGET_TO_TOKEN.setdefault(_v, _k)
 
 logger = logging.getLogger(__name__)
 
@@ -146,8 +152,8 @@ _ADDENDUM_SYSTEM_PROMPT = (
 _REPLAN_SYSTEM_PROMPT = (
     "You rewrite ONE research question that returned no results so it can "
     "be re-run. Change the strategy: try a different anchor place, a "
-    "broader or different entity class (prefer one that exists nearby per "
-    "the class counts), or a larger radius. One entity class per "
+    "broader or different food/drink vendor class (prefer one that exists "
+    "nearby per the class counts), or a larger radius. One entity class per "
     "question; anchor at a named place; radius questions state an "
     "explicit distance in meters or km (city anchors need at least 2 km). "
     "The rewrite MUST stay inside the parser's template vocabulary: a "
@@ -178,38 +184,62 @@ COUNTRY_HUBS = {
     "PA": "Panama City", "CU": "Havana", "BS": "Nassau", "BB": "Bridgetown",
 }
 
+# Country → local cuisine tag tokens (food report, 2026-10-02). The
+# derived cuisine tally marks values matching these as "local", the rest
+# "other"; unknown/missing cuisine tags are neither.
+COUNTRY_CUISINE = {
+    "BZ": ("belizean", "caribbean"),
+    "CU": ("cuban", "caribbean"),
+    "CV": ("cape verdean", "cape_verde", "portuguese"),
+    "CY": ("cypriot", "greek", "mediterranean"),
+    "GT": ("guatemalan", "latin", "central_american"),
+    "IE": ("irish",),
+    "IS": ("icelandic",),
+    "IT": ("italian",),
+    "JM": ("jamaican", "jerk", "caribbean"),
+    "KR": ("korean",),
+    "LK": ("sri_lankan", "sri lankan"),
+    "MA": ("moroccan", "tagine"),
+    "MC": ("french", "mediterranean"),
+    "MX": ("mexican",),
+    "NI": ("nicaraguan", "latin", "central_american"),
+    "NL": ("dutch",),
+}
+
 # Intent word → candidate wkgs: class substrings for class-aware entity
-# selection and the class-swap repair. Substring match against the class
-# name ("hotel" matches wkgs:Hotel and wkgs:TourismHotel).
+# selection and the class-swap repair — food & drink vendors only
+# (2026-10-02: the food report dropped shops/services/transit/nature
+# classes). Matched with a trailing word boundary (see _class_matches) so
+# "pub" cannot match wkgs:Public_transport.
 _CLASS_ALIASES = {
-    "hotel": ("hotel",),
     "cafe": ("cafe",),
     "restaurant": ("restaurant",),
-    "bar": ("bar",),
-    "museum": ("museum", "historic"),
-    "church": ("church", "historic"),
-    "school": ("school",),
-    "beach": ("beach", "natural"),
-    "park": ("park", "leisure"),
-    "peak": ("peak",),
-    "mountain": ("peak", "natural", "viewpoint"),
-    "hike": ("peak", "natural", "viewpoint", "tourism"),
-    "trail": ("peak", "natural", "viewpoint"),
-    "viewpoint": ("viewpoint", "peak"),
+    "bar": ("bar", "pub"),
+    "pub": ("pub", "bar"),
+    "tavern": ("pub", "bar"),
+    "biergarten": ("biergarten",),
+    "nightclub": ("nightclub", "bar"),
+    "fast food": ("fast_food", "restaurant"),
+    "food truck": ("fast_food",),
+    "food court": ("food_court",),
+    "street food": ("fast_food", "food_court", "marketplace"),
+    "food stand": ("fast_food", "food_court"),
+    "snack bar": ("fast_food",),
+    "ice cream": ("ice_cream",),
+    "vending machine": ("vending_machine",),
+    "bakery": ("bakery",),
+    "market": ("marketplace",),
     # Cuisine intents ("jerk restaurant", "jamaican food") — the tag
     # matching lives in TAG_RULES (cuisine tag family); the class
     # substring here is the (rarely used) wkg_class fallback.
     "jerk": ("jerk", "cuisine"),
     "jamaican": ("jamaican",),
     "caribbean": ("caribbean",),
-    # Commercial generalization (2026-10-01) — wkgs-class fallback for
-    # the class-swap / top-entity passes; the TAG_RULES cuisine families
-    # do the real (tag-driven) matching.
-    "market": ("marketplace", "shop"),
-    "bakery": ("bakery", "shop"),
     "taco": ("restaurant", "fast_food", "cuisine"),
     "tacos": ("restaurant", "fast_food", "cuisine"),
     "mexican": ("restaurant", "fast_food", "cuisine"),
+    "bbq": ("restaurant", "fast_food", "cuisine"),
+    "cookout": ("restaurant", "fast_food", "cuisine"),
 }
 
 def _render_decompose_prompt(recipe: dict) -> str:
@@ -222,9 +252,13 @@ def _render_decompose_prompt(recipe: dict) -> str:
     slot_ids = ", ".join(s["id"] for s in recipe.get("slots", ()))
     # The parser can only resolve classes the tag vocabulary knows — the
     # planner must stay inside it (the template-manifest gate applied to
-    # OBJECTs, 2026-10-01). Derived from CATEGORY_TAG_TARGETS so the
-    # whitelist cannot drift from the resolver.
-    resolvable = ", ".join(sorted(CATEGORY_TAG_TARGETS))
+    # OBJECTs, 2026-10-01). The recipe's class_vocabulary narrows the
+    # whitelist to the recipe's domain (food & drink vendors for
+    # FOOD_REPORT); CATEGORY_TAG_TARGETS is the fallback superset.
+    resolvable = (
+        recipe.get("class_vocabulary")
+        or ", ".join(sorted(CATEGORY_TAG_TARGETS))
+    )
     return (
         f"You are the research planner for a {recipe.get('label', 'plan')}. "
         "Decompose the user's research request into {max_q} self-contained "
@@ -233,20 +267,20 @@ def _render_decompose_prompt(recipe: dict) -> str:
         "Rules:\n"
         "- One entity class per question, chosen ONLY from the resolvable "
         f"class vocabulary: {resolvable}. Do NOT ask about vague or "
-        "class-less concepts (taco vendors, street vendors, food trucks, "
-        "nightlife) — rephrase them as their resolvable class (tacos → "
-        "restaurants, markets → marketplaces).\n"
+        "class-less concepts (a nice meal, nightlife, somewhere to hang "
+        "out) — rephrase them as their resolvable class (nightlife → "
+        "bars, a meal → restaurants).\n"
         "- Every required slot must have at least one question. Required "
         f"slots: {slots}. A missing required slot fails validation.\n"
         "- Use 'the top <class>' placeholders ONLY in radius (#1) "
-        "questions; distance (#2) and compare (#4) questions must use "
-        "concrete named places from the request.\n"
+        "questions (e.g. 'the top cafe'); distance (#2) and compare (#4) "
+        "questions must use concrete named places from the request.\n"
         "- Decide each question's search radius yourself and output it as "
         "radius_m (integer meters) — see the radius policy.\n"
         f"- {recipe.get('radius_policy', '')}\n"
         "- Anchor every question at a named place from the request, or at a "
         "place named by an earlier question, written as 'the top <class>' "
-        "(e.g. 'the top hotel').\n"
+        "(e.g. 'the top restaurant').\n"
         f"- {recipe.get('anchor_policy', '')}\n"
         "- When the request names a country or region rather than a city, "
         "pick a real hub city (the capital or primary population centre) "
@@ -260,9 +294,9 @@ def _render_decompose_prompt(recipe: dict) -> str:
         "- Each question must be a complete natural-language question, "
         "grammatically valid on its own.\n"
         "- Give each question a slot id naming the plan section it fills. "
-        f"Use ONLY these slot ids: {slot_ids}. Never invent a new slot id "
-        "— an interest-type question uses 'interest'. The slots are the "
-        "plan's criteria: the summary is organized by them.\n"
+        f"Use ONLY these slot ids: {slot_ids}. Never invent a new slot "
+        "id. The slots are the plan's criteria: the summary is organized "
+        "by them.\n"
         "- Return STRICT JSON only, no prose: "
         '{{"questions": [{{"question": "...", "why": "...", "slot": "...", '
         '"radius_m": 2000}}]}}'
@@ -305,6 +339,7 @@ def _render_assemble_prompt(recipe: dict) -> str:
         "introduce a place, category, count, or distance that does not "
         "appear in the answers, and never fill an empty slot by "
         "generalizing to nearby categories or inventing alternatives."
+        + (recipe.get("assemble_notes") or "")
     )
 
 
@@ -325,13 +360,15 @@ _FOLLOWUP_SYSTEM_PROMPT = (
 # output (the runaway place/distance list, observed 2026-09-18) cannot
 # reach the run.
 KE_SYSTEM_PROMPT = (
-    "You are the research interviewer for a geospatial research system. "
-    "Turn the user's idea into a precise research brief.\n"
+    "You are the research interviewer for a geospatial food & drink "
+    "research system. Turn the user's idea into a precise research "
+    "brief.\n"
     "Ask ONE short clarifying question at a time. Gather: the area of "
-    "interest, the focus (e.g. restaurants and food, shops, services "
-    "such as banks and pharmacies, public transit, infrastructure such "
-    "as fuel stations and parking), the scope or extent, and any "
-    "constraints.\n"
+    "interest, any vendor-type or cuisine focus (restaurants, cafes, "
+    "bars, pubs, food trucks, street vendors, vending machines, a "
+    "cuisine such as korean or jerk), the scope or extent, and any "
+    "constraints. The system only researches food & drink vendors — do "
+    "not ask about shops, services, transit, or infrastructure.\n"
     "If the user's first message already contains enough detail, skip the "
     "questions and say you are ready.\n"
     "When you have enough detail, say you are ready to run the research.\n"
@@ -351,9 +388,10 @@ FINALIZE_SYSTEM_PROMPT = (
     "Rules:\n"
     "- Use ONLY facts the user stated. Empty string when not stated.\n"
     "- area: the place or region the research is about.\n"
-    "- focus: what to research there (restaurants and food, shops, "
-    "services such as banks and pharmacies, public transit, "
-    "infrastructure such as fuel stations and parking, ...).\n"
+    "- focus: the food & drink specifics the user stated (a vendor "
+    "type — restaurants, cafes, bars, food trucks, street vendors — "
+    "or a cuisine such as korean or jerk). Empty string for a "
+    "general eat-and-drink survey.\n"
     "- scope: any extent the user stated (a radius, a district, ...).\n"
     "- constraints: only limits the user stated. Empty string when the "
     "user stated none.\n"
@@ -421,7 +459,7 @@ class ResearchOrchestratorService:
                 "errors": [{"error": "research LLM unavailable"}],
             }
 
-        # Recipe routing: the plan-type schema this run fills (place_report
+        # Recipe routing: the plan-type schema this run fills (food_report
         # by default; further recipes plug in via research_recipes.py).
         recipe = route_to_recipe(prompt)
 
@@ -465,7 +503,7 @@ class ResearchOrchestratorService:
         # Phase 4: assemble the final summary (the enriched deliverable).
         summary = cls._assemble(
             llm, prompt, records, tool_calls, coverage, event_callback,
-            recipe=recipe,
+            recipe=recipe, country_code=country_code,
         )
         rounds = 1
         rounds_meta = []
@@ -854,7 +892,7 @@ class ResearchOrchestratorService:
             return []
         required = [
             s["id"] for s in recipe.get("slots", ())
-            if not s.get("optional")
+            if not s.get("optional") and not s.get("derived")
         ]
         present = {q.get("slot") for q in (questions or [])}
         return [s for s in required if s not in present]
@@ -1032,6 +1070,24 @@ class ResearchOrchestratorService:
                         (r.get("wkg_class") or "unclassified")
                         for r in (results if isinstance(results, list) else [])
                     )),
+                    # Food-report derived tallies (2026-10-02): name
+                    # frequency = chain signal ("Starbucks" ×14 → a
+                    # popular brand); cuisine-tag frequency = the
+                    # local-vs-international split. Multi-value OSM
+                    # cuisine tags ("regional;chicken") split on ';'.
+                    "brand_counts": dict(Counter(
+                        (r.get("name") or "").strip()
+                        for r in (results if isinstance(results, list) else [])
+                        if (r.get("name") or "").strip()
+                    )),
+                    "cuisine_counts": dict(Counter(
+                        v.strip()
+                        for r in (results if isinstance(results, list) else [])
+                        for v in str(
+                            (r.get("tags") or {}).get("cuisine") or ""
+                        ).split(";")
+                        if v.strip()
+                    )),
                     "degenerate_distances": cls._degenerate_distances(results),
                     "class_mismatch": cls._results_mismatch(results, qtext),
                 })
@@ -1207,7 +1263,13 @@ class ResearchOrchestratorService:
         if key is None:
             return False
         cls_name = (wkg_class or "").lower()
-        return any(s in cls_name for s in _CLASS_ALIASES[key])
+        # Trailing word boundary (2026-10-02): keeps the loose-prefix
+        # match ("hotel" in wkgs:TourismHotel) but stops "pub" matching
+        # wkgs:Public_transport and "bar" matching wkgs:Barrier.
+        return any(
+            re.search(re.escape(s) + r"\b", cls_name)
+            for s in _CLASS_ALIASES[key]
+        )
 
     @classmethod
     def _entity_matches(cls, entity: dict, hint: str) -> bool:
@@ -2004,7 +2066,8 @@ class ResearchOrchestratorService:
 
     @classmethod
     def _assemble(cls, llm, prompt: str, records: list, tool_calls: list,
-                  coverage: list, event_callback, recipe: dict = None) -> str:
+                  coverage: list, event_callback, recipe: dict = None,
+                  country_code: str = None) -> str:
         """Final summary grounded in the collected primary answers.
 
         The coverage ledger rides along so the assembler writes every
@@ -2042,6 +2105,12 @@ class ResearchOrchestratorService:
                     f"{json.dumps(call.get('output'), ensure_ascii=False)}"
                 )
             user_content += "Follow-up tool outputs:\n" + "\n".join(tool_lines)
+        derived = cls._derived_tallies(records, country_code)
+        if derived:
+            user_content += (
+                "Derived tallies (computed from all results — cite these "
+                "exactly, never estimate):\n" + derived + "\n"
+            )
         user_content += "\nWrite the final summary."
 
         messages = [
@@ -2067,6 +2136,56 @@ class ResearchOrchestratorService:
             summary = (summary or "").strip()
         return summary or None
 
+    @staticmethod
+    def _derived_tallies(records: list, country_code: str = None) -> str:
+        """Deterministic aggregates across all result sets (food report,
+        2026-10-02): the popular-brands tally — a name repeated across
+        places is a chain — and the cuisine-tag split into local vs
+        other via COUNTRY_CUISINE. Injected into the assemble context so
+        the LLM cites computed counts instead of estimating."""
+        brands = Counter()
+        cuisines = Counter()
+        for record in records or []:
+            brands.update(record.get("brand_counts") or {})
+            cuisines.update(record.get("cuisine_counts") or {})
+        lines = []
+        chains = [(n, c) for n, c in brands.items() if c >= 2]
+        if chains:
+            top = sorted(chains, key=lambda kv: (-kv[1], kv[0]))[:10]
+            lines.append(
+                "popular brands (name ×locations): "
+                + ", ".join(f"{n} ×{c}" for n, c in top)
+            )
+        if cuisines:
+            local_tokens = COUNTRY_CUISINE.get(country_code or "", ())
+            local = {
+                k: v for k, v in cuisines.items()
+                if any(t in k.lower() for t in local_tokens)
+            }
+            other = {
+                k: v for k, v in cuisines.items() if k not in local
+            }
+            parts = []
+            if local:
+                parts.append(
+                    "local: " + ", ".join(
+                        f"{k} ×{v}"
+                        for k, v in sorted(
+                            local.items(), key=lambda kv: -kv[1])[:6]
+                    )
+                )
+            if other:
+                parts.append(
+                    "other: " + ", ".join(
+                        f"{k} ×{v}"
+                        for k, v in sorted(
+                            other.items(), key=lambda kv: -kv[1])[:8]
+                    )
+                )
+            if parts:
+                lines.append("cuisine mix — " + " | ".join(parts))
+        return "\n".join(lines)
+
     # ── Helpers ────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -2090,6 +2209,35 @@ class ResearchOrchestratorService:
                 f"Q: {q}\n  template: {template}\n  answer: {answer}\n"
                 f"  top entities: {digest}"
             )
+            # Food-report census lines (2026-10-02): the wkgs-class
+            # distribution, repeated names (chains), and cuisine-tag
+            # counts ride each answer so the assembler cites computed
+            # numbers — "173 found: Amenity ×171, Shop ×2".
+            classes = record.get("result_classes") or {}
+            if classes:
+                top = sorted(classes.items(), key=lambda kv: -kv[1])[:4]
+                lines.append(
+                    "  classes: "
+                    + ", ".join(f"{k} ×{v}" for k, v in top)
+                )
+            chains = [
+                (n, c)
+                for n, c in (record.get("brand_counts") or {}).items()
+                if c >= 2
+            ]
+            if chains:
+                top = sorted(chains, key=lambda kv: -kv[1])[:6]
+                lines.append(
+                    "  repeated names: "
+                    + ", ".join(f"{n} ×{c}" for n, c in top)
+                )
+            cuisines = record.get("cuisine_counts") or {}
+            if cuisines:
+                top = sorted(cuisines.items(), key=lambda kv: -kv[1])[:8]
+                lines.append(
+                    "  cuisine tags: "
+                    + ", ".join(f"{k} ×{v}" for k, v in top)
+                )
             if record.get("original_question"):
                 lines.append(
                     f"  original ask: {record['original_question']}"

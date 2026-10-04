@@ -5,12 +5,12 @@ question × N → (follow_up / replan / round) → summary_delta → done.
 
 Usage::
 
-    python manage.py research_demo --prompt "How well is Belize City served by public transit?"
-    python manage.py research_demo --prompt "Overview the restaurants and shops in Belmopan" \\
-        --country BZ --snapshot-date 2025_12_31
+    python manage.py research_demo --prompt "Where can you eat and drink in Belize?"
+    python manage.py research_demo --prompt "Overview the cafes and restaurants of Seoul" \\
+        --country KR --snapshot-date 2025_12_31
 
-Defaults: prompt = "How well is Belize City served by public transit?"
-(the default PLACE_REPORT recipe), country = BZ, snapshot = the latest
+Defaults: prompt = "Where can you eat and drink in Belize?"
+(the default FOOD_REPORT recipe), country = BZ, snapshot = the latest
 SnapshotJob date. Exit code 1 when the loop produces no summary.
 
 Restored 2026-09-30 (removed as dead code in 84e1459 while the docs —
@@ -37,8 +37,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--prompt",
-            default="How well is Belize City served by public transit?",
-            help="Research prompt to decompose (default: Belize place report).",
+            default="Where can you eat and drink in Belize?",
+            help="Research prompt to decompose (default: Belize food report).",
         )
         parser.add_argument(
             "--country", default="BZ",

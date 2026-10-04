@@ -18,7 +18,6 @@ machinery is modified.
 """
 
 import logging
-
 from django.db import connections
 from django.db.models import FloatField
 from django.db.models.expressions import RawSQL
@@ -328,6 +327,13 @@ class SampleQuestionService:
             country_code, snapshot_id, polygon, pool_size,
         )
         if len(entities) < min_entities:
+            # A skipped subdivision is served by the country fallback —
+            # clear any prior generated rows so a stale bank is not kept.
+            SampleQuestion.objects.filter(
+                country_code=country_code,
+                subdivision_qid=subdivision_qid,
+                source="generated",
+            ).delete()
             return {
                 "skipped": True,
                 "generated": 0,

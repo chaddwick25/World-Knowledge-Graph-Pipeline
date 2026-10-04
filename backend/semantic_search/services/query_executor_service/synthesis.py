@@ -12,6 +12,14 @@ def _qes():
     return QueryExecutorService
 
 
+def _fmt_away(m) -> str:
+    """Distance for answer text: >=1000 m reads as km ("52.2 km away");
+    below that stays meters ("450 m away")."""
+    if m >= 1000:
+        return f"{m / 1000:.1f} km"
+    return f"{m:.0f} m"
+
+
 class SynthesisMixin:
     """Mixin providing executor methods to QueryExecutorService."""
 
@@ -58,7 +66,7 @@ class SynthesisMixin:
                 top = results[0]
                 dist = top.get("distance_m")
                 if dist is not None:
-                    return f"Nearest: {top.get('name', 'unknown')} ({dist:.0f}m away)."
+                    return f"Nearest: {top.get('name', 'unknown')} ({_fmt_away(dist)} away)."
                 return f"Nearest: {top.get('name', 'unknown')}."
 
         if template == "PLACE-ATTRIBUTE-QUERY (#8)":
@@ -78,7 +86,7 @@ class SynthesisMixin:
                     amenity_str = f" {r['requested_amenity']}" if r.get("requested_amenity") else ""
                     name = r.get("name") or (r.get("tags") or {}).get("name") or "unknown"
                     dist = r.get("distance_m")
-                    dist_str = f" ({dist:.0f}m away)" if dist is not None else ""
+                    dist_str = f" ({_fmt_away(dist)} away)" if dist is not None else ""
                     return (f"Nearest{amenity_str} {r['direction']} of {r['anchor_name']} is "
                             f"{name}{dist_str}.")
                 elif "from" in r and "to" in r and "direction" in r:
@@ -157,7 +165,7 @@ class SynthesisMixin:
                 elif c.get("type"):
                     concept_lines.append(f"{c.get('type')}: (none)")
 
-            result_lines = []
+            result_lines = []   
             if isinstance(results, list):
                 for r in results[:8]:
                     name = r.get("name") or (r.get("tags") or {}).get("name") or "N/A"
