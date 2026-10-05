@@ -440,8 +440,8 @@ The frontend is self-hosted, not on Netlify. See
 - `docker-compose.yml` has an `nginx` service (eda-nginx, :80) serving
   `frontend-v3/dist` statically (SPA fallback) and proxying `/api` (REST +
   SSE, buffering off) and `/ws` (WebSocket upgrade) to `backend:8000`.
-- The Tailscale Funnel targets :80 (nginx), not :8000. Public URL:
-  `https://thanos.tail560528.ts.net`. SPA build bakes
+- The Tailscale Funnel targets :80 (nginx), not :8000. Public URL is the
+  tailnet hostname (e.g. `https://<tailnet>.ts.net`). SPA build bakes
   `VITE_API_BASE_URL=/api` (same-origin; no CORS).
 - Open API (2026-10-05): the public `/api/*` surface requires no
   authentication — the login guard was removed (fully open). Django admin
@@ -453,3 +453,40 @@ The frontend is self-hosted, not on Netlify. See
 - Ops: rebuild SPA with `VITE_API_BASE_URL=/api npm run build` in
   `frontend-v3/`; `.env` changes need `docker compose up -d --force-recreate
   backend`; local/trusted hosts configurable via `TRUSTED_LOCAL_HOSTS`.
+
+## Security hardening (2026-10-05)
+
+Deployment posture for the Tailscale Funnel host:
+
+- **Host port bindings are loopback-only** (`127.0.0.1:*` in docker-compose.yml):
+  postgres-default 5432, postgres-vectors 5433, redis 6379, backend 8000, nginx 80,
+  ollama 11434, ollama-research 11435, langfuse 3000. The Funnel reaches nginx via
+  tailscaled → 127.0.0.1:80, so nothing else needs a host interface. Containers talk
+  over the compose network regardless.
+- **Redis requires a password**: `REDIS_PASSWORD` (compose `:?` — fail-closed if
+  missing). `CELERY_BROKER_URL`, `CHANNEL_LAYERS`, and `ontology_service` all pass it.
+- **`DJANGO_DEBUG` is env-driven, default OFF** (`.env` sets `false`). `DJANGO_SECRET_KEY`
+  is fail-closed in compose (`:?` — the old hardcoded fallback is gone).
+- **`WriteEndpointGateMiddleware`** (backend/backend/middleware.py) 404s write/trigger
+  endpoints on public (funnel) hosts, same host-trust model as the admin gate. Gated:
+  worldkg-pipeline-v2/start, country-preprocess, nca/fingerprint/compute, nca/drift/compute,
+  nca/apply-link, nca/enrich/entity, igea/align, geovectors/encode. Read/query endpoints
+  stay public (the product surface).
+- **Throttling**: DRF `AnonRateThrottle` (default 120/min, `DRF_ANON_THROTTLE_RATE`) with
+  `NUM_PROXIES=1`. nginx (deploy/nginx.conf) adds per-client limits keyed on
+  `$http_x_forwarded_for` — tailscaled overwrites XFF with the real client IP and nginx
+  passes it through unmodified (`$remote_addr` is the shared Docker bridge gateway for all
+  funnel traffic, so it cannot be used as a client key). api_zone 20r/s burst 40;
+  heavy_zone 10r/m burst 2 on research/execute-query/spectral/community/temporal/
+  event-diffusion/link-candidates.
+- **Tests**: backend/tests/unit/test_public_surface_gates.py covers both host gates.
+  Note: test_* failures from stale test-DB schema (e.g. `bbox_source`) and code/test drift
+  (vector_storage batch_size 20000 vs 50000, parser "bus station" vs "bus_station") are
+  pre-existing, unrelated to this hardening.
+
+**Step 5.8 canvas fix (2026-10-05)**: `step_5_8_generate_sample_questions` was missing the
+`@pipeline_task` decorator, so `canvas.apply_async` raised
+`AttributeError: 'function' object has no attribute 's'` and every
+`POST /api/worldkg-pipeline-v2/start/` returned 500 (broken since 2026-10-02 commit b969b60).
+Fixed by adding `@pipeline_task(bind=True, base=PipelineTask, name=..., max_retries=1,
+default_retry_delay=60)` above `@pipeline_step` (matches step_5c).

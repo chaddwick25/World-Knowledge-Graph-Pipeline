@@ -673,40 +673,23 @@ docker compose logs -f nginx
 
 # Tailscale Funnel — targets nginx :80 (NOT backend :8000)
 tailscale funnel status
-sudo tailscale funnel --bg 80            # public https://thanos.tail560528.ts.net -> :80
+sudo tailscale funnel --bg 80            # public https://<tailnet>.ts.net -> :80
 sudo tailscale funnel --https=443 off    # stop exposing
 
 # .env changes need a RECREATE, not a restart (restart keeps the old env)
 docker compose up -d --force-recreate backend
 
-# ── Auth guard smoke tests (simulate the public host locally) ──
-# Guarded endpoint, no session -> 401
-curl -s -H "Host: thanos.tail560528.ts.net" http://localhost/api/system/summary/
-# Login flow: csrf cookie -> login -> session -> me
-curl -s -c /tmp/cj.txt http://localhost/api/auth/csrf/
-TOKEN=$(grep csrftoken /tmp/cj.txt | awk '{print $7}')
-curl -s -b /tmp/cj.txt -c /tmp/cj.txt -H "X-CSRFToken: $TOKEN" -H "Content-Type: application/json" \
-  -d '{"username":"testfriend","password":"testpass123"}' http://localhost/api/auth/login/
-SID=$(grep sessionid /tmp/cj.txt | awk '{print $7}')
-curl -s -H "Cookie: sessionid=$SID" -H "Host: thanos.tail560528.ts.net" http://localhost/api/auth/me/
-# Guarded endpoint WITH session -> 200
-curl -s -o /dev/null -w "%{http_code}\n" -H "Cookie: sessionid=$SID" -H "Host: thanos.tail560528.ts.net" http://localhost/api/system/summary/
-
-# Registration (gated by SIGNUP_INVITE_CODE in .env)
-curl -s -b /tmp/cj.txt -H "X-CSRFToken: $TOKEN" -H "Content-Type: application/json" \
-  -d '{"invite_code":"<code>","username":"newfriend","password":"longenough123"}' http://localhost/api/auth/register/
-
-# WebSocket guard: public + no session -> 403, public + session -> 101
-curl -s -m 3 -i -N -H "Host: thanos.tail560528.ts.net" -H "Connection: Upgrade" -H "Upgrade: websocket" \
+# ── Public-surface smoke tests (simulate the public host locally) ──
+# Open read surface: any /api/* read endpoint -> 200 without a session
+curl -s -o /dev/null -w "%{http_code}\n" -H "Host: <tailnet>.ts.net" http://localhost/api/system/status/
+# Write/trigger endpoints: 404 on public hosts (WriteEndpointGateMiddleware)
+curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Host: <tailnet>.ts.net" http://localhost/api/worldkg-pipeline-v2/start/
+# WebSocket pipeline stream: open (session guard removed 2026-10-05)
+curl -s -m 3 -i -N -H "Host: <tailnet>.ts.net" -H "Connection: Upgrade" -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
   http://localhost/ws/pipeline/12345678-1234-1234-1234-123456789abc/ | head -1
-curl -s -m 3 -i -N -H "Host: thanos.tail560528.ts.net" -H "Cookie: sessionid=$SID" \
-  -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" \
-  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-  http://localhost/ws/pipeline/12345678-1234-1234-1234-123456789abc/ | head -1
-
 # Admin gate: public host -> 404, localhost -> login redirect
-curl -s -o /dev/null -w "%{http_code}\n" -H "Host: thanos.tail560528.ts.net" http://localhost/admin/
+curl -s -o /dev/null -w "%{http_code}\n" -H "Host: <tailnet>.ts.net" http://localhost/admin/
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost/admin/
 
 # Create a test account from the shell
