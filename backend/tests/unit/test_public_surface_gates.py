@@ -38,11 +38,13 @@ def _ok_response(request):
     return request
 
 
-def _call(middleware_cls, path, host, key=None):
+def _call(middleware_cls, path, host, key=None, surface=None):
     rf = RequestFactory()
     kwargs = {'HTTP_HOST': host}
     if key is not None:
         kwargs['HTTP_X_PIPELINE_KEY'] = key
+    if surface is not None:
+        kwargs['HTTP_X_TRUSTED_SURFACE'] = surface
     request = rf.get(path, **kwargs)
     return middleware_cls(_ok_response)(request)
 
@@ -151,4 +153,42 @@ class TestPipelineTriggerKey:
             _call(
                 WriteEndpointGateMiddleware, '/api/worldkg-pipeline-v2/start/', PUBLIC_HOST,
                 key='test-secret',
+            )
+
+
+class TestTailnetSurface:
+    """The loopback operator surface (nginx :8081 via `tailscale serve`) is
+    tagged X-Trusted-Surface: tailnet — admin and writes are allowed there
+    (writes still need the pipeline key). The public edge strips the header,
+    so it cannot be forged from the funnel."""
+
+    def test_admin_allowed_on_tailnet_surface(self):
+        resp = _call(
+            AdminHostGateMiddleware, '/admin/', PUBLIC_HOST, surface='tailnet',
+        )
+        assert resp is not None
+
+    def test_admin_404_without_surface(self):
+        with pytest.raises(Http404):
+            _call(AdminHostGateMiddleware, '/admin/', PUBLIC_HOST)
+
+    def test_write_requires_key_even_on_tailnet(self):
+        resp = _call(
+            WriteEndpointGateMiddleware, '/api/worldkg-pipeline-v2/start/', PUBLIC_HOST,
+            surface='tailnet',
+        )
+        assert resp.status_code == 403
+
+    def test_write_with_key_on_tailnet(self):
+        resp = _call(
+            WriteEndpointGateMiddleware, '/api/worldkg-pipeline-v2/start/', PUBLIC_HOST,
+            key='test-secret', surface='tailnet',
+        )
+        assert resp is not None
+
+    def test_wrong_surface_value_is_public(self):
+        with pytest.raises(Http404):
+            _call(
+                WriteEndpointGateMiddleware, '/api/worldkg-pipeline-v2/start/', PUBLIC_HOST,
+                surface='attacker',
             )
