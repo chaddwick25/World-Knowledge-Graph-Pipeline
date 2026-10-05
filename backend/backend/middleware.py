@@ -61,15 +61,31 @@ def is_public_host(host):
     return (host or '').split(':')[0].lower() not in _LOCAL_HOSTS
 
 
+# Tailnet operator surface: nginx tags requests arriving on the loopback
+# :8081 listener (reached only via `tailscale serve` or a local process)
+# with X-Trusted-Surface: tailnet. The PUBLIC listener strips the header,
+# so a client cannot forge it from the funnel. See deploy/nginx.conf.
+_TRUSTED_SURFACE_HEADER = 'X-Trusted-Surface'
+_TRUSTED_SURFACE_VALUE = 'tailnet'
+
+
+def _is_trusted_request(request):
+    """Trusted when the Host is local OR the request arrived on the
+    tailnet operator surface (nginx-tagged, loopback-only)."""
+    if request.headers.get(_TRUSTED_SURFACE_HEADER) == _TRUSTED_SURFACE_VALUE:
+        return True
+    return not is_public_host(request.get_host() or '')
+
+
 class AdminHostGateMiddleware:
-    """404 any /admin* request whose Host is not a local address."""
+    """Serve /admin only to trusted hosts (local or the tailnet surface)."""
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
         if request.path == '/admin' or request.path.startswith('/admin/'):
-            if is_public_host(request.get_host() or ''):
+            if not _is_trusted_request(request):
                 raise Http404('Admin is local-only.')
         return self.get_response(request)
 
@@ -90,7 +106,7 @@ class WriteEndpointGateMiddleware:
 
     def __call__(self, request):
         if _is_write_path(request.path):
-            if is_public_host(request.get_host() or ''):
+            if not _is_trusted_request(request):
                 raise Http404('Endpoint is local-only.')
             expected = getattr(settings, 'PIPELINE_TRIGGER_KEY', '')
             if expected and not hmac.compare_digest(

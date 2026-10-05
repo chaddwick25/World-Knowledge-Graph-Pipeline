@@ -139,6 +139,11 @@ services:
     container_name: eda-nginx
     ports:
       - "127.0.0.1:80:80"
+      # Tailnet operator surface — host loopback only; reached via
+      # `tailscale serve --https=8443 http://127.0.0.1:8081` (identity
+      # headers injected by tailscaled) or a local process. Never exposed
+      # to the LAN or the funnel.
+      - "127.0.0.1:8081:8081"
     volumes:
       - ./frontend-v3/dist:/usr/share/nginx/html:ro
       - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
