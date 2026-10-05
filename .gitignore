@@ -41,13 +41,9 @@ backend/data/logs/
 # Root symlink (backward compat)
 /mapqa_template_mapping.csv
 
-docs
-
-
 # Backup files
 *.bk
 
-# docs
 backend/data/geodata
 backend/backend/data
 
