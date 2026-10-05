@@ -18,10 +18,18 @@ import logging
 from pipeline.envelopes import CountryEnvelope
 from pipeline.task_decorator import pipeline_step
 from pipeline.tasks.helper import _log
+from pipeline.celery_app import (
+    pipeline_task,
+    PipelineTask,
+)
 
 logger = logging.getLogger(__name__)
 
 
+@pipeline_task(
+    bind=True, base=PipelineTask, name="step_5_8_generate_sample_questions",
+    max_retries=1, default_retry_delay=60,
+)
 @pipeline_step("generate_sample_questions", CountryEnvelope, 5.8)
 def step_5_8_generate_sample_questions(
     self, env: CountryEnvelope,
