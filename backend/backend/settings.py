@@ -17,7 +17,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Env-driven, safe default OFF. The Tailscale Funnel serves this publicly;
+# DEBUG=True would expose tracebacks/settings to anyone. Set
+# DJANGO_DEBUG=true in .env only for local development.
+DEBUG = os.getenv('DJANGO_DEBUG', 'false').lower() in ('1', 'true', 'yes', 'on')
 # Extra hosts come from the homeserver env (Tailscale funnel / custom domain).
 _extra_hosts = [h.strip() for h in os.getenv('ALLOWED_EXTRA_HOSTS', '').split(',') if h.strip()]
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', *_extra_hosts]
@@ -72,6 +75,7 @@ FASTTEXT_TUNED_DIR = _default_fasttext_tuned_dir
 # Redis configuration for Channels, Celery, and WorldKG services
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', '')
 WORLDKG_REDIS_DB = int(os.getenv('WORLDKG_REDIS_DB', '2'))
 
 # WebSocket host/port for pipeline progress URLs (returned to frontend)
@@ -171,7 +175,12 @@ FACTOR_EIGENBASIS_STRICT = False
 # USLP — runtime truth in pipeline/hyperparams.yaml (uslp section);
 # dataclass defaults are the code-level fallback.
 
-CELERY_BROKER_URL = f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{REDIS_PORT}/0"
+_redis_url = (
+    f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0"
+    if REDIS_PASSWORD
+    else f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
+)
+CELERY_BROKER_URL = _redis_url
 
 # ── Celery Result Backend ──
 # Custom Django DB backend with chord-in-chain fix (django-celery-results
@@ -237,6 +246,16 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.AllowAny',
     ],
     'UNAUTHENTICATED_USER': None,
+    # Requests arrive via Tailscale Funnel → nginx (one trusted hop), and
+    # nginx passes Tailscale's X-Forwarded-For through unchanged, so unwind
+    # one entry to throttle on the real client IP.
+    'NUM_PROXIES': 1,
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': os.getenv('DRF_ANON_THROTTLE_RATE', '120/min'),
+    },
 }
 
 INSTALLED_APPS = [
@@ -269,7 +288,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [(REDIS_HOST, REDIS_PORT)],
+            'hosts': [_redis_url],
         },
     },
 }
@@ -277,6 +296,7 @@ CHANNEL_LAYERS = {
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'backend.middleware.AdminHostGateMiddleware',
+    'backend.middleware.WriteEndpointGateMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
