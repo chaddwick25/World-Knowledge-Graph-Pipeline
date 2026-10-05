@@ -3,6 +3,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 from django.conf import settings
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -65,8 +67,14 @@ class InitialStatusView(APIView):
                 self._prepare_availability_context(node.children.all(), context, parent_available=children_are_available)
 
 
+@method_decorator(ensure_csrf_cookie, name='get')
 class SystemStatusView(APIView):
     """GET /api/system/status/ — planet-init readiness + home-page hydration.
+
+    Carries ``ensure_csrf_cookie`` (2026-10-05): with the session-auth
+    endpoints removed, this GET is the only place that seeds the
+    ``csrftoken`` cookie for anonymous unsafe requests — the SPA calls it
+    on mount and echoes the token via X-CSRFToken on POSTs.
 
     Readiness is derived from a *finalized* ``PlanetSnapshot`` row — the
     ``finalize`` step of the ``init_planet`` Docker startup command writes

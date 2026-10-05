@@ -138,7 +138,7 @@ def research_chat(request):
     ``@csrf_exempt`` matches the DRF views (DRF bypasses the global CSRF
     middleware; its SessionAuthentication only enforces CSRF for
     session-authenticated requests). This endpoint is stateless chat with
-    no writes, and PublicAuthGuardMiddleware gates it on public hosts.
+    no writes; the public API is open (login removed 2026-10-05).
     """
     try:
         body = json.loads(request.body or b"{}")
