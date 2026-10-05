@@ -41,13 +41,9 @@ backend/data/logs/
 ***REMOVED*** Root symlink (backward compat)
 /mapqa_template_mapping.csv
 
-docs
-
-
 ***REMOVED*** Backup files
 *.bk
 
-***REMOVED*** docs
 backend/data/geodata
 backend/backend/data
 
