@@ -23,7 +23,6 @@ django.setup()
 from unittest import mock
 
 import pytest
-from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from django.urls import reverse
 
@@ -94,16 +93,11 @@ def _seeded():
 
 @pytest.fixture
 def client(client):
-    """Logged-in test client (shadows pytest-django's built-in).
+    """Test client (shadows pytest-django's built-in).
 
-    PublicAuthGuardMiddleware (backend/middleware.py) turns any /api/* request
-    on a non-local host (testserver) with 401 unless the session is
-    authenticated, exactly like the SPA's login gate.
+    The public API is open (login removed 2026-10-05) — no session needed.
     """
-    user = User.objects.create_user(username="viz-test-user", password="viz-test-pass")
-    client.force_login(user)
     yield client
-    User.objects.filter(username="viz-test-user").delete()
 
 
 # ── Label humanization ───────────────────────────────────────────────────

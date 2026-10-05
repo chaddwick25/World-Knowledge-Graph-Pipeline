@@ -282,7 +282,6 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'backend.middleware.PublicAuthGuardMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -462,9 +461,7 @@ FOLDER_PATH = os.getenv('FOLDER_PATH')
 SOURCE_PBF_PATH = os.getenv('SOURCE_PBF_PATH')
 OUTPUT_BASE_DIR = os.getenv('OUTPUT_BASE_DIR')
 
-# ── Auth / host trust ──
-# Empty invite code = registration closed.
-SIGNUP_INVITE_CODE = os.getenv('SIGNUP_INVITE_CODE', '')
+# ── Host trust ──
 TRUSTED_LOCAL_HOSTS = os.getenv('TRUSTED_LOCAL_HOSTS', 'localhost,127.0.0.1')
 
 # ── Feature flags ──

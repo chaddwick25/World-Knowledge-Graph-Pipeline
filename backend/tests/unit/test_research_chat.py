@@ -121,8 +121,6 @@ class TestResearchChat:
                     {"role": "user", "content": "plan a trip"},
                 ]}),
                 content_type="application/json",
-                # localhost bypasses PublicAuthGuardMiddleware (testserver is
-                # a "public" host in the container's TRUSTED_LOCAL_HOSTS).
                 HTTP_HOST="localhost",
             )
         assert resp.status_code == 200

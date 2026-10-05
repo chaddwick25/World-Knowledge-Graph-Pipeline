@@ -443,14 +443,13 @@ The frontend is self-hosted, not on Netlify. See
 - The Tailscale Funnel targets :80 (nginx), not :8000. Public URL:
   `https://thanos.tail560528.ts.net`. SPA build bakes
   `VITE_API_BASE_URL=/api` (same-origin; no CORS).
-- Login guard: `backend/middleware.py` `PublicAuthGuardMiddleware` 401s
-  unauthenticated `/api/*` on public hosts (open: `/api/auth/*`,
-  `/api/system/status/`); `AdminHostGateMiddleware` 404s `/admin*`
-  publicly. Session auth endpoints in `api/views_auth.py` (`/api/auth/`).
-  Registration gated by `SIGNUP_INVITE_CODE` env var. WS consumer closes
-  public anonymous connections (4401). Frontend: LoginView.vue,
-  `stores/authStore.js`, router requiresAuth guard, axios CSRF/401
-  interceptors in main.js.
+- Open API (2026-10-05): the public `/api/*` surface requires no
+  authentication — the login guard was removed (fully open). Django admin
+  (`/admin`) stays local-host-only via `AdminHostGateMiddleware` (the only
+  login surface; one admin account remains). `/api/system/status/` carries
+  `@ensure_csrf_cookie` so the SPA's first GET seeds the `csrftoken` cookie
+  for anonymous unsafe requests. Frontend ships no login page; the axios
+  CSRF echo interceptor in `main.js` remains.
 - Ops: rebuild SPA with `VITE_API_BASE_URL=/api npm run build` in
   `frontend-v3/`; `.env` changes need `docker compose up -d --force-recreate
   backend`; local/trusted hosts configurable via `TRUSTED_LOCAL_HOSTS`.
