@@ -17,7 +17,8 @@ other trusted devices.
 """
 
 from django.conf import settings
-from django.http import Http404
+from django.http import Http404, JsonResponse
+import hmac
 
 _LOCAL_HOSTS = {
     h.strip().lower()
@@ -39,6 +40,21 @@ _WRITE_PATHS = frozenset({
     '/api/geovectors/encode/',
 })
 
+# Prefix-gated surfaces: not part of the public product surface (the SPA
+# never calls them). Geodata is an operator CRUD registry (datasets /
+# records / sources / quality + sync_metadata trigger); IGEA triplets are
+# POST model-inference endpoints (predict / score / validate).
+_WRITE_PREFIXES = frozenset({
+    '/api/geodata/',
+    '/api/igea/triplets/',
+})
+
+
+def _is_write_path(path):
+    return path in _WRITE_PATHS or any(
+        path.startswith(p) for p in _WRITE_PREFIXES
+    )
+
 
 def is_public_host(host):
     """True when the Host header is not a trusted local address."""
@@ -59,12 +75,26 @@ class AdminHostGateMiddleware:
 
 
 class WriteEndpointGateMiddleware:
-    """404 any write/trigger endpoint on public (funnel) hosts."""
+    """404 write/trigger endpoints on public (funnel) hosts; on trusted hosts
+    require the operator pipeline key when one is configured.
+
+    The host-trust model alone is spoofable: nginx forwards any Host header
+    (server_name _), so a LAN client can fake ``localhost`` and reach the
+    write surface. ``X-Pipeline-Key`` must equal
+    ``settings.PIPELINE_TRIGGER_KEY`` (env-only, never in the browser bundle)
+    on trusted hosts; the public funnel still gets a 404 first.
+    """
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        if request.path in _WRITE_PATHS and is_public_host(request.get_host() or ''):
-            raise Http404('Endpoint is local-only.')
+        if _is_write_path(request.path):
+            if is_public_host(request.get_host() or ''):
+                raise Http404('Endpoint is local-only.')
+            expected = getattr(settings, 'PIPELINE_TRIGGER_KEY', '')
+            if expected and not hmac.compare_digest(
+                request.headers.get('X-Pipeline-Key', ''), expected
+            ):
+                return JsonResponse({'detail': 'Pipeline key required.'}, status=403)
         return self.get_response(request)
