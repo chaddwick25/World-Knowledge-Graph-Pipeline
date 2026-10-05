@@ -484,6 +484,10 @@ OUTPUT_BASE_DIR = os.getenv('OUTPUT_BASE_DIR')
 ***REMOVED*** ── Host trust ──
 TRUSTED_LOCAL_HOSTS = os.getenv('TRUSTED_LOCAL_HOSTS', 'localhost,127.0.0.1')
 
+***REMOVED*** Operator key for write/trigger endpoints (pipeline runs). Checked server-side
+***REMOVED*** only — never shipped to the browser. Empty = no key required.
+PIPELINE_TRIGGER_KEY = os.getenv('PIPELINE_TRIGGER_KEY', '')
+
 ***REMOVED*** ── Feature flags ──
 ***REMOVED*** Single-pass PBF encoding (FastText + NLE in one traversal).
 GEOVECTORS_SINGLE_PASS = True
