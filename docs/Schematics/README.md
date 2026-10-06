@@ -130,6 +130,7 @@ the GPU dedicated to the application side.
 | [04_Docker_Agent_Stack.md](08_Agent_MCP_LLM/04_Docker_Agent_Stack.md) | Ollama + Goose services, two-GPU pinning (4070 Ti Super → app, RTX 2070 → pipeline), config-directory mount gotcha, on-demand goose, runbook |
 | [05_LLM_Capacity_Envelope.md](08_Agent_MCP_LLM/05_LLM_Capacity_Envelope.md) | qwen3:8b request flow (parser → executor → LLM synthesis) and the VRAM/compute capacity envelope (scheduler-bound, P95 TTFT ~6s at 6 slots, ~1.6 GiB headroom) |
 | [06_Research_Orchestrator_Agent_Stream.md](08_Agent_MCP_LLM/06_Research_Orchestrator_Agent_Stream.md) | Research tab agent stream: KE interviewer (4070) → structured brief → decompose/execute/assemble loop (2070), two Ollama daemons on the Docker network, SSE protocol, traceability contract, stream vs batch processing (DMLS Ch 3/7, K80 = batch); the K80 sibling lands here |
+| [07_Security_Review_Models.md](08_Agent_MCP_LLM/07_Security_Review_Models.md) | Offensive-security HF models as config auditors: 2-model bake-off (2026-10-05) on a self-hosted deployment's reverse-proxy + middleware configs — a 3B fine-tune found 1 real finding, an 8B red-team fine-tune answered defensively with wrong claims; guidance: brainstorming only, verify everything |
 
 ---
 
