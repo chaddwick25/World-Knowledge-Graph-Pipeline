@@ -479,7 +479,20 @@ Deployment posture for the Tailscale Funnel host:
   funnel traffic, so it cannot be used as a client key). api_zone 20r/s burst 40;
   heavy_zone 10r/m burst 2 on research/execute-query/spectral/community/temporal/
   event-diffusion/link-candidates.
-- **Tests**: backend/tests/unit/test_public_surface_gates.py covers both host gates.
+- **Host allowlists are per-surface** (2026-10-05): the PUBLIC edge (:80)
+  serves only the funnel hostname (`$host_allowed_public`); loopback/tailnet
+  entries (`localhost`, `127.0.0.1`, tailnet IP) live only on the tailnet
+  listener (`$host_allowed_tailnet`). This closes the spoofed-`Host:
+  localhost` trust flip a security-review model found (a public client could
+  previously flip `is_public_host()` to trusted; defense-in-depth — nginx
+  `/admin` 404 + `X-Pipeline-Key` — held meanwhile). Keep the tailnet map in
+  sync with `TRUSTED_LOCAL_HOSTS` + the funnel hostname.
+- **Tests**: backend/tests/unit/test_public_surface_gates.py covers both host
+  gates; backend/tests/unit/test_nginx_trust_invariants.py pins the nginx
+  config invariants (allowlist split, trust-marker wiring, 444 guards);
+  deploy/probes/ has the live-edge probes (public_edge_probes.sh,
+  ws_flood_test.py) and the bake-off runner (run_pentest_review.py — see
+  docs/Schematics/08_Agent_MCP_LLM/07_Security_Review_Models.md).
   Note: test_* failures from stale test-DB schema (e.g. `bbox_source`) and code/test drift
   (vector_storage batch_size 20000 vs 50000, parser "bus station" vs "bus_station") are
   pre-existing, unrelated to this hardening.
