@@ -23,3 +23,23 @@ Working rules:
 - Match the style and patterns of the file you are editing.
 - Run the relevant test suites before declaring a task complete.
 - Do not create git commits; leave staging and commits to the maintainer.
+
+Security review models (empirical, 2026-10-05):
+- Benchmarked public "offensive-security" LLM fine-tunes — 3B
+  `fawazo/qwen2.5-coder-3b-pentest-gguf` and 8B
+  `LLM-PBE/Llama3.1-8b-instruct-LLMPC-Red-Team` (mradermacher i1 repack; a
+  kali-pentester 8B degenerated on a chat-template mismatch and was
+  excluded) — reviewing a self-hosted web deployment's reverse-proxy +
+  middleware configs. Observed behavior:
+  - 8B red-team: defaulted to a DEFENSIVE posture (mitigation / monitoring
+    advice) and misread the host allowlist as "allows any host".
+  - The 3B was the most useful (1 real finding, 1 false alarm); the finding
+    restated an accepted-risk comment already in nginx.conf.
+- None outranked a careful manual review. Treat these models as brainstorming
+  assistants; verify every claim against the actual config before acting.
+- The 3B's finding (spoofed `Host: localhost` flipping middleware trust via
+  the public allowlist) was FIXED 2026-10-05: the public edge allowlist is
+  now funnel-hostname-only. Enforced by
+  `backend/tests/unit/test_nginx_trust_invariants.py` + live probes in
+  `deploy/probes/`.
+- Full bake-off writeup: `docs/Schematics/08_Agent_MCP_LLM/07_Security_Review_Models.md`.
