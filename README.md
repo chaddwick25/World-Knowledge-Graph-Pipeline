@@ -1,5 +1,7 @@
 # World KG & Geo Spatial Reasoning
 
+Live: [thanos.tail560528.ts.net](https://thanos.tail560528.ts.net/)
+
 Search places worldwide and get AI-powered answers. The app turns raw
 OpenStreetMap data into a searchable knowledge base, then lets you ask
 questions about any country it has processed and get grounded answers
