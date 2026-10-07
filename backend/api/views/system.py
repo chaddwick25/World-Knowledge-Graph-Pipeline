@@ -85,12 +85,17 @@ class SystemStatusView(APIView):
 
     Returns everything the home page needs to hydrate in one request:
     readiness, latest snapshot info, suggested planet path, extraction /
-    embedding counts, and the snapshot-date range for the year selector.
+    embedding counts, the snapshot-date range for the year selector, and
+    the search-ready country list (drives the queryable dot in the
+    country picker).
     """
     permission_classes = [AllowAny]
 
     def get(self, request, *args, **kwargs):
-        from core.models import PlanetSnapshot, CountryPipelineProfile, PbfFile
+        from core.models import (
+            PlanetSnapshot, CountryPipelineProfile, PbfFile,
+            CountrySearchProcessing,
+        )
         from api.views.pipeline_status import build_snapshot_dates_payload
 
         # register_planet rows leave snapshot_date_str NULL; finalize rows
@@ -139,6 +144,12 @@ class SystemStatusView(APIView):
             "continents_extracted": continents_extracted,
             "countries_with_embeddings": countries_with_embeddings,
             "total_countries": total_countries,
+            # Slug names of countries marked search-ready (Step 6) — the
+            # home page renders a green "queryable" dot per list row.
+            "processed_countries": list(
+                CountrySearchProcessing.objects.filter(is_processed=True)
+                .values_list("country_name", flat=True)
+            ),
         }
         data.update(build_snapshot_dates_payload())
         return Response(data)

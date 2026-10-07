@@ -104,11 +104,18 @@
               <button
                 v-for="country in filteredAvailable"
                 :key="'sel-' + country.id"
-                class="list-group-item list-group-item-action small d-flex justify-content-between"
+                class="list-group-item list-group-item-action small d-flex justify-content-between align-items-center"
                 @click="selectedCountryIds = [country.id]; countrySearchQuery = ''"
               >
                 <span>{{ country.name }}</span>
-                <span class="text-secondary">{{ country.continent }}</span>
+                <span class="d-flex align-items-center gap-1">
+                  <span class="text-secondary">{{ country.continent }}</span>
+                  <span
+                    v-if="hasData(country)"
+                    class="data-dot"
+                    title="Pipeline data ready — this country is queryable"
+                  ></span>
+                </span>
               </button>
             </div>
             <div v-else-if="countrySearchQuery" class="small text-secondary">
@@ -269,6 +276,9 @@ export default {
       // ── Country status (preprocessed / has pickle) ──
       countryStatus: null,
       isLoadingStatus: false,
+      // Slug names of search-ready countries (from /system/status/) —
+      // drives the green "queryable" dot in the country list.
+      processedCountries: new Set(),
 
       // ── Sidebar tabs ──
       activeTab: 'query',
@@ -430,6 +440,7 @@ export default {
         this.suggestedPlanetFilePath = data.suggested_planet_file_path || ''
         this.applySnapshotDates(data.snapshot_dates || [], data.default || null)
         this.completedDates = data.completed_dates || []
+        this.processedCountries = new Set(data.processed_countries || [])
         if (!this.isSystemReady) {
           this.systemError = 'System not initialized. Planet init runs as a Docker startup step (python manage.py init_planet).'
         }
@@ -481,6 +492,16 @@ export default {
       } finally {
         this.isLoadingStatus = false
       }
+    },
+    // ── Queryable-country dot ──
+    // Slug form matching the backend's normalize_country_slug
+    // (lowercase, spaces/hyphens → underscores) — the form Step 6 stores
+    // in CountrySearchProcessing.country_name.
+    countrySlug(name) {
+      return name.toLowerCase().replace(/ /g, '_').replace(/-/g, '_')
+    },
+    hasData(country) {
+      return this.processedCountries.has(this.countrySlug(country.name))
     },
     // ── Snapshot dates (hydrated from /system/status/) ──
     applySnapshotDates(dates, defaultDate) {
@@ -549,6 +570,14 @@ export default {
     },
     onPipelineDone(event) {
       pipelineGate.onPipelineDone(this, event)
+      // A completed run makes the country queryable — add its dot without
+      // waiting for the next /system/status/ refresh.
+      if (this.pipelineDoneStatus === 'completed' && this.singleCountry) {
+        this.processedCountries = new Set([
+          ...this.processedCountries,
+          this.countrySlug(this.singleCountry.name),
+        ])
+      }
     },
     // ── Semantic search ──
     switchTab(tab) {
@@ -619,6 +648,17 @@ export default {
   height: 8px;
   border-radius: 999px;
   background: var(--bs-primary);
+}
+
+/* Queryable-country dot — green = pipeline data ready for that country
+   (hover shows the native tooltip). */
+.data-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bs-success);
+  flex-shrink: 0;
 }
 
 /* Brand mark hover — opacity transition on the globe emoji link. */

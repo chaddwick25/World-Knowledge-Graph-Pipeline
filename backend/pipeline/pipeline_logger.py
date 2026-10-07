@@ -74,7 +74,10 @@ def _run_log_path(pipeline_run_id: str, country_iso: str) -> Path:
     that produced a different filename than the worker's UTC-based one.
     """
     from datetime import datetime, timezone
-    log_dir = Path(__file__).resolve().parent.parent / "logs" / "pipeline"
+    # Logs live under backend/pipeline/logs/pipeline/ (moved from
+    # backend/logs/pipeline/ 2026-10-06). pipeline_logger.py sits in
+    # backend/pipeline/, so one parent hop lands in backend/pipeline/.
+    log_dir = Path(__file__).resolve().parent / "logs" / "pipeline"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     run_short = (pipeline_run_id or "unknown")[:8]
