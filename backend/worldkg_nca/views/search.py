@@ -20,6 +20,7 @@ import re
 import unicodedata
 
 from worldkg_nca.models import OsmEntity, PrecomputedLinkCandidate
+from worldkg_nca.subdivision_labels import get_subdivision_label
 from core.models import ProjectionWeightAsset
 from semantic_search.services.romanizing_names.registry import RomanizerRegistry
 from semantic_search.services.worldkg_enrichment_service import get_worldkg_enrichment_service
@@ -1239,6 +1240,7 @@ def worldkg_subdivisions(request):
     Response:
         {
             "country_code": "NI",
+            "subdivision_label": "Department",
             "count": 15,
             "subdivisions": [
                 {
@@ -1272,13 +1274,13 @@ def worldkg_subdivisions(request):
     except Exception:
         pass  # fall through to the profile lookups below
 
-    # Resolve to CountryPipelineProfile
-    profile = (
-        CountryPipelineProfile.objects.filter(iso2__iexact=country_code).first()
-        or CountryPipelineProfile.objects.filter(
-            canonical_name__icontains=country_code.replace('_', ' ').replace('-', ' ')
-        ).first()
-    )
+    # Resolve to CountryPipelineProfile — EXACT ISO match only.
+    # resolve_iso_code() above normalizes names AND Geofabrik region names
+    # ("Ireland And Northern Ireland" → IE), so a canonical-name substring
+    # fallback is unnecessary and dangerous: a profile-less code like "AE"
+    # would match "Isr[ae]l" and silently return the wrong country's data
+    # (2026-10-06; also hardened at the resolver — country_relations.py).
+    profile = CountryPipelineProfile.objects.filter(iso2__iexact=country_code).first()
     if not profile:
         return Response(
             {"error": f"CountryPipelineProfile not found for {country_code}"},
@@ -1314,6 +1316,7 @@ def worldkg_subdivisions(request):
 
     return Response({
         "country_code": profile.iso2 or country_code,
+        "subdivision_label": get_subdivision_label(profile.iso2 or country_code),
         "count": len(subdivisions),
         "subdivisions": subdivisions,
     })

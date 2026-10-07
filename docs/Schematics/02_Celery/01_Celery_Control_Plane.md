@@ -320,7 +320,8 @@ files for human/grep workflows. Both tracks are always on.
 
 **Per-run file logging** (`setup_pipeline_run_logger()`):
 - Always on. One file per `pipeline_run_id` at
-  `backend/logs/pipeline/pipeline_{COUNTRY}_{run_short}_{ts}.log`
+  `backend/pipeline/logs/pipeline/pipeline_{COUNTRY}_{run_short}_{ts}.log`
+  (moved from `backend/logs/pipeline/` 2026-10-06)
 - Idempotent per run. All steps in a run (across worker processes) append
   to the same file.
 - Uses `WatchedFileHandler` (cross-process safe).

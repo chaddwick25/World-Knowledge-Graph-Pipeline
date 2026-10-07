@@ -14,7 +14,7 @@
           value="template"
           v-model="queryMode"
         >
-        <label class="btn btn-outline-secondary" for="query-mode-template">AI query</label>
+        <label class="btn btn-outline-secondary" for="query-mode-template">Structured Search</label>
 
         <input
           type="radio"

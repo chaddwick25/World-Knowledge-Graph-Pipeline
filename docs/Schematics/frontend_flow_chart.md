@@ -328,7 +328,7 @@ Dumb component: props in, event out, no store, no fetching (rule 01-frontend-pat
 <input type="radio" name="query-mode" v-model="queryMode" value="tags|natural|template">
 ```
 
-Labels: Structured / Natural language / AI query (was "Kuhn's Template").
+Labels: Structured / Natural language / Structured Search (was "AI query", before that "Kuhn's Template").
 
 **normalizeResult(r), the core shape normalizer:**
 
