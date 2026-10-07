@@ -99,15 +99,38 @@ class QueryExecutorService(
             stop_words = getattr(QueryParserService, "_QUESTION_WORDS", set())
             clean_entities = [e for e in all_entities if e not in stop_words]
             if len(clean_entities) >= 2 and len(existing_locations) < 2:
-                ***REMOVED*** Replace/augment LOCATION concepts with full extraction
-                concepts = [c for c in concepts if c["type"] != "LOCATION"]
-                for entity_name in clean_entities:
-                    concepts.append({
-                        "type": "LOCATION",
-                        "text": entity_name,
-                        "confidence": 1.0,
-                        "resolved_value": None,
-                    })
+                ***REMOVED*** Only replace/augment when the regex extraction ADDS entities
+                ***REMOVED*** the parser missed. Over-split fragments of a complete parser
+                ***REMOVED*** anchor must NOT clobber it: "Cliffs of Moher" extracts as
+                ***REMOVED*** ['Cliffs', 'Moher'] — replacing "the Cliff of Moher" (conf
+                ***REMOVED*** 0.996) with "Cliffs" geocodes the wrong place ("Cliffort",
+                ***REMOVED*** Co. Cork — ~140km from the actual cliffs) and the "nearest
+                ***REMOVED*** restaurant" answer becomes geographically absurd (2026-10-06).
+                ***REMOVED*** The compare pattern ("closer to Dublin: Cork or Limerick?")
+                ***REMOVED*** still fires — Cork/Limerick are not covered by "Dublin".
+                parser_words = {
+                    w.lower()
+                    for loc in existing_locations
+                    for w in str(loc.get("text", "")).lower().split()
+                }
+
+                def _covered(entity):
+                    e = entity.lower()
+                    return any(
+                        e == w or e.startswith(w) or w.startswith(e)
+                        for w in parser_words if len(w) >= 4
+                    )
+
+                if not all(_covered(e) for e in clean_entities):
+                    ***REMOVED*** Replace/augment LOCATION concepts with full extraction
+                    concepts = [c for c in concepts if c["type"] != "LOCATION"]
+                    for entity_name in clean_entities:
+                        concepts.append({
+                            "type": "LOCATION",
+                            "text": entity_name,
+                            "confidence": 1.0,
+                            "resolved_value": None,
+                        })
 
         executors = cls._get_executors()
         executor = executors.get(template)

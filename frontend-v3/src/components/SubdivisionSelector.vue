@@ -1,6 +1,6 @@
 <template>
   <div v-if="subdivisions.length > 0" class="subdivision-selector">
-    <label class="subdivision-selector__label">Subdivision</label>
+    <label class="subdivision-selector__label">Subdivision - {{ label }}</label>
     <select
       v-model="selectedQid"
       class="subdivision-selector__select"
@@ -51,6 +51,9 @@ export default {
       selectedQid: null,
       loading: false,
       error: null,
+      // Per-country subdivision term (County / Province and Territory / ...)
+      // from the backend; falls back to "Subdivision".
+      label: 'Subdivision',
     }
   },
   watch: {
@@ -78,6 +81,7 @@ export default {
           params: { country_code: this.countryName },
         })
         this.subdivisions = response.data.subdivisions || []
+        this.label = response.data.subdivision_label || 'Subdivision'
       } catch (err) {
         // Silently fail — subdivision filtering is optional
         this.subdivisions = []
