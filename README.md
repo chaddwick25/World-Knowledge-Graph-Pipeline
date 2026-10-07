@@ -1,5 +1,7 @@
 ***REMOVED*** World KG & Geo Spatial Reasoning
 
+Live: [EXAMPLE-TAILNET-HOSTNAME](https://EXAMPLE-TAILNET-HOSTNAME/)
+
 Search places worldwide and get AI-powered answers. The app turns raw
 OpenStreetMap data into a searchable knowledge base, then lets you ask
 questions about any country it has processed and get grounded answers
