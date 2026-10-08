@@ -1,38 +1,64 @@
 <template>
   <div class="d-flex flex-column gap-2">
-    <form class="d-flex flex-column gap-2" @submit.prevent="performSearch">
-      <!-- Query mode radio group (was pill buttons) -->
-      <div class="d-flex flex-column gap-1">
-        <div class="btn-group btn-group-sm" role="group" aria-label="Query mode">
-          <input
-            type="radio"
-            class="btn-check"
-            name="query-mode"
-            id="query-mode-template"
-            autocomplete="off"
-            value="template"
-            v-model="queryMode"
-          >
-          <label class="btn btn-outline-secondary" for="query-mode-template">AI query</label>
+    <!-- Query mode radio group — always visible (the mode switcher; only
+         the sub-mode content below swaps). Kept OUT of the v-else block
+         so the Researcher mode can switch back (2026-10-01). -->
+    <div class="d-flex flex-column gap-1">
+      <div class="btn-group btn-group-sm" role="group" aria-label="Query mode">
+        <input
+          type="radio"
+          class="btn-check"
+          name="query-mode"
+          id="query-mode-template"
+          autocomplete="off"
+          value="template"
+          v-model="queryMode"
+        >
+        <label class="btn btn-outline-secondary" for="query-mode-template">Structured Search</label>
 
-          <input
-            type="radio"
-            class="btn-check"
-            name="query-mode"
-            id="query-mode-tags"
-            autocomplete="off"
-            value="tags"
-            v-model="queryMode"
-          >
-          <label class="btn btn-outline-secondary" for="query-mode-tags">OSM Tag Query</label>
-        </div>
+        <input
+          type="radio"
+          class="btn-check"
+          name="query-mode"
+          id="query-mode-tags"
+          autocomplete="off"
+          value="tags"
+          v-model="queryMode"
+        >
+        <label class="btn btn-outline-secondary" for="query-mode-tags">OSM Tag Query</label>
+
+        <input
+          type="radio"
+          class="btn-check"
+          name="query-mode"
+          id="query-mode-research"
+          autocomplete="off"
+          value="researcher"
+          v-model="queryMode"
+        >
+        <label class="btn btn-outline-secondary" for="query-mode-research">Researcher</label>
       </div>
+    </div>
 
-      <!-- Subdivision selector -->
-      <SubdivisionSelector
-        :country-name="countryName"
-        @subdivision-selected="subdivisionQid = $event"
-      />
+    <!-- Subdivision selector — always visible (2026-10-01): scopes the
+         sample questions, the structured/template searches, AND the
+         Researcher sub-mode (its QID rides the research endpoints). -->
+    <SubdivisionSelector
+      :country-name="countryName"
+      @subdivision-selected="onSubdivisionSelected"
+    />
+
+    <!-- Researcher sub-mode (2026-10-01): the general research loop
+         (KE interview → brief → decompose → execute → assemble) folded
+         in from the removed standalone Research tab. -->
+    <ResearchPanel
+      v-if="isResearcherMode"
+      :country-name="countryName"
+      :snapshot-date="snapshotDate"
+      :subdivision-qid="subdivisionQid"
+    />
+    <template v-else>
+    <form class="d-flex flex-column gap-2" @submit.prevent="performSearch">
 
       <!-- Tag key/value (OSM Tag Query mode) -->
       <div v-if="isTagsMode" class="row g-2">
@@ -109,37 +135,14 @@
       </div>
     </form>
 
-    <!-- Sample questions (OSM RAG mode learning aid — from the bundled
-         sample_questions.csv, country-filtered; shown right below the
-         search form so they're handy before searching; the chevron
-         collapses the list) -->
-    <div v-if="isTemplateMode && filteredSampleQuestions.length" class="d-flex flex-column gap-1 border-top pt-2">
-      <button
-        type="button"
-        class="btn btn-sm btn-link p-0 text-secondary d-flex align-items-center"
-        style="width: fit-content;"
-        :aria-expanded="showSampleQuestions"
-        aria-label="Toggle sample questions"
-        @click="showSampleQuestions = !showSampleQuestions"
-      >
-        <i :class="showSampleQuestions ? 'bi bi-chevron-up' : 'bi bi-chevron-down'"></i>
-      </button>
-      <div v-if="showSampleQuestions" class="d-flex flex-column gap-1">
-        <div
-          v-for="(q, idx) in filteredSampleQuestions"
-          :key="`${q.question}-${idx}`"
-          class="d-flex align-items-center gap-2 border rounded p-1 px-2"
-          style="font-size: 0.72rem;"
-        >
-          <span class="flex-grow-1 text-truncate" :title="q.question">{{ q.question }}</span>
-          <button
-            class="btn btn-sm btn-outline-primary text-nowrap py-0 px-2"
-            :class="{ 'btn-success': copiedQuestion === q.question }"
-            @click="copyQuestion(q.question)"
-          >{{ copiedQuestion === q.question ? 'Copied!' : 'Copy' }}</button>
-        </div>
-      </div>
-    </div>
+    <!-- Sample questions (OSM RAG mode learning aid — leaf component;
+         shown right below the search form so they're handy before
+         searching; the chevron collapses the list) -->
+    <SampleQuestions
+      v-if="isTemplateMode && filteredSampleQuestions.length"
+      :questions="filteredSampleQuestions"
+      :scope="subdivisionName || countryName"
+    />
 
     <!-- Error -->
     <div v-if="displayError" class="alert alert-danger small py-1 px-2 mb-0">
@@ -151,7 +154,7 @@
       <div class="text-secondary small mb-1">
         Retrieval time: <span class="text-danger">{{ dataAnswerElapsed != null ? dataAnswerElapsed.toFixed(1) : '—' }}s</span>
       </div>
-      <strong>Answer from DB:</strong> {{ executeAnswer }}
+      <strong>Deterministic:  </strong> {{ executeAnswer }}
     </div>
 
     <!-- AI answer (enrichment stream — completes when ready, held back
@@ -163,7 +166,7 @@
       <div class="text-secondary small mb-1">
         Retrieval time: <span class="text-danger">{{ aiAnswerElapsed != null ? aiAnswerElapsed.toFixed(1) : '—' }}s</span>
       </div>
-      <strong>AI answer:</strong> {{ enrichedAnswer }}
+      <strong>AI Summary: </strong> {{ enrichedAnswer }}
     </div>
 
     <!-- Execution trace — decision flow (each step shows what it decided).
@@ -174,61 +177,21 @@
       :confidence-badge-class="confidenceBadgeClass"
     />
 
-    <!-- Results table -->
-    <div v-if="displayResults.length > 0" class="d-flex flex-column gap-1">
-      <div class="d-flex align-items-center justify-content-between">
-        <h6 class="small fw-semibold mb-0">Results ({{ displayResults.length }})</h6>
-        <button
-          class="btn btn-link btn-sm text-secondary p-0"
-          @click="showScores = !showScores"
-        >
-          {{ showScores ? 'Hide' : 'Show' }} scores
-        </button>
-      </div>
-      <div class="table-responsive" style="max-height: 360px; overflow-y: auto;">
-        <table class="table table-sm table-borderless results-table mb-0" style="font-size: 0.72rem;">
-          <thead class="table-dark">
-            <tr>
-              <th>Name</th>
-              <th>Tags</th>
-              <th>Class</th>
-              <template v-if="showScores">
-                <th v-for="col in activeScoreColumns" :key="col.key" class="num">{{ col.label }}</th>
-              </template>
-              <th class="num">Final</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in displayResults" :key="`${item.osm_type}-${item.osm_id}`">
-              <td>
-                <a
-                  :href="`https://www.openstreetmap.org/${item.osm_type}/${item.osm_id}`"
-                  target="_blank"
-                  class="results-name-link"
-                  style="color: var(--bs-info-text-emphasis);"
-                  @mouseenter="onResultNameHover(item)"
-                  @mouseleave="onResultNameLeave(item)"
-                >
-                  {{ item.name || '—' }}
-                </a>
-              </td>
-              <td><small>{{ formatTags(item.tags) }}</small></td>
-              <td>{{ (item.wkg_class || '—').replace(/^wkgs:/, '') }}</td>
-              <template v-if="showScores">
-                <td v-for="col in activeScoreColumns" :key="col.key" class="num">{{ item.scores?.[col.key]?.toFixed(3) || '—' }}</td>
-              </template>
-              <td class="num">
-                <strong>{{ item.scores?.final_score?.toFixed(3) || '—' }}</strong>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <!-- Results table — leaf component (props in, events out). -->
+    <SearchResultsTable
+      v-model:show-nameless="showNameless"
+      :rows="displayResults"
+      :total="cappedResults.length"
+      :has-nameless="hasNameless"
+      :score-columns="activeScoreColumns"
+      @name-hover="onResultNameHover"
+      @name-leave="onResultNameLeave"
+    />
 
-    <div v-else-if="searched" class="small text-secondary">
+    <div v-if="!displayResults.length && searched" class="small text-secondary">
       No results found for this query.
     </div>
+    </template>
   </div>
 </template>
 
@@ -253,7 +216,16 @@
 import axios from 'axios'
 import ExecutionTraceFlow from './ExecutionTraceFlow.vue'
 import SubdivisionSelector from './SubdivisionSelector.vue'
+import ResearchPanel from './ResearchPanel.vue'
+import SampleQuestions from './SampleQuestions.vue'
+import SearchResultsTable from './SearchResultsTable.vue'
 import { useEntityInfoStore } from '../stores/entityInfoStore'
+import { decorateStep } from '../mapViz/traceNodeDecorators'
+import { normalizeResult, buildQueryGraph, buildTemplateVisualization } from '../mapViz/queryGraphBuild'
+import {
+  openTemplateStream,
+  clearAiAnswerTimer,
+} from '../services/templateStream'
 import sampleQuestionsCsv from '../assets/sample_questions.csv?raw'
 
 /**
@@ -296,7 +268,7 @@ const SAMPLE_QUESTIONS = parseCsv(sampleQuestionsCsv)
 
 export default {
   name: 'SemanticSearchPanel',
-  components: { ExecutionTraceFlow, SubdivisionSelector },
+  components: { ExecutionTraceFlow, SubdivisionSelector, ResearchPanel, SampleQuestions, SearchResultsTable },
   setup() {
     const entityInfoStore = useEntityInfoStore()
     return { entityInfoStore }
@@ -321,24 +293,29 @@ export default {
       // ── Query state (component-local) ──
       queryMode: 'template',
       // OSM Tag Query mode: key dropdown + free-text value → query_tags.
-      tagKey: 'amenity',
+      tagKey: 'name',
       tagValue: 'cafe',
       templateQuery: '',
       lat: '',
       lon: '',
       rdfType: null,
-      topK: 20,
+      topK: 10,
       loading: false,
       error: null,
       results: [],
       searched: false,
-      showScores: false,
+      // Unnamed-entity toggle (2026-10-01): off by default — the
+      // nameless filter hides noise; the funnel icon beside Results
+      // shows them when the AI answer cites entities the table hides.
+      showNameless: false,
       subdivisionQid: null,
-      // Sample questions (OSM RAG mode learning aid) — expanded on mount,
-      // chevron toggles the list.
-      showSampleQuestions: true,
-      copiedQuestion: null,
-      copyTimer: null,
+      // Selected subdivision's display name (rides the same emit) — used
+      // by the "Sample Questions - <scope>" label.
+      subdivisionName: null,
+      // Sample questions served by the backend (country or subdivision
+      // scope); empty until the fetch resolves — the bundled CSV is the
+      // fallback only when the API is unreachable.
+      sampleQuestions: [],
       // MapQA parser state (sync template mode)
       parsedQuery: null,
       executeAnswer: null,
@@ -366,12 +343,12 @@ export default {
         { value: 'wkgs:Shop', text: 'Shop' },
         { value: 'wkgs:Amenity', text: 'Amenity (general)' },
       ],
-      // OSM tag keys for the OSM Tag Query dropdown. `name` is listed
-      // first-adjacent because the backend routes it to the fuzzy name
-      // search instead of exact tag matching.
+      // OSM tag keys for the OSM Tag Query dropdown. `name` is the
+      // default (fuzzy name search) — the backend routes it to the fuzzy
+      // name search instead of exact tag matching.
       tagKeyOptions: [
-        { value: 'amenity', text: 'amenity' },
         { value: 'name', text: 'name (fuzzy search)' },
+        { value: 'amenity', text: 'amenity' },
         { value: 'shop', text: 'shop' },
         { value: 'cuisine', text: 'cuisine' },
         { value: 'tourism', text: 'tourism' },
@@ -405,13 +382,19 @@ export default {
     isTemplateMode() {
       return this.queryMode === 'template'
     },
-    /** Sample questions for the selected country (falls back to generic
-     *  rows when the country has none) — from the bundled CSV. */
+    /** Researcher sub-mode (2026-10-01): the general research loop that
+     *  was folded in from the removed standalone Research tab. */
+    isResearcherMode() {
+      return this.queryMode === 'researcher'
+    },
+    /** Sample questions served by the backend (country or subdivision
+     *  scope — the service generates subdivision questions from the
+     *  entities inside the subdivision). Falls back to the bundled CSV
+     *  only when the API fetch fails. */
     filteredSampleQuestions() {
-      if (!this.countryCode) {
-        return SAMPLE_QUESTIONS.filter((q) => !q.country_code).slice(0, 8)
-      }
-      const iso = this.countryCode.toUpperCase()
+      if (this.sampleQuestions.length) return this.sampleQuestions.slice(0, 8)
+      // Fallback: bundled CSV (backend unreachable) — country-filtered.
+      const iso = (this.countryCode || '').toUpperCase()
       const country = SAMPLE_QUESTIONS.filter((q) => q.country_code === iso)
       const generic = SAMPLE_QUESTIONS.filter((q) => !q.country_code)
       return (country.length ? country : generic).slice(0, 8)
@@ -433,28 +416,45 @@ export default {
     displayParsedQuery() {
       return this.parsedQuery
     },
-    displayTrace() {
-      return this.executeTrace
-    },
     /** Trace steps rendered as a decision-flow (Layout B): each node shows
-     *  the step, its inputs, and what it decided. */
+     *  the step, its inputs, and what it decided. Decorators live in
+     *  mapViz/traceNodeDecorators.js (dispatch table); resultsByName feeds
+     *  the compare_closer candidate name join. */
     traceFlow() {
-      return (this.executeTrace || []).map((s) => this._decorateStep(s))
+      const resultsByName = new Map()
+      for (const r of this.displayResults) {
+        const key = String(r.name || '').toLowerCase()
+        if (key) resultsByName.set(key, r)
+      }
+      return (this.executeTrace || []).map((s) => decorateStep(s, { resultsByName }))
     },
     /** Top K clamped to the backend-supported 1–100 range. */
     topKClamped() {
-      return Math.min(100, Math.max(1, parseInt(this.topK, 10) || 20))
+      return Math.min(100, Math.max(1, parseInt(this.topK, 10) || 10))
+    },
+    /** All normalized results capped at Top K — before the nameless
+     *  filter, so the header can show "Results (1 / 4)" when some rows
+     *  are hidden. */
+    cappedResults() {
+      return this.results
+        .map(normalizeResult)
+        .slice(0, this.topKClamped)
+    },
+    /** Whether any capped result lacks a name — the funnel toggle is
+     *  only meaningful then, and it stays visible in both states so the
+     *  filter can be turned back on (2026-10-01). */
+    hasNameless() {
+      return this.cappedResults.some((r) => !(r.name || '').trim())
     },
     /** Normalized + top-k-capped results (table rows and map entities).
-     *  Nameless entities are filtered out (2026-09-28): unnamed noise
-     *  (traffic islands, generic multipolygons) ranked high with no name
-     *  to show. Presentation-only — the re-rank and backend are untouched;
-     *  the remaining rows keep their exact order. */
+     *  Nameless entities are filtered out by default (2026-09-28):
+     *  unnamed noise (traffic islands, generic multipolygons) ranked high
+     *  with no name to show. Presentation-only — the re-rank and backend
+     *  are untouched. The funnel toggle (showNameless, 2026-10-01) opts
+     *  into showing them — the AI answer may cite bars the table hides. */
     displayResults() {
-      return this.results
-        .map((r) => this.normalizeResult(r))
-        .filter((r) => (r.name || '').trim().length > 0)
-        .slice(0, this.topKClamped)
+      if (this.showNameless) return this.cappedResults
+      return this.cappedResults.filter((r) => (r.name || '').trim().length > 0)
     },
     /** Score columns that have at least one non-zero value in the current
      *  result set. Columns that are always 0 for a given search mode
@@ -485,32 +485,43 @@ export default {
     countryName() {
       this.reset()
     },
+    countryCode() {
+      this.fetchSampleQuestions()
+    },
+    // Subdivision selection changes the question scope — refetch so the
+    // sample questions reflect operations within the subdivision.
+    subdivisionQid() {
+      this.fetchSampleQuestions()
+    },
     // Live control: re-slice the emitted graph without re-querying.
     topK() {
       this.publishResults()
     },
   },
+  mounted() {
+    this.fetchSampleQuestions()
+  },
   // Lifecycle balance — close any open SSE stream (rules §1.2).
   unmounted() {
     this.eventSource?.close()
     this.eventSource = null
-    clearTimeout(this.copyTimer)
   },
   methods: {
     reset() {
       this.queryMode = 'tags'
-      this.tagKey = 'amenity'
+      this.tagKey = 'name'
       this.tagValue = 'cafe'
       this.templateQuery = ''
       this.lat = ''
       this.lon = ''
       this.rdfType = null
-      this.topK = 20
+      this.topK = 10
       this.loading = false
       this.error = null
       this.results = []
       this.searched = false
       this.subdivisionQid = null
+      this.subdivisionName = null
       this.parsedQuery = null
       this.executeAnswer = null
       this.executeTrace = []
@@ -525,14 +536,31 @@ export default {
       await this.executeSync()
     },
 
-    /** Copy a sample question to the clipboard with a brief confirmation. */
-    copyQuestion(question) {
-      navigator.clipboard?.writeText(question).catch(() => {})
-      this.copiedQuestion = question
-      clearTimeout(this.copyTimer)
-      this.copyTimer = setTimeout(() => {
-        this.copiedQuestion = null
-      }, 1500)
+    onSubdivisionSelected(qid, name) {
+      this.subdivisionQid = qid
+      this.subdivisionName = name
+    },
+
+    /** Fetch the sample questions from the backend (country scope, or the
+     *  subdivision scope when one is selected — the service generates
+     *  subdivision questions from the entities inside the subdivision).
+     *  On failure the bundled CSV remains the fallback. */
+    async fetchSampleQuestions() {
+      try {
+        const params = new URLSearchParams({ country_code: this.countryCode || '' })
+        if (this.subdivisionQid) params.set('subdivision_qid', this.subdivisionQid)
+        if (this.snapshotDate) params.set('snapshot_date', this.snapshotDate)
+        const { data } = await axios.get(`/nca/sample-questions/?${params}`)
+        this.sampleQuestions = (data.questions || []).map((q) => ({
+          question: q.question,
+          template: q.template || '',
+          source: q.source || '',
+        }))
+      } catch (err) {
+        // Backend unreachable → the bundled CSV fallback in
+        // filteredSampleQuestions covers the panel.
+        this.sampleQuestions = []
+      }
     },
 
     /** Hovering a result name pops the same info card as a marker click
@@ -556,7 +584,7 @@ export default {
       this.executeTrace = []
       this.enrichedAnswer = ''
       this.enrichingContext = null
-      this.clearAiAnswerTimer()
+      clearAiAnswerTimer(this)
       this.dataAnswerAt = null
       this.aiAnswerAt = null
       this.dataAnswerElapsed = null
@@ -572,7 +600,7 @@ export default {
           return
         }
         console.log('[SSE] executeSync template mode @', Date.now())
-        this.openTemplateStream()
+        openTemplateStream(this)
         return  // loading is cleared by the stream's done/error events
       }
 
@@ -599,7 +627,7 @@ export default {
         }
 
         const response = await axios.post('/nca/semantic-triplet-search/', payload)
-        this.results = (response.data.results || []).map((r) => this.normalizeResult(r))
+        this.results = (response.data.results || []).map(normalizeResult)
         this.searched = true
         this.publishResults()
       } catch (err) {
@@ -610,696 +638,30 @@ export default {
       }
     },
 
-    // ── SSE stream (template mode — direct path) ───────────────────────
-
-    /**
-     * Open the streaming executor: GET /api/nca/execute-query/stream/.
-     * EventSource is GET-only, so the URL is built from
-     * axios.defaults.baseURL (http://localhost:8000/api from main.js) —
-     * a relative /nca/... path would hit Vite with no proxy.
-     */
-    openTemplateStream() {
-      const params = new URLSearchParams({ query: this.templateQuery.trim() })
-      if (this.countryName) params.set('country_code', this.countryName)
-      if (this.snapshotDate) params.set('snapshot_date', this.snapshotDate)
-
-      this.queryStartAt = Date.now()
-      const base = axios.defaults.baseURL || ''
-      const url = `${base}/nca/execute-query/stream/?${params}`
-      // TEMP diagnosis signals — remove after the answer-first timing is confirmed.
-      console.log('[SSE] opening stream', url, '@', Date.now())
-      const es = new EventSource(url)
-      this.eventSource = es
-
-      es.addEventListener('parsed', (e) => {
-        this.parsedQuery = JSON.parse(e.data).parsed || null
-        console.log('[SSE] parsed @', Date.now())
-      })
-
-      es.addEventListener('executed', (e) => {
-        // {template, result_count, trace} — render the trace/anchors early.
-        const d = JSON.parse(e.data)
-        this.executeTrace = d.trace || []
-        console.log('[SSE] executed @', Date.now(), 'template:', d.template, 'count:', d.result_count)
-      })
-
-      es.addEventListener('answer', (e) => {
-        // Deterministic factor-join answer (non-AI) — shown immediately;
-        // the LLM enrichment (answer_delta) replaces it when ready.
-        const d = JSON.parse(e.data)
-        console.log('[SSE] answer @', Date.now(), 'len:', (d.answer || '').length, 'text:', (d.answer || '').slice(0, 60))
-        if (d.answer) {
-          this.executeAnswer = d.answer
-          this.dataAnswerAt = Date.now()
-          this.dataAnswerElapsed = (Date.now() - this.queryStartAt) / 1000
-          this.aiAnswerAt = null
-        }
-      })
-
-      es.addEventListener('context', (e) => {
-        // Deterministic entity context is in — show an enriching indicator.
-        this.enrichingContext = JSON.parse(e.data).context || null
-        console.log('[SSE] context @', Date.now())
-      })
-
-      es.addEventListener('answer_delta', (e) => {
-        const delta = JSON.parse(e.data).delta
-        if (delta) this.enrichedAnswer += delta
-        this.ensureAiAnswerVisible()
-        console.log('[SSE] answer_delta @', Date.now(), 'deltaLen:', (delta || '').length, 'total:', this.enrichedAnswer.length)
-      })
-
-      es.addEventListener('done', (e) => {
-        const d = JSON.parse(e.data)
-        const result = d.result || {}
-        console.log('[SSE] done @', Date.now(), 'enriched:', !!result.enrichment, 'answerLen:', (result.answer || '').length)
-        // Data answer stays pinned; the AI answer settles to the final
-        // enriched text when present.
-        if (result.enrichment?.enriched_answer) {
-          this.enrichedAnswer = result.enrichment.enriched_answer
-        } else if (!this.executeAnswer) {
-          this.executeAnswer = result.answer || null
-        }
-        this.ensureAiAnswerVisible()
-        // Final AI elapsed — the moment the enriched answer was complete.
-        this.aiAnswerElapsed = (Date.now() - this.queryStartAt) / 1000
-        this.executeTrace = result.trace || this.executeTrace
-        if (Array.isArray(result.results)) {
-          // Full result set — the Top K control caps display/markers.
-          this.results = result.results.map((r) => this.normalizeResult(r))
-        }
-        if (result.error) this.error = result.error
-        this.searched = true
-        this.loading = false
-        this.publishResults()
-        this.closeTemplateStream()
-      })
-
-      es.addEventListener('error', () => {
-        // Fires on connection failure OR when the server closes the stream.
-        // After a clean `done` this is a no-op; otherwise surface an error.
-        console.log('[SSE] error @', Date.now(), 'readyState:', es.readyState, 'searched:', this.searched)
-        this.clearAiAnswerTimer()
-        if (es.readyState === EventSource.CLOSED && !this.searched) {
-          this.error = this.error || 'Stream error'
-          this.loading = false
-        }
-        this.closeTemplateStream()
-      })
-    },
-
-    closeTemplateStream() {
-      // NOTE: do not clear the AI-reveal timer here — done() closes the
-      // stream, but the buffered AI answer must still appear after the
-      // data answer's solo window (the timer fires ~900ms later).
-      this.eventSource?.close()
-      this.eventSource = null
-    },
-
-    /** Reveal the AI answer region once the data answer has had its
-     * minimum solo display window; tokens buffer in the meantime.
-     *
-     * This controls ONLY when the AI box becomes visible — it must never
-     * touch aiAnswerElapsed. That value is set once, at the `done` event
-     * (the true enrichment completion time). Stamping it here made the
-     * displayed AI latency equal to dataAnswer + 900ms whenever the
-     * enrichment finished inside the solo window — the "always 0.9s
-     * behind" artifact. */
-    ensureAiAnswerVisible() {
-      if (this.aiAnswerAt) {
-        console.log('[SSE] ensureAi: already visible @', Date.now())
-        return
-      }
-      const elapsed = this.dataAnswerAt
-        ? Date.now() - this.dataAnswerAt
-        : Number.POSITIVE_INFINITY
-      console.log('[SSE] ensureAi @', Date.now(), 'elapsed:', elapsed, 'min:', this.minDataAnswerMs, 'enrichedLen:', this.enrichedAnswer.length)
-      if (elapsed >= this.minDataAnswerMs) {
-        this.aiAnswerAt = Date.now()
-        return
-      }
-      this.clearAiAnswerTimer()
-      this.aiAnswerTimer = setTimeout(() => {
-        this.aiAnswerAt = Date.now()
-        console.log('[SSE] ensureAi: timer fired @', Date.now())
-      }, this.minDataAnswerMs - elapsed)
-    },
-
-    clearAiAnswerTimer() {
-      if (this.aiAnswerTimer) {
-        clearTimeout(this.aiAnswerTimer)
-        this.aiAnswerTimer = null
-      }
-    },
-
-    // ── Anchor/entity query graph ─────────────────────────────────────
-
-    /** Normalize backend result shapes (executor: top-level lat/lon; triplet: geom). */
-    normalizeResult(r) {
-      const lat = r.geom?.lat ?? r.lat
-      const lon = r.geom?.lon ?? r.lon
-      return {
-        osm_type: r.osm_type,
-        osm_id: r.osm_id,
-        name: r.name || r.tags?.name || r.tags?.['name:en'] || '',
-        tags: r.tags || {},
-        wkg_class: r.wkg_class || null,
-        geom: lat != null && lon != null ? { lat: Number(lat), lon: Number(lon) } : null,
-        scores: r.scores || { final_score: null },
-        distance_m: r.distance_m ?? null,
-      }
-    },
-
-    /** Anchors = geocoded named locations from the executor trace.
-     *  Handles every geocoding step shape: 'geocode' / 'geocode_anchor'
-     *  (single output) and 'batch_geocode' (paired inputs/outputs). */
-    extractAnchors() {
-      const trace = this.executeTrace
-      const seen = new Set()
-      const anchors = []
-      const pushAnchor = (name, out) => {
-        if (!out) return
-        const lat = out.lat
-        const lon = out.lon
-        if (lat == null || lon == null) return
-        const key = name || 'anchor'
-        if (seen.has(key)) return
-        seen.add(key)
-        anchors.push({ name: key, lat: Number(lat), lon: Number(lon) })
-      }
-      for (const step of trace || []) {
-        if (step?.step === 'geocode' || step?.step === 'geocode_anchor') {
-          pushAnchor(step.input, step.output)
-        } else if (step?.step === 'batch_geocode') {
-          const inputs = Array.isArray(step.inputs) ? step.inputs : []
-          const outputs = Array.isArray(step.outputs) ? step.outputs : []
-          outputs.forEach((out, i) => pushAnchor(inputs[i] || `anchor ${i + 1}`, out))
-        }
-      }
-      return anchors
-    },
-
-    /** Haversine distance in meters (nearest-anchor link assignment). */
-    _haversineM(a, b) {
-      const R = 6371000
-      const toRad = (d) => (d * Math.PI) / 180
-      const dLat = toRad(b.lat - a.lat)
-      const dLon = toRad(b.lon - a.lon)
-      const s =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2
-      return 2 * R * Math.asin(Math.sqrt(s))
-    },
-
-    /** Index of the anchor nearest to an entity (links entities to their anchor set). */
-    nearestAnchorIndex(entity, anchors) {
-      let best = 0
-      let bestDist = Infinity
-      anchors.forEach((a, i) => {
-        const d = this._haversineM(entity.geom, a)
-        if (d < bestDist) {
-          bestDist = d
-          best = i
-        }
-      })
-      return best
-    },
-
-    /** Distance/bearing lines between paired geocoded anchors
-     *  (OBJECT-FIELD-MEASURE, bearing 5a): batch_geocode steps with two
-     *  coordinate-bearing outputs; the label comes from the haversine step
-     *  when present. */
-    extractAnchorLines() {
-      const trace = this.executeTrace
-      let distLabel = null
-      for (const step of trace || []) {
-        if (step?.step === 'haversine' && step.output_km != null) {
-          distLabel = `${step.output_km} km`
-        }
-      }
-      const lines = []
-      for (const step of trace || []) {
-        if (step?.step !== 'batch_geocode') continue
-        const outputs = Array.isArray(step.outputs) ? step.outputs : []
-        const inputs = Array.isArray(step.inputs) ? step.inputs : []
-        const pts = outputs
-          .filter((o) => o && o.lat != null && o.lon != null)
-          .slice(0, 2)
-        if (pts.length === 2) {
-          lines.push({
-            from: { lat: Number(pts[0].lat), lon: Number(pts[0].lon) },
-            to: { lat: Number(pts[1].lat), lon: Number(pts[1].lon) },
-            label: distLabel || `${inputs[0] || 'A'} → ${inputs[1] || 'B'}`,
-          })
-        }
-      }
-      return lines
-    },
-
-    /** Build the anchor/entity graph payload consumed by WorldKGMap. */
-    buildQueryGraph(entities) {
-      const anchors = this.extractAnchors()
-      const links = anchors.length
-        ? entities
-            .filter((e) => e.geom)
-            .map((e) => ({
-              anchorIdx: this.nearestAnchorIndex(e, anchors),
-              entityIdx: entities.indexOf(e),
-            }))
-        : []
-      return {
-        anchors,
-        entities,
-        links,
-        anchorLines: this.extractAnchorLines(),
-        topK: this.topKClamped,
-      }
-    },
-
-    /** Parse optional map metadata from executor trace/results for deck viz. */
-    buildTemplateVisualization(entities, graph) {
-      if (!this.isTemplateMode || !this.parsedQuery?.template) return null
-      const template = this.parsedQuery.template
-      const trace = Array.isArray(this.executeTrace) ? this.executeTrace : []
-      const radiusStep = trace.find((s) => s?.step === 'default_radius')
-      const coneStep = trace.find((s) => s?.step === 'cone_search')
-      const amountConcept = (this.parsedQuery.concepts || []).find((c) => c?.type === 'AMOUNT')
-      const amountText = amountConcept?.text || ''
-      const amountMatch = String(amountText).match(/(\d+(?:\.\d+)?)\s*(km|m)\b/i)
-      const radiusFromAmount = amountMatch
-        ? Math.round(parseFloat(amountMatch[1]) * (amountMatch[2].toLowerCase() === 'km' ? 1000 : 1))
-        : null
-      const firstDirectionalEntity = entities.find((e) => e.direction)
-      const direction = firstDirectionalEntity?.direction || null
-      return {
-        template,
-        question: this.templateQuery.trim(),
-        anchors: graph.anchors || [],
-        entities: graph.entities || [],
-        links: graph.links || [],
-        anchorLines: graph.anchorLines || [],
-        radiusM: radiusFromAmount || radiusStep?.radius_m || null,
-        coneRadiusM: coneStep?.radius_m || null,
-        direction,
-      }
-    },
-
     /** Emit normalized, top-k-capped entities + the anchor/entity graph. */
     publishResults() {
       const entities = this.displayResults
-      const graph = this.buildQueryGraph(entities)
+      const graph = buildQueryGraph({
+        entities,
+        trace: this.executeTrace,
+        topK: this.topKClamped,
+      })
       // Map markers (+ backward-compat circle fallback) — only entities with coords.
       this.$emit('search-results', entities.filter((e) => e.geom))
       this.$emit('query-graph', graph)
-      this.$emit('template-visualization', this.buildTemplateVisualization(entities, graph))
-    },
-
-    formatTags(tags) {
-      if (!tags) return ''
-      const entries = Object.entries(tags).slice(0, 3)
-      const str = entries.map(([k, v]) => `${k}=${v}`).join(', ')
-      return entries.length < Object.keys(tags).length ? str + '…' : str
-    },
-
-    /** Meters → human ("1.2 km" / "450 m"); '' when null. */
-    _fmtM(m) {
-      if (m == null) return ''
-      return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`
-    },
-
-    /** openstreetmap.org link for an OSM entity; null when no id. */
-    _osmUrl(e) {
-      if (!e || e.osm_id == null) return null
-      return `https://www.openstreetmap.org/${e.osm_type || 'node'}/${e.osm_id}`
-    },
-
-    /** OSM Wiki page for a tag value (Tag:key=value); null when empty. */
-    _tagSeg(key, value) {
-      if (!key || value == null || value === '') return null
-      const href = `https://wiki.openstreetmap.org/wiki/Tag:${key}=${encodeURIComponent(value)}`
-      return { text: `${key}=${value}`, href }
-    },
-
-    /** Link to a tag VALUE only ("pub" → Tag:amenity=pub), for use after a
-     *  plain "amenity" label; null when empty. */
-    _tagValueSeg(key, value) {
-      if (!key || value == null || value === '') return null
-      const href = `https://wiki.openstreetmap.org/wiki/Tag:${key}=${encodeURIComponent(value)}`
-      return { text: String(value), href }
-    },
-
-    /** WorldKG depth-1 classes whose UpperCamelCase name is the OSM key
-     *  (matches the ontology's KEY_CLASS_MAP). */
-    _WKGS_KEY_CLASSES() {
-      return new Set([
-        'Amenity', 'Natural', 'Building', 'Highway', 'Railway', 'Leisure',
-        'Shop', 'Tourism', 'Historic', 'Waterway', 'Landuse', 'Place',
-        'Aeroway', 'Emergency', 'Healthcare', 'Man_made', 'Power',
-        'Public_transport',
-      ])
-    },
-
-    /** Wiki link for a WorldKG class: wkgs:Place → OSM Wiki Key:place
-     *  (the OSM key the class is derived from); unknown classes fall back
-     *  to the WorldKG class URI. Returns a segment or null. */
-    _classSeg(wkgClass) {
-      if (!wkgClass || !wkgClass.startsWith('wkgs:')) return null
-      const cls = wkgClass.slice(5)
-      const key = cls.charAt(0).toLowerCase() + cls.slice(1)
-      const href = this._WKGS_KEY_CLASSES().has(cls)
-        ? `https://wiki.openstreetmap.org/wiki/Key:${key}`
-        : `http://www.worldkg.org/schema/${cls}`
-      return { text: wkgClass, href }
-    },
-
-    /** Trace line for an OSM entity as segments: the entity NAME, the
-     *  WorldKG class, and any place tag each get the green wiki link.
-     *  Pass { linked: false } for failed steps (no id/coords) — the
-     *  entity renders as a plain diagnostic, never a success link. */
-    _entityLine(e, { linked = true } = {}) {
-      const segs = []
-      const name = e.name || e.tags?.name || 'unnamed'
-      const href = linked ? this._osmUrl(e) : null
-      segs.push(href ? { text: name, href } : name)
-      if (e.osm_id != null) segs.push(`(${e.osm_type || '?'}/${e.osm_id})`)
-      if (e.lat != null && e.lon != null) {
-        segs.push(`${Number(e.lat).toFixed(4)}, ${Number(e.lon).toFixed(4)}`)
-      }
-      if (linked && e.wkg_class) {
-        const cls = this._classSeg(e.wkg_class)
-        if (cls) segs.push(cls)
-      }
-      if (linked && e.tags?.place) {
-        const tag = this._tagSeg('place', e.tags.place)
-        if (tag) segs.push(tag)
-      }
-      return { segments: segs }
-    },
-
-    /** Decorate one trace step into a flow node: icon + title + insight lines.
-     *  Every step type keeps its real fields — nothing is dropped, the
-     *  layout just decides what reads as the one-line insight.
-     *
-     *  Colors: the heading matches the primary-answer text color ("Found N
-     *  entities within …", rendered with the info emphasis color); each
-     *  icon is colored by its nature (green = resolution, amber = decision,
-     *  blue = ordering/search, cyan = spatial/diffusion, gray = context).
-     *  Warnings/errors flip heading + icon to red. */
-    _decorateStep(step) {
-      const st = step?.step || 'step'
-      const node = {
-        icon: 'bi-arrow-right',
-        title: st.replace(/_/g, ' '),
-        lines: [],
-        error: null,
-        color: 'info-emphasis',
-        iconColor: 'text-secondary',
-        iconBg: 'bg-secondary-subtle',
-        live: false,
-        status: null, // 'error' | 'warning' | null — status badge + accent bar
-      }
-
-      const isEntity = (v) =>
-        v && typeof v === 'object' && v.osm_id != null && v.tags
-
-      switch (st) {
-        case 'geocode':
-        case 'geocode_anchor': {
-          // Anchor resolved → green; entity is a link to OSM. On failure
-          // (no usable id/coords) the step shows the error and the entity
-          // renders as a plain diagnostic, never a success link.
-          node.icon = 'bi-geo-alt'
-          node.iconColor = 'text-success'
-          node.title = `Geocode${step.input ? `: ${step.input}` : ''}`
-          if (step.error) node.error = step.error
-          if (isEntity(step.output)) {
-            node.lines.push(this._entityLine(step.output, { linked: !step.error }))
-          }
-          break
-        }
-        case 'batch_geocode': {
-          // Multiple anchors resolved in one step → green links.
-          node.icon = 'bi-pin-map'
-          node.iconColor = 'text-success'
-          node.title = step.inputs?.length
-            ? `Geocode: ${step.inputs.join(', ')}`
-            : 'Batch geocode'
-          if (step.error) node.error = step.error
-          if (Array.isArray(step.outputs)) {
-            step.outputs.forEach((out, i) => {
-              if (isEntity(out)) {
-                node.lines.push(this._entityLine(out, { linked: !step.error }))
-              } else if (step.inputs?.[i]) {
-                node.lines.push(step.inputs[i])
-              }
-            })
-          }
-          break
-        }
-        case 'haversine': {
-          // Distance computed between two points → cyan.
-          node.icon = 'bi-rulers'
-          node.iconColor = 'text-info'
-          node.title = 'Distance (haversine)'
-          if (step.output_km != null) {
-            node.lines.push(
-              `${step.output_km} km${step.output_m != null ? ` (${step.output_m} m)` : ''}`
-            )
-          }
-          break
-        }
-        case 'cone_search': {
-          // Directional cone filter → amber compass; amenity links to wiki.
-          node.icon = 'bi-compass'
-          node.iconColor = 'text-warning'
-          node.title = step.direction
-            ? `Cone search: ${step.direction}`
-            : 'Cone search'
-          const amenitySeg = this._tagValueSeg('amenity', step.amenity)
-          if (amenitySeg) {
-            node.lines.push({ segments: ['amenity', amenitySeg] })
-          }
-          if (step.radius_m != null) node.lines.push(`radius: ${step.radius_m} m`)
-          if (step.output_count != null) node.lines.push(`candidates: ${step.output_count}`)
-          break
-        }
-        case 'compare_closer': {
-          // Comparison decision → amber; each candidate's name is a green
-          // OSM link (resolved entity id comes from the executor; legacy
-          // string candidates fall back to a name join with the results).
-          node.icon = 'bi-arrows-angle-contract'
-          node.iconColor = 'text-warning'
-          node.title = step.anchor
-            ? `Which is closer to ${step.anchor}?`
-            : 'Compared candidates'
-          if (Array.isArray(step.candidates) && step.candidates.length) {
-            const byName = new Map()
-            for (const r of this.displayResults) {
-              const key = String(r.name || '').toLowerCase()
-              if (key) byName.set(key, r)
-            }
-            const rows = step.candidates.map((c) => {
-              if (typeof c === 'string') {
-                const hit = byName.get(String(c).toLowerCase())
-                return { text: c, d: hit?.distance_m ?? null, entity: hit }
-              }
-              return {
-                text: c.query || c.name || String(c.osm_id ?? ''),
-                d: c.distance_m ?? null,
-                entity: c,
-              }
-            })
-            const minD = Math.min(...rows.map((r) => (r.d == null ? Infinity : r.d)))
-            for (const r of rows) {
-              const segs = []
-              if (r.entity && r.entity.osm_id != null) {
-                segs.push({ text: r.text, href: this._osmUrl(r.entity) })
-              } else {
-                segs.push(r.text)
-              }
-              if (r.d != null) {
-                segs.push(`— ${this._fmtM(r.d)}${r.d === minD ? ' ✓ closest' : ''}`)
-              }
-              node.lines.push({ segments: segs, sep: ' ' })
-            }
-          } else if (step.output_count != null) {
-            node.title = `Compared ${step.output_count} candidates`
-          }
-          break
-        }
-        case 'entity_context': {
-          // Supporting context → cyan with a live pulse so the node reads
-          // as "context being assembled for the answer".
-          node.icon = 'bi-diagram-3'
-          node.iconColor = 'text-info'
-          node.live = true
-          node.title = 'Entity context'
-          const parts = []
-          if (step.uslp_links != null) parts.push(`uslp links ${step.uslp_links}`)
-          if (step.communities != null) parts.push(`communities ${step.communities}`)
-          if (step.class_distribution != null) parts.push(`classes ${step.class_distribution}`)
-          if (parts.length) node.lines.push(parts.join(' · '))
-          if (Array.isArray(step.sources) && step.sources.length) {
-            node.lines.push(`sources: ${step.sources.join(', ')}`)
-          }
-          break
-        }
-        case 'default_radius':
-        case 'radius_guard': {
-          // Spatial bound / filter → cyan
-          node.icon = 'bi-broadcast'
-          node.iconColor = 'text-info'
-          node.title = `Radius ${step.radius_m ?? '?'} m`
-          if (step.reason) node.lines.push(step.reason)
-          if (step.before != null && step.after != null) {
-            node.lines.push(`${step.before} → ${step.after} entities after radius guard`)
-          }
-          break
-        }
-        case 'rank_by_distance': {
-          // Ordering → blue
-          node.icon = 'bi-sort-numeric-down'
-          node.iconColor = 'text-primary'
-          node.title = 'Ranked by distance'
-          if (step.anchor) node.lines.push(`anchor: ${step.anchor}`)
-          if (step.top) node.lines.push(`closest: ${step.top}`)
-          break
-        }
-        case 'heat_kernel': {
-          // Diffusion → cyan; amenity value links to its OSM wiki tag page.
-          node.icon = 'bi-thermometer-half'
-          node.iconColor = 'text-info'
-          node.title = 'Diffusion (heat kernel)'
-          const segs = []
-          const amenitySeg = this._tagValueSeg('amenity', step.amenity)
-          if (amenitySeg) segs.push('amenity', amenitySeg)
-          if (step.t != null) segs.push(`t=${step.t}`)
-          if (step.total_amenity_nodes != null) segs.push(`${step.total_amenity_nodes} nodes`)
-          if (segs.length) node.lines.push({ segments: segs })
-          break
-        }
-        case 'multi_anchor_resolve':
-        case 'multi_anchor_search':
-        case 'multi_anchor_anchors':
-        case 'multi_anchor_empty': {
-          // Multiple anchors → blue; category (an amenity value) links to wiki.
-          node.icon = 'bi-pin-angle'
-          node.iconColor = 'text-primary'
-          node.title = st.replace(/_/g, ' ')
-          if (step.input) node.lines.push(step.input)
-          const catSeg = this._tagValueSeg('amenity', step.anchor_category)
-          if (catSeg) {
-            node.lines.push({ segments: ['category', catSeg] })
-          }
-          const resSeg = this._tagValueSeg('amenity', step.resolved_amenity)
-          if (resSeg) {
-            node.lines.push({ segments: ['resolved', resSeg] })
-          }
-          if (step.anchor_count != null) node.lines.push(`anchors: ${step.anchor_count}`)
-          if (step.radius_m != null) node.lines.push(`radius: ${step.radius_m} m`)
-          if (step.warning) node.lines.push(step.warning)
-          break
-        }
-        case 'augmented_enrichment': {
-          // Enrichment added → green
-          node.icon = 'bi-arrow-up-right'
-          node.iconColor = 'text-success'
-          node.title = 'Enrichment'
-          if (step.output_count != null) node.lines.push(`enriched ${step.output_count} entities`)
-          break
-        }
-        case 'place_search': {
-          node.icon = 'bi-search'
-          node.iconColor = 'text-primary'
-          node.title = 'Place search'
-          if (step.error) node.error = step.error
-          if (step.warning) node.lines.push(step.warning)
-          break
-        }
-        case 'factor_join': {
-          // Factor-table retrieval — the heart of the answer. Surface the
-          // table, subgraph scope, candidate/result counts and any note
-          // (e.g. lenient eigenbasis fallback) instead of a bare label.
-          node.icon = 'bi-table'
-          node.iconColor = 'text-primary'
-          node.title = step.op
-            ? `Factor join: ${step.op.replace(/_/g, ' ')}`
-            : 'Factor join'
-          if (step.table) node.lines.push(`table: ${step.table}`)
-          if (step.subgraph_slug) node.lines.push(`subgraph: ${step.subgraph_slug}`)
-          if (step.anchor_osm_id != null) node.lines.push(`anchor: ${step.anchor_osm_id}`)
-          if (step.candidates != null) node.lines.push(`candidates: ${step.candidates}`)
-          if (step.output_count != null) node.lines.push(`results: ${step.output_count}`)
-          if (step.note) node.lines.push(`note: ${step.note}`)
-          if (step.detail) node.lines.push(step.detail)
-          if (step.cross_subgraph_transport) {
-            const t = step.cross_subgraph_transport
-            if (t.transport_matrices_used != null) {
-              node.lines.push(`cross-subgraph transport: ${t.transport_matrices_used} matrices`)
-            }
-          }
-          if (step.error) node.error = step.error
-          if (step.warning) node.lines.push(step.warning)
-          break
-        }
-        case 'spatial_filter_skipped': {
-          // Skipped → amber, flips red via the warning rule
-          node.icon = 'bi-exclamation-triangle'
-          node.iconColor = 'text-warning'
-          node.title = st.replace(/_/g, ' ')
-          if (step.error) node.error = step.error
-          if (step.warning) node.lines.push(step.warning)
-          break
-        }
-        default: {
-          // Generic step: surface every scalar field as key: value — the
-          // default keeps future step types visible instead of invisible.
-          node.iconColor = 'text-secondary'
-          const skip = new Set(['step', 'input', 'output'])
-          for (const [k, v] of Object.entries(step)) {
-            if (skip.has(k)) continue
-            if (typeof v === 'string' || typeof v === 'number') {
-              node.lines.push(`${k}: ${v}`)
-            }
-          }
-          if (isEntity(step.output)) node.lines.push(this._entityLine(step.output))
-        }
-      }
-      // Status protocol — errors → red badge/bar; warnings and degraded
-      // states (NULL, unverified, lenient, pre-migration, fallback) →
-      // amber badge/bar. The badge catches the eye; the heading keeps its
-      // "Found…" color and the icon keeps its nature color.
-      const attentionText = [step.warning, step.note, step.detail]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-      const degraded = /unverified|lenient|null|pre-migration|fallback|unavailable|degraded|skipped/.test(
-        attentionText
+      this.$emit(
+        'template-visualization',
+        buildTemplateVisualization({
+          isTemplateMode: this.isTemplateMode,
+          parsedQuery: this.parsedQuery,
+          templateQuery: this.templateQuery,
+          trace: this.executeTrace,
+          entities,
+          graph,
+        })
       )
-      if (node.error || step.error) {
-        // step.error must count even when a case didn't copy it to
-        // node.error (e.g. a failed geocode) — otherwise the error is
-        // silently invisible to the status protocol.
-        node.status = 'error'
-        node.color = 'danger'
-        node.iconColor = 'text-danger'
-        node.live = false
-        node.error = node.error || step.error
-      } else if (step.warning || degraded) {
-        node.status = 'warning'
-        if (step.warning) node.iconColor = 'text-warning'
-        node.live = false
-      }
-      // Icon chip background follows the icon color (subtle tint).
-      node.iconBg = {
-        'text-success': 'bg-success-subtle',
-        'text-danger': 'bg-danger-subtle',
-        'text-warning': 'bg-warning-subtle',
-        'text-primary': 'bg-primary-subtle',
-        'text-info': 'bg-info-subtle',
-      }[node.iconColor] || 'bg-secondary-subtle'
-      return node
     },
+
   },
 }
 </script>
@@ -1312,32 +674,8 @@ export default {
   cursor: pointer;
 }
 
-/* Result-table entity name links: underline on hover only (the plain
-   Bootstrap link default is always-underlined; its text-decoration-none
-   utility carries !important and would beat a hover rule, hence the
-   dedicated class). */
-.results-name-link {
-  text-decoration: none;
-}
-.results-name-link:hover {
-  text-decoration: underline;
-}
-
-/* Results table: active row (reticle entity) stays distinct on hover;
-   balanced cell padding keeps the scan line level. */
-.results-table tbody tr:hover {
-  background-color: var(--bs-tertiary-bg);
-}
-.results-table tbody tr:hover td:first-child {
-  box-shadow: inset 3px 0 0 var(--bs-info);
-}
-.results-table td {
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  padding-left: 0.625rem;
-  padding-right: 0.625rem;
-  vertical-align: middle;
-}
+/* Result-table styles moved to SearchResultsTable.vue (scoped CSS does
+   not cross into child components). */
 
 /* Form fields + selectors: standardized 12px with comfortable 32px
    touch targets (Stitch design pass 2026-09-21). */

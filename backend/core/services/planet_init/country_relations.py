@@ -284,17 +284,25 @@ def get_country_by_iso(iso_code: str) -> Optional[dict]:
 
     try:
 
-        hierarchy = OSMWikiDataHierarchy.objects.filter(
+        lookup = OSMWikiDataHierarchy.objects.filter(admin_level=2)
 
-            admin_level=2
-
-        ).filter(
-
-            models.Q(wikidata_id__icontains=iso_code) | 
-
-            models.Q(slug__icontains=iso_code.lower())
-
+        ***REMOVED*** Exact match first — never substring-match codes: "AE" must not
+        ***REMOVED*** match the slug "israel" ("isr[ae]l") and return the wrong country
+        ***REMOVED*** (2026-10-06). The fuzzy fallback is preserved ONLY for non-ISO-2
+        ***REMOVED*** inputs (alpha-3 / QID fragments); ISO-2 codes match exactly or
+        ***REMOVED*** not at all.
+        hierarchy = lookup.filter(
+            models.Q(wikidata_id__iexact=iso_code)
+            | models.Q(slug__iexact=iso_code.lower())
         ).first()
+
+        if hierarchy is None and not (
+            len(iso_code) == 2 and iso_code.isalpha()
+        ):
+            hierarchy = lookup.filter(
+                models.Q(wikidata_id__icontains=iso_code)
+                | models.Q(slug__icontains=iso_code.lower())
+            ).first()
 
         
 
@@ -359,6 +367,14 @@ def get_country_by_name(country_name: str) -> Optional[dict]:
     """
 
     try:
+
+        ***REMOVED*** A 2-letter input is a code, not a name — route to the ISO lookup
+        ***REMOVED*** instead of substring-matching names ("EN" must not match
+        ***REMOVED*** "Fr[en]ch"). Name inputs keep the case-insensitive contains
+        ***REMOVED*** lookup (2026-10-06).
+        cleaned = (country_name or '').strip()
+        if len(cleaned) == 2 and cleaned.isalpha():
+            return get_country_by_iso(cleaned)
 
         hierarchy = OSMWikiDataHierarchy.objects.filter(
 

@@ -98,3 +98,19 @@ class TestSystemStatusView:
         assert "completed_dates" in data
         assert "default" in data
         assert isinstance(data["snapshot_dates"], list)
+
+    def test_processed_countries_empty_when_none(self, client):
+        data = self._get(client).json()
+        assert data["processed_countries"] == []
+
+    def test_processed_countries_lists_search_ready_only(self, client):
+        from core.models import CountrySearchProcessing
+
+        CountrySearchProcessing.objects.create(
+            country_name="ireland_and_northern_ireland", is_processed=True
+        )
+        CountrySearchProcessing.objects.create(
+            country_name="belize", is_processed=False
+        )
+        data = self._get(client).json()
+        assert data["processed_countries"] == ["ireland_and_northern_ireland"]

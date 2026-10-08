@@ -15,8 +15,10 @@
  * UI-message-stream protocol.
  *
  * Props:
- *   countryName  - Required. Country to research within.
- *   snapshotDate - Optional. Snapshot date string (e.g. "2025_12_31").
+ *   countryName    - Required. Country to research within.
+ *   snapshotDate   - Optional. Snapshot date string (e.g. "2025_12_31").
+ *   subdivisionQid - Optional. Wikidata QID — scopes the run's results to
+ *                    the subdivision polygon (2026-10-01).
  */
 <template>
   <div class="d-flex flex-column gap-2">
@@ -48,7 +50,7 @@
           v-model="draft"
           type="text"
           class="form-control form-control-sm"
-          placeholder="e.g. plan a 2-day trip to Belize City"
+          placeholder="e.g. how well is Belize City served by public transit?"
           :disabled="isChatLoading"
         />
         <button
@@ -90,7 +92,9 @@
          is visible; auto-collapses when the summary starts. -->
     <div v-if="questions.length" class="d-flex flex-column gap-1">
       <details ref="questionsDetails" class="research-details small text-secondary" open>
-        <summary class="cursor-pointer">Execution Trace - Research questions ({{ questions.length }})</summary>
+        <summary class="cursor-pointer">
+          Execution Trace - Research questions ({{ questions.length }}<template v-if="tools.length"> + {{ tools.length }} follow-up searches</template>)
+        </summary>
         <div class="research-questions-flow d-flex flex-column gap-1 mt-1">
           <div
             v-for="q in questions"
@@ -120,18 +124,21 @@
             </div>
             <div v-else-if="isRunning" class="text-secondary mt-1">parsing…</div>
           </div>
+          <!-- Follow-up tool calls (the OSM tag query / structuredSearch
+               rows) live INSIDE the trace so the full decision flow is
+               visible in one place (2026-10-01). -->
+          <div v-if="tools.length" class="d-flex flex-column gap-1 border-top pt-1">
+            <div class="small text-secondary fw-semibold">Follow-up searches</div>
+            <div v-for="(t, i) in tools" :key="i" class="border rounded small p-2 border-secondary-subtle">
+              <div class="d-flex align-items-center gap-1">
+                <span class="badge bg-success">{{ t.tool }}</span>
+                <code class="flex-grow-1 text-truncate" :title="JSON.stringify(t.args)">{{ JSON.stringify(t.args) }}</code>
+              </div>
+              <div v-if="toolOutputSummary(t)" class="text-secondary mt-1">{{ toolOutputSummary(t) }}</div>
+            </div>
+          </div>
         </div>
       </details>
-    </div>
-
-    <!-- Follow-up tool calls -->
-    <div v-if="tools.length" class="d-flex flex-column gap-1">
-      <div class="small text-secondary">Follow-up searches</div>
-      <div v-for="(t, i) in tools" :key="i" class="border rounded small p-2 border-secondary-subtle">
-        <span class="badge bg-success">{{ t.tool }}</span>
-        <code class="ms-1">{{ JSON.stringify(t.args) }}</code>
-        <div v-if="t.output" class="text-secondary mt-1">{{ JSON.stringify(t.output).slice(0, 300) }}</div>
-      </div>
     </div>
 
     <!-- Streamed final summary -->
@@ -158,6 +165,10 @@ export default {
       type: String,
       default: null,
     },
+    subdivisionQid: {
+      type: String,
+      default: '',
+    },
   },
   setup(props) {
     // Rule 1.3 hybrid: acquire the composable (and its transport) here,
@@ -169,6 +180,7 @@ export default {
         body: () => ({
           country_code: props.countryName,
           snapshot_date: props.snapshotDate,
+          subdivision_qid: props.subdivisionQid || undefined,
         }),
       }),
     })
@@ -279,6 +291,7 @@ export default {
         const payload = { messages: msgs }
         if (this.countryName) payload.country_code = this.countryName
         if (this.snapshotDate) payload.snapshot_date = this.snapshotDate
+        if (this.subdivisionQid) payload.subdivision_qid = this.subdivisionQid
         const { data } = await axios.post(
           `${axios.defaults.baseURL || ''}/nca/research/finalize/`,
           payload,
@@ -310,6 +323,7 @@ export default {
       const params = new URLSearchParams({ prompt })
       if (this.countryName) params.set('country_code', this.countryName)
       if (this.snapshotDate) params.set('snapshot_date', this.snapshotDate)
+      if (this.subdivisionQid) params.set('subdivision_qid', this.subdivisionQid)
 
       const base = axios.defaults.baseURL || ''
       const url = `${base}/nca/research/stream/?${params}`
@@ -435,6 +449,27 @@ export default {
     collapseQuestions() {
       const el = this.$refs.questionsDetails
       if (el) el.open = false
+    },
+    /**
+     * Compact summary of a follow-up tool's output: for structuredSearch
+     * (the OSM tag query) "N results — top names…"; otherwise the raw
+     * output truncated. Empty string when there is no output yet.
+     */
+    toolOutputSummary(t) {
+      const out = t.output
+      if (!out) return ''
+      if (typeof out === 'object' && out.count != null) {
+        const names = (out.results || [])
+          .map((r) => r.tags?.name || r.name)
+          .filter(Boolean)
+          .slice(0, 3)
+        const total = out.results?.length || out.count
+        const suffix = names.length
+          ? ' — ' + names.join(', ') + (total > names.length ? '…' : '')
+          : ''
+        return `${out.count} results${suffix}`
+      }
+      return JSON.stringify(out).slice(0, 300)
     },
     /**
      * True when the executor found nothing ("No results found." with a

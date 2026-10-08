@@ -93,6 +93,22 @@ _AMENITY_SIGNAL_WORDS = frozenset({
     "nature reserve", "dive centre", "campsite", "camp site",
     "hostel", "motel", "resort", "guest house", "guesthouse",
     "ruins", "harbour", "harbor",
+    ***REMOVED*** Commercial / services / transit / infrastructure (2026-10-01) — the
+    ***REMOVED*** place-report recipe's slots ("Which fuel stations are within 5km of
+    ***REMOVED*** Belmopan?", "Which bus stops are near the market?"). Mirrors the
+    ***REMOVED*** CATEGORY_TAG_TARGETS entries so _resolve_tag_target round-trips
+    ***REMOVED*** each token to its real OSM key (amenity=fuel, highway=bus_stop, ...).
+    "fuel", "fuel station", "gas station", "charging station",
+    "parking", "atm", "post office", "fast food", "marketplace",
+    "bus stop", "bus station", "police", "library", "cinema",
+    "kindergarten",
+    ***REMOVED*** Commercial generalization (2026-10-01): markets, bakeries, kiosks,
+    ***REMOVED*** food courts/vendors, and the taco/mexican cuisine family — the
+    ***REMOVED*** OBJECT span match keeps these so "Which taco vendors..." does not
+    ***REMOVED*** collapse to a name search.
+    "market", "bakery", "kiosk", "food court", "food truck",
+    "vending machine", "convenience store", "mall", "taco", "tacos",
+    "taqueria", "mexican",
 })
 
 

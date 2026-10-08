@@ -90,25 +90,47 @@ export function normalizeOverlayEntities(overlay) {
     ? raw
     : raw.results || (raw.result && raw.result.results) || []
   return source
-    .map((e) => ({
-      lat: e.lat != null ? e.lat : e.geom && e.geom.lat,
-      lon: e.lon != null ? e.lon : e.geom && e.geom.lon,
-      name:
-        e.name ||
-        (e.tags && e.tags.name) ||
-        `${e.osm_type || 'osm'} ${e.osm_id || ''}`.trim(),
-      wkg_class: e.wkg_class || e.wkgClass || null,
-      osm_type: e.osm_type || null,
-      osm_id: e.osm_id ?? null,
-      scores: e.scores || null,
-      score:
-        e.score ??
-        (e.scores && e.scores.final_score) ??
-        e.diffusion_score ??
-        null,
-      distance_m: e.distance_m != null ? e.distance_m : e.distanceM,
-    }))
+    .map(normalizeOverlayEntity)
     .filter((e) => e.lat != null && e.lon != null)
+}
+
+/** First non-null value across the extractor list. `truthy` mode also
+ *  skips '' — an empty name field must fall through to tags.name. */
+function firstOf(e, pickers, { truthy = false } = {}) {
+  for (const pick of pickers) {
+    const v = pick(e)
+    if (truthy ? v : v != null) return v
+  }
+  return null
+}
+
+/** Per-field fallback extractors — each row is an ordered candidate list;
+ *  the field spec is the table, firstOf is the one branch. */
+const OVERLAY_ENTITY_FIELDS = {
+  lat: { pickers: [(e) => e.lat, (e) => e.geom?.lat] },
+  lon: { pickers: [(e) => e.lon, (e) => e.geom?.lon] },
+  name: {
+    pickers: [(e) => e.name, (e) => e.tags?.name],
+    truthy: true,
+    fallback: (e) => `${e.osm_type || 'osm'} ${e.osm_id || ''}`.trim(),
+  },
+  wkg_class: { pickers: [(e) => e.wkg_class, (e) => e.wkgClass], truthy: true },
+  osm_type: { pickers: [(e) => e.osm_type], truthy: true },
+  osm_id: { pickers: [(e) => e.osm_id] },
+  scores: { pickers: [(e) => e.scores], truthy: true },
+  score: {
+    pickers: [(e) => e.score, (e) => e.scores?.final_score, (e) => e.diffusion_score],
+  },
+  distance_m: { pickers: [(e) => e.distance_m, (e) => e.distanceM] },
+}
+
+function normalizeOverlayEntity(e) {
+  return Object.fromEntries(
+    Object.entries(OVERLAY_ENTITY_FIELDS).map(([key, spec]) => [
+      key,
+      firstOf(e, spec.pickers, spec) ?? spec.fallback?.(e) ?? null,
+    ])
+  )
 }
 
 // ── Search results ──────────────────────────────────────────────────────

@@ -36,6 +36,9 @@ from pipeline.tasks.country_pipeline_steps.step_5_nle import (  ***REMOVED*** no
 from pipeline.tasks.country_pipeline_steps.step_5c_graph_spectral import (  ***REMOVED*** noqa: F401
     step_5c_graph_spectral_analysis,
 )
+from pipeline.tasks.country_pipeline_steps.step_5_8_sample_questions import (  ***REMOVED*** noqa: F401
+    step_5_8_generate_sample_questions,
+)
 ***REMOVED*** Step 5d (step_5d_temporal_drift) removed from the Celery registry 2026-09-26 —
 ***REMOVED*** temporal drift is a scheduled-interval feature, not a per-run step.
 ***REMOVED*** TODO: re-add as its own feature; module + services retained at
