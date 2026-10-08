@@ -121,8 +121,6 @@ class TestResearchChat:
                     {"role": "user", "content": "plan a trip"},
                 ]}),
                 content_type="application/json",
-                # localhost bypasses PublicAuthGuardMiddleware (testserver is
-                # a "public" host in the container's TRUSTED_LOCAL_HOSTS).
                 HTTP_HOST="localhost",
             )
         assert resp.status_code == 200
@@ -191,18 +189,17 @@ class TestResearchChat:
 class TestResearchFinalize:
     def test_returns_structured_brief(self, client):
         fake = FakeLLM(chat_json_result={
-            "destination": "Belize City", "duration": "2-day",
-            "party_size": "2 adults", "budget": "$5000",
-            "interests": "exploring",
+            "area": "Belize City", "focus": "restaurants and shops",
+            "scope": "within 3km",
         })
         with mock.patch.object(LLMService, "get_instance", return_value=fake):
             resp = client.post(
                 "/api/nca/research/finalize/",
                 data=json.dumps({"messages": [
-                    {"role": "user", "content": "plan a 2-day trip to Belize City"},
-                    {"role": "assistant", "content": "Who's coming?"},
-                    {"role": "user", "content": "2 adults, $5000, exploring"},
-                ]}),
+                    {"role": "user", "content": "what restaurants and shops are around Belize City"},
+                    {"role": "assistant", "content": "How far out?"},
+                    {"role": "user", "content": "within 3km"},
+                ], "subdivision_qid": "Q1234"}),
                 content_type="application/json",
                 HTTP_HOST="localhost",
             )
@@ -210,8 +207,8 @@ class TestResearchFinalize:
         data = resp.json()
         assert data["source"] == "structured"
         assert "Belize City" in data["brief"]
-        assert "for 2 adults" in data["brief"]
-        assert "$5000" in data["brief"]
+        assert "restaurants and shops" in data["brief"]
+        assert "3km" in data["brief"]
 
     def test_missing_messages_400(self, client):
         resp = client.post(

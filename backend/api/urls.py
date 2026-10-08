@@ -7,19 +7,11 @@ from .views import (
     SystemStatusView,
     RegionMapDataView,
 )
-from .views import auth as views_auth
 from .views import augmented_data as views_augmented_data
 from .views import system_summary as views_system_summary
 
 # Core API Endpoints - E2E Tested
 urlpatterns = [
-    # Session auth (SPA login guard)
-    path('auth/csrf/', views_auth.csrf, name='auth_csrf'),
-    path('auth/login/', views_auth.login_view, name='auth_login'),
-    path('auth/logout/', views_auth.logout_view, name='auth_logout'),
-    path('auth/register/', views_auth.register_view, name='auth_register'),
-    path('auth/me/', views_auth.me, name='auth_me'),
-
     # Initial Status
     path('status/initial/', InitialStatusView.as_view(), name='initial_status'),
 

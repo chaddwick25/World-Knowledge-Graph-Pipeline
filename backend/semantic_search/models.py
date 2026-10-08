@@ -324,3 +324,49 @@ class GraphSpectralDrift(models.Model):
             f"dist={self.spectral_distance:.4f}, "
             f"Δλ₂={self.connectivity_delta:.4f})"
         )
+
+
+class SampleQuestion(models.Model):
+    """A sample question in the OSM RAG question bank.
+
+    Country-scope rows (``subdivision_qid=''``) are curated — seeded from
+    the bundled CSV manifest (``load_sample_questions``). Subdivision rows
+    are GENERATED from the entities whose ``geom`` falls inside the
+    subdivision polygon (``geom__within`` — the same geometry pattern the
+    bbox-scoped search path uses), so the question reflects operations
+    within the subdivision and runs against the fast subdivision search.
+    """
+
+    country_code = models.CharField(max_length=8, db_index=True)
+    # '' = country scope; otherwise the Wikidata QID of a subdivision.
+    subdivision_qid = models.CharField(max_length=16, default='', blank=True,
+                                       db_index=True)
+    subdivision_name = models.CharField(max_length=255, default='',
+                                        blank=True)
+    question = models.TextField()
+    template = models.CharField(max_length=64, default='')
+    anchor = models.CharField(max_length=255, default='', blank=True)
+    # 'curated' (seeded from the CSV manifest) | 'generated' (geometry-scoped)
+    source = models.CharField(max_length=16, default='generated')
+    snapshot_date = models.CharField(max_length=16, default='', blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'semantic_search_samplequestion'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['country_code', 'subdivision_qid', 'question'],
+                name='uniq_sample_question',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['country_code', 'subdivision_qid']),
+        ]
+        ordering = ['country_code', 'subdivision_qid', 'question']
+        verbose_name = 'Sample Question'
+        verbose_name_plural = 'Sample Questions'
+
+    def __str__(self):
+        scope = self.subdivision_qid or 'country'
+        return f"SampleQ({self.country_code}/{scope}: {self.question[:40]})"

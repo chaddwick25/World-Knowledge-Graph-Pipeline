@@ -44,16 +44,18 @@ try {
     );
   }
 
-  // 2. nameSearch — cross-script (Korean → Latin)
-  const n = await call("nameSearch", {
+  // 2. structuredSearch name tag — cross-script (Korean → Latin). The
+  //    nameSearch MCP tool was removed 2026-09-28; its capability folded
+  //    into structuredSearch's name tag (same romanizer machinery).
+  const n = await call("structuredSearch", {
     countryCode: "KR",
-    naturalQuery: "파리바게뜨",
+    queryTags: { name: "파리바게뜨" },
     topK: 2,
   });
   if (n) {
     const first = n.results?.[0];
     console.log(
-      `✅ nameSearch: ${n.count} results; top: ${first?.tags?.name || first?.name} @ (${first?.geom?.lat?.toFixed(3)}, ${first?.geom?.lon?.toFixed(3)})`
+      `✅ structuredSearch(name): ${n.count} results; top: ${first?.tags?.name || first?.name} @ (${first?.geom?.lat?.toFixed(3)}, ${first?.geom?.lon?.toFixed(3)})`
     );
   }
 

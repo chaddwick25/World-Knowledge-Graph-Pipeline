@@ -1,6 +1,6 @@
 <template>
   <div v-if="subdivisions.length > 0" class="subdivision-selector">
-    <label class="subdivision-selector__label">Subdivision</label>
+    <label class="subdivision-selector__label">Subdivision - {{ label }}</label>
     <select
       v-model="selectedQid"
       class="subdivision-selector__select"
@@ -30,7 +30,8 @@
  *   countryName  - Required. Country name or ISO-2 code.
  *
  * Emits:
- *   subdivision-selected  - Wikidata QID string, or null when "All" is selected.
+ *   subdivision-selected  - (Wikidata QID, subdivision name) — both null
+ *                           when "All" is selected.
  */
 
 import axios from 'axios'
@@ -50,6 +51,9 @@ export default {
       selectedQid: null,
       loading: false,
       error: null,
+      // Per-country subdivision term (County / Province and Territory / ...)
+      // from the backend; falls back to "Subdivision".
+      label: 'Subdivision',
     }
   },
   watch: {
@@ -77,6 +81,7 @@ export default {
           params: { country_code: this.countryName },
         })
         this.subdivisions = response.data.subdivisions || []
+        this.label = response.data.subdivision_label || 'Subdivision'
       } catch (err) {
         // Silently fail — subdivision filtering is optional
         this.subdivisions = []
@@ -87,7 +92,10 @@ export default {
     },
 
     onSelect() {
-      this.$emit('subdivision-selected', this.selectedQid)
+      const sd = this.subdivisions.find(
+        (s) => s.wikidata_id === this.selectedQid,
+      )
+      this.$emit('subdivision-selected', this.selectedQid, sd?.name || null)
     },
   },
 }

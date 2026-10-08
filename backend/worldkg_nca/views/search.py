@@ -20,6 +20,7 @@ import re
 import unicodedata
 
 from worldkg_nca.models import OsmEntity, PrecomputedLinkCandidate
+from worldkg_nca.subdivision_labels import get_subdivision_label
 from core.models import ProjectionWeightAsset
 from semantic_search.services.romanizing_names.registry import RomanizerRegistry
 from semantic_search.services.worldkg_enrichment_service import get_worldkg_enrichment_service
@@ -285,21 +286,28 @@ def worldkg_semantic_triplet_search(request):
     )
 
     # If subdivision_qid is provided, use the subdivision bbox directly and
-    # infer the country_code if not explicitly given.
+    # infer the country_code if not explicitly given. A subdivision without
+    # boundary data (SPARQL gap — `backfill_subdivision_bboxes` closes it)
+    # DEGRADES to a country-wide search with a note instead of failing the
+    # request (2026-09-30).
+    subdivision_fallback = False
+    bbox = None
     if subdivision_qid:
         bbox = _resolve_subdivision_bbox(subdivision_qid)
-        if not bbox:
-            return Response(
-                {"error": f"Could not resolve subdivision_qid={subdivision_qid}. "
-                          "Ensure SubgraphProfile is populated with bbox for this QID."},
-                status=status.HTTP_400_BAD_REQUEST,
+        if bbox:
+            # Infer country_code from the subdivision if not provided
+            if not country_code:
+                inferred_iso = resolve_subdivision_country_code(subdivision_qid)
+                if inferred_iso:
+                    country_code = inferred_iso
+        else:
+            subdivision_fallback = True
+            logger.warning(
+                "Subdivision %s has no bbox; searching country-wide",
+                subdivision_qid,
             )
-        # Infer country_code from the subdivision if not provided
-        if not country_code:
-            inferred_iso = resolve_subdivision_country_code(subdivision_qid)
-            if inferred_iso:
-                country_code = inferred_iso
-    else:
+    if subdivision_fallback or not bbox:
+        bbox = None
         # Prefer OsmBoundary bbox (same as enrichment service).
         # Be robust to slug-style identifiers like "ireland_and_northern_ireland".
         human_name = (
@@ -706,6 +714,52 @@ def worldkg_semantic_triplet_search(request):
                 candidates.append(e)
     else:
         candidates = list(qs.order_by("name_distance")[:initial_limit])
+        if name_search_term:
+            # Latin-script name queries: the embedding window (top-N by
+            # gv_tags distance) cannot guarantee name matches enter the
+            # pool — gv_tags embeds tags, not the name (measured 2026-10-07:
+            # "The Friars Tavern" sat at rank 3205 of the name-key set at
+            # distance 0.57, so the substring boost had no candidate to
+            # rescue and the search returned 0). Mirror the Korean ILIKE
+            # pre-filter: pull entities whose name= contains any query
+            # token (apostrophe-stripped variants included), then merge
+            # into the pool.
+            patterns = set()
+            for t in _query_name_terms:
+                patterns.add(t)
+                stripped = t.replace("'", "")
+                if stripped != t and len(stripped) >= 3:
+                    patterns.add(stripped)
+            if patterns:
+                name_q = Q()
+                for pat in patterns:
+                    name_q |= Q(tags__name__icontains=pat)
+                name_candidates = list(
+                    qs.filter(name_q).order_by("name_distance")[: max(top_k * 10, 100)]
+                )
+                seen = {(e.osm_type, e.osm_id) for e in candidates}
+                for e in name_candidates:
+                    key = (e.osm_type, e.osm_id)
+                    if key not in seen:
+                        seen.add(key)
+                        candidates.append(e)
+
+    # Exact tag-value matches bypass the embedding window. Rare values
+    # (e.g. cuisine=bubble_tea) embed far from the query vector and never
+    # enter the top-N candidates, so the tag_match boost could never
+    # surface them — a Tag Query with an explicit value must find them.
+    _exact_pairs = {k: v for k, v in query_tags.items() if v}
+    if _exact_pairs:
+        exact_matches = list(
+            qs.filter(tags__contains=_exact_pairs)
+            .order_by("name_distance")[:initial_limit]
+        )
+        if exact_matches:
+            exact_ids = {(e.osm_type, e.osm_id) for e in exact_matches}
+            candidates = exact_matches + [
+                e for e in candidates
+                if (e.osm_type, e.osm_id) not in exact_ids
+            ]
 
     results = []
     for entity in candidates:
@@ -745,12 +799,24 @@ def worldkg_semantic_triplet_search(request):
                 if term in name_lower:
                     name_boost_score += _NAME_SUBSTRING_BOOST
 
-        # Apply semantic distance threshold, but allow cross-script or
-        # name-substring matches to bypass it — FastText cc.en.300 distance
-        # is meaningless for Korean text (OOV collapse), and substring
-        # matches are exact by definition.
+        # Tag match boost — when query_tags has specific values, boost
+        # entities whose tag value exactly matches. This ensures that
+        # {"cuisine": "jamaican"} ranks cuisine=jamaican above cuisine=indian
+        # even when their FastText embeddings are semantically similar.
+        tag_match_score = 0.0
+        if query_tags:
+            for qk, qv in query_tags.items():
+                if qv and entity.tags.get(qk) == qv:
+                    tag_match_score += 1.0
+
+        # Apply semantic distance threshold, but allow cross-script,
+        # name-substring, or exact tag-value matches to bypass it — all
+        # three are exact signals. FastText cc.en.300 distance is
+        # meaningless for Korean text (OOV collapse), and rare tag values
+        # embed far from the query vector (bubble_tea sits at dist 0.4+
+        # while generic cuisine rows cluster at ~0.25).
         if name_distance > name_distance_threshold:
-            if xscript_score <= 0.0 and name_boost_score <= 0.0:
+            if xscript_score <= 0.0 and name_boost_score <= 0.0 and tag_match_score <= 0.0:
                 continue
 
         name_score = 1.0 - name_distance
@@ -788,16 +854,6 @@ def worldkg_semantic_triplet_search(request):
                 entity.wkg_superclasses and rdf_type in entity.wkg_superclasses
             ):
                 class_score = 1.0
-
-        # Tag match boost — when query_tags has specific values, boost
-        # entities whose tag value exactly matches. This ensures that
-        # {"cuisine": "jamaican"} ranks cuisine=jamaican above cuisine=indian
-        # even when their FastText embeddings are semantically similar.
-        tag_match_score = 0.0
-        if query_tags:
-            for qk, qv in query_tags.items():
-                if qv and entity.tags.get(qk) == qv:
-                    tag_match_score += 1.0
 
         if use_learned_weights:
             final_score = (
@@ -860,6 +916,14 @@ def worldkg_semantic_triplet_search(request):
         "results": results,
         "search_mode": "triple_space",
     }
+    if subdivision_fallback:
+        # No boundary data for the requested subdivision — the search ran
+        # country-wide; surface it so the client knows it was not scoped.
+        response_payload["subdivision_fallback"] = subdivision_qid
+        response_payload["warning"] = (
+            f"Subdivision {subdivision_qid} has no boundary data; "
+            "results are country-wide, not subdivision-scoped."
+        )
     if use_learned_weights:
         response_payload["projection_weights"] = {
             "w_geo": w_geo,
@@ -1205,6 +1269,7 @@ def worldkg_subdivisions(request):
     Response:
         {
             "country_code": "NI",
+            "subdivision_label": "Department",
             "count": 15,
             "subdivisions": [
                 {
@@ -1238,13 +1303,13 @@ def worldkg_subdivisions(request):
     except Exception:
         pass  # fall through to the profile lookups below
 
-    # Resolve to CountryPipelineProfile
-    profile = (
-        CountryPipelineProfile.objects.filter(iso2__iexact=country_code).first()
-        or CountryPipelineProfile.objects.filter(
-            canonical_name__icontains=country_code.replace('_', ' ').replace('-', ' ')
-        ).first()
-    )
+    # Resolve to CountryPipelineProfile — EXACT ISO match only.
+    # resolve_iso_code() above normalizes names AND Geofabrik region names
+    # ("Ireland And Northern Ireland" → IE), so a canonical-name substring
+    # fallback is unnecessary and dangerous: a profile-less code like "AE"
+    # would match "Isr[ae]l" and silently return the wrong country's data
+    # (2026-10-06; also hardened at the resolver — country_relations.py).
+    profile = CountryPipelineProfile.objects.filter(iso2__iexact=country_code).first()
     if not profile:
         return Response(
             {"error": f"CountryPipelineProfile not found for {country_code}"},
@@ -1261,6 +1326,11 @@ def worldkg_subdivisions(request):
         has_bbox = all(v is not None for v in (
             sg.bbox_min_lon, sg.bbox_min_lat, sg.bbox_max_lon, sg.bbox_max_lat,
         ))
+        # Only offer subdivisions that can actually scope the search — a
+        # bbox-less subdivision would otherwise 400 on selection
+        # (backfill with `backfill_subdivision_bboxes` to close gaps).
+        if not has_bbox:
+            continue
         subdivisions.append({
             "wikidata_id": sg.wikidata_id,
             "name": sg.name,
@@ -1275,6 +1345,44 @@ def worldkg_subdivisions(request):
 
     return Response({
         "country_code": profile.iso2 or country_code,
+        "subdivision_label": get_subdivision_label(profile.iso2 or country_code),
         "count": len(subdivisions),
         "subdivisions": subdivisions,
     })
+
+
+@api_view(['GET'])
+def sample_questions(request):
+    """Sample questions for a country or subdivision (OSM RAG panel).
+
+    GET /api/nca/sample-questions/?country_code=BZ[&subdivision_qid=Q123]
+
+    Country scope serves the curated question bank; a subdivision_qid
+    serves its GENERATED questions (entities inside the subdivision
+    polygon) when present, else falls back to the country's curated set.
+    The service is the single source — the frontend no longer bundles a
+    CSV.
+
+    Response:
+        {
+            "scope": "country" | "subdivision",
+            "subdivision_qid": "Q123",          // subdivision scope only
+            "questions": [{"question", "template", "source", "anchor"}]
+        }
+    """
+    from semantic_search.services.sample_question_service import (
+        SampleQuestionService,
+    )
+
+    country_code = request.query_params.get('country_code')
+    if not country_code:
+        return Response(
+            {"error": "country_code query parameter required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    subdivision_qid = request.query_params.get('subdivision_qid') or None
+    snapshot_date = request.query_params.get('snapshot_date') or None
+    result = SampleQuestionService.list_questions(
+        country_code, subdivision_qid, snapshot_date,
+    )
+    return Response(result)

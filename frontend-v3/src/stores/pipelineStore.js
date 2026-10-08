@@ -397,7 +397,10 @@ export const usePipelineStore = defineStore('pipeline', {
         if (opts.force) {
           payload.force = true
         }
-        const { data } = await axios.post('/worldkg-pipeline-v2/start/', payload)
+        // Operator pipeline key (settings.PIPELINE_TRIGGER_KEY) — typed into
+        // the modal, sent as a header, never shipped in the bundle.
+        const headers = opts.pipelineKey ? { 'X-Pipeline-Key': opts.pipelineKey } : undefined
+        const { data } = await axios.post('/worldkg-pipeline-v2/start/', payload, { headers })
         const sessionId = data.pipeline_run_id
         this.runs[countryName].sessionId = sessionId
         this.runs[countryName].startedAt = new Date().toISOString()

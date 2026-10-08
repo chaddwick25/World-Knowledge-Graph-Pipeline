@@ -38,16 +38,15 @@ backend/data/pbf_cache/
 backend/data/models/
 backend/data/projection_training/
 backend/data/logs/
+# Pipeline run logs live under backend/pipeline/logs/ (moved from
+# backend/logs/ 2026-10-06) — generated per run, not tracked.
+backend/pipeline/logs/
 # Root symlink (backward compat)
 /mapqa_template_mapping.csv
-
-docs
-
 
 # Backup files
 *.bk
 
-# docs
 backend/data/geodata
 backend/backend/data
 

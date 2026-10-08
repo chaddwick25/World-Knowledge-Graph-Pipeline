@@ -18,6 +18,10 @@ from unittest import mock
 from django.conf import settings
 
 from core.services.llm_service import LLMService
+from semantic_search.services.research_recipes import (
+    get_recipe,
+    route_to_recipe,
+)
 from semantic_search.services.research_service import (
     MAX_QUESTIONS,
     ResearchOrchestratorService,
@@ -88,6 +92,47 @@ class _SequenceLLM(FakeLLM):
         if self._results:
             return self._results.pop(0)
         return None
+
+
+# The FOOD_REPORT recipe's required slots (brands is derived — it carries
+# no question). Tests that exercise specific loop mechanics give the
+# planner ALL required slots so the slot-coverage fill (2026-10-01) is a
+# no-op and their exact question/call assertions hold. The dummy
+# questions are class-neutral on purpose: no class words (no
+# class_mismatch against whatever the mock returns), and no overlap with
+# the mock executors' special branches ("cafes", "2km", "amenities",
+# "Dublin", ...).
+_REQUIRED_SLOT_DUMMIES = [
+    {"question": "What is within 3km of the anchor?",
+     "why": "", "slot": "eat"},
+    {"question": "What is within 3km of the anchor?",
+     "why": "", "slot": "cuisine"},
+    {"question": "What is near the anchor?",
+     "why": "", "slot": "move"},
+]
+
+
+def _full_slots(questions):
+    """Give the planner a question per required FOOD_REPORT slot within
+    the MAX_QUESTIONS cap, so the slot-coverage fill (2026-10-01) is a
+    no-op and exact question/call assertions hold. Questions without a
+    slot get one assigned (round-robin); the rest are appended as
+    class-neutral dummies (no class words — no class_mismatch against
+    whatever the exec mock returns, no collision with its branches)."""
+    required = [d["slot"] for d in _REQUIRED_SLOT_DUMMIES]
+    out = []
+    used = set()
+    for q in questions:
+        slot = q.get("slot") or required[len(out) % len(required)]
+        out.append(dict(q, slot=slot))
+        used.add(slot)
+    for dummy in _REQUIRED_SLOT_DUMMIES:
+        if len(out) >= MAX_QUESTIONS:
+            break
+        if dummy["slot"] not in used:
+            out.append(dict(dummy))
+            used.add(dummy["slot"])
+    return out
 
 
 # ── LLMService: constructor overrides ────────────────────────────────────
@@ -209,6 +254,132 @@ class TestDecomposePrompt:
         assert "Never use 1 km for a city" in _DECOMPOSE_SYSTEM_PROMPT
         assert "at least 2 km" in _DECOMPOSE_SYSTEM_PROMPT
 
+    def test_resolvable_class_whitelist_present(self):
+        # The planner must stay inside the recipe's vocabulary
+        # (food_report's class_vocabulary, 2026-10-02) — vague intents
+        # are rephrased, not asked.
+        assert "resolvable class vocabulary" in _DECOMPOSE_SYSTEM_PROMPT
+        assert "restaurants" in _DECOMPOSE_SYSTEM_PROMPT
+        assert "vending machines" in _DECOMPOSE_SYSTEM_PROMPT
+        assert "class-less concepts" in _DECOMPOSE_SYSTEM_PROMPT
+
+    def test_slot_coverage_and_radius_m_present(self):
+        # Every required slot gets >= 1 question; radii are agent-decided
+        # and structured (2026-10-01).
+        assert (
+            "Every required slot must have at least one question"
+            in _DECOMPOSE_SYSTEM_PROMPT
+        )
+        assert "radius_m" in _DECOMPOSE_SYSTEM_PROMPT
+
+    def test_slot_ids_and_placeholders_constrained(self):
+        # No invented slot ids ("culture"), and placeholders only in #1
+        # radius questions (2026-10-01 — the Mexico City run produced a
+        # #2 distance question with ungeocodable placeholders).
+        assert "Use ONLY these slot ids" in _DECOMPOSE_SYSTEM_PROMPT
+        assert "Never invent a new slot id" in _DECOMPOSE_SYSTEM_PROMPT
+        assert (
+            "placeholders ONLY in radius (#1) questions"
+            in _DECOMPOSE_SYSTEM_PROMPT
+        )
+
+
+# ── Agent-decided radius + slot coverage (2026-10-01) ────────────────────
+
+class TestAgentRadiusAndSlotCoverage:
+    def test_clamp_radius_m(self):
+        svc = ResearchOrchestratorService
+        assert svc._clamp_radius_m(2000) == 2000
+        assert svc._clamp_radius_m("3000") == 3000
+        assert svc._clamp_radius_m(50) is None      # below the 100m floor
+        assert svc._clamp_radius_m(60000) == 50000  # capped at 50 km
+        assert svc._clamp_radius_m(None) is None
+        assert svc._clamp_radius_m("abc") is None
+
+    def test_inject_radius_replaces_amount(self):
+        svc = ResearchOrchestratorService
+        parsed = {"template": "FILTER-AGGREGATE-MEASURE (#1)",
+                  "concepts": [{"type": "OBJECT", "text": "restaurants"},
+                               {"type": "AMOUNT", "text": "2km"}]}
+        out = svc._inject_radius(parsed, 5000)
+        amount = [c for c in out["concepts"] if c["type"] == "AMOUNT"]
+        assert amount[0]["text"] == "5000m"
+
+    def test_inject_radius_appends_when_missing(self):
+        svc = ResearchOrchestratorService
+        parsed = {"template": "FILTER-AGGREGATE-MEASURE (#1)",
+                  "concepts": [{"type": "OBJECT", "text": "restaurants"}]}
+        out = svc._inject_radius(parsed, 3000)
+        assert any(c["type"] == "AMOUNT" and c["text"] == "3000m"
+                   for c in out["concepts"])
+
+    def test_inject_radius_ignores_other_templates(self):
+        svc = ResearchOrchestratorService
+        parsed = {"template": "PLACE-ATTRIBUTE-QUERY (#8)", "concepts": []}
+        assert svc._inject_radius(parsed, 3000) is parsed
+        assert svc._inject_radius(None, 3000) is None
+        assert svc._inject_radius(parsed, None) is parsed
+
+    def test_missing_required_slots(self):
+        svc = ResearchOrchestratorService
+        recipe = get_recipe("food_report")
+        # The derived brands slot carries no question — it is not required.
+        assert svc._missing_required_slots([], recipe) == [
+            "eat", "cuisine", "move",
+        ]
+        assert svc._missing_required_slots(
+            [{"slot": "eat"}, {"slot": "move"}], recipe,
+        ) == ["cuisine"]
+        assert svc._missing_required_slots([], None) == []
+
+    def test_fill_missing_slots_uses_anchor(self):
+        svc = ResearchOrchestratorService
+        recipe = get_recipe("food_report")
+        questions = [{
+            "question": "Which restaurants are within 2km of Belmopan?",
+            "why": "", "slot": "eat", "radius_m": 2000,
+        }]
+        filled = svc._fill_missing_slots(questions, recipe)
+        slots = {q["slot"] for q in filled}
+        assert {"eat", "cuisine", "move"} <= slots
+        # The fill questions carry the recipe defaults + a parsed radius.
+        cuisine = next(q for q in filled if q["slot"] == "cuisine")
+        assert cuisine["question"] == (
+            "Which restaurants are within 10km of Belmopan?"
+        )
+        assert cuisine["radius_m"] == 10000
+        move = next(q for q in filled if q["slot"] == "move")
+        assert move["question"] == "Which cafes are within 1km of Belmopan?"
+        assert move["radius_m"] == 1000
+        # The original question is untouched and first.
+        assert filled[0]["question"] == questions[0]["question"]
+
+    def test_fill_missing_slots_noop_when_covered(self):
+        svc = ResearchOrchestratorService
+        recipe = get_recipe("food_report")
+        questions = _full_slots([{
+            "question": "Which restaurants are within 2km of Belmopan?",
+            "why": "", "slot": "eat", "radius_m": 2000,
+        }])
+        assert svc._fill_missing_slots(questions, recipe) == questions
+
+    def test_taco_cuisine_matching(self):
+        svc = ResearchOrchestratorService
+        # A taco spot carries cuisine=tacos (multi-value "tacos;tortas") —
+        # the TAG_RULES cuisine family matches it (2026-10-01).
+        assert svc._entity_matches(
+            {"name": "Taquería El Califa",
+             "wkg_class": "wkgs:Amenity",
+             "tags": {"amenity": "restaurant", "cuisine": "tacos;tortas"}},
+            "tacos",
+        ) is True
+        # A convenience store without cuisine must NOT pass as tacos.
+        assert svc._entity_matches(
+            {"name": "Oxxo", "wkg_class": "wkgs:Shop",
+             "tags": {"shop": "convenience"}},
+            "tacos",
+        ) is False
+
 
 class TestPlaceholders:
     def test_top_entity_substituted(self):
@@ -245,13 +416,13 @@ class TestPlaceholders:
     def test_top_entity_prefers_class(self):
         results = [
             {"name": "Annali's Restaurant", "wkg_class": "wkgs:Restaurant"},
-            {"name": "Hilton Belize", "wkg_class": "wkgs:Hotel"},
+            {"name": "Belize Brew Pub", "wkg_class": "wkgs:Pub"},
         ]
-        # Class-aware: "the top hotel" must not resolve to a restaurant
-        # (observed 2026-09-30 on the Jamaica run).
+        # Class-aware: "the top pub" must not resolve to a restaurant
+        # (same mechanics as the 2026-09-30 Jamaica hotel case).
         assert ResearchOrchestratorService._top_entity_name(
-            results, class_hint="hotel",
-        ) == "Hilton Belize"
+            results, class_hint="pub",
+        ) == "Belize Brew Pub"
         # No hint → plain first named (legacy behavior).
         assert ResearchOrchestratorService._top_entity_name(
             results,
@@ -275,19 +446,20 @@ class TestPlaceholders:
 
     def test_class_mismatch_flag(self):
         svc = ResearchOrchestratorService
-        # A "hotels" question whose only result is a shop → mismatch
+        # A "pubs" question whose only result is a shop → mismatch
         # (reads the OSM tags, not the coarse class).
         results = [{"name": "Shoe Store", "wkg_class": "wkgs:Shop",
                     "tags": {"shop": "shoes"}}]
         assert svc._results_mismatch(
-            results, "Which hotels are within 2km of Kingston?",
+            results, "Which pubs are within 2km of Kingston?",
         ) is True
-        # A tourism=hotel result IS a hotel — no mismatch despite
-        # wkgs:Tourism (Grand Lido Negril, 2026-09-30).
-        results = [{"name": "Grand Lido Negril", "wkg_class": "wkgs:Tourism",
-                    "tags": {"tourism": "hotel"}}]
+        # An amenity=pub result IS a pub — no mismatch despite the
+        # coarse wkgs:Amenity class (same mechanics as the Grand Lido
+        # Negril tourism=hotel case, 2026-09-30).
+        results = [{"name": "The Dublin Arms", "wkg_class": "wkgs:Amenity",
+                    "tags": {"amenity": "pub"}}]
         assert svc._results_mismatch(
-            results, "Which hotels are within 2km of Negril?",
+            results, "Which pubs are within 2km of Dublin?",
         ) is False
         # Open phrasing has no asked class → not a mismatch.
         assert svc._results_mismatch(
@@ -315,15 +487,19 @@ class TestPlaceholders:
 
     def test_entity_matches_tags_before_class(self):
         svc = ResearchOrchestratorService
-        # tourism=hotel wins over the coarse wkgs:Building class.
+        # amenity=restaurant wins over the coarse wkgs:Building class
+        # (same mechanics as the tourism=hotel Grand Lido case).
         assert svc._entity_matches(
-            {"wkg_class": "wkgs:Building", "tags": {"tourism": "hotel"}},
-            "hotel",
+            {"wkg_class": "wkgs:Building",
+             "tags": {"amenity": "restaurant"}},
+            "restaurant",
         ) is True
         # Class fallback when no tags are present.
-        assert svc._entity_matches({"wkg_class": "wkgs:Hotel"}, "hotel") is True
         assert svc._entity_matches(
-            {"wkg_class": "wkgs:Shop", "tags": {"shop": "shoes"}}, "hotel",
+            {"wkg_class": "wkgs:Restaurant"}, "restaurant") is True
+        assert svc._entity_matches(
+            {"wkg_class": "wkgs:Shop", "tags": {"shop": "shoes"}},
+            "restaurant",
         ) is False
         # Multi-value cuisine tag ("regional;chicken") matches a restaurant
         # intent by substring.
@@ -354,19 +530,20 @@ class TestPlaceholders:
 
     def test_class_swap_pluralizes_tag_target(self):
         svc = ResearchOrchestratorService
-        # "hikes" → the probe found natural=peak → re-ask for peaks; the
-        # executor round-trips "peaks" to ("natural", "peak").
+        # "bars" → the probe found amenity=pub → re-ask for pubs; the
+        # swap stays inside the asked class's tag family, so a food
+        # question can only swap to another food class (2026-10-02).
         q = svc._class_swap_question(
-            "Which hikes are within 2km of Negril?", "Negril",
-            [{"name": "Blue Peak", "tags": {"natural": "peak"}}],
+            "Which bars are within 2km of Dublin?", "Dublin",
+            [{"name": "The Brazen Head", "tags": {"amenity": "pub"}}],
         )
-        assert q == "Which peaks are within 2 km of Negril?"
+        assert q == "Which pubs are within 2 km of Dublin?"
         # Multi-word token pluralizes the last word.
         q = svc._class_swap_question(
-            "Which hotels are within 2km of Negril?", "Negril",
-            [{"name": "B&B", "tags": {"tourism": "guest_house"}}],
+            "Which snack bars are within 2km of Dublin?", "Dublin",
+            [{"name": "Food Hall", "tags": {"amenity": "food_court"}}],
         )
-        assert q == "Which guest houses are within 2 km of Negril?"
+        assert q == "Which food courts are within 2 km of Dublin?"
 
     def test_resolve_tag_target(self):
         from semantic_search.services.query_executor_service.template_executors import (
@@ -379,6 +556,17 @@ class TestPlaceholders:
         assert resolve("guest houses") == ("tourism", "guest_house")
         assert resolve("cafe") == ("amenity", "cafe")
         assert resolve("shoes") is None
+        # Commercial generalization (2026-10-01): markets, bakeries, and
+        # the taco/mexican cuisine family resolve instead of falling to
+        # the fuzzy tier ("markets" → marketplace, "taco vendors" →
+        # restaurant after the trailing-word strip).
+        assert resolve("markets") == ("amenity", "marketplace")
+        assert resolve("market") == ("amenity", "marketplace")
+        assert resolve("bakery") == ("shop", "bakery")
+        assert resolve("tacos") == ("amenity", "restaurant")
+        assert resolve("taqueria") == ("amenity", "restaurant")
+        assert resolve("taco vendors") == ("amenity", "restaurant")
+        assert resolve("food vendors") == ("amenity", "restaurant")
 
     def test_parse_radius_m(self):
         svc = ResearchOrchestratorService
@@ -389,13 +577,6 @@ class TestPlaceholders:
         assert svc._parse_radius_m("near Dublin") is None
         assert svc._parse_radius_m(None) is None
 
-    def test_widen_radius(self):
-        svc = ResearchOrchestratorService
-        assert svc._widen_radius("Which hotels are within 1km of Dublin?", 2000) == \
-            "Which hotels are within 2 km of Dublin?"
-        assert svc._widen_radius("Which cafes are within 500m of X?", 2000) == \
-            "Which cafes are within 2 km of X?"
-
     def test_anchor_geocode_failed_detection(self):
         assert ResearchOrchestratorService._anchor_geocode_failed({
             "trace": [{"step": "geocode", "output": None},
@@ -404,6 +585,96 @@ class TestPlaceholders:
         assert ResearchOrchestratorService._anchor_geocode_failed({
             "trace": [{"step": "geocode", "output": {"lat": 1}}],
         }) is False
+
+
+# ── Recipe routing (research_recipes.py) ─────────────────────────────────
+
+class TestRecipeRouting:
+    def test_default_recipe_is_food_report(self):
+        # The researcher's default: a food & drink vendor report —
+        # shops, services, transit, and infrastructure are out of scope
+        # by design (2026-10-02).
+        assert get_recipe()["key"] == "food_report"
+        assert get_recipe("food_report")["slots"][0]["id"] == "eat"
+        assert route_to_recipe(None)["key"] == "food_report"
+        assert route_to_recipe("")["key"] == "food_report"
+
+    def test_food_prompts_stay_on_default(self):
+        # Every prompt lands on the default recipe — the router is a
+        # closed set with one member until a second recipe lands.
+        for prompt in (
+            "Overview the restaurants and cafes in Belmopan",
+            "Where are the best pubs in Dublin?",
+            "Plan a study of restaurants in Belmopan",
+            "What food trucks are around Mexico City?",
+        ):
+            assert route_to_recipe(prompt)["key"] == "food_report", prompt
+
+    def test_trip_prompts_now_land_on_food_report(self):
+        # TRIP_PLAN was removed 2026-10-01 (tourism strained the data);
+        # even explicit travel phrasing stays on the default recipe.
+        for prompt in (
+            "Plan a 2-day trip to Belize City",
+            "Plan a trip to Dublin",
+            "Build an itinerary for Rome",
+            "I want a vacation in Havana",
+            "5-day tour of Ireland",
+        ):
+            assert route_to_recipe(prompt)["key"] == "food_report", prompt
+
+
+# ── Food-report vocabulary + derived tallies (2026-10-02) ────────────────
+
+class TestFoodReportVocabulary:
+    def test_vendor_aliases_match_on_a_boundary(self):
+        svc = ResearchOrchestratorService
+        # Trailing-boundary matching: "pub" hits wkgs:Pub (and wkgs:Bar
+        # via the alias) but never wkgs:Public_transport — a plain
+        # substring match would have.
+        assert svc._class_matches("wkgs:Pub", "pub") is True
+        assert svc._class_matches("wkgs:Bar", "pub") is True
+        assert svc._class_matches(
+            "wkgs:Public_transport", "pub") is False
+        assert svc._class_matches("wkgs:Restaurant", "restaurant") is True
+        # Hotel and friends are out of the food vocabulary entirely.
+        assert svc._class_matches("wkgs:Hotel", "hotel") is False
+
+    def test_vendor_entity_tag_matching(self):
+        svc = ResearchOrchestratorService
+        assert svc._entity_matches(
+            {"tags": {"amenity": "pub"}}, "tavern") is True
+        assert svc._entity_matches(
+            {"tags": {"amenity": "fast_food"}}, "food truck") is True
+        assert svc._entity_matches(
+            {"tags": {"amenity": "vending_machine"}},
+            "vending machine") is True
+        # Cookout resolves via the cuisine tag family (amenity=bbq does
+        # not exist in OSM — the cuisine tag carries the subtype).
+        assert svc._entity_matches(
+            {"tags": {"amenity": "restaurant", "cuisine": "bbq"}},
+            "cookout") is True
+        # A shop is not a cafe — shops are out of the recipe's domain.
+        assert svc._entity_matches(
+            {"tags": {"shop": "convenience"}}, "cafe") is False
+
+    def test_derived_tallies_brands_and_cuisine_split(self):
+        svc = ResearchOrchestratorService
+        records = [
+            {"brand_counts": {"Starbucks": 3, "Hollys": 1},
+             "cuisine_counts": {"korean": 4, "chinese": 2,
+                                "coffee_shop": 3}},
+            {"brand_counts": {"Starbucks": 2, "Ediya": 2},
+             "cuisine_counts": {"korean": 1}},
+        ]
+        out = svc._derived_tallies(records, "KR")
+        assert "Starbucks ×5" in out
+        assert "Ediya ×2" in out
+        assert "Hollys" not in out  # single location — not a chain
+        assert "local:" in out and "korean" in out
+        assert "other:" in out and "chinese" in out
+        # Unknown country → no local tokens → everything is "other".
+        out = svc._derived_tallies(records, "XX")
+        assert "local:" not in out and "korean" in out
 
 
 # ── The plan() loop ──────────────────────────────────────────────────────
@@ -445,10 +716,10 @@ class TestPlan:
             yield executor
 
     def test_plan_full_loop(self):
-        fake_llm = FakeLLM(chat_json_result={"questions": [
-            {"question": "Which hotels are within 2km of the centre of Belize City?", "why": "lodging"},
-            {"question": "Which cafes are within 1km of the top hotel?", "why": "meals"},
-        ]})
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
+            {"question": "Which restaurants are within 2km of the centre of Belize City?", "why": "food"},
+            {"question": "Which cafes are within 1km of the top restaurant?", "why": "coffee"},
+        ])})
         events = []
 
         def exec_full(*args, **kwargs):
@@ -465,9 +736,9 @@ class TestPlan:
                 }
             return {
                 "template": "FILTER-AGGREGATE-MEASURE (#1)",
-                "results": [{"name": "Hilton Belize", "osm_id": 1,
-                             "wkg_class": "wkgs:Hotel",
-                             "tags": {"tourism": "hotel"},
+                "results": [{"name": "Belize Bistro", "osm_id": 1,
+                             "wkg_class": "wkgs:Restaurant",
+                             "tags": {"amenity": "restaurant"},
                              "distance_m": 500}],
                 "answer": "Found 1 entities within 2km.",
                 "trace": [], "latency_ms": 10,
@@ -476,13 +747,13 @@ class TestPlan:
         with self._patch_loop(fake_llm) as executor:
             executor.execute.side_effect = exec_full
             result = ResearchOrchestratorService.plan(
-                "Plan a 2-day trip to Belize City", "BZ", None,
+                "Where can you eat in Belize City?", "BZ", None,
                 event_callback=events.append,
             )
 
-        assert len(result["questions"]) == 2
+        assert len(result["questions"]) == 3  # 2 planned + 1 slot fill
         assert result["questions"][1]["question"] == \
-            "Which cafes are within 1km of Hilton Belize?"
+            "Which cafes are within 1km of Belize Bistro?"
         assert result["summary"] == "summary part 1 summary part 2"
         assert result["errors"] == []
         # Deterministic loop: no enrichment on sub-questions.
@@ -521,23 +792,33 @@ class TestPlan:
         # retry with the schema failure fed back, then the loop proceeds.
         llm = _SequenceLLM([
             {"bad": "shape"},
-            {"questions": [
-                {"question": "Which hotels are within 2km of Dublin?",
-                 "why": "lodging", "slot": "stay"},
-            ]},
+            {"questions": _full_slots([
+                {"question": "Which pubs are within 2km of Dublin?",
+                 "why": "drinks", "slot": "eat"},
+            ])},
         ])
-        with self._patch_loop(llm) as _executor:
-            result = ResearchOrchestratorService.plan("Plan a trip", "IE", None)
+        pub_result = {
+            "template": "FILTER-AGGREGATE-MEASURE (#1)",
+            "results": [{"name": "The Brazen Head", "osm_id": 1,
+                         "wkg_class": "wkgs:Amenity",
+                         "tags": {"amenity": "pub"},
+                         "distance_m": 500}],
+            "answer": "Found 1 entities within 2km.",
+            "trace": [], "latency_ms": 10,
+        }
+        with self._patch_loop(llm, execute_result=pub_result) as _executor:
+            result = ResearchOrchestratorService.plan(
+                "Where can you drink in Dublin?", "IE", None)
         assert llm.chat_json_calls == 2
-        assert len(result["questions"]) == 1
-        assert result["questions"][0]["slot"] == "stay"
+        assert len(result["questions"]) == 3  # 1 planned + 2 slot fills
+        assert result["questions"][0]["slot"] == "eat"
         assert result["coverage"][0]["status"] == "filled"
 
     def test_plan_question_failure_keeps_loop_alive(self):
-        fake_llm = FakeLLM(chat_json_result={"questions": [
-            {"question": "Which hotels are within 2km of Belize City?", "why": ""},
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
+            {"question": "Which restaurants are within 2km of Belize City?", "why": ""},
             {"question": "Which cafes are within 1km of Belize City?", "why": ""},
-        ]})
+        ])})
         execute_result = {
             "template": "FILTER-AGGREGATE-MEASURE (#1)",
             "results": [],
@@ -550,20 +831,30 @@ class TestPlan:
             question = kwargs.get("question", "")
             if "cafes" in question:
                 raise RuntimeError("boom")
-            return execute_result
+            if "restaurants" in question:
+                return execute_result  # the empty restaurants slot
+            return {
+                "template": "FILTER-AGGREGATE-MEASURE (#1)",
+                "results": [{"name": "Cafe X", "osm_id": 9,
+                             "wkg_class": "wkgs:Cafe", "distance_m": 100}],
+                "answer": "Found 1 entities.",
+                "trace": [], "latency_ms": 5,
+            }
 
         with self._patch_loop(fake_llm) as executor:
             executor.execute.side_effect = flaky_execute
             result = ResearchOrchestratorService.plan(
-                "Plan a trip", "BZ", None,
+                "Where can you eat in Belize?", "BZ", None,
             )
 
-        assert len(result["questions"]) == 3
+        # 2 planned + 1 slot fill, plus the round-2 wider re-ask for the
+        # empty restaurants slot.
+        assert len(result["questions"]) == 4
         assert result["questions"][0].get("error") is None
         assert result["questions"][1]["error"] == "boom"
         assert len(result["errors"]) == 1
         # Summary still produced from the surviving answer (and the empty
-        # hotels slot got a round-2 widened re-ask, not a silent gap).
+        # restaurants slot got a round-2 widened re-ask, not a silent gap).
         assert result["summary"] == (
             "summary part 1 summary part 2\n\nsummary part 1 summary part 2"
         )
@@ -573,9 +864,9 @@ class TestPlan:
         # "Jerk Town" (an interest-derived place) geocodes null — the loop
         # re-anchors once at the country hub (JM → Kingston) instead of
         # leaving the slot unanswerable (observed 2026-09-30).
-        fake_llm = FakeLLM(chat_json_result={"questions": [
-            {"question": "Which hotels are within 2km of Jerk Town?", "why": ""},
-        ]})
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
+            {"question": "Which restaurants are within 2km of Jerk Town?", "why": ""},
+        ])})
         calls = []
 
         def hub_execute(*args, **kwargs):
@@ -595,9 +886,9 @@ class TestPlan:
                 }
             return {
                 "template": "FILTER-AGGREGATE-MEASURE (#1)",
-                "results": [{"name": "Grand Lido Negril", "osm_id": 2,
-                             "wkg_class": "wkgs:Tourism",
-                             "tags": {"tourism": "hotel"}}],
+                "results": [{"name": "The Pork Pit", "osm_id": 2,
+                             "wkg_class": "wkgs:Amenity",
+                             "tags": {"amenity": "restaurant"}}],
                 "answer": "Found 1 entities within 2km.",
                 "trace": [], "latency_ms": 5,
             }
@@ -605,12 +896,14 @@ class TestPlan:
         with self._patch_loop(fake_llm) as executor:
             executor.execute.side_effect = hub_execute
             result = ResearchOrchestratorService.plan(
-                "Plan a trip to Jamaica", "JM", None,
+                "Where can you eat in Jamaica?", "JM", None,
             )
 
         assert calls == [
-            "Which hotels are within 2km of Jerk Town?",
-            "Which hotels are within 2km of Kingston?",
+            "Which restaurants are within 2km of Jerk Town?",
+            "Which restaurants are within 2km of Kingston?",
+            "What is within 3km of the anchor?",   # cuisine fill
+            "What is near the anchor?",            # move fill
         ]
         record = result["questions"][0]
         assert record["hub_reanchored"] is True
@@ -633,21 +926,24 @@ class TestPlan:
             "slot": "eat",
         }]
 
-    def test_continuation_questions_adventure_family(self):
+    def test_continuation_questions_food_family_widens(self):
         svc = ResearchOrchestratorService
+        # The outdoor-adventure generator only fires on natural/waterway
+        # tag families — no food-vendor family carries one (2026-10-02),
+        # so an unmet food slot always falls to the widened re-ask.
         records = [{
-            "question": "Which hikes are within 5km of Negril?",
-            "slot": "see", "result_count": 0, "template": "FILTER-AGGREGATE-MEASURE (#1)",
+            "question": "Which pubs are within 5km of Negril?",
+            "slot": "eat", "result_count": 0,
+            "template": "FILTER-AGGREGATE-MEASURE (#1)",
         }]
         unmet = [{
-            "slot": "see", "status": "missing",
-            "question": "Which hikes are within 5km of Negril?",
+            "slot": "eat", "status": "missing",
+            "question": "Which pubs are within 5km of Negril?",
         }]
         follow_ups = svc._continuation_questions(records, unmet, "JM", None)
-        # Outdoor intent → the concrete adventure target the snapshot maps.
         assert follow_ups == [{
-            "question": "Which peaks are within 30 km of Negril?",
-            "slot": "see",
+            "question": "Which pubs are within 15 km of Negril?",
+            "slot": "eat",
         }]
 
     def test_evidence_worthy_filters_transport_noise(self):
@@ -668,6 +964,42 @@ class TestPlan:
              "tags": {"tourism": "museum"}},
         ) is True
 
+    def test_evidence_worthy_allow_transport_for_transit_slots(self):
+        svc = ResearchOrchestratorService
+        # A transit-target slot (place-report "getting around") keeps the
+        # bus stops that a tourism slot treats as noise — the abundance
+        # IS the signal there (2026-10-01).
+        assert svc._evidence_worthy(
+            {"name": "5, 8, 12 Bus Stop", "tags": {"highway": "bus_stop"}},
+            allow_transport=True,
+        ) is True
+        assert svc._evidence_worthy(
+            {"name": "Platform 1", "tags": {"public_transport": "platform"}},
+            allow_transport=True,
+        ) is True
+        # Default (tourism) behavior unchanged.
+        assert svc._evidence_worthy(
+            {"name": "5, 8, 12 Bus Stop", "tags": {"highway": "bus_stop"}},
+        ) is False
+
+    def test_slot_allows_transport_reads_recipe(self):
+        svc = ResearchOrchestratorService
+        # The food report declares no transport_evidence slot — exercise
+        # the machinery against a synthetic row so the flag stays
+        # regression-guarded for future recipes.
+        recipe = {
+            "slots": [
+                {"id": "move", "transport_evidence": True},
+                {"id": "eat"},
+            ],
+        }
+        assert svc._slot_allows_transport(recipe, "move") is True
+        assert svc._slot_allows_transport(recipe, "eat") is False
+        assert svc._slot_allows_transport(None, "move") is False
+        assert svc._slot_allows_transport(recipe, "nope") is False
+        assert svc._slot_allows_transport(
+            get_recipe("food_report"), "move") is False
+
     def test_pluralize_category(self):
         svc = ResearchOrchestratorService
         assert svc._pluralize_category("beach") == "beaches"
@@ -679,10 +1011,10 @@ class TestPlan:
     def test_plan_continuation_round(self):
         # An unmet slot drives a round-2 follow-up and an addendum: the
         # plan keeps going instead of ending on the gap.
-        fake_llm = FakeLLM(chat_json_result={"questions": [
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
             {"question": "Which restaurants are within 2km of Jerk Town?",
              "why": "", "slot": "eat"},
-        ]})
+        ])})
         calls = []
 
         def exec_rounds(*args, **kwargs):
@@ -727,7 +1059,7 @@ class TestPlan:
         # The round-2 question row exists in the trace (index continues).
         q2 = [e for e in events if e["event"] == "question" and e.get("round") == 2]
         assert len(q2) == 1
-        assert q2[0]["index"] == 1
+        assert q2[0]["index"] == 3  # round 1 = eat + 2 slot fills
         assert q2[0]["result_count"] == 1
         # The addendum extends the summary.
         assert result["summary"] == (
@@ -735,9 +1067,9 @@ class TestPlan:
         )
 
     def test_plan_anchor_qualifier_retry(self):
-        fake_llm = FakeLLM(chat_json_result={"questions": [
-            {"question": "Which hotels are within 2km of the centre of Belize City?", "why": ""},
-        ]})
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
+            {"question": "Which restaurants are within 2km of the centre of Belize City?", "why": ""},
+        ])})
         calls = []
 
         def geo_execute(*args, **kwargs):
@@ -756,9 +1088,9 @@ class TestPlan:
                 }
             return {
                 "template": "FILTER-AGGREGATE-MEASURE (#1)",
-                "results": [{"name": "Jovilee Apartments", "osm_id": 2,
-                             "wkg_class": "wkgs:Tourism",
-                             "tags": {"tourism": "apartment"},
+                "results": [{"name": "Belize Bistro", "osm_id": 2,
+                             "wkg_class": "wkgs:Restaurant",
+                             "tags": {"amenity": "restaurant"},
                              "distance_m": 851}],
                 "answer": "Found 1 entities within 2km.",
                 "trace": [], "latency_ms": 5,
@@ -766,16 +1098,19 @@ class TestPlan:
 
         with self._patch_loop(fake_llm) as executor:
             executor.execute.side_effect = geo_execute
-            result = ResearchOrchestratorService.plan("Plan a trip", "BZ", None)
+            result = ResearchOrchestratorService.plan(
+                "Where can you eat in Belize?", "BZ", None)
 
         # First call geocodes null; the loop strips the qualifier and retries.
         assert calls == [
-            "Which hotels are within 2km of the centre of Belize City?",
-            "Which hotels are within 2km of Belize City?",
+            "Which restaurants are within 2km of the centre of Belize City?",
+            "Which restaurants are within 2km of Belize City?",
+            "What is within 3km of the anchor?",   # cuisine fill
+            "What is near the anchor?",            # move fill
         ]
         assert result["questions"][0]["result_count"] == 1
         assert result["questions"][0]["question"] == \
-            "Which hotels are within 2km of Belize City?"
+            "Which restaurants are within 2km of Belize City?"
         assert result["errors"] == []
 
     def test_plan_empty_result_does_not_wipe_placeholder(self):
@@ -813,10 +1148,15 @@ class TestPlan:
         assert result["questions"][2]["question"] == \
             "What amenities are near Jovilee Apartments?"
 
-    def test_plan_small_radius_empty_escalates(self):
-        fake_llm = FakeLLM(chat_json_result={"questions": [
-            {"question": "Which hotels are within 1km of Dublin?", "why": ""},
-        ]})
+    def test_plan_small_radius_empty_goes_to_repair(self):
+        # The small-radius escalation was removed 2026-10-01: the agent
+        # decides radii (radius_m); an empty 1km question flows to the
+        # repair pipeline (probe → class-swap → evidence) instead of being
+        # silently widened behind the agent's back.
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
+            {"question": "Which hotels are within 1km of Dublin?",
+             "why": "", "slot": "eat"},
+        ])})
         calls = []
 
         def radius_execute(*args, **kwargs):
@@ -832,7 +1172,7 @@ class TestPlan:
                 "template": "FILTER-AGGREGATE-MEASURE (#1)",
                 "results": [{"name": "The Shelbourne", "osm_id": 9,
                              "wkg_class": "wkgs:Hotel", "distance_m": 1200}],
-                "answer": "Found 1 entities within 2km.",
+                "answer": "Found 1 entities.",
                 "trace": [], "latency_ms": 5,
             }
 
@@ -840,20 +1180,14 @@ class TestPlan:
             executor.execute.side_effect = radius_execute
             result = ResearchOrchestratorService.plan("Plan a trip", "IE", None)
 
-        # 1km of Dublin returns nothing → the loop widens to 2km and re-runs.
-        assert calls == [
-            "Which hotels are within 1km of Dublin?",
-            "Which hotels are within 2 km of Dublin?",
-        ]
         record = result["questions"][0]
-        assert record["radius_escalated"] is True
-        assert record["result_count"] == 1
-        assert record["question"] == "Which hotels are within 2 km of Dublin?"
+        assert record.get("radius_escalated") is None
+        assert record["repair"] in ("class_swap", "fallback_evidence")
 
-    def test_plan_small_radius_with_results_no_escalation(self):
-        fake_llm = FakeLLM(chat_json_result={"questions": [
+    def test_plan_small_radius_with_results_no_repair(self):
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
             {"question": "Which cafes are within 500m of Temple Bar?", "why": ""},
-        ]})
+        ])})
         calls = []
 
         def ok_execute(*args, **kwargs):
@@ -870,20 +1204,31 @@ class TestPlan:
             executor.execute.side_effect = ok_execute
             result = ResearchOrchestratorService.plan("Plan a trip", "IE", None)
 
-        assert len(calls) == 1  # results exist → no escalation
+        assert len(calls) == 3  # 1 planned + 2 slot fills, all with results
         assert result["questions"][0].get("radius_escalated") is None
 
     def test_plan_radius_at_floor_repairs_with_evidence(self):
-        fake_llm = FakeLLM(chat_json_result={"questions": [
-            {"question": "Which hotels are within 2km of Dublin?", "why": ""},
-        ]})
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
+            {"question": "Which restaurants are within 2km of Dublin?", "why": ""},
+        ])})
         calls = []
 
         def empty_execute(*args, **kwargs):
-            calls.append(kwargs.get("question", ""))
+            q = kwargs.get("question", "")
+            calls.append(q)
+            if "Dublin" in q or "amenities" in q:
+                return {
+                    "template": "FILTER-AGGREGATE-MEASURE (#1)",
+                    "results": [], "answer": "No results found.",
+                    "trace": [], "latency_ms": 5,
+                }
             return {
                 "template": "FILTER-AGGREGATE-MEASURE (#1)",
-                "results": [], "answer": "No results found.",
+                "results": [{"name": "The Shelbourne", "osm_id": 9,
+                             "wkg_class": "wkgs:Restaurant",
+                             "tags": {"amenity": "restaurant"},
+                             "distance_m": 1200}],
+                "answer": "Found 1 entities.",
                 "trace": [], "latency_ms": 5,
             }
 
@@ -891,18 +1236,20 @@ class TestPlan:
         with self._patch_loop(fake_llm) as executor:
             executor.execute.side_effect = empty_execute
             result = ResearchOrchestratorService.plan(
-                "Plan a trip", "IE", None, event_callback=events.append,
+                "Where can you eat in Dublin?", "IE", None,
+                event_callback=events.append,
             )
 
-        # Radius already at the 2km floor → no escalation; the coverage-led
-        # repair re-asks the anchor as an open-ended #8 (zero LLM calls) and
-        # records the digest as nearest evidence instead of leaving the slot
-        # silently empty. The post-summary continuation then re-asks the
-        # category at a wider radius (round 2).
+        # No escalation: the coverage-led repair re-asks the anchor as an
+        # open-ended #8 and records the digest as nearest evidence instead
+        # of leaving the slot silently empty. The post-summary continuation
+        # then re-asks the category at a wider radius (round 2).
         assert calls == [
-            "Which hotels are within 2km of Dublin?",
-            "What amenities are near Dublin?",
-            "Which hotels are within 6 km of Dublin?",
+            "Which restaurants are within 2km of Dublin?",
+            "What is within 3km of the anchor?",   # cuisine fill
+            "What is near the anchor?",            # move fill
+            "What amenities are near Dublin?",     # repair probe
+            "Which restaurants are within 6 km of Dublin?",
         ]
         record = result["questions"][0]
         assert record.get("radius_escalated") is None
@@ -919,13 +1266,14 @@ class TestPlan:
         assert follow_ups[0]["result_count"] == 0
 
     def test_plan_repair_class_swap_fills_slot(self):
-        # "Which museums..." finds nothing, but the #8 probe reveals the
-        # snapshot HAS tourism=museum entities — the repair class-swaps to
-        # the present category (tag-driven) and the slot is filled.
-        fake_llm = FakeLLM(chat_json_result={"questions": [
-            {"question": "Which museums are within 2km of Belize City?",
-             "why": "culture", "slot": "see"},
-        ]})
+        # "Which taverns..." finds nothing, but the #8 probe reveals the
+        # snapshot HAS amenity=pub entities — the repair class-swaps to
+        # the present category in the same tag family (pubs are the
+        # tavern family's mapped tag) and the slot is filled.
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
+            {"question": "Which taverns are within 2km of Belize City?",
+             "why": "drinks", "slot": "eat"},
+        ])})
         calls = []
 
         def exec_repair(*args, **kwargs):
@@ -937,14 +1285,14 @@ class TestPlan:
                     "results": [], "answer": "No results found.",
                     "trace": [], "latency_ms": 5,
                 }
-            # The probe + the class-swapped re-ask find museums (tags carry
-            # the real semantics — wkgs:Historic is coarse).
+            # The probe + the class-swapped re-ask find pubs (tags carry
+            # the real semantics — wkgs:Amenity is coarse).
             return {
                 "template": "PLACE-ATTRIBUTE-QUERY (#8)",
                 "results": [
-                    {"name": "Belize Museum", "osm_id": 7,
-                     "wkg_class": "wkgs:Historic",
-                     "tags": {"tourism": "museum"}, "distance_m": 900},
+                    {"name": "The Brazen Head", "osm_id": 7,
+                     "wkg_class": "wkgs:Amenity",
+                     "tags": {"amenity": "pub"}, "distance_m": 900},
                 ],
                 "answer": "Found 1 entities.",
                 "trace": [], "latency_ms": 5,
@@ -954,26 +1302,29 @@ class TestPlan:
         with self._patch_loop(fake_llm) as executor:
             executor.execute.side_effect = exec_repair
             result = ResearchOrchestratorService.plan(
-                "Plan a trip", "BZ", None, event_callback=events.append,
+                "Where can you drink in Belize?", "BZ", None,
+                event_callback=events.append,
             )
 
         assert calls == [
-            "Which museums are within 2km of Belize City?",
-            "What amenities are near Belize City?",
-            "Which museums are within 2 km of Belize City?",
+            "Which taverns are within 2km of Belize City?",
+            "What is within 3km of the anchor?",   # cuisine fill
+            "What is near the anchor?",            # move fill
+            "What amenities are near Belize City?",  # repair probe
+            "Which pubs are within 2 km of Belize City?",
         ]
         record = result["questions"][0]
         assert record["repair"] == "class_swap"
         assert record["original_question"] == \
-            "Which museums are within 2km of Belize City?"
+            "Which taverns are within 2km of Belize City?"
         assert record["result_count"] == 1
-        assert "Belize Museum" in record["digest"]
+        assert "The Brazen Head" in record["digest"]
         # The slot is the plan's criteria id; the status says the slot was
         # filled by the closest present category, not the asked one.
-        assert result["coverage"][0]["slot"] == "see"
+        assert result["coverage"][0]["slot"] == "eat"
         assert result["coverage"][0]["status"] == "filled_by_repair"
         assert result["coverage"][0]["question"] == \
-            "Which museums are within 2km of Belize City?"
+            "Which taverns are within 2km of Belize City?"
         replan_events = [e for e in events if e["event"] == "replan"]
         assert len(replan_events) == 1
         assert replan_events[0]["repairs"][0]["status"] == "filled_by_repair"
@@ -982,29 +1333,29 @@ class TestPlan:
         follow_ups = [e for e in events if e["event"] == "follow_up"]
         assert [f["kind"] for f in follow_ups] == ["probe", "class_swap"]
         assert follow_ups[1]["question"] == \
-            "Which museums are within 2 km of Belize City?"
+            "Which pubs are within 2 km of Belize City?"
         assert follow_ups[1]["result_count"] == 1
 
-    def test_plan_placeholder_resolves_to_hotel_class(self):
-        # End-to-end: the hotels question returns a restaurant ranked first,
-        # but the cafe question's "the top hotel" must resolve to the hotel.
+    def test_plan_placeholder_resolves_to_pub_class(self):
+        # End-to-end: the pubs question returns a restaurant ranked first,
+        # but the cafe question's "the top pub" must resolve to the pub.
         fake_llm = FakeLLM(chat_json_result={"questions": [
-            {"question": "Which hotels are within 2km of Belize City?", "why": ""},
-            {"question": "Which cafes are within 1km of the top hotel?", "why": ""},
+            {"question": "Which pubs are within 2km of Belize City?", "why": ""},
+            {"question": "Which cafes are within 1km of the top pub?", "why": ""},
         ]})
         calls = []
 
-        def exec_hotels(*args, **kwargs):
+        def exec_pubs(*args, **kwargs):
             q = kwargs.get("question", "")
             calls.append(q)
-            if "hotels" in q:
+            if "pubs" in q:
                 return {
                     "template": "FILTER-AGGREGATE-MEASURE (#1)",
                     "results": [
                         {"name": "Annali's Restaurant", "osm_id": 1,
                          "wkg_class": "wkgs:Restaurant", "distance_m": 300},
-                        {"name": "Hilton Belize", "osm_id": 2,
-                         "wkg_class": "wkgs:Hotel", "distance_m": 500},
+                        {"name": "The Brazen Head", "osm_id": 2,
+                         "wkg_class": "wkgs:Pub", "distance_m": 500},
                     ],
                     "answer": "Found 2 entities within 2km.",
                     "trace": [], "latency_ms": 5,
@@ -1018,11 +1369,12 @@ class TestPlan:
             }
 
         with self._patch_loop(fake_llm) as executor:
-            executor.execute.side_effect = exec_hotels
-            result = ResearchOrchestratorService.plan("Plan a trip", "BZ", None)
+            executor.execute.side_effect = exec_pubs
+            result = ResearchOrchestratorService.plan(
+                "Where can you drink in Belize?", "BZ", None)
 
         # The restaurant must NOT become the anchor for the cafes question.
-        assert calls[1] == "Which cafes are within 1km of Hilton Belize?"
+        assert calls[1] == "Which cafes are within 1km of The Brazen Head?"
 
     def test_plan_result_carries_recipe(self):
         fake_llm = FakeLLM(chat_json_result={"questions": [
@@ -1031,28 +1383,145 @@ class TestPlan:
         ]})
         with self._patch_loop(fake_llm) as _executor:
             result = ResearchOrchestratorService.plan(
+                # Trip phrasing no longer routes anywhere else — TRIP_PLAN
+                # removed 2026-10-01; the default recipe is the result.
                 "Plan a 2-day trip to Belize City", "BZ", None,
             )
-        # The router picks the recipe; the run reports it (rides the done
-        # payload so the frontend knows the plan-type schema).
-        assert result["recipe"] == "trip_plan"
+        # The run reports the recipe (rides the done payload so the
+        # frontend knows the plan-type schema).
+        assert result["recipe"] == "food_report"
+
+    def test_plan_scopes_execution_to_subdivision(self):
+        # A subdivision-scoped run threads the QID into EVERY executor
+        # call (round 1 + repair probes + continuation) so the results are
+        # bounded to the district polygon (2026-10-01).
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
+            {"question": "Which restaurants are within 2km of Belmopan?",
+             "why": "", "slot": "eat"},
+        ])})
+        with self._patch_loop(fake_llm) as executor:
+            ResearchOrchestratorService.plan(
+                "Overview restaurants in Belmopan", "BZ", None,
+                subdivision_qid="Q1234",
+            )
+        calls = executor.execute.call_args_list
+        assert calls
+        assert all(
+            c.kwargs.get("subdivision_qid") == "Q1234" for c in calls
+        )
+
+    def test_plan_without_subdivision_passes_none(self):
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
+            {"question": "Which restaurants are within 2km of Belmopan?",
+             "why": "", "slot": "eat"},
+        ])})
+        with self._patch_loop(fake_llm) as executor:
+            ResearchOrchestratorService.plan(
+                "Overview restaurants in Belmopan", "BZ", None,
+            )
+        assert all(
+            c.kwargs.get("subdivision_qid") is None
+            for c in executor.execute.call_args_list
+        )
+
+    def test_chat_messages_include_subdivision_scope(self):
+        svc = ResearchOrchestratorService
+        msgs = svc.chat_messages(
+            [{"role": "user", "content": "hi"}], "BZ", "2025_12_31",
+            subdivision_qid="Q1234",
+        )
+        assert "Scope: subdivision Q1234" in msgs[0]["content"]
+        msgs = svc.chat_messages(
+            [{"role": "user", "content": "hi"}], "BZ", "2025_12_31",
+        )
+        assert "Scope:" not in msgs[0]["content"]
+
+    def test_scope_to_subdivision_filters_results(self):
+        from unittest import mock as _mock
+
+        from django.contrib.gis.geos import Polygon
+
+        from semantic_search.services.query_executor_service.service import (
+            QueryExecutorService,
+        )
+
+        poly = Polygon(((0, 0), (0, 2), (2, 2), (2, 0), (0, 0)))
+        with _mock.patch(
+            "semantic_search.utils.subdivision_resolver.resolve_subdivision_polygon",
+            return_value=poly,
+        ):
+            scoped = QueryExecutorService._scope_to_subdivision(
+                [
+                    {"name": "Inside", "lat": 1.0, "lon": 1.0},
+                    {"name": "Outside", "lat": 5.0, "lon": 5.0},
+                    {"name": "No coords", "lat": None, "lon": None},
+                ],
+                "Q1234", [],
+            )
+        assert [r["name"] for r in scoped] == ["Inside"]
+
+    def test_dedupe_results_collapses_co_located_and_caps_chains(self):
+        from semantic_search.services.query_executor_service.service import (
+            QueryExecutorService,
+        )
+
+        svc = QueryExecutorService
+        results = [
+            # A real chain: 4 spread-out same-name entries → capped at 3.
+            {"name": "Tacos El Güero", "lat": 19.40, "lon": -99.13},
+            {"name": "Tacos El Güero", "lat": 19.41, "lon": -99.13},
+            {"name": "Tacos El Güero", "lat": 19.42, "lon": -99.13},
+            {"name": "Tacos El Güero", "lat": 19.43, "lon": -99.13},
+            # A true duplicate: same name, co-located (~11 m apart).
+            {"name": "Farmacia París", "lat": 19.40, "lon": -99.14},
+            {"name": "Farmacia París", "lat": 19.4001, "lon": -99.14},
+            # Distinct names survive; nameless pass through.
+            {"name": "Mercado de San Juan", "lat": 19.41, "lon": -99.15},
+            {"lat": None, "lon": None},
+        ]
+        trace = []
+        deduped = svc._dedupe_results(results, trace)
+        names = [r.get("name") for r in deduped]
+        assert names.count("Tacos El Güero") == 3
+        assert names.count("Farmacia París") == 1
+        assert "Mercado de San Juan" in names
+        assert any(r.get("name") is None for r in deduped)
+        assert len(deduped) == 6  # 3 + 1 + 1 + 1 nameless
+        assert trace[-1]["step"] == "dedupe_results"
+        assert trace[-1]["dropped"] == 2  # 1 chain cap + 1 co-located
+
+    def test_plan_food_report_prompt_carries_recipe(self):
+        # The researcher default: a food & drink report — every prompt
+        # routes to food_report and the run reports it (2026-10-02).
+        fake_llm = FakeLLM(chat_json_result={"questions": [
+            {"question": "Which restaurants are within 2km of Belmopan?",
+             "why": "", "slot": "eat"},
+        ]})
+        with self._patch_loop(fake_llm) as _executor:
+            result = ResearchOrchestratorService.plan(
+                "Overview the restaurants and cafes in Belmopan",
+                "BZ", None,
+            )
+        assert result["recipe"] == "food_report"
+        assert result["questions"][0]["slot"] == "eat"
 
     def test_plan_llm_replan_rewrites_slot(self):
-        # Deterministic repair exhausted (no classes near the anchor) →
-        # one bounded LLM rewrite re-asks with a different class.
+        # Deterministic repair exhausted (no vendor classes near the
+        # anchor) → one bounded LLM rewrite re-asks with a different
+        # food/drink class.
         llm = _SequenceLLM([
-            {"questions": [
-                {"question": "Which hikes are near Montego Bay?",
-                 "why": "", "slot": "see"},
-            ]},
-            {"question": "Which peaks are within 10km of Montego Bay?"},
+            {"questions": _full_slots([
+                {"question": "Which snack bars are near Montego Bay?",
+                 "why": "", "slot": "eat"},
+            ])},
+            {"question": "Which pubs are within 10km of Montego Bay?"},
         ])
         calls = []
 
         def exec_replan(*args, **kwargs):
             q = kwargs.get("question", "")
             calls.append(q)
-            if "hikes" in q or "amenities" in q:
+            if "snack bars" in q or "amenities" in q:
                 return {
                     "template": "FILTER-AGGREGATE-MEASURE (#1)",
                     "results": [], "answer": "No results found.",
@@ -1061,8 +1530,9 @@ class TestPlan:
             return {
                 "template": "FILTER-AGGREGATE-MEASURE (#1)",
                 "results": [
-                    {"name": "Blue Mountain Peak", "osm_id": 3,
-                     "wkg_class": "wkgs:Peak", "distance_m": 9000},
+                    {"name": "The Pork Pit", "osm_id": 3,
+                     "wkg_class": "wkgs:Amenity",
+                     "tags": {"amenity": "pub"}, "distance_m": 9000},
                 ],
                 "answer": "Found 1 entities within 10km.",
                 "trace": [], "latency_ms": 5,
@@ -1072,30 +1542,86 @@ class TestPlan:
         with self._patch_loop(llm) as executor:
             executor.execute.side_effect = exec_replan
             result = ResearchOrchestratorService.plan(
-                "Plan a trip", "JM", None, event_callback=events.append,
+                "Where can you eat in Jamaica?", "JM", None,
+                event_callback=events.append,
             )
 
         # decompose + exactly one replan rewrite (bounded).
         assert llm.chat_json_calls == 2
-        assert "Which peaks are within 10km of Montego Bay?" in calls
+        assert "Which pubs are within 10km of Montego Bay?" in calls
         record = result["questions"][0]
         assert record["repair"] == "llm_replan"
-        assert record["original_question"] == "Which hikes are near Montego Bay?"
+        assert record["original_question"] == \
+            "Which snack bars are near Montego Bay?"
         assert record["result_count"] == 1
         assert result["coverage"][0]["status"] == "filled_by_repair"
         # The rewrite is a visible follow-up row (probe + llm_replan).
         follow_ups = [e for e in events if e["event"] == "follow_up"]
         assert [f["kind"] for f in follow_ups] == ["probe", "llm_replan"]
         assert follow_ups[1]["question"] == \
-            "Which peaks are within 10km of Montego Bay?"
+            "Which pubs are within 10km of Montego Bay?"
         assert follow_ups[1]["result_count"] == 1
+
+    def test_plan_replan_outside_template_vocabulary_discarded(self):
+        # An LLM replan that rewrites into a non-parser question ("What
+        # is the cultural significance of tacos?") must be discarded — the
+        # template gate in _rerun rejects parses outside the 5 trained
+        # shapes (fabricated "CULTURAL-CONTEXT-EXPLORATION" output was
+        # observed on the Mexico City run, 2026-10-01).
+        llm = _SequenceLLM([
+            {"questions": _full_slots([
+                {"question": "Which hikes are near Montego Bay?",
+                 "why": "", "slot": "see"},
+            ])},
+            {"question": "What is the cultural significance of tacos?"},
+        ])
+        calls = []
+
+        def exec_replan(*args, **kwargs):
+            q = kwargs.get("question", "")
+            calls.append(q)
+            return {
+                "template": "FILTER-AGGREGATE-MEASURE (#1)",
+                "results": [], "answer": "No results found.",
+                "trace": [], "latency_ms": 5,
+            }
+
+        parser = mock.Mock()
+
+        def parse_side(q):
+            if "cultural significance" in q:
+                return {"template": "CULTURAL-CONTEXT-EXPLORATION (#2)",
+                        "confidence": 0.5, "concepts": []}
+            return {"template": "FILTER-AGGREGATE-MEASURE (#1)",
+                    "confidence": 0.9, "concepts": []}
+
+        parser.get_instance.return_value.parse.side_effect = parse_side
+
+        executor = mock.Mock()
+        executor.execute.side_effect = exec_replan
+        with mock.patch(
+            "core.services.llm_service.LLMService.get_research_instance",
+            return_value=llm,
+        ), mock.patch(
+            "semantic_search.services.query_parser_service.QueryParserService",
+            parser,
+        ), mock.patch(
+            "semantic_search.services.query_executor_service.QueryExecutorService",
+            executor,
+        ):
+            result = ResearchOrchestratorService.plan("Plan a trip", "JM", None)
+
+        # The rewrite never reached the executor (discarded by the gate).
+        assert not any("cultural significance" in q for q in calls)
+        record = result["questions"][0]
+        assert record["repair"] == "fallback_evidence"
 
     def test_plan_open_ended_question_not_repaired(self):
         # An already-open #8-style question must not be re-run by the
         # repair pass (fallback == question → skipped).
-        fake_llm = FakeLLM(chat_json_result={"questions": [
+        fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
             {"question": "What amenities are near Belize City?", "why": ""},
-        ]})
+        ])})
         calls = []
 
         def empty_execute(*args, **kwargs):
@@ -1106,11 +1632,15 @@ class TestPlan:
                 "trace": [], "latency_ms": 5,
             }
 
+        events = []
         with self._patch_loop(fake_llm) as executor:
             executor.execute.side_effect = empty_execute
             result = ResearchOrchestratorService.plan("Plan a trip", "BZ", None)
 
-        assert calls == ["What amenities are near Belize City?"]
+        # The open-ended question is not re-run (probe == question); the
+        # slot fills are separate questions that do get probed.
+        assert calls[0] == "What amenities are near Belize City?"
+        assert len(calls) > 1
         record = result["questions"][0]
         assert record.get("repair") is None
         assert result["coverage"][0]["status"] == "missing"
@@ -1118,9 +1648,9 @@ class TestPlan:
     def test_plan_followup_tools(self):
         fake_llm = FakeLLM(
             chat_json_result={
-                "questions": [
+                "questions": _full_slots([
                     {"question": "Which hotels are within 2km of Belize City?", "why": ""},
-                ],
+                ]),
             },
             tools_result=[
                 {"name": "structuredSearch",
@@ -1150,33 +1680,32 @@ class TestPlan:
 class TestRenderBrief:
     def test_full_fields(self):
         brief = ResearchOrchestratorService._render_brief({
-            "destination": "Belize City", "duration": "2-day",
-            "party_size": "2 adults", "budget": "$5000",
-            "interests": "exploring", "constraints": "no car",
+            "area": "Belize City", "scope": "within 3km",
+            "focus": "restaurants and shops", "constraints": "no car",
         })
         assert brief == (
-            "Plan a 2-day trip to Belize City for 2 adults with a $5000 "
-            "budget, focused on exploring. Constraints: no car"
+            "Research Belize City (within 3km) focusing on restaurants "
+            "and shops. Constraints: no car"
         )
 
     def test_minimal_fields(self):
         assert ResearchOrchestratorService._render_brief({
-            "destination": "Belize City",
-        }) == "Plan a trip to Belize City"
+            "area": "Belize City",
+        }) == "Research Belize City"
 
-    def test_missing_destination_none(self):
+    def test_missing_area_none(self):
         assert ResearchOrchestratorService._render_brief({
-            "budget": "$5000",
+            "focus": "restaurants",
         }) is None
         assert ResearchOrchestratorService._render_brief(None) is None
 
     def test_long_fields_capped(self):
         brief = ResearchOrchestratorService._render_brief({
-            "destination": "X" * 500,
-            "interests": "y" * 300,
+            "area": "X" * 500,
+            "focus": "y" * 300,
         })
         assert len(brief) <= 400
-        assert brief.startswith("Plan a trip to " + "X" * 100)
+        assert brief.startswith("Research " + "X" * 100)
         assert "y" * 100 in brief
 
 
@@ -1185,20 +1714,19 @@ class TestRenderBrief:
 class TestFinalizeBrief:
     def test_structured_extraction(self):
         fake = FakeLLM(chat_json_result={
-            "destination": "Belize City", "duration": "2-day",
-            "party_size": "2 adults", "budget": "$5000",
-            "interests": "exploring",
+            "area": "Belize City", "focus": "restaurants and shops",
+            "scope": "within 3km",
         })
         with mock.patch.object(LLMService, "get_instance", return_value=fake):
             result = ResearchOrchestratorService.finalize_brief([
-                {"role": "user", "content": "plan a 2-day trip to Belize City"},
-                {"role": "assistant", "content": "How many people?"},
-                {"role": "user", "content": "2 adults, $5000, exploring"},
+                {"role": "user", "content": "what restaurants and shops are around Belize City"},
+                {"role": "assistant", "content": "How far out?"},
+                {"role": "user", "content": "within 3km"},
             ], country_code="BZ")
         assert result["source"] == "structured"
-        assert result["brief"].startswith("Plan a 2-day trip to Belize City")
-        assert "for 2 adults" in result["brief"]
-        assert "$5000" in result["brief"]
+        assert result["brief"].startswith("Research Belize City")
+        assert "restaurants and shops" in result["brief"]
+        assert "3km" in result["brief"]
 
     def test_fallback_on_llm_down(self):
         fake = FakeLLM(available=False)

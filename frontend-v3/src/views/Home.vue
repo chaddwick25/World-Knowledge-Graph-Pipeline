@@ -104,11 +104,18 @@
               <button
                 v-for="country in filteredAvailable"
                 :key="'sel-' + country.id"
-                class="list-group-item list-group-item-action small d-flex justify-content-between"
+                class="list-group-item list-group-item-action small d-flex justify-content-between align-items-center"
                 @click="selectedCountryIds = [country.id]; countrySearchQuery = ''"
               >
                 <span>{{ country.name }}</span>
-                <span class="text-secondary">{{ country.continent }}</span>
+                <span class="d-flex align-items-center gap-1">
+                  <span class="text-secondary">{{ country.continent }}</span>
+                  <span
+                    v-if="hasData(country)"
+                    class="data-dot"
+                    title="Pipeline data ready — this country is queryable"
+                  ></span>
+                </span>
               </button>
             </div>
             <div v-else-if="countrySearchQuery" class="small text-secondary">
@@ -182,12 +189,6 @@
               @links-toggle="onLinksToggle"
               @mode-change="onOsmEntitiesModeChange"
             />
-            <!-- Research tab -->
-            <ResearchPanel
-              v-else-if="activeTab === 'research'"
-              :country-name="singleCountry.name"
-              :snapshot-date="selectedSnapshotDate"
-            />
           </div>
         </div>
       </aside>
@@ -218,11 +219,11 @@ import SnapshotCalendar from '../components/SnapshotCalendar.vue'
 import SemanticSearchPanel from '../components/SemanticSearchPanel.vue'
 import OsmEntitiesPanel from '../components/OsmEntitiesPanel.vue'
 import MapLabelsControls from '../components/MapLabelsControls.vue'
-import ResearchPanel from '../components/ResearchPanel.vue'
 import PlanetInitPanel from '../components/PlanetInitPanel.vue'
 import SystemSummaryModal from '../components/SystemSummaryModal.vue'
 import RerunConfirmModal from '../components/RerunConfirmModal.vue'
 import PipelinePasswordModal from '../components/PipelinePasswordModal.vue'
+import * as pipelineGate from '../services/pipelineRunGate'
 
 export default {
   name: 'Home',
@@ -233,7 +234,6 @@ export default {
     SemanticSearchPanel,
     OsmEntitiesPanel,
     MapLabelsControls,
-    ResearchPanel,
     PlanetInitPanel,
     SystemSummaryModal,
     RerunConfirmModal,
@@ -242,10 +242,11 @@ export default {
   data() {
     return {
       // ── Tab definitions ──
+      // The standalone Research tab was removed 2026-10-01 — the general
+      // researcher lives inside the OSM RAG tab as a sub-mode.
       tabs: [
         { key: 'query', label: 'OSM RAG' },
         { key: 'osm-entities', label: 'OSM Entities' },
-        { key: 'research', label: 'OSM Agentic Researcher' },
       ],
 
       // ── System state ──
@@ -275,6 +276,9 @@ export default {
       // ── Country status (preprocessed / has pickle) ──
       countryStatus: null,
       isLoadingStatus: false,
+      // Slug names of search-ready countries (from /system/status/) —
+      // drives the green "queryable" dot in the country list.
+      processedCountries: new Set(),
 
       // ── Sidebar tabs ──
       activeTab: 'query',
@@ -436,6 +440,7 @@ export default {
         this.suggestedPlanetFilePath = data.suggested_planet_file_path || ''
         this.applySnapshotDates(data.snapshot_dates || [], data.default || null)
         this.completedDates = data.completed_dates || []
+        this.processedCountries = new Set(data.processed_countries || [])
         if (!this.isSystemReady) {
           this.systemError = 'System not initialized. Planet init runs as a Docker startup step (python manage.py init_planet).'
         }
@@ -461,6 +466,10 @@ export default {
       // Always select (2026-09-28): map clicks select, never deselect —
       // the deselection overlay was removed and Clear in the sidebar is
       // the only way to drop the selection.
+      // Re-selecting the same country must not reassign the array — the
+      // watcher below fires on every assignment and wipes search/viz
+      // state (searchResults, queryGraph, templateVisualization).
+      if (this.selectedCountryIds.length === 1 && this.selectedCountryIds[0] === countryId) return
       this.selectedCountryIds = [countryId]
     },
     clearSelection() {
@@ -483,6 +492,16 @@ export default {
       } finally {
         this.isLoadingStatus = false
       }
+    },
+    // ── Queryable-country dot ──
+    // Slug form matching the backend's normalize_country_slug
+    // (lowercase, spaces/hyphens → underscores) — the form Step 6 stores
+    // in CountrySearchProcessing.country_name.
+    countrySlug(name) {
+      return name.toLowerCase().replace(/ /g, '_').replace(/-/g, '_')
+    },
+    hasData(country) {
+      return this.processedCountries.has(this.countrySlug(country.name))
     },
     // ── Snapshot dates (hydrated from /system/status/) ──
     applySnapshotDates(dates, defaultDate) {
@@ -537,96 +556,27 @@ export default {
         this.pipelineDoneStatus = 'completed'
       }
     },
-    // ── Pipeline ──
-    async handleRunPipeline() {
-      if (!this.singleCountry || this.isPipelineRunning) return
-      if (!this.singleCountry.is_geovectors_supported) {
-        this.errorMessage = 'No embeddings available for this country — pipeline cannot run'
-        this.pipelineDoneStatus = 'failed'
-        return
-      }
-
-      // If the selected date is already completed, confirm via modal
-      const isCompleted = this.storeUsedDates.has(this.selectedSnapshotDate)
-      if (isCompleted) {
-        this.rerunConfirmDate = this.selectedSnapshotDate
-        this.showRerunConfirm = true
-        return
-      }
-
-      this.requestPassword(false)
+    // ── Pipeline — gate chain lives in services/pipelineRunGate.js
+    // (completed-date confirm → password gate → store.startPipeline);
+    // these are template-bound delegates. ──
+    handleRunPipeline() {
+      pipelineGate.handleRunPipeline(this)
     },
     confirmRerun() {
-      this.showRerunConfirm = false
-      this.requestPassword(true)
-    },
-    requestPassword(force) {
-      const expected = import.meta.env.VITE_PIPELINE_PASSWORD
-      if (!expected) {
-        this._startPipelineRun(force)
-        return
-      }
-      this.pendingPasswordForce = force
-      this.pipelinePasswordError = ''
-      this.showPipelinePassword = true
+      pipelineGate.confirmRerun(this)
     },
     onPipelinePasswordSubmit(password) {
-      const expected = (import.meta.env.VITE_PIPELINE_PASSWORD || '').trim()
-      if (password !== expected) {
-        this.pipelinePasswordError = 'Incorrect password'
-        return
-      }
-      this.pipelinePasswordError = ''
-      this.showPipelinePassword = false
-      this._startPipelineRun(this.pendingPasswordForce)
-    },
-    async _startPipelineRun(force) {
-      this.isPipelineRunning = true
-      this.pipelineDoneStatus = null
-      this.errorMessage = ''
-      try {
-        const store = usePipelineStore()
-        const sessionId = await store.startPipeline(
-          this.singleCountry.name,
-          this.selectedSnapshotDate,
-          { force }
-        )
-        this.pipelineSessionId = sessionId || null
-      } catch (err) {
-        const status = err.response?.status
-        const reason = err.response?.data?.error || err.message || 'Failed to start pipeline'
-        this.errorMessage = reason
-        this.isPipelineRunning = false
-        if (status === 409) {
-          this.pipelineDoneStatus = 'skipped'
-          // Refresh DB-backed snapshot jobs so the year badge updates.
-          if (this.singleCountry?.iso_code) {
-            const store = usePipelineStore()
-            await store.fetchSnapshotJobs(
-              this.singleCountry.name,
-              this.singleCountry.iso_code,
-            )
-          }
-        } else {
-          this.pipelineDoneStatus = 'failed'
-        }
-      }
+      pipelineGate.onPipelinePasswordSubmit(this, password)
     },
     onPipelineDone(event) {
-      this.isPipelineRunning = false
-      this.pipelineDoneStatus = event.status || 'failed'
-
-      if (event.status === 'completed') {
-        // Refresh country status to see new data
-        this.fetchCountryStatus()
-        // Refresh DB-backed snapshot jobs so the year badge updates
-        if (this.singleCountry?.iso_code) {
-          const store = usePipelineStore()
-          store.fetchSnapshotJobs(
-            this.singleCountry.name,
-            this.singleCountry.iso_code,
-          )
-        }
+      pipelineGate.onPipelineDone(this, event)
+      // A completed run makes the country queryable — add its dot without
+      // waiting for the next /system/status/ refresh.
+      if (this.pipelineDoneStatus === 'completed' && this.singleCountry) {
+        this.processedCountries = new Set([
+          ...this.processedCountries,
+          this.countrySlug(this.singleCountry.name),
+        ])
       }
     },
     // ── Semantic search ──
@@ -698,6 +648,17 @@ export default {
   height: 8px;
   border-radius: 999px;
   background: var(--bs-primary);
+}
+
+/* Queryable-country dot — green = pipeline data ready for that country
+   (hover shows the native tooltip). */
+.data-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bs-success);
+  flex-shrink: 0;
 }
 
 /* Brand mark hover — opacity transition on the globe emoji link. */

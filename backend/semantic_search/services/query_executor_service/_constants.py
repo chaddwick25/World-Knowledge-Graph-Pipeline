@@ -96,7 +96,74 @@ CATEGORY_TAG_TARGETS = {
     "church": ("amenity", "place_of_worship"),
     "hospital": ("amenity", "hospital"),
     "clinic": ("amenity", "clinic"),
+    # Commercial / services / transit / infrastructure targets (2026-10-01)
+    # — the place-report recipe's slots (shop, services, getting around,
+    # infrastructure) filter by the real OSM key=value, not the fuzzy
+    # embedding tier.
+    "fuel": ("amenity", "fuel"),
+    "fuel station": ("amenity", "fuel"),
+    "gas station": ("amenity", "fuel"),
+    "charging station": ("amenity", "charging_station"),
+    "atm": ("amenity", "atm"),
+    "post office": ("amenity", "post_office"),
+    "supermarket": ("shop", "supermarket"),
+    "marketplace": ("amenity", "marketplace"),
+    "fast food": ("amenity", "fast_food"),
+    "parking": ("amenity", "parking"),
+    "bus stop": ("highway", "bus_stop"),
+    "bus station": ("amenity", "bus_station"),
+    "police": ("amenity", "police"),
+    "library": ("amenity", "library"),
+    "cinema": ("amenity", "cinema"),
+    "kindergarten": ("amenity", "kindergarten"),
+    # Commercial generalization (2026-10-01): markets, bakeries, kiosks,
+    # food courts, vending, and the taco/mexican cuisine family resolve to
+    # real OSM keys. Cuisine words map to the restaurant amenity (coarse —
+    # the data rarely separates taco spots by tag); the research matcher's
+    # TAG_RULES cuisine families carry the subtype nuance for evidence and
+    # the assembler states when the class does not distinguish.
+    "market": ("amenity", "marketplace"),
+    "bakery": ("shop", "bakery"),
+    "kiosk": ("shop", "kiosk"),
+    "food court": ("amenity", "food_court"),
+    "food truck": ("amenity", "fast_food"),
+    "vending machine": ("amenity", "vending_machine"),
+    "convenience store": ("shop", "convenience"),
+    "mall": ("shop", "mall"),
+    "taco": ("amenity", "restaurant"),
+    "tacos": ("amenity", "restaurant"),
+    "taqueria": ("amenity", "restaurant"),
+    "mexican": ("amenity", "restaurant"),
+    # Generic food intent: "Which food vendors..." → the restaurant class
+    # (coarse — the data rarely separates vendors by tag).
+    "food": ("amenity", "restaurant"),
+    # Food-vendor family expansion (2026-10-02) — the food report recipe's
+    # vendor vocabulary: drink spots, street vendors, snacks, chains.
+    # Coarse mappings follow the taco → restaurant convention: OSM has no
+    # "tavern"/"cookout" amenity value, so they resolve to the nearest
+    # vendor tag and the cuisine family carries the subtype.
+    "tavern": ("amenity", "pub"),
+    "beer garden": ("amenity", "biergarten"),
+    "biergarten": ("amenity", "biergarten"),
+    "nightclub": ("amenity", "nightclub"),
+    "club": ("amenity", "nightclub"),
+    "ice cream": ("amenity", "ice_cream"),
+    "snack bar": ("amenity", "fast_food"),
+    "street food": ("amenity", "fast_food"),
+    "food stand": ("amenity", "fast_food"),
+    "food stall": ("amenity", "marketplace"),
+    "bbq": ("amenity", "restaurant"),
+    "cookout": ("amenity", "restaurant"),
 }
+
+# Eat/drink vendor amenity values — the food report's entity-census
+# allowlist (shops, health, transit, and infrastructure are out of scope).
+# The "food vendor" TAG_RULES families reuse it below.
+FOOD_VENDOR_AMENITIES = (
+    "restaurant", "cafe", "fast_food", "bar", "pub", "tavern",
+    "biergarten", "food_court", "ice_cream", "nightclub",
+    "vending_machine", "marketplace",
+)
 
 # Intent → candidate OSM tag families, in priority order. The research
 # matcher checks an entity's tags against these BEFORE the coarse
@@ -147,6 +214,70 @@ TAG_RULES = {
               ("tourism", ("viewpoint",))),
     "bank": (("amenity", ("bank",)),),
     "pharmacy": (("amenity", ("pharmacy",)),),
+    # Commercial / services / transit / infrastructure intents (2026-10-01)
+    # — the place-report recipe's research matcher (slot intents like
+    # "getting around" / "infrastructure" re-ask via these families).
+    "bus stop": (("highway", ("bus_stop",)),
+                 ("amenity", ("bus_station",))),
+    "bus station": (("amenity", ("bus_station",)),
+                    ("highway", ("bus_stop",))),
+    "fuel": (("amenity", ("fuel",)),),
+    "charging station": (("amenity", ("charging_station",)),),
+    "atm": (("amenity", ("atm",)),),
+    "post office": (("amenity", ("post_office", "post_box")),),
+    "supermarket": (("shop", ("supermarket",)),
+                    ("amenity", ("marketplace",))),
+    "marketplace": (("amenity", ("marketplace",)),),
+    "parking": (("amenity", ("parking",)),),
+    "fast food": (("amenity", ("fast_food",)),),
+    "library": (("amenity", ("library",)),),
+    "cinema": (("amenity", ("cinema",)),),
+    "police": (("amenity", ("police",)),),
+    "kindergarten": (("amenity", ("kindergarten",)),),
+    # Commercial + cuisine families (2026-10-01) — mirrors the jerk
+    # pattern: the cuisine tag (multi-value "tacos;tortas") carries the
+    # subtype a coarse wkgs:Amenity cannot.
+    "taco": (("amenity", ("restaurant", "fast_food")),
+             ("cuisine", ("taco", "tacos", "mexican", "taqueria", "tortas",
+                          "antojitos", "tortilla"))),
+    "tacos": (("amenity", ("restaurant", "fast_food")),
+              ("cuisine", ("taco", "tacos", "mexican", "taqueria", "tortas",
+                           "antojitos", "tortilla"))),
+    "mexican": (("cuisine", ("taco", "tacos", "mexican", "taqueria", "tortas",
+                             "antojitos", "tortilla")),
+                ("amenity", ("restaurant", "fast_food"))),
+    "market": (("amenity", ("marketplace",)),
+               ("shop", ("convenience", "mall", "kiosk"))),
+    "bakery": (("shop", ("bakery",)), ("amenity", ("bakery",))),
+    "kiosk": (("shop", ("kiosk",)),),
+    "food court": (("amenity", ("food_court", "fast_food")),),
+    "vending machine": (("amenity", ("vending_machine",)),),
+    "convenience store": (("shop", ("convenience",)),
+                          ("amenity", ("convenience_store",))),
+    "food": (("amenity", ("restaurant", "fast_food", "food_court")),),
+    # Food-vendor families (2026-10-02) — drink spots, street vendors,
+    # snacks, chains. Generic "food vendor"/"eatery" spans the whole
+    # amenity allowlist; cuisine words (bbq/cookout) match the cuisine
+    # tag for the subtype the amenity tag can't carry.
+    "pub": (("amenity", ("pub", "bar")),),
+    "tavern": (("amenity", ("pub", "bar")),),
+    "beer garden": (("amenity", ("biergarten", "bar")),),
+    "biergarten": (("amenity", ("biergarten", "bar")),),
+    "nightclub": (("amenity", ("nightclub", "bar")),),
+    "club": (("amenity", ("nightclub", "bar")),),
+    "ice cream": (("amenity", ("ice_cream",)),),
+    "snack bar": (("amenity", ("fast_food", "food_court")),),
+    "street food": (("amenity", ("fast_food", "food_court",
+                                 "marketplace")),),
+    "food stand": (("amenity", ("fast_food", "food_court")),),
+    "food stall": (("amenity", ("marketplace", "fast_food")),),
+    "food truck": (("amenity", ("fast_food",)),),
+    "bbq": (("amenity", ("restaurant", "fast_food")),
+            ("cuisine", ("bbq", "barbecue", "grill"))),
+    "cookout": (("amenity", ("restaurant", "fast_food")),
+                ("cuisine", ("bbq", "barbecue", "grill"))),
+    "food vendor": (("amenity", FOOD_VENDOR_AMENITIES),),
+    "eatery": (("amenity", FOOD_VENDOR_AMENITIES),),
 }
 
 # Generic plural phrases → "any entity asserting an amenity-type key".

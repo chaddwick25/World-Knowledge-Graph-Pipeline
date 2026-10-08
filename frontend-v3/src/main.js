@@ -30,17 +30,6 @@ axios.interceptors.request.use((config) => {
   return config
 })
 
-// Login guard on 401s (except for the login page itself).
-axios.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    if (err.response?.status === 401 && router.currentRoute.value.name !== 'login') {
-      router.push({ name: 'login' })
-    }
-    return Promise.reject(err)
-  }
-)
-
 // Activate Bootstrap 5.3 dark mode so theme.css var overrides apply.
 document.documentElement.setAttribute('data-bs-theme', 'dark')
 
