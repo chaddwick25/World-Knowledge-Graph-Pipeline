@@ -66,6 +66,7 @@ import { useMapLabelsStore } from '../stores/mapLabelsStore'
 import { useEntityInfoStore } from '../stores/entityInfoStore'
 import EntityInfoPanel from './EntityInfoPanel.vue'
 import { labelManager } from '../mapLabels/labelManager'
+import { fmtM } from '../mapViz/format'
 import { createClassLabels, createEntityLabels } from '../mapLabels/textLayerConfig'
 import { buildTemplateDeckLayers, isTemplateDeckSupported, templateVizBounds } from '../mapViz/templateDeckLayers'
 import {
@@ -93,8 +94,8 @@ const BASEMAP_URL = USE_CARTO
   : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 
 const BASEMAP_OPTIONS = USE_CARTO
-  ? { subdomains: 'abcd', maxZoom: 19 }
-  : { subdomains: 'abc', maxZoom: 19 }
+  ? { subdomains: 'abcd', maxZoom: 22, maxNativeZoom: 19 }
+  : { subdomains: 'abc', maxZoom: 22, maxNativeZoom: 19 }
 
 const BASEMAP_ATTRIBUTION = USE_CARTO
   ? '© <a href="https://www.openstreetmap.org/copyright">OSM</a> · <a href="https://carto.com/">CARTO</a>'
@@ -106,6 +107,42 @@ const BASEMAP_ATTRIBUTION = USE_CARTO
 // initMap reads viewport.zoom (deck units = leaflet zoom - 1) and converts
 // back, so this constant stays in Leaflet units.
 const DECK_LABEL_ZOOM_THRESHOLD = 10
+
+// ── Deck interaction helpers (pure — no component state) ────────────────────
+// The zoom-hierarchy filter: class labels render below the threshold,
+// entity labels at/above it. viewport.zoom is deck units = leaflet zoom - 1.
+function deckLayerFilter({ layer, viewport }) {
+  const leafletZoom = viewport.zoom + 1
+  if (layer.id === 'wkg-class-labels') return leafletZoom < DECK_LABEL_ZOOM_THRESHOLD
+  if (layer.id === 'entity-tag-labels') return leafletZoom >= DECK_LABEL_ZOOM_THRESHOLD
+  return true
+}
+
+// Hover tooltip bodies per pickable kind: country feature | entity row.
+function countryTooltip(props) {
+  return props.is_geovectors_supported
+    ? {
+        html: `<div>${escapeHtml(props.name)}</div>` +
+          `<div class="text-secondary">${escapeHtml(props.continent)}</div>`,
+      }
+    : null
+}
+
+function entityTooltip(obj) {
+  if (!obj || !obj.name) return null
+  const lines = [String(obj.name)]
+  const cls = obj.wkg_class || obj.wkgClass || null
+  if (cls) lines.push(cls.replace(/^wkgs:/, ''))
+  const dist = obj.distance_m != null ? obj.distance_m : obj.distanceM
+  if (dist != null) lines.push(fmtM(dist))
+  return { html: lines.map((l) => `<div>${escapeHtml(l)}</div>`).join('') }
+}
+
+function deckTooltip({ object }) {
+  if (object?.properties?.id) return countryTooltip(object.properties)
+  // Entity rows (USLP endpoints carry the entity under `.info`).
+  return entityTooltip(object?.info || object)
+}
 
 let mapInstance = null
 let countryLookup = {}
@@ -303,11 +340,17 @@ export default {
     },
 
     initMap() {
+      this._initBasemap()
+      this._initDeckOverlay()
+      this._initDeckInteraction()
+    },
+
+    _initBasemap() {
       mapInstance = L.map(this.$refs.mapContainer, {
         center: [20, 0],
         zoom: 2.5,
         minZoom: 2,
-        maxZoom: 18,
+        maxZoom: 22,
         zoomControl: true,
         attributionControl: false,
         worldCopyJump: false,
@@ -321,12 +364,14 @@ export default {
         .attribution({ prefix: false, position: 'bottomright' })
         .addAttribution(BASEMAP_ATTRIBUTION)
         .addTo(mapInstance)
+    },
 
-      // deck.gl DeckOverlay — the single overlay surface for countries,
-      // map labels, template results, search results, query graph, USLP
-      // links, and agent overlays (all registered as layer groups). Deck
-      // owns all map interaction (countries included), so there are no
-      // interactive Leaflet layers above the canvas.
+    /** deck.gl DeckOverlay — the single overlay surface for countries,
+     *  map labels, template results, search results, query graph, USLP
+     *  links, and agent overlays (all registered as layer groups). Deck
+     *  owns all map interaction (countries included), so there are no
+     *  interactive Leaflet layers above the canvas. */
+    _initDeckOverlay() {
       labelManager.attach(mapInstance)
       // Sync insurance: the bridge re-syncs on its own moveend/zoomend
       // handlers; this covers any Leaflet path that fires neither.
@@ -335,46 +380,17 @@ export default {
       mapInstance.on('moveend zoomend', () => this.updateInfoPanelPos())
       // Zoom hierarchy (Phase 1c): layerFilter re-evaluates every render,
       // so a single install tracks zoom — no per-event setProps needed.
-      labelManager.setLayerFilter(({ layer, viewport }) => {
-        const leafletZoom = viewport.zoom + 1
-        if (layer.id === 'wkg-class-labels') {
-          return leafletZoom < DECK_LABEL_ZOOM_THRESHOLD
-        }
-        if (layer.id === 'entity-tag-labels') {
-          return leafletZoom >= DECK_LABEL_ZOOM_THRESHOLD
-        }
-        return true
-      })
+      labelManager.setLayerFilter(deckLayerFilter)
+    },
 
-      // Hover tooltip + click info for every pickable deck layer (template
-      // results, search results, query graph, USLP endpoints, agent
-      // overlays). Click sets the same entityInfoStore the results-table
-      // hover writes, so both show the identical info panel.
+    /** Hover tooltip + click info for every pickable deck layer (template
+     *  results, search results, query graph, USLP endpoints, agent
+     *  overlays). Click sets the same entityInfoStore the results-table
+     *  hover writes, so both show the identical info panel. */
+    _initDeckInteraction() {
       labelManager.setInteraction({
-        getTooltip: ({ object }) => {
-          // Country features (the pickable base layer).
-          if (object?.properties?.id) {
-            return object.properties.is_geovectors_supported
-              ? {
-                  html: `<div>${escapeHtml(object.properties.name)}</div>` +
-                    `<div class="text-secondary">${escapeHtml(object.properties.continent)}</div>`,
-                }
-              : null
-          }
-          // Entity rows (USLP endpoints carry the entity under `.info`).
-          const obj = object?.info || object
-          if (!obj || !obj.name) return null
-          const lines = [String(obj.name)]
-          const cls = obj.wkg_class || obj.wkgClass || null
-          if (cls) lines.push(cls.replace(/^wkgs:/, ''))
-          const dist = obj.distance_m != null ? obj.distance_m : obj.distanceM
-          if (dist != null) {
-            lines.push(dist >= 1000 ? `${(dist / 1000).toFixed(1)} km` : `${Math.round(dist)} m`)
-          }
-          return { html: lines.map((l) => `<div>${escapeHtml(l)}</div>`).join('') }
-        },
+        getTooltip: deckTooltip,
         onClick: (info) => {
-          console.log('[WorldKGMap onClick]', info.object && info.object.properties?.id, info.object && info.object.name, info.x, info.y)
           const obj = info.object?.info || info.object
           if (obj?.properties?.id) {
             // Country click → always select (deselect via the sidebar Clear).
@@ -518,6 +534,11 @@ export default {
     },
 
     handleClick(countryId) {
+      // Re-clicking the already-selected country is a full no-op (no emit,
+      // no fly): Home's selectedCountryIds watcher wipes all search/viz
+      // state on every assignment, so a stray click on the selected
+      // country's landmass would clear every marker off the map.
+      if (this.selectedIds.length === 1 && this.selectedIds[0] === countryId) return
       this._flyingFromClick = true
       // Always select (never toggle-off) — deselect happens via the sidebar
       // Clear button. Map clicks on a selected country are a no-op instead

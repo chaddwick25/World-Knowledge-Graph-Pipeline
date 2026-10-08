@@ -24,6 +24,7 @@ urlpatterns = [
     path('research/finalize/', views.research_finalize, name='nca_research_finalize'),
     path('factor-availability/', views.factor_availability, name='nca_factor_availability'),
     path('subdivisions/', views.worldkg_subdivisions, name='nca_subdivisions'),
+    path('sample-questions/', views.sample_questions, name='nca_sample_questions'),
     # Graph / spectral / community / event queries (GRAPH_SPECTRAL_TEMPORAL_PLAN.md Phase 4)
     path('spectral-query/', views.spectral_query, name='nca_spectral_query'),
     path('temporal-query/', views.temporal_query, name='nca_temporal_query'),

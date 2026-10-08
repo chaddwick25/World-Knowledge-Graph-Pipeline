@@ -38,7 +38,11 @@ logger = logging.getLogger(__name__)
 # after a pipeline run, or let the TTL expire.
 _SNAPSHOT_CACHE = {}
 _SNAPSHOT_CACHE_LOCK = threading.Lock()
-_SNAPSHOT_CACHE_DEFAULT_TTL = 120.0
+# 300s (2026-10-01 — was 120): the snapshot-registry Append (~850ms-20s
+# under load, 3.9M heap fetches) re-fires after 2 idle minutes; 5 keeps it
+# out of the request path for a working session while still expiring after
+# a pipeline run (clear_snapshot_cache() runs on backfill regardless).
+_SNAPSHOT_CACHE_DEFAULT_TTL = 300.0
 
 
 def _snapshot_cache_ttl() -> float:

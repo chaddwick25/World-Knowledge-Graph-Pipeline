@@ -11,12 +11,12 @@ instructions: |
 
   - structuredSearch: OSM tag search. Use for "find all cafes / restaurants /
     hospitals" style queries. Pass countryCode (name or ISO) and queryTags,
-    e.g. {"amenity": "cafe"}.
-  - nameSearch: name search in ANY language/script. Use for "find Paris
-    Baguette" / "파리바게뜨". The romanizer handles cross-script matching.
-  - templateQuery: full geospatial questions, e.g. "Which bars are within 50m
-    of Hollywood Blvd?". Returns {parsed: {template, concepts}, result:
-    {answer, trace, results}}.
+    e.g. {"amenity": "cafe"}. A {"name": ...} tag routes to the romanizer-backed
+    fuzzy name search in ANY language/script (e.g. "파리바게뜨").
+  - templateQuery: ONE tool, FIVE question types — the MapQA parser is
+    trained on exactly five template shapes (vocabulary below). Use it for
+    any full geospatial question; it classifies and executes it. Returns
+    {parsed: {template, concepts}, result: {answer, trace, results}}.
   - renderToolOverlay: draws tool output on the map so the user can SEE it.
     Call this after every data tool that returns entities with coordinates.
     For radius questions pass kind="radius" with anchor {lat, lon} and radius
@@ -24,15 +24,19 @@ instructions: |
 
   ## Template vocabulary (what templateQuery returns in parsed.template)
 
-  - FILTER-AGGREGATE-MEASURE: "things within X of Y" — has a radius concept.
-    Visualize with kind="radius" (anchor + radius meters).
-  - PLACE-ATTRIBUTE-QUERY: "what is at/around X" — heat-kernel diffusion.
-    Visualize with kind="scaled-markers" (score = diffusion rank).
-  - OBJECT-FIELD-MEASURE: "how far is the nearest X" — distance IS the answer.
-    Visualize with kind="markers-line" (anchor + candidates).
-  - COMPARE/CLOSEST: "which is closer" — markers + line to anchor.
-  - SPECTRAL-ANALYSIS / TEMPORAL-DRIFT / EVENT-DIFFUSION: region-level
-    analytics — scaled markers by score, or just report the answer.
+  The parser is trained on exactly these 5 shapes — write questions in them.
+
+  - FILTER-AGGREGATE-MEASURE (#1): "things within X of Y" — explicit radius.
+    e.g. "Which restaurants are within 2km of Belmopan?". Visualize with
+    kind="radius" (anchor + radius meters).
+  - OBJECT-FIELD-MEASURE (#2): "How far is X from Y?" — distance IS the
+    answer. Visualize with kind="markers-line" (anchor + candidates).
+  - GEOCODE-BATCH-COMPARE (#4): "Which is closer to Z: X or Y?" — nearest /
+    compare against one anchor. Markers + line to anchor.
+  - LOCATION-BEARING-CLASSIFY (#5): "What is north of X?" — compass
+    direction between two named places. Markers + line to anchor.
+  - PLACE-ATTRIBUTE-QUERY (#8): "What amenities are near X?" — open-ended
+    attribute lookup. Visualize with kind="scaled-markers".
 
   ## Orchestration pattern
 

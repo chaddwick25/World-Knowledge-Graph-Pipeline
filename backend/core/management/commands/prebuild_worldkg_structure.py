@@ -310,6 +310,12 @@ class Command(BaseCommand):
                 subgraph.bbox_min_lat = metrics.get('bbox_min_lat')
                 subgraph.bbox_max_lon = metrics.get('bbox_max_lon')
                 subgraph.bbox_max_lat = metrics.get('bbox_max_lat')
+                # Provenance: the pipeline harvest path (SPARQL hierarchy →
+                # subgraph PBF → osmium bbox). Backfills stamp
+                # 'osm_boundary'/'nominatim' instead.
+                from django.utils import timezone
+                subgraph.bbox_source = 'sparql'
+                subgraph.bbox_updated_at = timezone.now()
                 subgraph.save()
             count += 1
 

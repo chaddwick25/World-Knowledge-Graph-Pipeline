@@ -167,6 +167,7 @@ def _get_step_tasks():
         step_5_train_gv_nle,
         step_5b_finalize_subgraph_nle,
         step_5c_graph_spectral_analysis,
+        step_5_8_generate_sample_questions,
         step_6_mark_search_ready,
     )
     return {
@@ -179,9 +180,10 @@ def _get_step_tasks():
         5: step_5_train_gv_nle,
         5.5: step_5b_finalize_subgraph_nle,         # Chord callback for Step 5 subgraphs
         5.7: step_5c_graph_spectral_analysis,       # Graph & spectral analysis (non-fatal)
-        # 5.8 (step_5d_temporal_drift) removed from the canvas 2026-09-26 —
-        # temporal drift is a scheduled-interval feature, not a per-run step.
-        # TODO: re-add as its own feature; module + services retained at
+        5.8: step_5_8_generate_sample_questions,    # Subdivision sample questions (non-fatal)
+        # step_5d_temporal_drift removed from the canvas 2026-09-26 — temporal
+        # drift is a scheduled-interval feature, not a per-run step.
+        # TODO: re-add as its own feature; module retained at
         # pipeline/tasks/country_pipeline_steps/step_5d_temporal_drift.py.
         6: step_6_mark_search_ready,
     }
@@ -352,6 +354,7 @@ _STEP_NAMES = {
     3: 'run_igea',
     4: 'predict_spatial_links',
     5: 'train_gv_nle',
+    5.8: 'generate_sample_questions',
     6: 'mark_search_ready',
 }
 
@@ -397,7 +400,7 @@ def _run_eager(cfg, run, steps) -> None:
     )
     tasks_list = [
         steps[1], steps[2], steps[3], steps[4], steps[5],
-        steps[5.7], steps[6],
+        steps[5.7], steps[5.8], steps[6],
     ]
     config_dict = cfg.to_dict()
 
@@ -594,6 +597,7 @@ def _run_async(cfg, run, steps) -> None:
     # own feature; module kept at step_5d_temporal_drift.py.
     canvas_parts.extend([
         steps[5.7].s(),   # step_5c_graph_spectral_analysis
+        steps[5.8].s(),   # step_5_8_generate_sample_questions (non-fatal)
     ])
     canvas_parts.append(steps[6].s())
 

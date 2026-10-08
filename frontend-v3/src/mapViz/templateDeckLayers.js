@@ -1,4 +1,5 @@
 import { LineLayer, PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
+import { fmtM as formatDistance } from './format'
 
 const EARTH_RADIUS_M = 6371000
 const SUPPORTED_TEMPLATES = new Set([
@@ -11,12 +12,6 @@ const SUPPORTED_TEMPLATES = new Set([
 
 function toRad(degrees) {
   return (degrees * Math.PI) / 180
-}
-
-function formatDistance(m) {
-  if (m == null) return ''
-  if (m >= 1000) return `${(m / 1000).toFixed(1)} km`
-  return `${Math.round(m)} m`
 }
 
 function toDeg(radians) {
@@ -135,8 +130,8 @@ export function buildTemplateDeckLayers(viz) {
       getPosition: (d) => [d.lon, d.lat],
       getRadius: 255,
       radiusUnits: 'meters',
-      radiusMinPixels: 18,
-      radiusMaxPixels: 42,
+      radiusMinPixels: 10,
+      radiusMaxPixels: 24,
       filled: true,
       stroked: true,
       // Anchors are orange (flipped from indigo 2026-09-28)
@@ -155,8 +150,8 @@ export function buildTemplateDeckLayers(viz) {
       getPosition: (d) => [d.geom.lon, d.geom.lat],
       getRadius: (d) => d.distance_m != null ? 165 : 210,
       radiusUnits: 'meters',
-      radiusMinPixels: 12,
-      radiusMaxPixels: 30,
+      radiusMinPixels: 8,
+      radiusMaxPixels: 18,
       filled: true,
       stroked: true,
       // Entities are indigo/purple (flipped from orange 2026-09-28)

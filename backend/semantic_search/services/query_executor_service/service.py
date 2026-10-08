@@ -52,7 +52,8 @@ class QueryExecutorService(
     @classmethod
     def execute(cls, parsed: dict, country_code: str = None,
                 snapshot_date: str = None, question: str = None,
-                event_callback=None, skip_enrichment: bool = False) -> dict:
+                event_callback=None, skip_enrichment: bool = False,
+                subdivision_qid: str = None) -> dict:
         """Execute a parsed query and return results + execution trace.
 
         Args:
@@ -68,6 +69,10 @@ class QueryExecutorService(
                 synthesis block. The research orchestrator uses this: its
                 loop reasons over deterministic primary answers and does its
                 own summary synthesis at the end (one LLM in the loop).
+            subdivision_qid: Wikidata QID — hard-scope the RESULTS to the
+                subdivision polygon (research runs scoped to a district).
+                The candidate pool stays country + radius; this is the
+                boundary filter (2026-10-01).
 
         Returns:
             {template, results, answer, trace, latency_ms}
@@ -94,15 +99,38 @@ class QueryExecutorService(
             stop_words = getattr(QueryParserService, "_QUESTION_WORDS", set())
             clean_entities = [e for e in all_entities if e not in stop_words]
             if len(clean_entities) >= 2 and len(existing_locations) < 2:
-                # Replace/augment LOCATION concepts with full extraction
-                concepts = [c for c in concepts if c["type"] != "LOCATION"]
-                for entity_name in clean_entities:
-                    concepts.append({
-                        "type": "LOCATION",
-                        "text": entity_name,
-                        "confidence": 1.0,
-                        "resolved_value": None,
-                    })
+                # Only replace/augment when the regex extraction ADDS entities
+                # the parser missed. Over-split fragments of a complete parser
+                # anchor must NOT clobber it: "Cliffs of Moher" extracts as
+                # ['Cliffs', 'Moher'] — replacing "the Cliff of Moher" (conf
+                # 0.996) with "Cliffs" geocodes the wrong place ("Cliffort",
+                # Co. Cork — ~140km from the actual cliffs) and the "nearest
+                # restaurant" answer becomes geographically absurd (2026-10-06).
+                # The compare pattern ("closer to Dublin: Cork or Limerick?")
+                # still fires — Cork/Limerick are not covered by "Dublin".
+                parser_words = {
+                    w.lower()
+                    for loc in existing_locations
+                    for w in str(loc.get("text", "")).lower().split()
+                }
+
+                def _covered(entity):
+                    e = entity.lower()
+                    return any(
+                        e == w or e.startswith(w) or w.startswith(e)
+                        for w in parser_words if len(w) >= 4
+                    )
+
+                if not all(_covered(e) for e in clean_entities):
+                    # Replace/augment LOCATION concepts with full extraction
+                    concepts = [c for c in concepts if c["type"] != "LOCATION"]
+                    for entity_name in clean_entities:
+                        concepts.append({
+                            "type": "LOCATION",
+                            "text": entity_name,
+                            "confidence": 1.0,
+                            "resolved_value": None,
+                        })
 
         executors = cls._get_executors()
         executor = executors.get(template)
@@ -117,6 +145,18 @@ class QueryExecutorService(
                 results = executor(concepts, country_code, snapshot_date, trace, question=question)
             else:
                 results = executor(concepts, country_code, snapshot_date, trace)
+
+            # Subdivision scope (2026-10-01): the research loop can bound a
+            # run to a district — the hard polygon filter on results.
+            if subdivision_qid:
+                results = cls._scope_to_subdivision(
+                    results, subdivision_qid, trace,
+                )
+
+            # Name dedup (2026-10-01): collapse co-located same-name
+            # duplicates and cap same-name domination — a chain must not
+            # fill the list.
+            results = cls._dedupe_results(results, trace)
 
             # Enrich results with augmented data (IGEA links, USLP predictions)
             if isinstance(results, list) and results:
@@ -490,6 +530,100 @@ class QueryExecutorService(
         value = int(m.group(1))
         unit = (m.group(2) or "m").lower()
         return value * 1000 if unit == "km" else value
+
+    @classmethod
+    def _scope_to_subdivision(cls, results: list, subdivision_qid: str,
+                              trace: list = None) -> list:
+        """Hard-scope results to the subdivision polygon (2026-10-01).
+
+        The research loop's candidate pool is country-wide + radius-
+        scoped; this is the district boundary: results whose point falls
+        outside the polygon are dropped. Fail-soft — an unresolvable
+        polygon or a geometry error leaves the results untouched (the
+        radius scoping still holds).
+        """
+        if not subdivision_qid or not isinstance(results, list) or not results:
+            return results
+        try:
+            from django.contrib.gis.geos import Point
+            from semantic_search.utils.subdivision_resolver import (
+                resolve_subdivision_polygon,
+            )
+
+            polygon = resolve_subdivision_polygon(subdivision_qid)
+            if polygon is None:
+                return results
+            if polygon.srid == 0:
+                polygon.srid = 4326
+            scoped = [
+                r for r in results
+                if r.get("lon") is not None and r.get("lat") is not None
+                and polygon.contains(Point(float(r["lon"]), float(r["lat"])))
+            ]
+            if trace is not None:
+                trace.append({
+                    "step": "subdivision_scoped",
+                    "subdivision_qid": subdivision_qid,
+                    "input_count": len(results),
+                    "output_count": len(scoped),
+                })
+            return scoped
+        except Exception as exc:  # noqa: BLE001 — scoping must never break execute
+            logger.warning(
+                "Subdivision scoping failed for %s: %s",
+                subdivision_qid, exc,
+            )
+            return results
+
+    @classmethod
+    def _dedupe_results(cls, results: list, trace: list = None) -> list:
+        """Collapse duplicate / same-name-dominant results (2026-10-01).
+
+        Two rules, both keyed on the normalized (lowercased) name:
+          - co-location: a same-name entry within 50 m of a kept one is a
+            true duplicate (the same POI mapped twice — "Farmacia París"
+            at 713 m and 724 m) and is dropped;
+          - domination: at most 3 entries per name survive (by distance),
+            so a chain ("Tacos El Güero" x 12) cannot fill the list.
+
+        Distance-ordered input keeps the NEAREST representative. Nameless
+        entities pass through untouched (the panel hides them anyway). The
+        dropped count rides a trace step so the answer stays explainable.
+        """
+        if not isinstance(results, list) or not results:
+            return results
+        kept_by_name = {}
+        kept = []
+        dropped = 0
+        for r in results:
+            name = ((r.get("name") or "").strip().lower())
+            if not name:
+                kept.append(r)
+                continue
+            group = kept_by_name.setdefault(name, [])
+            if len(group) >= 3:
+                dropped += 1
+                continue
+            lat, lon = r.get("lat"), r.get("lon")
+            if lat is not None and lon is not None:
+                if any(
+                    g.get("lat") is not None and g.get("lon") is not None
+                    and cls._haversine_m(lat, lon, g["lat"], g["lon"]) < 50
+                    for g in group
+                ):
+                    dropped += 1
+                    continue
+            group.append(r)
+            kept.append(r)
+        if trace is not None and dropped:
+            trace.append({
+                "step": "dedupe_results",
+                "input_count": len(results),
+                "output_count": len(kept),
+                "dropped": dropped,
+            })
+        return kept
+
     @classmethod
     def _enrich_results(cls, results: list, trace: list = None) -> list:
         """Enrich executor results with augmented data (IGEA links, USLP).

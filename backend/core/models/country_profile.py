@@ -366,6 +366,13 @@ class SubgraphProfile(models.Model):
     bbox_min_lat = models.FloatField(null=True, blank=True)
     bbox_max_lon = models.FloatField(null=True, blank=True)
     bbox_max_lat = models.FloatField(null=True, blank=True)
+    # Bbox provenance (2026-09-30): 'sparql' (pipeline P150/P402 harvest),
+    # 'osm_boundary' / 'nominatim' (backfill_subdivision_bboxes), 'none'
+    # (gap). verify_paths --strict gates on it at boot.
+    bbox_source = models.CharField(
+        max_length=16, default='none', blank=True, db_index=True,
+    )
+    bbox_updated_at = models.DateTimeField(null=True, blank=True)
 
     # Osmium fileinfo metrics (pre-computed during pre-build)
     node_count = models.IntegerField(null=True, blank=True, help_text='OSM nodes in subgraph')

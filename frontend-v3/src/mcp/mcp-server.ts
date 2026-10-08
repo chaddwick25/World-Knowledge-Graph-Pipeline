@@ -170,11 +170,16 @@ export function createMcpServer(mcpHandlers: McpHandlers): McpServer {
     "templateQuery",
     {
       description:
-        "Kuhn's-template geospatial question against the WorldKG pipeline. Runs " +
-        "the MapQA parser (classifies into one of ~13 templates) then the executor. " +
-        "Returns {query, parsed: {template, concepts, confidence}, result: {answer, " +
-        "trace, results: [{osm_type, osm_id, tags, wkg_class, lat, lon, distance_m}], " +
-        "error?}}. Use for questions like 'Which bars are within 50m of Hollywood Blvd?'",
+        "ONE tool, FIVE question types — the MapQA parser is trained on exactly " +
+        "5 template shapes and executes any of them: #1 FILTER-AGGREGATE-MEASURE " +
+        "('Which restaurants are within 2km of Belmopan?'), #2 OBJECT-FIELD-MEASURE " +
+        "('How far is Belize City from Belmopan?'), #4 GEOCODE-BATCH-COMPARE " +
+        "('Which is closer to Belmopan: Belize City or Caye Caulker?'), #5 " +
+        "LOCATION-BEARING-CLASSIFY ('What is north of Belmopan?'), #8 " +
+        "PLACE-ATTRIBUTE-QUERY ('What amenities are near Belmopan?'). Returns " +
+        "{query, parsed: {template, concepts, confidence}, result: {answer, trace, " +
+        "results: [{osm_type, osm_id, tags, wkg_class, lat, lon, distance_m}], " +
+        "error?}}.",
       inputSchema: {
         query: z.string().describe("The geospatial question in natural language"),
         countryCode: z

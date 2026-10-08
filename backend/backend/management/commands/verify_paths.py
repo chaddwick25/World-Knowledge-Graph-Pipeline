@@ -244,6 +244,53 @@ class Command(BaseCommand):
         all_valid = all_valid and overrides_errors == 0
         warnings += overrides_warnings
 
+        # Subdivision bboxes — every subdivision must have a bbox, stamped
+        # with its provenance (bbox_source: sparql | osm_boundary |
+        # nominatim | none). A 'none' gap blocks subdivision-scoped search;
+        # close it with `backfill_subdivision_bboxes` (check-only here).
+        self.stdout.write('')
+        self.stdout.write('-' * 65)
+        self.stdout.write('  Subdivision bboxes (SubgraphProfile)')
+        from django.db.models import Count as _Count
+        from core.models import SubgraphProfile as _SubgraphProfile
+        from django.db.models import Q as _Q
+
+        subdiv_total = _SubgraphProfile.objects.count()
+        by_source = dict(
+            _SubgraphProfile.objects
+            .values_list('bbox_source')
+            .annotate(n=_Count('id'))
+        )
+        for source in ('sparql', 'osm_boundary', 'nominatim', 'none'):
+            n = by_source.get(source, 0)
+            self.stdout.write(
+                f"    {'✓' if (source != 'none' or n == 0) else '✗'} "
+                f"{source}: {n}"
+            )
+        none_rows = list(
+            _SubgraphProfile.objects
+            .filter(_Q(bbox_min_lon__isnull=True)
+                    | _Q(bbox_max_lat__isnull=True))
+            .order_by('country_profile__iso2', 'name')
+        )
+        for sg in none_rows[:10]:
+            self.stdout.write(
+                self.style.ERROR(
+                    f"    ✗ {sg.name} ({sg.country_profile.iso2}) "
+                    f"qid={sg.wikidata_id} — run backfill_subdivision_bboxes"
+                )
+            )
+        if len(none_rows) > 10:
+            self.stdout.write(self.style.ERROR(
+                f"    … and {len(none_rows) - 10} more"
+            ))
+        subdiv_errors = len(none_rows)
+        self.stdout.write(
+            f"    {len(none_rows)}/{subdiv_total} missing a bbox"
+            + (" ✓" if not none_rows else " — backfill_subdivision_bboxes")
+        )
+        all_valid = all_valid and subdiv_errors == 0
+
         # Strict mode auto-fix: polygons + country profiles
         if strict and all_valid:
             self.stdout.write('')

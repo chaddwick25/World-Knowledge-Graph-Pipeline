@@ -81,7 +81,7 @@ class TemplateExecutorsMixin:
             entities = cls._search_by_amenity_spatial(
                 amenity_text, country_code, snapshot_date,
                 anchor_point=anchor_point,
-                radius_m=spatial_radius, top_k=50, trace=trace,
+                radius_m=spatial_radius, top_k=5, trace=trace,
             )
             if entities:
                 trace.append({"step": "rank_by_distance",
@@ -91,7 +91,7 @@ class TemplateExecutorsMixin:
 
         # No anchor — return unfiltered amenity search
         entities = cls._search_by_amenity(
-            amenity_text, country_code, snapshot_date, top_k=50, trace=trace,
+            amenity_text, country_code, snapshot_date, top_k=5, trace=trace,
         )
         return entities
     @classmethod
@@ -567,7 +567,11 @@ class TemplateExecutorsMixin:
             return None
         phrase = text.lower().strip()
         for frag in (" are", " is", " near", " around", " close",
-                     " nearby", " within", " in", " of", " at"):
+                     " nearby", " within", " in", " of", " at",
+                     # 2026-10-01: "taco vendors" / "food vendors" —
+                     # the planner rephrases vague intents, but the
+                     # executor stays resilient when one slips through.
+                     " vendors of", " vendors"):
             if phrase.endswith(frag):
                 phrase = phrase[:-len(frag)].rstrip()
                 break

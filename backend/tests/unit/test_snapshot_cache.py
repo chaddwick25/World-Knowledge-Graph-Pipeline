@@ -49,6 +49,8 @@ class TestSnapshotCache:
         assert "latest" not in snapshot_utils._SNAPSHOT_CACHE
 
     def test_ttl_from_env(self, monkeypatch):
-        assert snapshot_utils._snapshot_cache_ttl() == 120.0
+        # Default raised 120 → 300 (2026-10-01): the snapshot-registry
+        # Append is the hot-path variable; 2 idle minutes was too short.
+        assert snapshot_utils._snapshot_cache_ttl() == 300.0
         monkeypatch.setattr(settings, "SNAPSHOT_ID_CACHE_TTL_SECONDS", "5")
         assert snapshot_utils._snapshot_cache_ttl() == 5.0

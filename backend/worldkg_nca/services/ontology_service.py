@@ -46,6 +46,7 @@ class WorldKGOntologyService:
             host=settings.REDIS_HOST,
             port=settings.REDIS_PORT,
             db=settings.WORLDKG_REDIS_DB,
+            password=settings.REDIS_PASSWORD or None,
             decode_responses=True
         )
         self._cache_prefix = "worldkg"
