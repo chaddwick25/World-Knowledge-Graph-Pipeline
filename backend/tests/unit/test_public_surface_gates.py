@@ -74,7 +74,6 @@ class TestAdminHostGate:
 
 class TestWriteEndpointGate:
     @pytest.mark.parametrize('path', [
-        '/api/worldkg-pipeline-v2/start/',
         '/api/country-preprocess/',
         '/api/nca/fingerprint/compute/',
         '/api/nca/drift/compute/',
@@ -95,6 +94,21 @@ class TestWriteEndpointGate:
     def test_write_endpoints_404_on_public_host(self, path):
         with pytest.raises(Http404):
             _call(WriteEndpointGateMiddleware, path, PUBLIC_HOST)
+
+    # NOTE: /api/worldkg-pipeline-v2/start/ is intentionally NOT in the 404
+    # list above — it is key-gated on every surface (see
+    # test_pipeline_trigger_key_gated_on_public_host below).
+
+    def test_pipeline_trigger_key_gated_on_public_host(self):
+        """The pipeline trigger returns 403 (not 404) on public hosts so the
+        SPA's password modal can appear; with no key configured (this fixture)
+        it passes through, exactly like the local surface."""
+        resp = _call(
+            WriteEndpointGateMiddleware,
+            '/api/worldkg-pipeline-v2/start/',
+            PUBLIC_HOST,
+        )
+        assert resp is not None
 
     def test_write_endpoints_ok_on_local_host(self):
         resp = _call(
@@ -148,10 +162,35 @@ class TestPipelineTriggerKey:
         resp = _call(WriteEndpointGateMiddleware, '/api/worldkg-pipeline-v2/start/', 'localhost')
         assert resp is not None
 
-    def test_public_host_404_even_with_key(self):
+    def test_public_host_without_key_403(self):
+        """Key-gated trigger: public host + no key → 403 (modal appears)."""
+        resp = _call(
+            WriteEndpointGateMiddleware, '/api/worldkg-pipeline-v2/start/', PUBLIC_HOST,
+        )
+        assert resp.status_code == 403
+
+    def test_public_host_wrong_key_403(self):
+        resp = _call(
+            WriteEndpointGateMiddleware, '/api/worldkg-pipeline-v2/start/', PUBLIC_HOST,
+            key='wrong',
+        )
+        assert resp.status_code == 403
+
+    def test_public_host_correct_key_passes(self):
+        """The trigger is key-gated (not host-hidden) so the operator can run
+        from the funnel with the correct key; the key is the credential."""
+        resp = _call(
+            WriteEndpointGateMiddleware, '/api/worldkg-pipeline-v2/start/', PUBLIC_HOST,
+            key='test-secret',
+        )
+        assert resp is not None
+
+    def test_public_host_correct_key_still_blocks_other_writes(self):
+        """Other write endpoints remain hard-404 on public hosts even with a
+        valid key — only the key-gated trigger is funnel-reachable."""
         with pytest.raises(Http404):
             _call(
-                WriteEndpointGateMiddleware, '/api/worldkg-pipeline-v2/start/', PUBLIC_HOST,
+                WriteEndpointGateMiddleware, '/api/country-preprocess/', PUBLIC_HOST,
                 key='test-secret',
             )
 
@@ -161,6 +200,11 @@ class TestTailnetSurface:
     tagged X-Trusted-Surface: tailnet — admin and writes are allowed there
     (writes still need the pipeline key). The public edge strips the header,
     so it cannot be forged from the funnel."""
+
+    @pytest.fixture(autouse=True)
+    def _key(self, monkeypatch):
+        # Pin the key so these tests don't depend on the ambient .env value.
+        monkeypatch.setattr('django.conf.settings.PIPELINE_TRIGGER_KEY', 'test-secret')
 
     def test_admin_allowed_on_tailnet_surface(self):
         resp = _call(
@@ -187,8 +231,11 @@ class TestTailnetSurface:
         assert resp is not None
 
     def test_wrong_surface_value_is_public(self):
+        """A forged/unknown surface marker gains no trust: non-key-gated write
+        endpoints stay 404 on public hosts (the trigger itself is key-gated
+        and ignores the surface marker)."""
         with pytest.raises(Http404):
             _call(
-                WriteEndpointGateMiddleware, '/api/worldkg-pipeline-v2/start/', PUBLIC_HOST,
+                WriteEndpointGateMiddleware, '/api/country-preprocess/', PUBLIC_HOST,
                 surface='attacker',
             )

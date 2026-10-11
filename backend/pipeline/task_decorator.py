@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 import time
 from typing import Callable, Optional, Type, TypeVar
 
@@ -213,6 +214,53 @@ def pipeline_step(
     def decorator(func: Callable[..., E]) -> Callable[..., dict]:
         @functools.wraps(func)
         def wrapper(self, config_dict: dict) -> dict:
+            # ── Dedup guard ───────────────────────────────────────────────
+            # Broker visibility-timeout redelivery can enqueue a second copy
+            # of a task while the first is still running, so the same task ID
+            # could execute twice concurrently. SET NX wins: only one process
+            # runs the body; the loser logs and returns the config unchanged
+            # so the chain continues. Released on completion/failure so
+            # legitimate retries (same task ID) are not blocked.
+            task_id = getattr(self.request, "id", None)
+            dedup_key = f"task-dedup:{task_id}" if task_id else None
+            dedup_held = False
+            _dedup_client = None
+            if dedup_key:
+                try:
+                    from django.conf import settings as _settings
+                    import redis as _redis
+                    _dedup_client = _redis.Redis.from_url(
+                        _settings.CELERY_BROKER_URL
+                    )
+                    dedup_held = bool(
+                        _dedup_client.set(
+                            dedup_key, "1", nx=True,
+                            ex=int(os.getenv(
+                                "CELERY_VISIBILITY_TIMEOUT_SECONDS",
+                                str(12 * 60 * 60),
+                            )),
+                        )
+                    )
+                    if not dedup_held:
+                        logger.warning(
+                            "Duplicate execution of task %s (step %s) "
+                            "detected — another worker is already running "
+                            "it; skipping.",
+                            task_id, step_name,
+                        )
+                        return config_dict
+                except Exception as exc:  # pragma: no cover — best-effort guard
+                    logger.warning(
+                        "Dedup guard unavailable (%s) — proceeding.", exc
+                    )
+
+            def _release_dedup():
+                if dedup_held and dedup_key and _dedup_client is not None:
+                    try:
+                        _dedup_client.delete(dedup_key)
+                    except Exception:  # pragma: no cover — best-effort cleanup
+                        pass
+
             # 1. Validate config dict (data-plane concern — lives here, not on
             #    the Celery Task base class). File logger setup is handled by
             #    the task_prerun signal (Celery primitive) in celery_app.py.
@@ -271,6 +319,7 @@ def pipeline_step(
                 # on_failure hook: PipelineLogEntry, PipelineRun, WS push
                 # (idempotent — Celery's trace will call it again, no-op)
                 self.on_failure(exc, task_id, (config_dict,), {})
+                _release_dedup()
                 raise
 
             # 8. Stash metrics + artifact descriptors for on_success, serialize
@@ -281,6 +330,7 @@ def pipeline_step(
             # 9. on_success hook: step-complete log + metrics, PipelineRun, WS push
             # (idempotent — Celery's trace will call it again, no-op)
             self.on_success(retval, task_id, (config_dict,), {})
+            _release_dedup()
             return retval
 
         return wrapper

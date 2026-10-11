@@ -104,9 +104,13 @@ QUESTION_RECIPES = {
         "entity_selection": "named entities geom__within the subdivision polygon; "
                             "amenities ST_DWithin bounded inside",
         "verification": (
-            "execute-and-keep, ONE question per trained template; "
-            "class-census templates verify with >= 3 results, the #2 "
-            "distance answer with >= 1 (criteria 2026-10-01)",
+            "DB-evidence keep, ONE question per trained template; the "
+            "census count that built each candidate IS the evidence (the "
+            "executor's exact-tag tier would return exactly those "
+            "entities), so class-census templates keep with evidence >= 3 "
+            "and the #2 distance answer with >= 1 (2026-10-11 — replaces "
+            "the per-question executor round-trip that cost 1-4 min per "
+            "question at 42M-row country scale)",
         ),
     },
     "cross_subdivision": {
@@ -230,6 +234,40 @@ class SampleQuestionService:
             )
             return [(r[0], r[1]) for r in cur.fetchall() if r[0]]
 
+    @classmethod
+    def _amenity_entity_count(cls, anchor: dict, radius_m: int,
+                              country_code: str, snapshot_id: str,
+                              polygon=None) -> int:
+        """Total amenity-typed entities within radius of the anchor.
+
+        The evidence for the #8 attribute question ("What amenities are
+        around {name}?") — its result size is the count of entities
+        asserting an amenity key in range (the executor's generic-amenity
+        tier). One GIN (`tags ?`) + GiST (`ST_DWithin`) query, bounded
+        inside the subdivision polygon when one is given.
+        """
+        polygon_clause = (
+            " AND ST_Within(geom, ST_GeomFromText(%s, 4326))"
+            if polygon is not None else ""
+        )
+        params = [snapshot_id, country_code.upper(),
+                  anchor["lon"], anchor["lat"], float(radius_m)]
+        if polygon is not None:
+            params.append(polygon.wkt)
+        with connections["vectors"].cursor() as cur:
+            cur.execute(
+                """
+                SELECT count(*)
+                FROM semantic_search_osmentity
+                WHERE snapshot_id = %s AND country_code = %s
+                  AND tags ? 'amenity' AND geom IS NOT NULL
+                  AND ST_DWithin(geom::geography,
+                                 ST_MakePoint(%s, %s)::geography, %s)
+                """ + polygon_clause,
+                params,
+            )
+            return cur.fetchone()[0]
+
     @staticmethod
     def _country_snapshot(country_code: str) -> str:
         """The newest snapshot that actually has entities for the country.
@@ -264,13 +302,20 @@ class SampleQuestionService:
     # ── Generation ───────────────────────────────────────────────────────
 
     @classmethod
-    def _select_one_per_template(cls, rows: list, country_code: str,
-                                 snapshot_id: str) -> tuple:
-        """Verify candidate rows and pick ONE question per trained template.
+    def _select_one_per_template(cls, rows: list) -> tuple:
+        """Pick ONE question per trained template from the candidate rows.
 
-        Each candidate stamps its own ``min_results`` floor (3 for a
-        class-LIST form, 1 for a structural distance/compare/direction
-        answer). Returns (selected, verified, dropped) — criteria
+        Verification is DB-evidence-based (2026-10-11): each candidate
+        stamps its own ``min_results`` floor (3 for a class-LIST form, 1
+        for a structural distance/compare/direction answer) and an
+        ``evidence_count`` — the number of entities the question's amenity
+        actually has within the radius/polygon (the census count that
+        built the candidate). A candidate is kept iff ``evidence_count >=
+        min_results``. The executor's exact-tag tier returns exactly those
+        entities, so the "every question has results" criterion holds
+        without a per-question executor round-trip (which measured 1-4
+        min per question at 42M-row country scale — PL Step 5.8 ran ~2h
+        per subdivision). Returns (selected, verified, dropped) — criteria
         2026-10-01, shared by the subdivision and cross-subdivision
         recipes.
         """
@@ -280,11 +325,7 @@ class SampleQuestionService:
             for cand in rows:
                 if cand["template"] != template:
                     continue
-                check = cls._verify_question(
-                    cand["question"], country_code, snapshot_id,
-                    min_results=cand.get("min_results", 1),
-                )
-                if check["ok"]:
+                if cand.get("evidence_count", 0) >= cand.get("min_results", 1):
                     selected.append(cand)
                     verified += 1
                     break
@@ -304,13 +345,17 @@ class SampleQuestionService:
         templates: #1 radius + #4 nearest + #5 bearing + #8 attribute
         from the amenities that actually exist near the anchor (inside
         the polygon), and #2 distance between adjacent anchors. Selection
-        keeps ONE question per template, first verified candidate in
-        template order; class-census templates must verify with >= 3
-        results, the #2 distance answer with >= 1 (criteria 2026-10-01).
-        Stores rows (``source='generated'``), replacing prior generated
-        rows for the subdivision. Subdivisions with fewer than
-        ``min_entities`` named entities are SKIPPED
-        (``{"skipped": True}``) — the country fallback serves them.
+        keeps ONE question per template, first candidate whose DB
+        evidence clears its floor in template order; class-census
+        templates keep with evidence >= 3 (the census count of the
+        amenity within the radius — the executor's exact-tag tier returns
+        exactly those entities), the #2 distance answer with >= 1
+        (criteria 2026-10-01; evidence-based since 2026-10-11 — no
+        per-question executor round-trip). Stores rows
+        (``source='generated'``), replacing prior generated rows for the
+        subdivision. Subdivisions with fewer than ``min_entities`` named
+        entities are SKIPPED (``{"skipped": True}``) — the country
+        fallback serves them.
         """
         country_code = (country_code or "").upper()
         polygon = resolve_subdivision_polygon(subdivision_qid)
@@ -361,7 +406,7 @@ class SampleQuestionService:
                     break
             if not nearby:
                 continue
-            amenity, _count = nearby[0]
+            amenity, count = nearby[0]
             label = _amenity_label(amenity)
             rows.append({
                 "question": _FILTER_FRAME.format(
@@ -370,6 +415,7 @@ class SampleQuestionService:
                 "template": TEMPLATE_FILTER_AGGREGATE,
                 "anchor": anchor["name"],
                 "min_results": MIN_CLASS_RESULTS,
+                "evidence_count": count,
             })
             rows.append({
                 "question": _NEAREST_FRAME.format(
@@ -378,12 +424,16 @@ class SampleQuestionService:
                 "template": TEMPLATE_GEOCODE_BATCH,
                 "anchor": anchor["name"],
                 "min_results": MIN_CLASS_RESULTS,
+                "evidence_count": count,
             })
             rows.append({
                 "question": _ATTRIBUTE_FRAME.format(name=anchor["name"]),
                 "template": TEMPLATE_PLACE_ATTRIBUTE,
                 "anchor": anchor["name"],
                 "min_results": MIN_CLASS_RESULTS,
+                "evidence_count": cls._amenity_entity_count(
+                    anchor, radius_m, country_code, snapshot_id, polygon,
+                ),
             })
             for direction in ("north", "east", "south", "west"):
                 rows.append({
@@ -393,6 +443,7 @@ class SampleQuestionService:
                     "template": TEMPLATE_LOCATION_BEARING,
                     "anchor": anchor["name"],
                     "min_results": MIN_CLASS_RESULTS,
+                    "evidence_count": count,
                 })
         # #2 distance questions: adjacent anchors in the deterministic
         # pool order (both inside the subdivision). Skip identical-name
@@ -406,12 +457,13 @@ class SampleQuestionService:
                 "template": TEMPLATE_OBJECT_FIELD,
                 "anchor": a["name"],
                 "min_results": 1,  # a distance is one number by design
+                "evidence_count": 2,  # both anchors are named entities in the pool
             })
 
-        # Selection: ONE question per trained template, first verified
-        # candidate in template order (each row stamps its own floor).
+        # Selection: ONE question per trained template, first candidate
+        # whose DB evidence clears its floor (each row stamps its own).
         selected, verified, dropped = cls._select_one_per_template(
-            rows, country_code, snapshot_id,
+            rows,
         )
 
         if not selected:
@@ -439,21 +491,22 @@ class SampleQuestionService:
             "dropped": dropped, "snapshot_date": snapshot_id,
         }
 
-    # ── Verification (execute-and-keep — criterion: every question has results)
+    # ── Verification (DB evidence for generation; executor deep-check
+#    remains for curated/verify-only sweeps) ──────────────────────────────
 
     @staticmethod
     def _verify_question(question: str, country_code: str,
                          snapshot_date: str, min_results: int = 1) -> dict:
         """Run a question through the REAL parser + executor (deterministic,
-        skip_enrichment) — a question is kept only when it returns at least
+        skip_enrichment) — kept only when it returns at least
         ``min_results`` rows.
 
-        This is the enforcement for "each question should have results":
-        construction (DB counts) cannot catch executor-side resolution
-        differences (amenity-tag mapping, geocoding of #2 anchors, noise
-        filters); execution does. The subdivision generator raises the
-        floor to 3 for class-census questions (2026-10-01) so a sample
-        with a single entity is not stored.
+        Deep-check verifier: used by the curated loader
+        (``load_sample_questions``) and the ``--verify-only`` sweep —
+        NOT by generation. Generation selection is DB-evidence-based
+        (2026-10-11) because the executor round-trip costs 1-4 min per
+        question at 42M-row country scale; this deep check remains for
+        small curated banks and QA sweeps.
         """
         from semantic_search.services.query_executor_service import (
             QueryExecutorService,
@@ -542,8 +595,10 @@ class SampleQuestionService:
         (criteria 2026-10-01) — #1 radius + #8 attribute from a hub
         anchor's country-wide amenity census, #2 distance / #5 bearing /
         #4 compare between anchors from different subdivisions. Class-
-        census templates verify with >= 3 results, the #2 distance answer
-        with >= 1. Stored as country-level generated rows
+        census templates keep with DB evidence >= 3 (the census count —
+        the executor's exact-tag tier returns exactly those entities),
+        the #2 distance answer with >= 1 (evidence-based since
+        2026-10-11). Stored as country-level generated rows
         (``subdivision_qid=''``), joined with the curated bank.
         """
         from django.db.models import Q as _Q
@@ -590,7 +645,7 @@ class SampleQuestionService:
                     )
                     if not nearby:
                         continue
-                    amenity, _count = nearby[0]
+                    amenity, count = nearby[0]
                     label = _amenity_label(amenity)
                     rows.append({
                         "question": _FILTER_FRAME.format(
@@ -599,6 +654,7 @@ class SampleQuestionService:
                         "template": TEMPLATE_FILTER_AGGREGATE,
                         "anchor": anchor_a["name"],
                         "min_results": MIN_CLASS_RESULTS,
+                        "evidence_count": count,
                     })
                     rows.append({
                         "question": _ATTRIBUTE_FRAME.format(
@@ -607,6 +663,10 @@ class SampleQuestionService:
                         "template": TEMPLATE_PLACE_ATTRIBUTE,
                         "anchor": anchor_a["name"],
                         "min_results": MIN_CLASS_RESULTS,
+                        "evidence_count": cls._amenity_entity_count(
+                            anchor_a, radius_m, country_code, snapshot_id,
+                            polygon=None,
+                        ),
                     })
                     break
             # #2 — distance across subdivisions (structural: 1 answer).
@@ -617,6 +677,7 @@ class SampleQuestionService:
                 "template": TEMPLATE_OBJECT_FIELD,
                 "anchor": anchor_a["name"],
                 "min_results": 1,
+                "evidence_count": 2,  # both anchors exist (DB-resolved)
             })
             # #5 — bearing across subdivisions (structural: 1 direction).
             rows.append({
@@ -626,6 +687,7 @@ class SampleQuestionService:
                 "template": TEMPLATE_LOCATION_BEARING,
                 "anchor": anchor_a["name"],
                 "min_results": 1,
+                "evidence_count": 2,  # both anchors exist (DB-resolved)
             })
             # #4 — compare across three subdivisions (structural: 1-2
             # answers by design).
@@ -643,14 +705,16 @@ class SampleQuestionService:
                         "template": TEMPLATE_GEOCODE_BATCH,
                         "anchor": anchor_a["name"],
                         "min_results": 1,
+                        "evidence_count": 3,  # all three anchors exist
                     })
         if not rows:
             return {"error": "no cross-subdivision questions generated"}
 
-        # Selection: ONE question per trained template, verified with the
-        # template's floor (same criteria as the subdivision recipe).
+        # Selection: ONE question per trained template, first candidate whose
+        # DB evidence clears the template's floor (same criteria as the
+        # subdivision recipe).
         selected, verified, dropped = cls._select_one_per_template(
-            rows, country_code, snapshot_id,
+            rows,
         )
         if not selected:
             return {

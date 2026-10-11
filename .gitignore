@@ -20,7 +20,7 @@ deploy/
 # Env
 
 Logs
-*.log
+# *.log
 # Backend
 
 .env

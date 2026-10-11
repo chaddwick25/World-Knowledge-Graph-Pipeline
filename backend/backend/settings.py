@@ -203,6 +203,16 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# acks_late=True keeps task messages unacked for the whole run; the Redis
+# broker redelivers unacked messages after this visibility timeout, so it
+# must exceed the longest single step. Worker crashes still redeliver
+# immediately via reject_on_worker_lost. Tunable via .env
+# (CELERY_VISIBILITY_TIMEOUT_SECONDS); default 12h.
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "visibility_timeout": int(
+        os.getenv("CELERY_VISIBILITY_TIMEOUT_SECONDS", str(12 * 60 * 60))
+    )
+}
 
 # Deployed frontend origins (Netlify domain) via CORS_EXTRA_ORIGINS; the
 # literals below are the local dev defaults.

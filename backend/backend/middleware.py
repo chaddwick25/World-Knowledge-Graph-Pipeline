@@ -10,6 +10,8 @@ to hang access control on. These guards enforce, Django-side:
 - WriteEndpointGateMiddleware: write/trigger endpoints (pipeline start, graph
   mutation, GPU-heavy compute) serve only local hosts; the public funnel host
   gets a 404. Read/query endpoints stay public — that is the product surface.
+  Exception: the pipeline trigger is key-gated on every surface (403 without
+  the operator key) so the SPA's password modal works from the funnel.
 
 Local hosts are configurable via TRUSTED_LOCAL_HOSTS (default localhost,
 127.0.0.1). Extend it (e.g. with the tailnet IP) for admin/API access from
@@ -47,6 +49,15 @@ _WRITE_PATHS = frozenset({
 _WRITE_PREFIXES = frozenset({
     '/api/geodata/',
     '/api/igea/triplets/',
+})
+
+# Write endpoints the SPA legitimately calls WITH the operator key: the
+# pipeline trigger. The SPA's password modal only opens on a 403 response,
+# so this endpoint must NOT be hard-404-hidden on public hosts — it is
+# key-gated on EVERY surface instead (funnel included). All other write
+# endpoints stay 404-hidden on public hosts.
+_KEY_GATED_ON_PUBLIC = frozenset({
+    '/api/worldkg-pipeline-v2/start/',
 })
 
 
@@ -94,23 +105,39 @@ class WriteEndpointGateMiddleware:
     """404 write/trigger endpoints on public (funnel) hosts; on trusted hosts
     require the operator pipeline key when one is configured.
 
+    Exception: endpoints in _KEY_GATED_ON_PUBLIC (the pipeline trigger) are
+    key-gated on EVERY surface — public hosts get 403 (not 404) so the SPA's
+    password modal can appear and let the operator run from the funnel. An
+    anonymous public user still cannot trigger anything without the key.
+
     The host-trust model alone is spoofable: nginx forwards any Host header
     (server_name _), so a LAN client can fake ``localhost`` and reach the
     write surface. ``X-Pipeline-Key`` must equal
     ``settings.PIPELINE_TRIGGER_KEY`` (env-only, never in the browser bundle)
-    on trusted hosts; the public funnel still gets a 404 first.
+    on trusted hosts; the public funnel still gets a 404 first (except the
+    key-gated trigger above).
     """
 
     def __init__(self, get_response):
         self.get_response = get_response
 
+    @staticmethod
+    def _key_ok(request):
+        expected = getattr(settings, 'PIPELINE_TRIGGER_KEY', '')
+        if not expected:
+            return True
+        return hmac.compare_digest(
+            request.headers.get('X-Pipeline-Key', ''), expected
+        )
+
     def __call__(self, request):
         if _is_write_path(request.path):
-            if not _is_trusted_request(request):
-                raise Http404('Endpoint is local-only.')
-            expected = getattr(settings, 'PIPELINE_TRIGGER_KEY', '')
-            if expected and not hmac.compare_digest(
-                request.headers.get('X-Pipeline-Key', ''), expected
-            ):
-                return JsonResponse({'detail': 'Pipeline key required.'}, status=403)
+            if request.path in _KEY_GATED_ON_PUBLIC:
+                if not self._key_ok(request):
+                    return JsonResponse({'detail': 'Pipeline key required.'}, status=403)
+            else:
+                if not _is_trusted_request(request):
+                    raise Http404('Endpoint is local-only.')
+                if not self._key_ok(request):
+                    return JsonResponse({'detail': 'Pipeline key required.'}, status=403)
         return self.get_response(request)

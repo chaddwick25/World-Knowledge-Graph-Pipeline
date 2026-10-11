@@ -4,6 +4,9 @@ from multiprocessing import Process
 import osmium
 import setproctitle
 from argparse import Namespace
+import logging
+
+logger = logging.getLogger(__name__)
 
 """
 This file contains multiple utility functions.
@@ -126,6 +129,15 @@ class SampleHandler(osmium.SimpleHandler):
 
     def way(self, w):
         self.way_index += 1
+        # Pathological-way guard: skip the node loop for absurd node counts
+        # (wedges the encode); keep the tag record.
+        if len(w.nodes) > 2_000_000:
+            logger.warning(
+                "Skipping pathological way id=%s nodes=%d", w.id, len(w.nodes),
+            )
+            if (self.entire_dump or self.way_index in self.target_ways) and len(w.tags) > 0:
+                self.sampled_ways[w.id] = [w.id, 'way', [(t.k, t.v) for t in w.tags]]
+            return
         if (self.entire_dump or self.way_index in self.target_ways) and len(w.tags) > 0:
             tags = [(t.k, t.v) for t in w.tags]
             record = [w.id, 'way', tags]
@@ -138,17 +150,37 @@ class SampleHandler(osmium.SimpleHandler):
                     self.way_nodes = dict(list(self.way_nodes.items())[-self.max_dict_size//2:])
 
         if (self.entire_dump or self.way_index in self.target_ways):
-            for n in w.nodes:
-                # We need to track which ways need node coordinates
-                # This is just a placeholder to ensure the key exists
-                if w.id not in self.relation_ways:
-                    self.relation_ways[w.id] = set()
-                # Prevent unbounded growth
-                if len(self.relation_ways) > self.max_dict_size:
-                    self.relation_ways = dict(list(self.relation_ways.items())[-self.max_dict_size//2:])
+            # Per-way work only — the old per-node loop was redundant and
+            # wedged the encode on large ways (2026-10-10, py-spy: way()
+            # line 153 for 30+ min). The body is constant per way.
+            if w.id not in self.relation_ways:
+                self.relation_ways[w.id] = set()
+            if len(self.relation_ways) > self.max_dict_size:
+                self.relation_ways = dict(list(self.relation_ways.items())[-self.max_dict_size//2:])
+            if len(w.nodes) > 200_000:
+                logger.info(
+                    "Large way id=%s nodes=%d", w.id, len(w.nodes),
+                )
 
     def relation(self, r):
         self.relation_index += 1
+        # Pathological-relation guard: skip the member loop for absurd
+        # member counts (wedges the encode); keep the tag record.
+        if len(r.members) > 2_000_000:
+            logger.warning(
+                "Skipping pathological relation id=%s members=%d",
+                r.id, len(r.members),
+            )
+            if (self.entire_dump or self.relation_index in self.target_relations) and len(r.tags) > 0:
+                self.sampled_relations[r.id] = [
+                    r.id, 'relation', [(t.k, t.v) for t in r.tags]
+                ]
+            return
+        if self.relation_index % 50000 == 0:
+            logger.info(
+                "Relations processed: %d (id=%s members=%d)",
+                self.relation_index, r.id, len(r.members),
+            )
         if (self.entire_dump or self.relation_index in self.target_relations) and len(r.tags) > 0:
             tags = [(t.k, t.v) for t in r.tags]
             record = [r.id, 'relation', tags]
