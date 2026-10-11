@@ -2,9 +2,11 @@
 
 Generates subdivision-scoped (and cross-subdivision) sample questions for
 every subdivision of the country that has a populated bbox, using the
-snapshot the pipeline just built. Each question is verified
-(execute-and-keep): only questions the real parser+executor returns
-results for are stored — the "every question has results" criterion.
+snapshot the pipeline just built. Each question is kept on DB evidence
+(2026-10-11): the census count that built the candidate IS the result
+size the executor's exact-tag tier would return, so the "every question
+has results" criterion holds without a per-question executor round-trip
+(which measured 1-4 min per question at 42M-row country scale).
 
 This step is **non-fatal**: generation failures are logged and the
 pipeline continues to Step 6. Sample questions are a search-layer aid;

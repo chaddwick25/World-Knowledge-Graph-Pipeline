@@ -20,7 +20,7 @@ deploy/
 ***REMOVED*** Env
 
 Logs
-*.log
+***REMOVED*** *.log
 ***REMOVED*** Backend
 
 .env

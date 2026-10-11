@@ -471,7 +471,11 @@ Deployment posture for the Tailscale Funnel host:
   endpoints on public (funnel) hosts, same host-trust model as the admin gate. Gated:
   worldkg-pipeline-v2/start, country-preprocess, nca/fingerprint/compute, nca/drift/compute,
   nca/apply-link, nca/enrich/entity, igea/align, geovectors/encode. Read/query endpoints
-  stay public (the product surface).
+  stay public (the product surface).: the pipeline trigger
+  (`worldkg-pipeline-v2/start`) is key-gated on EVERY surface instead of 404-hidden — the
+  SPA's password modal depends on a 403 response, so the funnel returns 403-without-key
+  and the operator key unlocks it there too. All other write endpoints stay hard-404 on
+  public hosts. See `_KEY_GATED_ON_PUBLIC` in middleware.py.
 - **Throttling**: DRF `AnonRateThrottle` (default 120/min, `DRF_ANON_THROTTLE_RATE`) with
   `NUM_PROXIES=1`. nginx (deploy/nginx.conf) adds per-client limits keyed on
   `$http_x_forwarded_for` — tailscaled overwrites XFF with the real client IP and nginx

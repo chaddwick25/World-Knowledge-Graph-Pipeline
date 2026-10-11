@@ -159,6 +159,10 @@ services:
       dockerfile: Dockerfile
     container_name: eda-worker
     runtime: nvidia
+    ***REMOVED*** Live stack dumps for wedged steps (py-spy) — see
+    ***REMOVED*** deploy/plans/WORKER_PTRACE_DIAGNOSTICS_PLAN.md.
+    cap_add:
+      - SYS_PTRACE
     env_file:
       - .env
     environment:

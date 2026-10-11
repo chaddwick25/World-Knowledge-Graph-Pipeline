@@ -682,8 +682,11 @@ docker compose up -d --force-recreate backend
 ***REMOVED*** ── Public-surface smoke tests (simulate the public host locally) ──
 ***REMOVED*** Open read surface: any /api/* read endpoint -> 200 without a session
 curl -s -o /dev/null -w "%{http_code}\n" -H "Host: <tailnet>.ts.net" http://localhost/api/system/status/
-***REMOVED*** Write/trigger endpoints: 404 on public hosts (WriteEndpointGateMiddleware)
+***REMOVED*** Write/trigger endpoints: 404 on public hosts (WriteEndpointGateMiddleware);
+***REMOVED*** the pipeline trigger is key-gated instead (403 without X-Pipeline-Key — the
+***REMOVED*** SPA password modal depends on the 403, so runs work from the funnel with the key)
 curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Host: <tailnet>.ts.net" http://localhost/api/worldkg-pipeline-v2/start/
+curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Host: <tailnet>.ts.net" -H "X-Pipeline-Key: $PIPELINE_TRIGGER_KEY" http://localhost/api/worldkg-pipeline-v2/start/
 ***REMOVED*** WebSocket pipeline stream: open (session guard removed 2026-10-05)
 curl -s -m 3 -i -N -H "Host: <tailnet>.ts.net" -H "Connection: Upgrade" -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
