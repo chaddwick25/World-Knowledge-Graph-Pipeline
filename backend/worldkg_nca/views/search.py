@@ -279,7 +279,6 @@ def worldkg_semantic_triplet_search(request):
     ***REMOVED*** but be robust to callers that pass slug-style identifiers such as
     ***REMOVED*** "ireland-and-northern-ireland" or "Ireland_and_northern_ireland".
     from core.services.snapshot.country_override_service import get_country_override_record
-    from core.models import OsmBoundary
     from semantic_search.utils.subdivision_resolver import (
         resolve_subdivision_bbox as _resolve_subdivision_bbox,
         resolve_subdivision_country_code,
@@ -308,52 +307,24 @@ def worldkg_semantic_triplet_search(request):
             )
     if subdivision_fallback or not bbox:
         bbox = None
-        ***REMOVED*** Prefer OsmBoundary bbox (same as enrichment service).
-        ***REMOVED*** Be robust to slug-style identifiers like "ireland_and_northern_ireland".
-        human_name = (
-            str(country_code).replace("_", " ").replace("-", " ").strip()
-            if country_code
-            else ""
-        )
-        boundary_qs = OsmBoundary.objects.filter(admin_level=2)
-        if human_name:
-            boundary = (
-                boundary_qs.filter(
-                    Q(name__icontains=country_code)
-                    | Q(name_en__icontains=country_code)
-                    | Q(name__icontains=human_name)
-                    | Q(name_en__icontains=human_name)
-                )
-                .first()
-            )
-        else:
-            boundary = boundary_qs.filter(name__icontains=country_code).first()
-        if boundary and boundary.bbox:
-            bbox = tuple(boundary.bbox)
-        else:
+        ***REMOVED*** Resolve through the shared country resolver FIRST. It handles ISO
+        ***REMOVED*** codes, QIDs, and names safely (resolve_iso_code internally). The
+        ***REMOVED*** previous ad-hoc name__icontains lookup matched 2-letter ISO codes
+        ***REMOVED*** as substrings of unrelated region names ("PL" → "Plzensky") and
+        ***REMOVED*** short-circuited the correct resolver, silently returning an empty
+        ***REMOVED*** bbox for valid ISO inputs.
+        bbox = resolve_country_bbox(country_code, None)
+        if not bbox:
             ***REMOVED*** Fallback to ISO/QID and override-aware resolution.
-            ***REMOVED*** First, try robust ISO resolution via resolve_iso_code(),
-            ***REMOVED*** which already understands slugs and Wikidata IDs.
-            iso_code = None
-            resolved_iso = None
+            iso_code = country_code.upper()
             try:
-                resolved_iso = resolve_iso_code(country_code)
-            except Exception:
-                resolved_iso = None
-
-            if resolved_iso:
-                iso_code = resolved_iso
-            else:
-                ***REMOVED*** Fallback to country override service when the caller passes an
-                ***REMOVED*** ISO/QID directly.
                 override_record = get_country_override_record(country_code)
                 if override_record:
-                    ***REMOVED*** Use override to get the canonical ISO code if available
-                    iso_code = override_record.get("iso_code") or country_code.upper()
-                else:
-                    ***REMOVED*** Try direct ISO/QID resolution
-                    iso_code = country_code.upper()
-
+                    iso_code = (
+                        override_record.get("iso_code") or country_code.upper()
+                    )
+            except Exception:
+                pass
             bbox = resolve_country_bbox(iso_code, None)
             if not bbox:
                 ***REMOVED*** Fallback to name-based lookup via OSMWikiDataHierarchy
