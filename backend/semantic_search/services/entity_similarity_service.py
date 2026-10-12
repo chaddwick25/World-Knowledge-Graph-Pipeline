@@ -54,8 +54,9 @@ class EntitySimilarityService:
 
         Returns:
             {"seed": {osm_id, osm_type, name, country_code, lat, lon},
-             "results": [{name, wkg_class, tags, country_code, lat, lon,
-                          similarity}], "count": int}
+             "results": [{osm_id, osm_type, name, wkg_class, tags,
+                          country_code, lat, lon, similarity}],
+            "count": int}
             or {"error": str} when the seed or its embedding is missing.
         """
         if not entity_name:
@@ -89,6 +90,8 @@ class EntitySimilarityService:
                     tags = {}
             dist = float(row["dist"])
             results.append({
+                "osm_id": row["osm_id"],
+                "osm_type": row["osm_type"],
                 "name": tags.get("name", ""),
                 "wkg_class": row["wkg_class"],
                 "tags": tags,

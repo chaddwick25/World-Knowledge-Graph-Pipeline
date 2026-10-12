@@ -545,6 +545,8 @@ class QueryEnrichmentService:
                     return None
                 return [
                     {
+                        "osm_id": r.get("osm_id"),
+                        "osm_type": r.get("osm_type"),
                         "name": r.get("name"),
                         "wkg_class": r.get("wkg_class"),
                         "lat": r.get("lat"),
