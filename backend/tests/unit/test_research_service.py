@@ -1664,9 +1664,12 @@ class TestPlan:
                 "Plan a trip", "BZ", None, event_callback=events.append,
             )
 
-        # Decompose stays chat_json; the follow-up pick is native tools now.
+        # Decompose stays chat_json; the picks are native tools now: one
+        # pre-plan round + one post-summary follow-up round (the
+        # pre-plan round landed 2026-10-11, PRE_PLAN_TOOL_ROUND_PLAN
+        # Phase 1).
         assert fake_llm.chat_json_calls == 1
-        assert fake_llm.chat_tools_calls == 1
+        assert fake_llm.chat_tools_calls == 2
         assert len(result["tool_calls"]) == 1
         assert result["tool_calls"][0]["tool"] == "structuredSearch"
         event_names = [e["event"] for e in events]

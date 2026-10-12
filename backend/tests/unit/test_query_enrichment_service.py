@@ -129,7 +129,7 @@ class TestToolCallValidation:
     def test_tools_schema_shape(self):
         schema = QueryEnrichmentService._research_tools_schema()
         assert [t["function"]["name"] for t in schema] == [
-            "nameSearch", "structuredSearch",
+            "nameSearch", "structuredSearch", "similarEntities",
         ]
         for entry in schema:
             fn = entry["function"]

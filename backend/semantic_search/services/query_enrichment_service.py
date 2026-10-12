@@ -116,14 +116,19 @@ RESEARCH_TOOLS = {
         },
     },
     "structuredSearch": {
-        "description": "Find entities by OSM tags.",
+        "description": (
+            "Find entities by OSM tags. Tag keys include amenity, cuisine, "
+            "shop, tourism, leisure, natural; multi-word values accept "
+            "spaces or underscores (\"bubble tea\" = \"bubble_tea\")."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
                 "queryTags": {
                     "type": "object",
                     "description": (
-                        "OSM tag key-value map, e.g. {\"amenity\": \"cafe\"}."
+                        "OSM tag key-value map, e.g. {\"amenity\": \"cafe\"} "
+                        "or {\"cuisine\": \"bubble_tea\"}."
                     ),
                 },
                 "topK": {
@@ -134,7 +139,51 @@ RESEARCH_TOOLS = {
             "required": ["queryTags"],
         },
     },
+    "similarEntities": {
+        "description": (
+            "Find entities SIMILAR to a named entity (doppelgangers): "
+            "embedding k-NN over the entity's tag vector, any distance. "
+            "Use for 'similar to X' / 'twins of X' asks; structuredSearch "
+            "answers 'near X' (proximity), this answers 'like X' "
+            "(similarity)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "entity": {
+                    "type": "string",
+                    "description": "The seed entity's name.",
+                },
+                "topK": {
+                    "type": "integer",
+                    "description": "Max results (default 8).",
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["same_country", "all"],
+                    "description": (
+                        "same_country (default) or all (cross-country "
+                        "twins)."
+                    ),
+                },
+            },
+            "required": ["entity"],
+        },
+    },
 }
+
+
+def _distances_degenerate(results) -> bool:
+    """True when 2+ results all carry the same distance_m (e.g. all 0m):
+    the distances are unreliable. Shared by the digest (which strips
+    them) and the research coverage ledger."""
+    if not isinstance(results, list):
+        return False
+    ds = [
+        r.get("distance_m") for r in results
+        if isinstance(r, dict) and r.get("distance_m") is not None
+    ]
+    return len(ds) >= 2 and len(set(ds)) == 1
 
 
 class QueryEnrichmentService:
@@ -315,22 +364,29 @@ class QueryEnrichmentService:
         lines.append(
             "classes: " + ", ".join(f"{c} ({n})" for c, n in top_classes)
         )
+        # Degenerate distances are stripped, not flagged (2026-10-11
+        # tavern run): the prompt rule alone did not hold — the assembler
+        # still wrote "clustered in the same location" over all-0m rows.
+        # Removing the numbers leaves nothing to narrate over.
+        degenerate = _distances_degenerate(results)
         named = []
         for r in results:
             name = r.get("name") or (r.get("tags") or {}).get("name")
             if not name:
                 continue
             item = {"name": name}
-            if r.get("distance_m") is not None:
-                item["distance_m"] = float(r["distance_m"])
-            elif r.get("distance_km") is not None:
-                item["distance_km"] = float(r["distance_km"])
+            if not degenerate:
+                if r.get("distance_m") is not None:
+                    item["distance_m"] = float(r["distance_m"])
+                elif r.get("distance_km") is not None:
+                    item["distance_km"] = float(r["distance_km"])
             named.append(item)
-        named.sort(
-            key=lambda x: x.get("distance_m") if "distance_m" in x else (
-                x.get("distance_km", float("inf"))
-            ),
-        )
+        if not degenerate:
+            named.sort(
+                key=lambda x: x.get("distance_m") if "distance_m" in x else (
+                    x.get("distance_km", float("inf"))
+                ),
+            )
         for item in named[:8]:
             d = item.get("distance_m")
             if d is not None:
@@ -342,6 +398,11 @@ class QueryEnrichmentService:
                     lines.append(f"- {item['name']} ({d:.0f}m)")
             else:
                 lines.append(f"- {item['name']}")
+        if degenerate and named:
+            lines.append(
+                "distances: unavailable (degenerate result set; make no "
+                "spatial-proximity claims)"
+            )
         return "\n".join(lines)
 
     @staticmethod
@@ -450,6 +511,50 @@ class QueryEnrichmentService:
         error = None
         output = None
         try:
+            # similarEntities needs no country (scope=all crosses
+            # countries; the seed geocode scopes optionally).
+            if tool == "similarEntities":
+                payload = {
+                    "entity": args.get("entity"),
+                    "top_k": int(args.get("topK") or 8),
+                    "scope": args.get("scope") or "same_country",
+                }
+                if snapshot_date:
+                    payload["snapshot_date"] = snapshot_date
+                if country_code:
+                    payload["country_code"] = country_code
+                from django.test import Client
+                resp = Client().post(
+                    "/api/nca/similar-entities/",
+                    data=json.dumps(payload),
+                    content_type="application/json",
+                    HTTP_HOST="localhost",
+                )
+                try:
+                    data = resp.json()
+                except ValueError:
+                    logger.warning(
+                        "similarEntities returned non-JSON (status %s)",
+                        resp.status_code,
+                    )
+                    return None
+                if data.get("error"):
+                    logger.warning(
+                        "similarEntities error: %s", data["error"]
+                    )
+                    return None
+                return [
+                    {
+                        "name": r.get("name"),
+                        "wkg_class": r.get("wkg_class"),
+                        "lat": r.get("lat"),
+                        "lon": r.get("lon"),
+                        "score": r.get("similarity"),
+                        "tags": r.get("tags") or {},
+                        "country_code": r.get("country_code"),
+                    }
+                    for r in data.get("results", [])
+                ]
             if not country_code:
                 return None
             if tool == "nameSearch":

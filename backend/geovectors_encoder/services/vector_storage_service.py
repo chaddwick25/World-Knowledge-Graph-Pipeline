@@ -1,5 +1,6 @@
 import logging
 import json
+import math
 import time
 from django.db import connections
 from django.contrib.gis.geos import Point
@@ -134,12 +135,25 @@ class VectorStorageService:
         }
         osm_type = type_map.get(str(osm_type_code).lower(), 'node')
         
-        # Prepare entity data
+        # Prepare entity data.
+        # Finite-coordinate guard (2026-10-11): NaN is truthy in Python, so
+        # `if lat and lon` passed NaN coordinates and wrote POINT(NaN NaN)
+        # (7.2M rows in the IE snapshot) — those entities then matched a
+        # NaN geocode anchor at ST_Distance = 0. Finite coordinates only;
+        # 0.0 is a legitimate coordinate and must not be dropped by
+        # truthiness either.
+        geom = None
+        if lat is not None and lon is not None:
+            try:
+                if math.isfinite(float(lat)) and math.isfinite(float(lon)):
+                    geom = Point(float(lon), float(lat))
+            except (TypeError, ValueError):
+                geom = None
         entity_data = {
             'osm_type': osm_type,
             'osm_id': osm_id,
             'tags': tags,
-            'geom': Point(lon, lat) if lat and lon else None,
+            'geom': geom,
         }
         
         if self.model_type == 'tags':

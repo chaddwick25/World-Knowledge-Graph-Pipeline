@@ -7,7 +7,7 @@ the prompt; the decompose/assemble prompts are rendered from the recipe.
 The repair pipeline reads the recipe's intent vocabulary implicitly via
 the shared TAG_RULES / CATEGORY_TAG_TARGETS (``_constants.py``).
 
-The only recipe today: FOOD_REPORT — a food & drink vendor report
+The recipes today: FOOD_REPORT — a food & drink vendor report
 (restaurants, cafes, bars, pubs, food trucks, street vendors, vending
 machines…), scoped by design: shops, services, health, transit, and
 infrastructure are out. Sections: where to eat and drink, popular
@@ -15,9 +15,14 @@ brands (derived name-frequency tally), local vs international cuisine
 (cuisine-tag split), and getting around measured as distances/clustering
 between food spots. The PLACE_REPORT recipe was replaced 2026-10-02 —
 the owner wanted one focused recipe, not a domain-neutral place survey.
-Further recipes plug into the same engine: a recipe row + a router
-pattern, no loop changes.
+DOPPELGANGER_REPORT (2026-10-11): the similar-entities report — the
+seed entity anchors everything; the twins come from the pre-plan
+similarEntities search, the spread from distance questions between the
+seed and the twins. Further recipes plug into the same engine: a recipe
+row + a router pattern, no loop changes.
 """
+
+import re
 
 # ── Registry ─────────────────────────────────────────────────────────────
 
@@ -51,8 +56,12 @@ FOOD_REPORT = {
     "class_vocabulary": (
         "restaurants, cafes, fast food, bars, pubs, taverns, beer "
         "gardens, nightclubs, food courts, food trucks, street food, "
-        "snack bars, ice cream, vending machines, bakeries"
+        "snack bars, ice cream, vending machines, bakeries, bubble tea"
     ),
+    # The deterministic subject question's head noun (2026-10-11):
+    # "Which {subject} cafes are within X of {anchor}?" — food & drink
+    # vendors; other recipes set their own.
+    "subject_head": "cafes",
     "radius_policy": (
         "YOU decide each question's radius (output radius_m) from the "
         "entity class and the anchor's extent — do not copy a template "
@@ -102,6 +111,54 @@ FOOD_REPORT = {
 
 _register(FOOD_REPORT)
 
+DOPPELGANGER_REPORT = {
+    "key": "doppelganger_report",
+    "label": "similar-entities report",
+    # The seed entity anchors everything. The twins come from the
+    # pre-plan similarEntities search (derived — the tool's evidence, not
+    # a question); the spread from #2 distance questions between the
+    # seed and the twins.
+    "slots": [
+        {"id": "twins", "section": "The similar entities", "derived": True},
+        {"id": "context", "section": "What the seed is", "derived": True},
+        {"id": "spread", "section": "Where the twins sit"},
+    ],
+    # The seed's class vocabulary (the seed entity's own class resolves
+    # through CATEGORY_TAG_TARGETS; the planner's questions stay inside
+    # it).
+    "class_vocabulary": (
+        "taverns, pubs, bars, restaurants, cafes, fast food, ice cream, "
+        "bakeries, hotels, guest houses, attractions"
+    ),
+    "subject_head": "places",
+    "radius_policy": (
+        "YOU decide each question's radius (output radius_m) from the "
+        "anchor's extent — a city-scale anchor needs at least 2 km, "
+        "prefer 3-20 km; a venue, building, or neighbourhood anchor "
+        "works at 300m-2km. Never use 1 km for a city. Never exceed "
+        "50 km. State the radius in the question text AND as radius_m."
+    ),
+    "anchor_policy": (
+        "The seed entity is the primary anchor. Distance questions pair "
+        "the seed (or a twin named in the pre-plan evidence) with "
+        "another named entity — never a generic phrase."
+    ),
+    "assemble_sections": (
+        "the similar entities", "what the seed is", "where the twins sit",
+    ),
+    # The twins tally is the tool's evidence, so the LLM cites it and
+    # never invents twins.
+    "assemble_notes": (
+        " The twins slot is filled by the pre-plan similarEntities "
+        "search: name the twins in similarity order with their "
+        "countries; never invent twins. Spread: use the executed "
+        "distance answers between the seed and the twins; when "
+        "distances are unavailable, say so."
+    ),
+}
+
+_register(DOPPELGANGER_REPORT)
+
 DEFAULT_RECIPE_KEY = "food_report"
 
 
@@ -118,7 +175,29 @@ def get_recipe(key: str = None) -> dict:
 # when one lands, add a pattern here + a recipe row — the loop, repair
 # pipeline, and SSE spine stay unchanged.
 
-_ROUTER_PATTERNS = []
+_ROUTER_PATTERNS = [
+    # "find similar entities to X" / "twins of X" → the doppelganger
+    # report (2026-10-11): the Friars Tavern run answered the similarity
+    # ask with a proximity census because no recipe represented it.
+    (
+        re.compile(
+            r"\bsimilar\s+(?:entities|places|venues|to)\b"
+            r"|\bdoppelg\w*\b|\btwins?\b",
+            re.IGNORECASE,
+        ),
+        "doppelganger_report",
+    ),
+    # The brief handshake (2026-10-11): the frontend runs with the BRIEF
+    # as the prompt, and the brief's rewording drops "similar places" —
+    # the Friars Tavern frontend run routed to FOOD_REPORT and produced a
+    # proximity/brands report. _verify_seed appends the "Seed:" line only
+    # for doppelganger asks it verified against the dataset, so that line
+    # is the recipe marker: the finalize decided, the run honors it.
+    (
+        re.compile(r"^\s*Seed:\s", re.MULTILINE),
+        "doppelganger_report",
+    ),
+]
 
 
 def route_to_recipe(prompt: str = None) -> dict:

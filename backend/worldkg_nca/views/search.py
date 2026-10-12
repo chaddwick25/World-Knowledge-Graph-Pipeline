@@ -23,6 +23,9 @@ from worldkg_nca.models import OsmEntity, PrecomputedLinkCandidate
 from worldkg_nca.subdivision_labels import get_subdivision_label
 from core.models import ProjectionWeightAsset
 from semantic_search.services.romanizing_names.registry import RomanizerRegistry
+from semantic_search.services.query_executor_service._constants import (
+    normalize_tag_value,
+)
 from semantic_search.services.worldkg_enrichment_service import get_worldkg_enrichment_service
 from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 from semantic_search.services.worldkg_drift_service import get_worldkg_drift_service
@@ -690,7 +693,14 @@ def worldkg_semantic_triplet_search(request):
     # (e.g. cuisine=bubble_tea) embed far from the query vector and never
     # enter the top-N candidates, so the tag_match boost could never
     # surface them — a Tag Query with an explicit value must find them.
-    _exact_pairs = {k: v for k, v in query_tags.items() if v}
+    # Tag-phrase gate (2026-10-11): multi-word values normalize to the
+    # stored OSM convention ("bubble tea" → "bubble_tea") so a typed
+    # space form hits the underscore-stored tag. The `name` key is
+    # exempt: entity names are free text, not tag vocabulary.
+    _exact_pairs = {
+        k: (v if k == "name" else normalize_tag_value(v))
+        for k, v in query_tags.items() if v
+    }
     if _exact_pairs:
         exact_matches = list(
             qs.filter(tags__contains=_exact_pairs)
@@ -1327,4 +1337,45 @@ def sample_questions(request):
     result = SampleQuestionService.list_questions(
         country_code, subdivision_qid, snapshot_date,
     )
+    return Response(result)
+
+
+@api_view(['POST'])
+def worldkg_similar_entities(request):
+    """
+    Entity-seeded embedding k-NN: the doppelganger primitive.
+
+    POST /api/nca/similar-entities/
+    Body: {
+        "entity": "The Friars Tavern",   # Required: the seed entity's name
+        "country_code": "IE",            # Optional: scopes the seed lookup
+        "snapshot_date": "2025_12_31",   # Optional: snapshot partition key
+        "top_k": 10,                     # 1-50, default 10
+        "scope": "same_country",         # "same_country" (default) | "all"
+    }
+
+    Answers "like X", not "near X": one exact cosine (<=>) query over the
+    seed's stored gv_tags_embedding. The embeddings are the amortized
+    artifact (Step 1); this is its cheapest consumer.
+
+    Returns: {"seed": {...}, "results": [{name, wkg_class, tags,
+    country_code, lat, lon, similarity}], "count": int} or {"error": str}.
+    """
+    entity = request.data.get("entity")
+    if not entity:
+        return Response(
+            {"error": "entity is required"}, status=status.HTTP_400_BAD_REQUEST
+        )
+    from semantic_search.services.entity_similarity_service import (
+        EntitySimilarityService,
+    )
+    result = EntitySimilarityService.similar_entities(
+        entity,
+        country_code=request.data.get("country_code"),
+        snapshot_date=request.data.get("snapshot_date"),
+        top_k=request.data.get("top_k", 10),
+        scope=request.data.get("scope", "same_country"),
+    )
+    if result.get("error"):
+        return Response(result, status=status.HTTP_404_NOT_FOUND)
     return Response(result)

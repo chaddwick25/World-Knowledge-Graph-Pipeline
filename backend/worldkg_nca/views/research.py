@@ -246,6 +246,16 @@ def research_finalize(request):
     if not isinstance(messages, list):
         return JsonResponse({"error": "messages required"}, status=400)
     country_code = body.get("country_code") or None
+    if country_code:
+        try:
+            # Same resolution as research_stream: the frontend sends the
+            # country display name ("Ireland And Northern Ireland"); the
+            # seed verification's geocode filters on the ISO code, and an
+            # unresolved name matched no rows (the 2026-10-11 Friars
+            # Tavern run: "Seed: not found" for an entity that exists).
+            country_code = resolve_iso_code(country_code)
+        except Exception:
+            pass  # use as-is if resolution fails (same as research_stream)
     snapshot_date = body.get("snapshot_date") or None
     subdivision_qid = body.get("subdivision_qid") or None
 

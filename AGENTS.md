@@ -440,7 +440,8 @@ The frontend is self-hosted, not on Netlify. See
 - `docker-compose.yml` has an `nginx` service (eda-nginx, :80) serving
   `frontend-v3/dist` statically (SPA fallback) and proxying `/api` (REST +
   SSE, buffering off) and `/ws` (WebSocket upgrade) to `backend:8000`.
-- The Tailscale Funnel targets :80 (nginx), not :8000. Public URL is the
+- The Tailscale Funnel targets the nginx loopback binding, not the
+  backend. Public URL is the
   tailnet hostname (e.g. `https://<tailnet>.ts.net`). SPA build bakes
   `VITE_API_BASE_URL=/api` (same-origin; no CORS).
 - Open API (2026-10-05): the public `/api/*` surface requires no
@@ -459,10 +460,12 @@ The frontend is self-hosted, not on Netlify. See
 Deployment posture for the Tailscale Funnel host:
 
 - **Host port bindings are loopback-only** (`127.0.0.1:*` in docker-compose.yml):
-  postgres-default 5432, postgres-vectors 5433, redis 6379, backend 8000, nginx 80,
-  ollama 11434, ollama-research 11435, langfuse 3000. The Funnel reaches nginx via
-  tailscaled → 127.0.0.1:80, so nothing else needs a host interface. Containers talk
-  over the compose network regardless.
+  every service (data stores, backend, nginx, ollama, langfuse) binds the
+  loopback interface only; the specific host port numbers are operational
+  detail, read them from `docker-compose.yml` on the host when needed. The
+  Funnel reaches nginx via tailscaled → the nginx loopback binding, so
+  nothing else needs a host interface. Containers talk over the compose
+  network regardless.
 - **Redis requires a password**: `REDIS_PASSWORD` (compose `:?` — fail-closed if
   missing). `CELERY_BROKER_URL`, `CHANNEL_LAYERS`, and `ontology_service` all pass it.
 - **`DJANGO_DEBUG` is env-driven, default OFF** (`.env` sets `false`). `DJANGO_SECRET_KEY`
@@ -491,6 +494,18 @@ Deployment posture for the Tailscale Funnel host:
   previously flip `is_public_host()` to trusted; defense-in-depth — nginx
   `/admin` 404 + `X-Pipeline-Key` — held meanwhile). Keep the tailnet map in
   sync with `TRUSTED_LOCAL_HOSTS` + the funnel hostname.
+- **Security call protocol (2026-10-12)**: gated (write/trigger) requests
+  are made from the machine itself (a loopback binding) or from a tailnet
+  device via the tailnet surface (:8443), never composed against the
+  public funnel. The funnel (:443) is the PUBLIC product surface: the
+  Tailscale cert guards its TLS (hostname identity, encryption), not its
+  reachability (the whole internet can connect). Its only gated path is
+  the key-gated pipeline trigger (403 without the operator key, by design
+  so the SPA's password modal works). Machine-only = the loopback
+  bindings (all `127.0.0.1`-only; the numbers live in docker-compose.yml
+  on the host); tailnet-only = :8443. To call a gated endpoint from a new
+  device, add it to `TRUSTED_LOCAL_HOSTS` (the designed extension point);
+  never loosen a gate to make a call easier.
 - **Tests**: backend/tests/unit/test_public_surface_gates.py covers both host
   gates; backend/tests/unit/test_nginx_trust_invariants.py pins the nginx
   config invariants (allowlist split, trust-marker wiring, 444 guards);
@@ -507,3 +522,108 @@ Deployment posture for the Tailscale Funnel host:
 `POST /api/worldkg-pipeline-v2/start/` returned 500 (broken since 2026-10-02 commit b969b60).
 Fixed by adding `@pipeline_task(bind=True, base=PipelineTask, name=..., max_retries=1,
 default_retry_delay=60)` above `@pipeline_step` (matches step_5c).
+
+## Decision recipes (2026-10-11)
+
+`backend/pipeline/recipes/` holds project-memory recipes (beside
+`hyperparams.yaml`): one recipe = one load-bearing decision or invariant
+(id, title, kind, status, date, trigger, source, citations). Plans cite
+recipes as `[[DEC-001]]` instead of re-narrating them; the checker
+validates every citation. Run `python manage.py check_recipes` (errors:
+broken front matter, unresolvable citations, dangling `[[...]]` refs;
+warnings: orphan recipes, bare `.md` mentions that resolve nowhere;
+`--strict` fails on warnings too). Command:
+`backend/backend/management/commands/check_recipes.py`; tests:
+`backend/tests/unit/test_check_recipes.py`. Not the research orchestrator's
+report recipes (FOOD_REPORT); those are named report plans, these are
+numbered decision units. Seeded from the 2026-10-11 orchestration design
+review (DEC-001..005, INV-001).
+
+## Research intent chain + 0m anchor bug (2026-10-11)
+
+The Ireland bubble-tea runs exposed a four-layer failure, all fixed:
+(1) **Subject loss at brief extraction** — FINALIZE_SYSTEM_PROMPT had no
+field for the thing being researched; the brief dropped "bubble tea" and
+the planner asked generic vendor censuses. Fix: `subject` field +
+subject-first brief render + a deterministic subject line in the
+decompose prompt + `_inject_subject_question` (when the subject resolves
+to a real tag target and no question carries it, one subject question is
+injected; zero LLM discretion).
+(2) **Tag-phrase gate** — "bubble tea"/"bubble_tea" round-trip:
+`normalize_tag_phrase`/`normalize_tag_value`/`tag_value_variants` in
+`query_executor_service/_constants.py`; `_resolve_tag_target` handles
+compound head nouns ("bubble tea cafes" → cuisine=bubble_tea);
+`structuredSearch`'s tool description names the cuisine key; the view's
+`tags__contains` normalizes values (name key exempt).
+(3) **0m anchor bug** — `_resolve_amenity_tag("Dublin")` returned
+"public" via the fuzzystrmatch safety net (levenshtein 2 edits, ratio
+0.667 ≥ MIN_SCORE 0.55), so the anchor was treated as a CATEGORY, the
+geocode was skipped, and "cafes within 3km of Dublin" became "cafes
+within 3km of ANY amenity=public entity" (co-located pairs at 0m ranked
+first; 649/3689 IE cafes also carry POINT(NaN NaN) geom — NaN is truthy
+in Python, so the writer's `if lat and lon` guard passed it; 7.2M IE
+rows total). Fixes: `_anchor_is_category` (exact tiers only, no fuzzy
+correction, for anchors), isfinite anchor guard in the #1 executor,
+isfinite geom guard in the writer (`vector_storage_service.py`). The
+7.2M-row NaN cleanup (`UPDATE ... SET geom = NULL WHERE ST_X/ST_Y =
+'NaN'`) is still pending, off-peak, maintainer-gated.
+(4) **Continuation guards** — the widened-radius re-ask fires only for
+radius questions (a #4 compare has no radius to widen; the garbled
+"within 6 km of Belfast in Dublin" re-ask cannot recur), and
+`_anchor_from_question` strips a trailing capitalized "in <X>"
+qualifier.
+Tests: test_research_subject_brief.py, test_tag_phrase_gate.py,
+test_research_continuation_anchor.py (107 with the research suite).
+
+## Doppelganger reorganization (2026-10-11)
+
+The researcher now answers "find similar entities to X" (the
+recommender/doppelganger use case) instead of falling back to a
+proximity census:
+- **`EntitySimilarityService`** (`semantic_search/services/entity_similarity_service.py`):
+  entity-seeded embedding k-NN — fetch the seed's stored
+  `gv_tags_embedding`, one exact cosine (`<=>`) query, NaN-geom
+  rejected, scope `same_country` (default) or `all` (cross-country
+  twins). Answers "like X", not "near X".
+- **Endpoint**: `POST /api/nca/similar-entities/`
+  (`worldkg_nca/views/search.py::worldkg_similar_entities`, re-exported
+  in `views/__init__.py`).
+- **Tool**: `similarEntities` in `RESEARCH_TOOLS` (entity, topK, scope);
+  dispatched in `_call_search_tool` before the country-required check
+  (scope=all needs no country).
+- **Pre-plan tool round** (`_preplan_tools`, PRE_PLAN_TOOL_ROUND_PLAN.md
+  Phase 1): 0-2 schema-validated searches BEFORE decompose; outputs join
+  the decompose prompt as evidence (`_tool_evidence_text`); gated by
+  `_FOLLOWUP_ENABLED` (settings default '0' locally, compose sets '1').
+  The subject constraint line now splits: a class subject carries as the
+  class; an entity subject anchors and plans around the evidence.
+- **`DOPPELGANGER_REPORT` recipe** (`research_recipes.py`): slots
+  twins/context (derived from the tool evidence) + spread (#2 distance
+  questions between the seed and the twins); router pattern
+  ("similar to/entities", "doppelganger", "twins of").
+Verified live: the Friars Tavern demo (research_demo) — the agent chose
+similarEntities unprompted, the plan named the found twins, the recipe
+routed. Tests: test_doppelganger_research.py; the plan test's
+chat_tools count is now 2 (pre-plan + follow-up rounds).
+
+**Seed verification (confirmation flow, 2026-10-11)**: for doppelganger
+asks, `finalize_brief` geocodes the brief's subject against the dataset
+(`_verify_seed`, routed on the ORIGINAL ask — the brief's rewording
+drops "doppelganger") and appends the resolved entity to the brief
+("Seed: The Friars Tavern (pub)"): the brief box is the confirmation
+surface, the click on Run is the confirmation, zero frontend changes.
+The trigram tier absorbs misspellings ("Friers Tavern" → "The Friars
+Tavern", verified live). The FINALIZE_SYSTEM_PROMPT subject rule
+distinguishes entity subjects (the exact name the user gave, never the
+class word) from class subjects. The finalize response carries `seed`
+(found/asked/name/osm_id/tags/coords) for the frontend to consume later.
+
+**Finalize country resolution (2026-10-11)**: `research_finalize` now
+resolves `country_code` through `resolve_iso_code` (same as
+`research_stream`): the frontend sends the country display name
+(props.countryName, e.g. "Ireland And Northern Ireland"), and the seed
+verification's geocode filters on the ISO code; the unresolved name
+matched no rows, so a real entity verified as "not found" and the
+planner (reading the not-found seed line) decomposed nothing. Verified
+live: the name resolves to IE, the seed resolves to The Friars Tavern
+(osm_id 9842380892), the brief carries "Seed: The Friars Tavern (pub)".
