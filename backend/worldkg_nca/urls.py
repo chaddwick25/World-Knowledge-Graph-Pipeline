@@ -17,6 +17,7 @@ urlpatterns = [
     path('distribution/', views.worldkg_class_distribution, name='nca_class_distribution'),
     path('semantic-query/plan/', views.worldkg_semantic_query_plan, name='nca_semantic_query_plan'),
     path('semantic-triplet-search/', views.worldkg_semantic_triplet_search, name='nca_semantic_triplet_search'),
+    path('similar-entities/', views.worldkg_similar_entities, name='nca_similar_entities'),
     path('execute-query/', views.execute_query, name='nca_execute_query'),
     path('execute-query/stream/', views.execute_query_stream, name='nca_execute_query_stream'),
     path('research/stream/', views.research_stream, name='nca_research_stream'),

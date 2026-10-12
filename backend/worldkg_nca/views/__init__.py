@@ -18,6 +18,7 @@ from worldkg_nca.views.drift import (
 )
 from worldkg_nca.views.search import (
     worldkg_semantic_triplet_search,
+    worldkg_similar_entities,
     worldkg_semantic_query_plan,
     worldkg_subdivisions,
     sample_questions,
@@ -55,6 +56,7 @@ __all__ = [
     'worldkg_compute_drift',
     'worldkg_drift_list',
     'worldkg_semantic_triplet_search',
+    'worldkg_similar_entities',
     'worldkg_semantic_query_plan',
     'worldkg_subdivisions',
     'sample_questions',
