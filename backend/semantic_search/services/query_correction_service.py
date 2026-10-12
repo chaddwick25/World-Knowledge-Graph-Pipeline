@@ -31,6 +31,8 @@ with a short TTL (same pattern as snapshot_utils.SNAPSHOT_ID_CACHE).
 import logging
 import time
 
+from django.conf import settings
+
 from worldkg_nca.models import OsmEntity
 
 logger = logging.getLogger(__name__)
@@ -45,7 +47,22 @@ MAX_LEVENSHTEIN = 3
 # open-vocabulary phrases ("italian food") that are not near any tag.
 MIN_SCORE = 0.55
 
-VOCAB_CACHE_TTL_SECONDS = 300
+# The amenity vocabulary changes only on pipeline backfill. A short TTL
+# re-fired the DISTINCT tags->>'amenity' scan (1.3M-row heap fetch on a
+# 42M-row leaf, ~30-50s) every 5 minutes. Default 1h keeps it out of the
+# request path; clear_cache() runs on backfill regardless (mirrors the
+# snapshot_utils cache pattern).
+_VOCAB_CACHE_DEFAULT_TTL = 3600.0
+
+
+def _vocab_cache_ttl() -> float:
+    try:
+        return float(
+            getattr(settings, "VOCAB_CACHE_TTL_SECONDS", "")
+            or _VOCAB_CACHE_DEFAULT_TTL
+        )
+    except (TypeError, ValueError):
+        return _VOCAB_CACHE_DEFAULT_TTL
 
 
 class QueryCorrectionService:
@@ -110,7 +127,7 @@ class QueryCorrectionService:
         key = (snapshot_id, (country_code or "").upper())
         cached = cls._vocab_cache.get(key)
         now = time.monotonic()
-        if cached and now - cached[0] < VOCAB_CACHE_TTL_SECONDS:
+        if cached and now - cached[0] < _vocab_cache_ttl():
             return cached[1]
 
         qs = (
