@@ -126,6 +126,15 @@ _RESEARCH_THINK_ENABLED = str(
 _REPLAN_LLM_ENABLED = str(
     getattr(settings, "RESEARCH_REPLAN_LLM", "1")
 ) not in ("0", "false", "False", "")
+# Presence gate (RESEARCHER_AMPLIFICATION_PLAN.md §3.2): the Beta-Binomial
+# posterior over "genuinely absent vs under-tagged" skips the LLM replan
+# when the probe evidence says absence is near-certain. Default off: the
+# repair flow is behavior-changing, so it follows the explicit-gate
+# pattern; the additive coefficients (twin scores, run confidence) are
+# always on.
+_PRESENCE_GATE_ENABLED = str(
+    getattr(settings, "RESEARCH_PRESENCE_GATE", "0")
+) not in ("0", "false", "False", "")
 MAX_REPLAN_REWRITES = 2
 
 # Post-summary continuation rounds (2026-09-30): unmet slots (missing /
@@ -493,8 +502,11 @@ class ResearchOrchestratorService:
               "snapshot_date": str,
               "questions": [{question, why, slot, template, confidence,
                              answer, digest, result_count, error?,
-                             repair?, evidence_*?}],
+                             repair?, evidence_*?, presence?}],
               "coverage": [{slot, status, template, result_count, note?}],
+              "confidence": {value, band,
+                             components: {filled, total,
+                                          twin_agreement?}},
               "tool_calls": [{tool, args, output}],
               "summary": str (None when the LLM is unavailable; may
                              carry a "\n\nContinuing the plan" addendum),
@@ -532,6 +544,21 @@ class ResearchOrchestratorService:
             llm, prompt, subject, country_code, snapshot_date,
             event_callback,
         )
+        # Twin scoring (RESEARCHER_AMPLIFICATION_PLAN.md §3.1): the
+        # pre-plan similarEntities output gains calibrated scores from
+        # the resolved evidence channels (cosine, class match, USLP
+        # weighted by the country's validation accuracy). Additive
+        # fields, fail-soft; the ranked order feeds the evidence text.
+        from semantic_search.services.evidence_scoring_service import (
+            EvidenceScoringService,
+        )
+        twin_rows = EvidenceScoringService.score_preplan_twins(
+            pre_tools, country_code, snapshot_date,
+        )
+        twin_confidences = [
+            r.get("twin_confidence") for r in (twin_rows or [])
+            if r.get("twin_confidence") is not None
+        ]
         evidence = cls._tool_evidence_text(pre_tools)
         questions = cls._decompose(llm, prompt, country_code, recipe=recipe,
                                    subject=subject, evidence=evidence)
@@ -635,6 +662,9 @@ class ResearchOrchestratorService:
             "snapshot_date": snapshot_date,
             "questions": records,
             "coverage": coverage,
+            "confidence": EvidenceScoringService.compose_confidence(
+                coverage, twin_confidences,
+            ),
             "tool_calls": tool_calls,
             "summary": summary,
             "errors": errors,
@@ -1705,6 +1735,9 @@ class ResearchOrchestratorService:
         from semantic_search.services.query_parser_service import (
             QueryParserService,
         )
+        from semantic_search.services.evidence_scoring_service import (
+            EvidenceScoringService,
+        )
 
         repairs = []
         rewrites_left = MAX_REPLAN_REWRITES
@@ -1782,9 +1815,30 @@ class ResearchOrchestratorService:
                 })
                 continue
 
+            # 2b. presence posterior (RESEARCHER_AMPLIFICATION_PLAN.md
+            # §3.2, env-gated): the probe is the evidence; when it says
+            # the asked class is genuinely absent near this anchor, the
+            # replan cannot conjure entities, so step 3 is skipped and
+            # the evidence fallback (step 4) records the honest answer.
+            presence = None
+            if _PRESENCE_GATE_ENABLED:
+                hint = cls._question_class(original)
+                n_class = (
+                    sum(1 for r in probe_results
+                        if cls._entity_matches(r, hint))
+                    if hint else 0
+                )
+                presence = EvidenceScoringService.presence_posterior(
+                    n_class, len(probe_results),
+                )
+                record["presence"] = presence
+
             # 3. llm replan — bounded, default ON. The attempt is surfaced
             # (visible follow-up row) whether or not it finds results.
-            if _REPLAN_LLM_ENABLED and rewrites_left > 0:
+            # Skipped when the presence posterior says absent (2b).
+            presence_absent = (presence or {}).get("decision") == "absent"
+            if (not presence_absent
+                    and _REPLAN_LLM_ENABLED and rewrites_left > 0):
                 rewritten = cls._llm_replan(llm, record, probe_digest)
                 if rewritten:
                     rewrites_left -= 1
@@ -1829,6 +1883,7 @@ class ResearchOrchestratorService:
                 ),
                 "evidence": probe,
                 "evidence_result_count": record["evidence_result_count"],
+                "presence": (presence or {}).get("decision"),
             })
         return repairs
 
@@ -2347,16 +2402,26 @@ class ResearchOrchestratorService:
     @staticmethod
     def _tool_evidence_text(tool_calls) -> str:
         """Compact evidence text from pre-plan tool outputs: the
-        decompose prompt's 'what the data has' block."""
+        decompose prompt's 'what the data has' block. Scored twin rows
+        (RESEARCHER_AMPLIFICATION_PLAN.md §3.1) carry their score and
+        agreement confidence so the planner plans around confident
+        twins first."""
         lines = []
         for call in tool_calls or []:
             output = call.get("output") or []
-            names = [
-                (r.get("name") or "?")
-                + (f" ({r.get('country_code')})"
-                   if r.get("country_code") else "")
-                for r in output[:6] if isinstance(r, dict)
-            ]
+            names = []
+            for r in output[:6]:
+                if not isinstance(r, dict):
+                    continue
+                label = r.get("name") or "?"
+                if r.get("country_code"):
+                    label += f" ({r.get('country_code')})"
+                if r.get("twin_score") is not None:
+                    label += f" [score {r['twin_score']}"
+                    if r.get("twin_confidence") is not None:
+                        label += f", conf {r['twin_confidence']}"
+                    label += "]"
+                names.append(label)
             if names:
                 lines.append(f"- {call['tool']}: " + "; ".join(names))
         return "\n".join(lines)
