@@ -67,7 +67,7 @@
     </div>
     <div v-if="brief" class="alert alert-info small py-1 px-2 mb-0">
       <div class="text-secondary small mb-1">
-        Research brief
+        {{ isDoppelgangerRun ? 'Doppelganger brief' : 'Research brief' }}
         <span v-if="briefSource === 'fallback'" class="text-secondary">(from your first message)</span>
       </div>
       <div class="font-monospace">{{ brief }}</div>
@@ -79,7 +79,9 @@
       @click="runResearch"
     >
       <span v-if="isRunning" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-      {{ isRunning ? 'Researching…' : 'Run research' }}
+      {{ isRunning
+        ? (isDoppelgangerRun ? 'Searching doppelgangers…' : 'Researching…')
+        : (isDoppelgangerRun ? 'Find doppelgangers' : 'Run research') }}
     </button>
 
     <div v-if="error" class="alert alert-danger small py-1 px-2 mb-0">
@@ -93,7 +95,7 @@
     <div v-if="questions.length" class="d-flex flex-column gap-1">
       <details ref="questionsDetails" class="research-details small text-secondary" open>
         <summary class="cursor-pointer">
-          Execution Trace - Research questions ({{ questions.length }}<template v-if="tools.length"> + {{ tools.length }} follow-up searches</template>)
+          Execution Trace - {{ isDoppelgangerRun ? 'Doppelganger search' : 'Research questions' }} ({{ questions.length }}<template v-if="tools.length"> + {{ tools.length }} follow-up searches</template>)
         </summary>
         <div class="research-questions-flow d-flex flex-column gap-1 mt-1">
           <div
@@ -199,6 +201,7 @@ export default {
       finalizedBrief: '',
       briefSource: '',
       finalizing: false,
+      runRecipe: '',
     }
   },
   computed: {
@@ -229,6 +232,16 @@ export default {
         if (this.chatMessages[i].role === 'user') return this.chatMessages[i].text
       }
       return ''
+    },
+    isDoppelgangerRun() {
+      // The Seed: line is the routing marker (the finalize's verified
+      // seed); the done payload's recipe key confirms it after the run.
+      // The doppelganger vocabulary stays user-facing wherever the run
+      // is one (owner direction, 2026-10-12).
+      return (
+        (this.brief || '').includes('Seed:')
+        || this.runRecipe === 'doppelganger_report'
+      )
     },
     lastChatMessageText() {
       const msgs = this.chatMessages
@@ -282,9 +295,18 @@ export default {
       this.chat.sendMessage({ text })
     },
     async finalizeBrief() {
-      if (this.finalizing) return
+      if (this.finalizing) {
+        // A finalize is already in flight (the watch fired on the KE's
+        // last reply): pressing Run during it must wait it out, not
+        // no-op into the no-brief guard (the 2026-10-12 Redbones
+        // session: the race blocked the first Run press).
+        for (let i = 0; i < 40 && this.finalizing; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 200))
+        }
+        return this.finalizedBrief || ''
+      }
       const msgs = this.chatMessages.map((m) => ({ role: m.role, content: m.text }))
-      if (!msgs.length) return
+      if (!msgs.length) return ''
       this.finalizing = true
       console.log('[Research] finalize start', '@', Date.now())
       try {
@@ -295,6 +317,7 @@ export default {
         const { data } = await axios.post(
           `${axios.defaults.baseURL || ''}/nca/research/finalize/`,
           payload,
+          { timeout: 15000 },
         )
         this.finalizedBrief = data.brief || ''
         this.briefSource = data.source || ''
@@ -304,13 +327,25 @@ export default {
       } finally {
         this.finalizing = false
       }
+      return this.finalizedBrief || ''
     },
     async runResearch() {
       if (this.isRunning) return
-      let prompt = this.brief
-      if (!prompt) {
-        await this.finalizeBrief()
-        prompt = this.brief
+      let prompt = this.brief || (await this.finalizeBrief())
+      // An interview's last user message is an ANSWER fragment ("all",
+      // "geosemantic data"), not a research prompt: running on it invents
+      // a generic census that ignores everything the interview
+      // established (the 2026-10-12 Redbones run: the brief was missing
+      // at Run time, this fallback fired, and the loop produced a
+      // FOOD_REPORT census with no subject). The lastUserPrompt fallback
+      // is valid only when there is no interview to lose: a single user
+      // message IS the prompt.
+      const userMessages = this.chatMessages.filter(
+        (m) => m.role === 'user',
+      )
+      if (!prompt && userMessages.length > 1) {
+        this.error = 'Could not build the research brief from the interview. Press Run again to retry; if it persists, rephrase the request.'
+        return
       }
       prompt = prompt || this.lastUserPrompt
       if (!prompt) return
@@ -418,6 +453,7 @@ export default {
         this.closeStream()
         const d = JSON.parse(e.data)
         const result = d.result || {}
+        this.runRecipe = result.recipe || ''
         const elapsed = this.runStartAt ? ((Date.now() - this.runStartAt) / 1000).toFixed(1) + 's' : '?'
         console.log('[Research] done, summary len:', (result.summary || this.summary || '').length, 'elapsed:', elapsed, 'errors:', (result.errors || []).length, '@', Date.now())
         this.runStartAt = null
@@ -444,6 +480,7 @@ export default {
       this.tools = []
       this.summary = ''
       this.error = ''
+      this.runRecipe = ''
       this.closeStream()
     },
     collapseQuestions() {

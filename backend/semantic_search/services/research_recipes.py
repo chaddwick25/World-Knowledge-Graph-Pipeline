@@ -64,13 +64,15 @@ FOOD_REPORT = {
     "subject_head": "cafes",
     "radius_policy": (
         "YOU decide each question's radius (output radius_m) from the "
-        "entity class and the anchor's extent — do not copy a template "
-        "radius. Class-aware bands: a city-scale anchor (Seoul, "
-        "Belmopan) needs at least 2 km, prefer 3-20 km for vendor "
-        "searches across a city; a venue, building, or neighbourhood "
-        "anchor works at 300m-2km; a 'nearest' question stays under "
-        "2 km. Never use 1 km for a city. Never exceed 50 km. State "
-        "the radius in the question text AND as radius_m."
+        "entity class and the anchor's extent: do not copy a template "
+        "radius. Class-aware bands: a city-scale anchor (Kingston, "
+        "Seoul, Belmopan) needs at least 10 km, prefer 10-30 km for "
+        "vendor searches across a city (2026-10-12: the 2 km censuses "
+        "returned thin results; 10 km returned 86 entities); a venue, "
+        "building, or neighbourhood anchor works at 300m-2km; a "
+        "'nearest' question stays under 2 km. Never use 1 km for a "
+        "city. Never exceed 50 km. State the radius in the question "
+        "text AND as radius_m."
     ),
     "anchor_policy": (
         "Anchor every question at a named city or town (they geocode to "
@@ -105,7 +107,7 @@ FOOD_REPORT = {
     "slot_defaults": {
         "eat": "Which restaurants are within 10km of {anchor}?",
         "cuisine": "Which restaurants are within 10km of {anchor}?",
-        "move": "Which cafes are within 1km of {anchor}?",
+        "move": "Which cafes are within 10km of {anchor}?",
     },
 }
 
@@ -113,7 +115,7 @@ _register(FOOD_REPORT)
 
 DOPPELGANGER_REPORT = {
     "key": "doppelganger_report",
-    "label": "similar-entities report",
+    "label": "doppelganger report",
     # The seed entity anchors everything. The twins come from the
     # pre-plan similarEntities search (derived — the tool's evidence, not
     # a question); the spread from #2 distance questions between the
@@ -133,10 +135,11 @@ DOPPELGANGER_REPORT = {
     "subject_head": "places",
     "radius_policy": (
         "YOU decide each question's radius (output radius_m) from the "
-        "anchor's extent — a city-scale anchor needs at least 2 km, "
-        "prefer 3-20 km; a venue, building, or neighbourhood anchor "
-        "works at 300m-2km. Never use 1 km for a city. Never exceed "
-        "50 km. State the radius in the question text AND as radius_m."
+        "anchor's extent: a city-scale anchor needs at least 10 km, "
+        "prefer 10-30 km (2026-10-12); a venue, building, or "
+        "neighbourhood anchor works at 300m-2km. Never use 1 km for a "
+        "city. Never exceed 50 km. State the radius in the question "
+        "text AND as radius_m."
     ),
     "anchor_policy": (
         "The seed entity is the primary anchor. Distance questions pair "
@@ -182,7 +185,17 @@ _ROUTER_PATTERNS = [
     (
         re.compile(
             r"\bsimilar\s+(?:entities|places|venues|to)\b"
-            r"|\bdoppelg\w*\b|\btwins?\b",
+            # "similar cafes to X" / "similar cafe to X" (the 2026-10-12
+            # Redbones runs: both phrasings missed the alternation and
+            # the ask routed to the food census, which answers "similar"
+            # with "nearby"): any noun between similar and to/for is the
+            # doppelganger ask.
+            r"|\bsimilar\s+\w+\s+(?:to|for)\b"
+            # \bdopp\w*\b (not \bdoppelg\w*\b): the 2026-10-12 Redbones
+            # run typed "Dopplegangers" (transposed) and the strict
+            # spelling missed it; every real word starting "dopp" is
+            # this ask.
+            r"|\bdopp\w*\b|\btwins?\b",
             re.IGNORECASE,
         ),
         "doppelganger_report",

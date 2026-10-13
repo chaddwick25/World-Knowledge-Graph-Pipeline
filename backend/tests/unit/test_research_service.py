@@ -252,7 +252,7 @@ class TestDecomposePrompt:
         # City-scale anchors must never get a 1km radius ("1 km is too
         # small to search Dublin" — observed 2026-09-19).
         assert "Never use 1 km for a city" in _DECOMPOSE_SYSTEM_PROMPT
-        assert "at least 2 km" in _DECOMPOSE_SYSTEM_PROMPT
+        assert "at least 10 km" in _DECOMPOSE_SYSTEM_PROMPT
 
     def test_resolvable_class_whitelist_present(self):
         # The planner must stay inside the recipe's vocabulary
@@ -349,8 +349,8 @@ class TestAgentRadiusAndSlotCoverage:
         )
         assert cuisine["radius_m"] == 10000
         move = next(q for q in filled if q["slot"] == "move")
-        assert move["question"] == "Which cafes are within 1km of Belmopan?"
-        assert move["radius_m"] == 1000
+        assert move["question"] == "Which cafes are within 10km of Belmopan?"
+        assert move["radius_m"] == 10000
         # The original question is untouched and first.
         assert filled[0]["question"] == questions[0]["question"]
 
@@ -751,10 +751,14 @@ class TestPlan:
                 event_callback=events.append,
             )
 
-        assert len(result["questions"]) == 3  # 2 planned + 1 slot fill
+        # 2 planned + 1 slot fill, plus the round-2 insight questions for
+        # the profile's top entities (the owner's design: insights from
+        # the summary: the top pick's neighborhood + the spread).
+        assert len(result["questions"]) == 5
         assert result["questions"][1]["question"] == \
             "Which cafes are within 1km of Belize Bistro?"
-        assert result["summary"] == "summary part 1 summary part 2"
+        assert result["summary"].startswith("summary part 1 summary part 2")
+        assert "Continuing the plan" in result["summary"]
         assert result["errors"] == []
         # Deterministic loop: no enrichment on sub-questions.
         assert executor.execute.call_args.kwargs["skip_enrichment"] is True
@@ -810,7 +814,8 @@ class TestPlan:
             result = ResearchOrchestratorService.plan(
                 "Where can you drink in Dublin?", "IE", None)
         assert llm.chat_json_calls == 2
-        assert len(result["questions"]) == 3  # 1 planned + 2 slot fills
+        # 1 planned + 2 slot fills + the round-2 insight question.
+        assert len(result["questions"]) == 4
         assert result["questions"][0]["slot"] == "eat"
         assert result["coverage"][0]["status"] == "filled"
 
@@ -848,15 +853,17 @@ class TestPlan:
             )
 
         # 2 planned + 1 slot fill, plus the round-2 wider re-ask for the
-        # empty restaurants slot.
-        assert len(result["questions"]) == 4
+        # empty restaurants slot (10 km minimum) and the insight
+        # question for the profile's top entity (Cafe X, the only one:
+        # the cafes question errored and the restaurants slot is empty).
+        assert len(result["questions"]) == 5
         assert result["questions"][0].get("error") is None
         assert result["questions"][1]["error"] == "boom"
         assert len(result["errors"]) == 1
-        # Summary still produced from the surviving answer (and the empty
-        # restaurants slot got a round-2 widened re-ask, not a silent gap).
-        assert result["summary"] == (
-            "summary part 1 summary part 2\n\nsummary part 1 summary part 2"
+        # Summary still produced from the surviving answer; the
+        # addendum is the deterministic Q&A render.
+        assert result["summary"].startswith(
+            "summary part 1 summary part 2\n\nContinuing the plan:"
         )
         assert result["rounds"] == 2
 
@@ -904,6 +911,7 @@ class TestPlan:
             "Which restaurants are within 2km of Kingston?",
             "What is within 3km of the anchor?",   # cuisine fill
             "What is near the anchor?",            # move fill
+            "What amenities are near The Pork Pit?",  # round-2 insight
         ]
         record = result["questions"][0]
         assert record["hub_reanchored"] is True
@@ -922,7 +930,7 @@ class TestPlan:
         }]
         follow_ups = svc._continuation_questions(records, unmet, "JM", None)
         assert follow_ups == [{
-            "question": "Which restaurants are within 6 km of Jerk Town?",
+            "question": "Which restaurants are within 10 km of Jerk Town?",
             "slot": "eat",
         }]
 
@@ -1046,25 +1054,31 @@ class TestPlan:
             )
 
         # Round 1: original question empty → probe → evidence (missing).
-        # Round 2: widened re-ask finds the restaurants + addendum.
-        assert "Which restaurants are within 6 km of Jerk Town?" in calls
+        # Round 2: the widened re-ask (10 km minimum) finds the
+        # restaurants, plus the insight question for the profile's top
+        # entity (the fills' result), and the deterministic addendum.
+        assert "Which restaurants are within 10 km of Jerk Town?" in calls
         assert result["rounds"] == 2
         assert result["rounds_meta"][0]["round"] == 2
         assert result["rounds_meta"][0]["questions"] == [
-            "Which restaurants are within 6 km of Jerk Town?",
+            "Which restaurants are within 10 km of Jerk Town?",
+            "What amenities are near Usain Bolt's Tracks and Records?",
         ]
         round_events = [e for e in events if e["event"] == "round"]
         assert len(round_events) == 1
         assert round_events[0]["unmet"] == ["eat"]
-        # The round-2 question row exists in the trace (index continues).
+        # The round-2 question rows exist in the trace (index continues).
         q2 = [e for e in events if e["event"] == "question" and e.get("round") == 2]
-        assert len(q2) == 1
+        assert len(q2) == 2
         assert q2[0]["index"] == 3  # round 1 = eat + 2 slot fills
         assert q2[0]["result_count"] == 1
-        # The addendum extends the summary.
-        assert result["summary"] == (
-            "summary part 1 summary part 2\n\nsummary part 1 summary part 2"
+        assert q2[1]["result_count"] == 0  # the insight hit the empty branch
+        # The addendum is the deterministic Q&A render.
+        assert result["summary"].startswith(
+            "summary part 1 summary part 2\n\nContinuing the plan:"
         )
+        assert "Q: Which restaurants are within 10 km of Jerk Town?" \
+            in result["summary"]
 
     def test_plan_anchor_qualifier_retry(self):
         fake_llm = FakeLLM(chat_json_result={"questions": _full_slots([
@@ -1107,6 +1121,7 @@ class TestPlan:
             "Which restaurants are within 2km of Belize City?",
             "What is within 3km of the anchor?",   # cuisine fill
             "What is near the anchor?",            # move fill
+            "What amenities are near Belize Bistro?",  # round-2 insight
         ]
         assert result["questions"][0]["result_count"] == 1
         assert result["questions"][0]["question"] == \
@@ -1204,7 +1219,7 @@ class TestPlan:
             executor.execute.side_effect = ok_execute
             result = ResearchOrchestratorService.plan("Plan a trip", "IE", None)
 
-        assert len(calls) == 3  # 1 planned + 2 slot fills, all with results
+        assert len(calls) == 4  # 1 planned + 2 slot fills + the round-2 insight
         assert result["questions"][0].get("radius_escalated") is None
 
     def test_plan_radius_at_floor_repairs_with_evidence(self):
@@ -1243,13 +1258,15 @@ class TestPlan:
         # No escalation: the coverage-led repair re-asks the anchor as an
         # open-ended #8 and records the digest as nearest evidence instead
         # of leaving the slot silently empty. The post-summary continuation
-        # then re-asks the category at a wider radius (round 2).
+        # then re-asks the category at a wider radius (10 km minimum) plus
+        # the insight question for the profile's top entity (round 2).
         assert calls == [
             "Which restaurants are within 2km of Dublin?",
             "What is within 3km of the anchor?",   # cuisine fill
             "What is near the anchor?",            # move fill
             "What amenities are near Dublin?",     # repair probe
-            "Which restaurants are within 6 km of Dublin?",
+            "Which restaurants are within 10 km of Dublin?",
+            "What amenities are near The Shelbourne?",  # round-2 insight
         ]
         record = result["questions"][0]
         assert record.get("radius_escalated") is None
@@ -1312,6 +1329,7 @@ class TestPlan:
             "What is near the anchor?",            # move fill
             "What amenities are near Belize City?",  # repair probe
             "Which pubs are within 2 km of Belize City?",
+            "What amenities are near The Brazen Head?",  # round-2 insight
         ]
         record = result["questions"][0]
         assert record["repair"] == "class_swap"
