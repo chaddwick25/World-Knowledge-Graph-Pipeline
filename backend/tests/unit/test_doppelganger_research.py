@@ -56,6 +56,136 @@ def test_route_seed_line_brief_routes_doppelganger():
     ) is FOOD_REPORT
 
 
+def test_route_similar_noun_phrasings():
+    ***REMOVED*** The 2026-10-12 Redbones runs: "similar cafe(s) to X" (a noun
+    ***REMOVED*** between similar and to) missed the alternation and routed to the
+    ***REMOVED*** food census, which answers "similar" with "nearby".
+    assert route_to_recipe(
+        "find me similar cafes to Redbones Blues Cafe in Kingston"
+    ) is DOPPELGANGER_REPORT
+    assert route_to_recipe(
+        "find me a similar cafe to Redbones Blues Cafe in Kingston"
+    ) is DOPPELGANGER_REPORT
+
+
+def test_route_misspelled_doppelganger():
+    ***REMOVED*** The third Redbones run: "Dopplegangers" (transposed) defeated the
+    ***REMOVED*** strict \bdoppelg\w*\b spelling; every real word starting "dopp"
+    ***REMOVED*** is this ask.
+    assert route_to_recipe(
+        "Find me Dopplegangers of Redbones Blues Cafe located in "
+        "Kingston but search Island/country wide"
+    ) is DOPPELGANGER_REPORT
+
+
+def test_subject_from_misspelled_ask_with_location():
+    ***REMOVED*** The misspelled form + the "located in" trailing phrase: the
+    ***REMOVED*** subject is the similarity target, not the location.
+    assert ResearchOrchestratorService._subject_from_brief(
+        "Find me Dopplegangers of Redbones Blues Cafe located in "
+        "Kingston but search Island/country wide"
+    ) == "Redbones Blues Cafe"
+
+
+def test_finalize_fallback_routes_on_the_conversation(monkeypatch):
+    ***REMOVED*** The third Redbones run: the extraction failed, the fallback
+    ***REMOVED*** routed on the misspelled user text alone, and the run lost the
+    ***REMOVED*** route even though the KE's reply spelled "doppelgangers"
+    ***REMOVED*** correctly. The fallback now routes on the FULL conversation (the
+    ***REMOVED*** Jamaica-run lesson applied to the fallback path).
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+
+    class DownLLM:
+        @staticmethod
+        def is_available():
+            return False
+
+    monkeypatch.setattr(
+        "core.services.llm_service.LLMService.get_instance",
+        staticmethod(lambda: DownLLM()),
+    )
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode",
+        staticmethod(lambda name, cc=None, sd=None: {
+            "osm_id": 5171395621, "osm_type": "node",
+            "name": "Redbones Blues Cafe", "lat": 18.01, "lon": -76.78,
+            "tags": {"name": "Redbones Blues Cafe", "amenity": "cafe"},
+        }),
+    )
+    out = ResearchOrchestratorService.finalize_brief(
+        [
+            {"role": "user",
+             "content": "Find me Dopplegangers of Redbones Blues Cafe "
+                        "located in Kingston but search Island/country "
+                        "wide"},
+            {"role": "assistant",
+             "content": "What is the exact name of the place you're "
+                        "looking for doppelgangers of?"},
+            {"role": "user", "content": "Redbones Blues Cafe"},
+        ],
+        country_code="JM",
+    )
+    assert out["source"] == "fallback"
+    assert out["seed"]["found"] is True
+    assert "Seed: Redbones Blues Cafe (cafe)" in out["brief"]
+    assert route_to_recipe(out["brief"]) is DOPPELGANGER_REPORT
+
+
+def test_subject_from_raw_similar_ask():
+    ***REMOVED*** The fallback brief is the user's own words: the similarity TARGET
+    ***REMOVED*** is the subject; the trailing location phrase is not.
+    assert ResearchOrchestratorService._subject_from_brief(
+        "find me similar cafes to Redbones Blues Cafe in Kingston"
+    ) == "Redbones Blues Cafe"
+    assert ResearchOrchestratorService._subject_from_brief(
+        "similar to Redbones Blues cafe in terms of infrastructure"
+    ) == "Redbones Blues cafe"
+    assert ResearchOrchestratorService._subject_from_brief(
+        "twins of The Friars Tavern"
+    ) == "The Friars Tavern"
+    ***REMOVED*** Non-similarity asks still yield None (no invented subject).
+    assert ResearchOrchestratorService._subject_from_brief(
+        "tell me about taverns in ireland"
+    ) is None
+
+
+def test_finalize_fallback_verifies_seed(monkeypatch):
+    ***REMOVED*** The extraction failed (LLM down): the fallback brief is the user's
+    ***REMOVED*** own words, and it goes through the same verify-and-mark step (the
+    ***REMOVED*** 2026-10-12 Redbones run: the fallback skipped verification and the
+    ***REMOVED*** run lost the route).
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+
+    class DownLLM:
+        @staticmethod
+        def is_available():
+            return False
+
+    monkeypatch.setattr(
+        "core.services.llm_service.LLMService.get_instance",
+        staticmethod(lambda: DownLLM()),
+    )
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode",
+        staticmethod(lambda name, cc=None, sd=None: {
+            "osm_id": 5171395621, "osm_type": "node",
+            "name": "Redbones Blues Cafe", "lat": 18.01, "lon": -76.78,
+            "tags": {"name": "Redbones Blues Cafe", "amenity": "cafe"},
+        }),
+    )
+    out = ResearchOrchestratorService.finalize_brief(
+        [{"role": "user",
+          "content": "find me similar cafes to Redbones Blues Cafe "
+                     "in Kingston"}],
+        country_code="JM",
+    )
+    assert out["source"] == "fallback"
+    assert out["seed"]["found"] is True
+    assert "Seed: Redbones Blues Cafe (cafe)" in out["brief"]
+    ***REMOVED*** The marked fallback routes the run to the doppelganger report.
+    assert route_to_recipe(out["brief"]) is DOPPELGANGER_REPORT
+
+
 def test_similarentities_in_tools_manifest():
     schema = QueryEnrichmentService._research_tools_schema()
     names = {s["function"]["name"] for s in schema}
