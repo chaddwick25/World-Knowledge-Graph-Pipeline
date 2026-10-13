@@ -88,6 +88,34 @@ def step_6_mark_search_ready(self, env: CountryEnvelope) -> CountryEnvelope:
             pipeline_run_id=env.pipeline_run_id,
         )
 
+    ***REMOVED*** Guaranteed per-leaf indexes before the country is marked
+    ***REMOVED*** search-ready. Idempotent: everything already present is skipped,
+    ***REMOVED*** so in practice this builds only the amenity value-vocabulary
+    ***REMOVED*** index (the release slice of the index-builder plan — it removes
+    ***REMOVED*** the DISTINCT tags->>'amenity' heap scan from the query path).
+    try:
+        call_command(
+            "create_osmentity_vector_indexes",
+            country=env.iso,
+            snapshot=env.snapshot_date,
+        )
+        _log(
+            logger,
+            "info",
+            "Per-leaf indexes verified (amenity vocab guaranteed)",
+            country=env.iso,
+            pipeline_run_id=env.pipeline_run_id,
+        )
+    except Exception as exc:
+        _log(
+            logger,
+            "warning",
+            "Per-leaf index build failed — vocab queries may be slower",
+            country=env.iso,
+            error=str(exc),
+            pipeline_run_id=env.pipeline_run_id,
+        )
+
     from core.services.pipeline.search_ready_service import SearchReadyService
     SearchReadyService().run(env)
 
