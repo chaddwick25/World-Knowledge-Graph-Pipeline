@@ -256,8 +256,10 @@ class TestCreatePerLeaf:
         ), "per-leaf create must query the specific leaf table"
 
         create_sqls = [s for s in sqls if "CREATE INDEX CONCURRENTLY" in s]
-        assert len(create_sqls) == 2
-        # Both indexes must be on the NI leaf.
+        # Two HNSW + the default amenity vocab index.
+        hnsw_sqls = [s for s in create_sqls if "hnsw" in s.lower()]
+        assert len(hnsw_sqls) == 2
+        # All indexes must be on the NI leaf.
         for s in create_sqls:
             assert "embeddings_2025_12_31_ni" in s
             assert "embeddings_2025_12_31_jm" not in s
@@ -268,7 +270,8 @@ class TestCreatePerLeaf:
                    for s in create_sqls)
 
     @pytest.mark.unit
-    def test_per_leaf_create_with_no_missing_is_noop(self, stub_vectors):
+    def test_per_leaf_create_with_no_missing_builds_only_vocab(self, stub_vectors):
+        """HNSW present → no HNSW creates; amenity vocab still guaranteed."""
         stub_vectors._cursor.results = [[]]
         out = StringIO()
         call_command(
@@ -280,7 +283,12 @@ class TestCreatePerLeaf:
             s for s, _ in stub_vectors._cursor.executed
             if "CREATE INDEX CONCURRENTLY" in s
         ]
-        assert create_sqls == []
+        hnsw_sqls = [s for s in create_sqls if "hnsw" in s.lower()]
+        assert hnsw_sqls == []
+        assert any(
+            "idx_embeddings_2025_12_31_ni_amenity_vocab" in s
+            for s in create_sqls
+        )
 
     @pytest.mark.unit
     def test_per_leaf_create_sets_autocommit(self, stub_vectors):
@@ -317,3 +325,103 @@ class TestCreateGlobal:
         create_sqls = [s for s in sqls if "CREATE INDEX CONCURRENTLY" in s]
         assert len(create_sqls) == 1
         assert "embeddings_2025_12_31_jm" in create_sqls[0]
+
+
+class TestVocabIndexes:
+    """Value-vocabulary partial indexes (DEC-007; index-builder release slice).
+
+    The guaranteed default is ``GENERIC_AMENITY_KEYS``: the parser's
+    generic OBJECT vocabulary, which is where enumeration has readers
+    (``correct_amenity`` is the reference consumer). Other executor keys
+    come through ``--categories`` and are whitelisted against the
+    executor constants.
+    """
+
+    @pytest.mark.unit
+    def test_default_categories_builds_generic_amenity_keys(self, stub_vectors):
+        stub_vectors._cursor.results = [[]]
+        call_command(
+            "create_osmentity_vector_indexes",
+            country="pl", snapshot="2025_12_31",
+            stdout=StringIO(),
+        )
+        vocab_sqls = [
+            s for s, _ in stub_vectors._cursor.executed
+            if "_vocab" in s and "CREATE INDEX CONCURRENTLY" in s
+        ]
+        expected = (
+            "amenity", "shop", "tourism", "leisure", "office", "craft",
+            "healthcare", "public_transport",
+        )
+        assert len(vocab_sqls) == len(expected)
+        for key in expected:
+            matching = [s for s in vocab_sqls if f"tags->>'{key}'" in s]
+            assert len(matching) == 1, f"missing vocab index for {key!r}"
+            sql = matching[0]
+            assert f"idx_embeddings_2025_12_31_pl_{key}_vocab" in sql
+            assert "snapshot_id" in sql and "country_code" in sql
+            assert f"tags ? '{key}'" in sql
+
+    @pytest.mark.unit
+    def test_categories_flag_builds_each_listed_key(self, stub_vectors):
+        stub_vectors._cursor.results = [[]]
+        call_command(
+            "create_osmentity_vector_indexes",
+            country="ni", snapshot="2025_12_31",
+            categories="amenity,shop",
+            stdout=StringIO(),
+        )
+        vocab_sqls = [
+            s for s, _ in stub_vectors._cursor.executed
+            if "_vocab" in s and "CREATE INDEX CONCURRENTLY" in s
+        ]
+        keys = [
+            s for s in vocab_sqls
+        ]
+        assert any("tags->>'amenity'" in s for s in keys)
+        assert any("tags->>'shop'" in s for s in keys)
+
+    @pytest.mark.unit
+    def test_unknown_category_rejected(self, stub_vectors):
+        err = StringIO()
+        call_command(
+            "create_osmentity_vector_indexes",
+            country="ni", snapshot="2025_12_31",
+            categories="amenity,not_a_tag",
+            stdout=StringIO(), stderr=err,
+        )
+        assert "Unknown categor" in err.getvalue()
+        # Rejected before any DDL runs.
+        create_sqls = [
+            s for s, _ in stub_vectors._cursor.executed
+            if s.startswith("CREATE INDEX")
+        ]
+        assert create_sqls == []
+
+    @pytest.mark.unit
+    def test_categories_requires_per_leaf_mode(self, stub_vectors):
+        err = StringIO()
+        call_command(
+            "create_osmentity_vector_indexes",
+            categories="amenity",
+            stdout=StringIO(), stderr=err,
+        )
+        assert "per-leaf" in err.getvalue()
+
+    @pytest.mark.unit
+    def test_existing_vocab_index_is_skipped(self, stub_vectors):
+        # First fetchall: missing-HNSW query → none.
+        # First fetchone (amenity vocab exists check) → already present;
+        # the remaining checks default to (False,) so they still build.
+        stub_vectors._cursor.results = [[], [(True,)]]
+        call_command(
+            "create_osmentity_vector_indexes",
+            country="ni", snapshot="2025_12_31",
+            stdout=StringIO(),
+        )
+        vocab_creates = [
+            s for s, _ in stub_vectors._cursor.executed
+            if "_vocab" in s and "CREATE INDEX CONCURRENTLY" in s
+        ]
+        assert not any("tags->>'amenity'" in s for s in vocab_creates)
+        assert any("tags->>'shop'" in s for s in vocab_creates)
