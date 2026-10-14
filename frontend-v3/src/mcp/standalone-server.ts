@@ -3,8 +3,7 @@
  *
  * Hosts the vendored MCP stack (vite-middleware.ts transport +
  * mcp-server.ts tool registry + server-tools.ts data tools) on a plain
- * node:http server for the Docker sidecar
- * (deploy/plans/MCP_SIDECAR_PLAN.md). The Vite dev surface at /__mcp is
+ * node:http server for the Docker sidecar. The Vite dev surface at /__mcp is
  * unchanged — this is the same registry on a different host.
  *
  * Differences from the dev-server mount:

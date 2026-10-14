@@ -15,7 +15,7 @@
 # AlterField drops _like indexes automatically).
 #
 # After this migration: 14 indexes remain (down from 23), saving ~380 MB now
-# (~51 GB at 400M rows).  See docs/plans/OSMENTITY_MONOLITH_OPTIMIZATION.md Phase 2.
+# (~51 GB at 400M rows).  See OSMENTITY_MONOLITH_OPTIMIZATION Phase 2.
 #
 # IMPORTANT: Run with --database=vectors (OsmEntity lives in the vectors DB).
 

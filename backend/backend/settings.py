@@ -151,8 +151,7 @@ LOGS_DIR = _default_logs_dir
 _default_wikidata_cache_dir = os.path.join(BASE_DATA_DIR, 'data/wikidata_cache') if BASE_DATA_DIR else None
 WIKIDATA_CACHE_DIR = _default_wikidata_cache_dir
 
-# MapQA parser data — training data + model artifacts (layout in
-# docs/plans/MAPQA_PARSER_BUILD_ORDER.md §8).
+# MapQA parser data — training data + model artifacts.
 _default_mapqa_parser_dir = os.path.join(BASE_DATA_DIR, 'mapqa_parser') if BASE_DATA_DIR else None
 MAPQA_PARSER_DATA_DIR = _default_mapqa_parser_dir
 
@@ -165,10 +164,10 @@ GRAPH_ARTIFACT_DIR = _default_graph_artifact_dir
 _default_spectral_report_dir = os.path.join(BASE_DIR, 'data', 'spectral_reports')
 SPECTRAL_REPORT_DIR = _default_spectral_report_dir
 
-# Factor-node tables (docs/plans/FACTOR_NODE_RUNTIME_JOINS_PLAN.md).
+# Factor-node tables (per-entity spectral/drift metrics on the vectors DB).
 FACTOR_NODE_TABLES_ENABLED = True
 
-# Eigenbasis coherence (GRAPH_SPECTRAL_FEEDBACK_HARDENING_PLAN Phase 1):
+# Eigenbasis coherence (Phase 1):
 # strict = NULL fingerprint_id forces the PostGIS fallback.
 FACTOR_EIGENBASIS_STRICT = False
 
@@ -185,7 +184,7 @@ CELERY_BROKER_URL = _redis_url
 # ── Celery Result Backend ──
 # Custom Django DB backend with chord-in-chain fix (django-celery-results
 # 2.0.0's DatabaseBackend loses ChordCounter records for chords in a chain,
-# re-training subgraphs 2-7x; see docs/issues/CHORDCOUNTER_DOES_NOT_EXIST_BUG.md).
+# re-training subgraphs 2-7x; see CHORDCOUNTER_DOES_NOT_EXIST_BUG).
 CELERY_RESULT_BACKEND = os.environ.get(
     "CELERY_RESULT_BACKEND",
     "pipeline.celery_results_backend:PatchedDatabaseBackend",
@@ -374,8 +373,7 @@ DATABASE_ROUTERS = [
 ]
 
 # MapQA self-supervised training-data generation — gates the optional LLM
-# paraphrase tier (rule-based tier always on; see
-# docs/plans/completed/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md §4).
+# paraphrase tier (rule-based tier always on; §4 of the coverage expansion).
 MAPQA_LLM_AUGMENTATION_ENABLED = False
 
 AUTH_PASSWORD_VALIDATORS = [

@@ -5,7 +5,7 @@ for a single country.
 This wraps ``SnapshotExtractionService.extract_country_snapshot()`` and is the
 standalone pre-processing step needed before ``run_pipeline`` can execute.
 
-Flow (post-refactor — see docs/plans/TEMPORAL_SNAPSHOT_REFACTOR.md):
+Flow (post-refactor):
     1. Resolve the .poly file (caller-supplied → OsmBoundary → generate).
     2. ``osmium extract --with-referenced --polygon`` from the planet PBF.
     3. ``osmium time-filter`` to flatten history to the snapshot date.

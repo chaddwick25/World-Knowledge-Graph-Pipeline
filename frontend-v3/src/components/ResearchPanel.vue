@@ -1,6 +1,5 @@
 /**
- * ResearchPanel — interactive research with the KE interviewer
- * (RESEARCH_ORCHESTRATOR_MVP_PLAN.md).
+ * ResearchPanel — interactive research with the KE interviewer.
  *
  * The "research prompt" section is a live chat with the KE (Knowledge
  * Engineer) on the interactive LLM (the 4070). The KE asks clarifying

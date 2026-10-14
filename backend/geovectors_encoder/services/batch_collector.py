@@ -2,8 +2,7 @@
 
 This module implements the in-process producer/consumer thread pool that
 parallelizes the encode + upsert stage of ``step_1_embed_osm_entities``
-within a single Celery task.  See
-``docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md`` for the full design.
+within a single Celery task.
 
 Contract (do not break — ``read_from_snapshot`` and the
 ``itertools.chain(w_data, r_data)`` loop in ``EmbeddingService.run`` depend
@@ -25,7 +24,7 @@ Thread-safety (verified against the code, see plan §2.3):
   the GIL).  The optional ``nle_model`` argument is a generic capability of
   this module and is currently unused — Step 1 passes ``nle_model=None``
   (FastText-only since the two-axis Step-1 path was removed 2026-09-10, see
-  ``docs/issues/TICKET_REMOVE_DUAL_ENCODER.md``).  ``NLEModel.encode_coords``
+  ``TICKET_REMOVE_DUAL_ENCODER``).  ``NLEModel.encode_coords``
   issues a PostGIS KNN query via ``DjangoPostgresDB.get_pool_connection()``
   which returns the *calling thread's* Django connection — each worker gets
   its own psycopg2 connection automatically.
@@ -36,7 +35,7 @@ Thread-safety (verified against the code, see plan §2.3):
   eliminates PostgreSQL lock contention on the leaf partition's unique
   index — the regression that occurred when 8 workers each ran
   ``INSERT ... ON CONFLICT`` concurrently (see
-  ``docs/issues/PARALLEL_UPSERT_REGRESSION.md``).
+  ``PARALLEL_UPSERT_REGRESSION``).
 - The upsert thread closes its Django connections in ``finally`` via
   ``connections.close_all()`` (no request lifecycle in Celery threads).
 """
@@ -282,7 +281,7 @@ def upsert_worker(
                 nle_storage.flush()
             except Exception:
                 logger.warning("[parallel-embed] upsert worker nle flush failed in finally")
-        # Drop reusable staging tables (opt 3 — see PGVECTOR_BULK_UPSERT_OPTIMIZATIONS.md).
+        # Drop reusable staging tables (opt 3).
         try:
             tags_storage.cleanup()
         except Exception:

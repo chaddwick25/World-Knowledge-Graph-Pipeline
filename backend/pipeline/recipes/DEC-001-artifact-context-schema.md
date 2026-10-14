@@ -4,7 +4,7 @@ title: Artifacts enter reasoning as resolved digests, never raw
 kind: decision
 status: active
 date: 2026-10-11
-trigger: design phase of AGENT_ORCHESTRATION_TIERED_PLAN §4.2
+trigger: design phase of the tiered agent-orchestration design (§4.2)
 source: session 2026-10-11; Spatial-Agent §3.6 (intermediate states recorded and provided to the agent)
 citations:
   - backend/semantic_search/services/factor_resolution_service.py:114

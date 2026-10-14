@@ -6,8 +6,7 @@
 > for the agent path, but the **direct path** (`execute-query/stream`) now
 > uses `EntityContextService.get_context()` (deterministic USLP/communities/
 > classes SQL) + `QueryEnrichmentService.synthesize()`, **one LLM call, no
-> tool selection**. See `docs/plans/completed/DIRECT_PATH_ENRICHMENT_PLAN.md`
-> §13 for the before/after diagram and the full implemented state.
+> tool selection**.
 >
 > **Focus:** how the local model (qwen3:8b on Ollama, switched 2026-09-16)
 > is wired into the

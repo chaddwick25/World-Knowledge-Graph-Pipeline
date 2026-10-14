@@ -16,12 +16,8 @@
 > pattern, which is what the formulas have in common.
 >
 > **Companion docs**:
-> - `docs/Schematics/THE_GAUGE_AS_CONTRACT.md`, the gauge frame for the
->   spectral/transport layer (rotors, motors, commutativity as contract)
 > - `docs/Schematics/05_Learned_Layer/09_Factor_Table_Math_Reference.md`,
 >   the math the factor tables implement
-> - `docs/plans/later-stages/MATHEMATICAL_PATTERN_LIBRARY_SEED_CARDS.md`,
->   the invariant-first pattern library
 
 ---
 
@@ -272,23 +268,6 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 |---|---|
 | `fp16 KV = 2 × 36 layers × 8 KV heads × 128 head_dim × 2 bytes ≈ 144 KiB/token` | KV cache per token; 4096-token slot ≈ 0.55 GB |
 
-### 3.7 The Gauge: `THE_GAUGE_AS_CONTRACT.md`
-
-[THE_GAUGE_AS_CONTRACT.md §2, §3](THE_GAUGE_AS_CONTRACT.md)
-
-| Formula | Meaning |
-|---|---|
-| `AB = A·B + A∧B` | geometric product = inner (projection) + outer (extension) |
-| `R = exp(B/2)` | rotor: a bivector exponentiated, a rotation |
-| `M = R(1 + εt)` | motor: rotor × translation, rigid body motion |
-| `P = A(AᵀA)⁻¹Aᵀ` → `(v·B)B⁻¹`, `B₁ ∨ B₂` | projection in flat phase vs GA (plane as bivector), regressive product for plane intersection |
-| `f = A ∘ σ ∘ B_J ∘ P_{J-1} ∘ ... ∘ P_1 ∘ σ_1 ∘ B_1` | the GDL blueprint: equivariant operator, nonlinearity, coarsening, invariant readout |
-| `f(g·x) = f(x)` invariant; `f(g·x) = g·f(x)` equivariant | the two symmetry properties |
-| `B(R·f) = R·B(f)`; `A(R·f) = A(f)` | gauge-equivariant filter, gauge-invariant readout |
-| `M → RMR⁻¹` | change of frame = rotor conjugation |
-| `C = Φ_Bᵀ S Φ_A` | transport operator as the gauge transformation between chart bases |
-| `‖CΛ_A - Λ_B C‖ < tol` | the contract check (Seed 4, commutativity residual) |
-
 ---
 
 ## 4. Part 2: The Group-Theory Layer
@@ -344,7 +323,6 @@ statement, and the code home. "Home" is the schematic's Source file.
 | Sliced Wasserstein | `E(d)` | translate + rotate | `W₂(g·X, g·Y) = W₂(X, Y)` | `embedding_drift_service.py` |
 | Chebyshev filter | `S_n` | relabel nodes | `f(L)x` equivariant: `f(P A Pᵀ)(P x) = P f(L) x` | spectral filtering layer |
 | USLP geo score | `O(3)` | rotate the sphere | `1 − d/d_max` invariant | `spatial_link_prediction.py` |
-| GA rotor / motor | `Spin(n)`, `E(3)` | conjugate by `R` | grade preserved; `R(AB)R̃ = (RAR̃)(RBR̃)` | `THE_GAUGE_AS_CONTRACT.md` |
 | MapQA bag-of-words | `S_T` (token order) | permute tokens | TF-IDF statistics unchanged | `query_parser_service.py` |
 
 ### 4.3 Structural invariant 1: the symmetric group and the spectrum
@@ -391,8 +369,7 @@ that carries one eigenbasis onto the other without breaking the geometry.
 
 The residual is the equivariance defect. `commutativity_residual =
 ‖CΛ_A − Λ_B C‖_F / ‖Λ_A‖_F` is a number, not a judgment: it measures how
-far `C` is from being a true equivariant map, which is exactly what
-`THE_GAUGE_AS_CONTRACT.md` calls the gauge contract between compute tiers.
+far `C` is from being a true equivariant map.
 
 The two residuals are the quality certificates: `fit_residual` answers
 "does C map the shared descriptors correctly?", `commutativity_residual`
@@ -459,7 +436,7 @@ stays real: that is what a checkable invariant buys.
 
 ### 4.7 Where the reading is real, and where it is not
 
-The honest boundary, mirroring `THE_GAUGE_AS_CONTRACT.md` §7.
+The honest boundary.
 
 **Real (the structure-preservation is the content):**
 - The spectrum under `S_n`: eigenvalues are genuinely the invariant summary
@@ -472,8 +449,6 @@ The honest boundary, mirroring `THE_GAUGE_AS_CONTRACT.md` §7.
   exact symmetry structure of the embedding space.
 - Sliced Wasserstein: `W₂` is genuinely `E(d)`-invariant (translation +
   rotation), which is why it is a well-defined distribution distance.
-- Rotors / motors: `Spin(n)` and `E(3)` are the actual groups the GA layer
-  represents, per `THE_GAUGE_AS_CONTRACT.md`.
 
 **Decorative (true but not the reason the formula was chosen):**
 - Bag-of-words statistics are `S_T`-invariant, but the parser was built as
@@ -546,4 +521,3 @@ Part 2:
 | 3.4 | `06_IGEA_USLP/02_USLP_Spatial_Link_Prediction.md`, `06_IGEA_USLP/01_IGEA_Iterative_Alignment.md` |
 | 3.5 | `07_Romanizer/01_Deterministic_Cross_Script_Romanization.md` |
 | 3.6 | `08_Agent_MCP_LLM/05_LLM_Capacity_Envelope.md` |
-| 3.7 | `THE_GAUGE_AS_CONTRACT.md` |

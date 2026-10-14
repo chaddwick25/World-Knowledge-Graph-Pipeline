@@ -47,7 +47,7 @@ TEMPLATE_META = {
 
 # Question frames per template (slots: {amenity}, {name}, {a}, {b}, {x}, {y},
 # {z}, {r}, {dir}) — reproduces the lexical patterns of the MapQA-llm data
-# ([MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §4).
+# (coverage-expansion §4).
 FRAMES = {
     TEMPLATE_FILTER_AGGREGATE: [
         "What are the {amenity} within {r}m of {name}?",
@@ -80,7 +80,7 @@ FRAMES = {
     ],
 }
 
-# Radius choices for #1 (meters) — [MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §3
+# Radius choices for #1 (meters) — coverage-expansion §3
 RADII_M = (50, 100, 200, 500)
 
 # 8-way cardinals (full words; matches the executor's N/NE/... sectors)

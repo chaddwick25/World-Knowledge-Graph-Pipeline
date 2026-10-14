@@ -185,7 +185,7 @@ class TestSemanticQueryPlanEndpoint:
         assert resp.status_code == 400
 
 
-# ── Self-supervised questions (MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md §8) ─
+# ── Self-supervised questions (coverage-expansion §8) ─
 
 # Controlled entity set seeded into the test vectors DB (same set as
 # tests/unit/test_mapqa_question_generator.py — keeps the generator hermetic
@@ -240,7 +240,7 @@ class TestSelfSupervisedQuestionsExecute:
 
         The executor side is untouched by the expansion plan — this proves
         the retrained parser still drives the executor for the new lexical
-        patterns ([MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §8).
+        patterns (coverage-expansion §8).
         """
         from semantic_search.services.mapqa_question_generator import (
             MapQAQuestionGenerator,

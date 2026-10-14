@@ -1119,7 +1119,7 @@ def execute_query_stream(request):
     if not query_text:
         return JsonResponse({"error": "query required"}, status=400)
 
-    # Traceability (UNIFIED_LLM_TRACE_PLAN.md): one trace per run; the
+    # Traceability: one trace per run; the
     # caller can propagate a cross-app id via ?trace_id= (or X-Trace-Id).
     trace_id = request.GET.get("trace_id") or uuid.uuid4().hex
 

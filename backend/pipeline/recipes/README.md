@@ -54,11 +54,13 @@ python manage.py check_recipes --strict   # warnings fail too
 ```
 
 Checks: recipe front matter, id/filename match, citation paths and line
-ranges, `[[...]]` references across `deploy/plans/**`, `docs/**`, and
-`AGENTS.md`, orphan recipes (never cited), and bare `.md` mentions in
-`deploy/plans/**` that resolve nowhere (the reference-rot detector; it
-found the two dangling companion-doc references in
-`AGENT_ORCHESTRATION_TIERED_PLAN.md` on 2026-10-11).
+ranges, `[[...]]` references across `docs/**` and `AGENTS.md` (plus any
+`--plans-glob` location), orphan recipes (never cited), and bare `.md`
+mentions in the scanned plans that resolve nowhere (the reference-rot
+detector; it found two dangling companion-doc references on
+2026-10-11). Plan files are not
+tracked in this repo (they live in GitLab / a local plans dir) — pass
+`--plans-glob` to include a local dir in the scan:
 
 Only files named `DEC-nnn-*` or `INV-nnn-*` are parsed as recipes; other
 markdown in this directory (this README) is documentation.

@@ -1,8 +1,7 @@
 """Benchmark: chunk_size × workers sweep for Step 1 embed + upsert throughput.
 
 Investigates whether **2 workers + 60k batch** outperforms the current
-production default of **1 worker + 20k batch** (3,283 rows/s baseline from
-``docs/plans/completed/PARALLEL_UPSERT_APPROACH_B_PLAN.md``).
+production default of **1 worker + 20k batch** (3,283 rows/s baseline).
 
 The 8-worker regression (34% slower) was caused by CPU saturation — 10
 threads on 4 cores (2.5x oversubscription).  2 workers + 1 upsert + 1

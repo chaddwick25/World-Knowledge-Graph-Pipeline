@@ -1,6 +1,6 @@
 """Integration parity test: single-threaded vs parallel embed + upsert.
 
-Per ``docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md`` §5.2:
+Per the parallel embed/upsert design (§5.2):
 
 - Fixture: smallest available country PBF (Belize, ~21 MB / ~3K entities).
 - Run A: ``PARALLEL_UPSERT_WORKERS=1``.  Snapshot row counts + a sample of
@@ -12,7 +12,7 @@ Per ``docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md`` §5.2:
 
 Step 1 is FastText-only (GV-Tags): the former dual-encoding (FastText + NLE
 from pickle) variant was removed 2026-09-10 with `DualEncodingWriter` /
-`_run_parallel_dual` — see ``docs/issues/TICKET_REMOVE_DUAL_ENCODER.md``.
+`_run_parallel_dual` — see ``TICKET_REMOVE_DUAL_ENCODER``.
 GV-NLE comes from Step 5 training + the inductive query-time path.
 
 This is a true integration test — it requires:

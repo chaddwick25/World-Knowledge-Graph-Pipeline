@@ -1,7 +1,7 @@
 """
 mapqa_paraphraser.py — lexical variation for self-supervised MapQA rows.
 
-Two tiers ([MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §4):
+Two tiers (coverage-expansion §4):
 
 1. **Rule-based (always on)** — synonym maps and voice/reorder transforms
    applied to the filled question. Each transform is written so it only

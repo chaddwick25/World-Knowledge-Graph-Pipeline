@@ -46,7 +46,7 @@ normalized_score   = unnormalized_score / 3.0              ← ÷3 preserves ran
 
 **Key Fixes (May 2026):**
 - **Pre-filtering removal**: All scored candidates now returned to `persist_links` for proper accepted/rejected split (CPU and `GPUAcceleratedUSLP` paths only: `TorchUSLP.predict_links_batched` still pre-filters by threshold and drops rejected rows)
-- **Geo formula restoration**: `_geo_score` uses the paper's `1 - d/d_max` mapping (reference repo `dataprep_utils.py:83`) with per-tail-cluster `d_max` precomputed at pool-load time, clamped to [0, 1]. The prior `1 / (1 + dist_km)` mapping crushed the geo signal to near-zero. All three paths (CPU, GPU, TorchUSLP) now score geohash cluster-center distances identically. See `docs/plans/completed/USLP_GEO_SPACE_FORMULA_FIX.md`
+- **Geo formula restoration**: `_geo_score` uses the paper's `1 - d/d_max` mapping (reference repo `dataprep_utils.py:83`) with per-tail-cluster `d_max` precomputed at pool-load time, clamped to [0, 1]. The prior `1 / (1 + dist_km)` mapping crushed the geo signal to near-zero. All three paths (CPU, GPU, TorchUSLP) now score geohash cluster-center distances identically.
 - **GPU FastText compatibility**: GPU path uses `get_word_vector` with weighted averaging to match CPU path
 - **Class embedding fallback**: When `wkg_class` is None, derives class text from OSM tags (priority: amenity, building, highway, leisure, landuse, natural, waterway, railway, aeroway, place, tourism, historic, shop, office, craft, sport)
 - **Relation name mapping**: Compound OSM relation names (e.g., `addrCity`, `isInCountry`) mapped to natural text for valid FastText embeddings
@@ -197,6 +197,4 @@ The two never cross. The TTL drives query-time class filtering. The USLP relatio
 
 For operational details (CLI flags, candidate pool scoping, GPU batching, acceptance gate, and evaluation metrics), see:
 
-- `docs/plans/completed/USLP_IMPLEMENTATION.md`: full paper → repo → code traceability
-- `docs/plans/completed/USLP_GEO_SPACE_FORMULA_FIX.md`: geo-space formula audit (`1 - d/d_max` restoration)
 - `backend/igea/management/commands/predict_spatial_links.py`: CLI entry point (`--gpu`, `--poly-file`, `--snapshot-date`, …)

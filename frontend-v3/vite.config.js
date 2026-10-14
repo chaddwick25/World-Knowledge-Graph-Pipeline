@@ -13,7 +13,7 @@ export default defineConfig({
       output: {
         // deck.gl is a +1 MB dependency used only by the Deck GL tab —
         // split it out of the main chunk so the app shell stays lean
-        // (DECKGL_VISUALIZATION_INTEGRATION_PLAN.md §9 bundle-size risk).
+        // (bundle-size risk).
         manualChunks: {
           deckgl: [
             '@deck.gl/core',

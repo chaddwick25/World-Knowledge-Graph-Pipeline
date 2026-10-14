@@ -489,7 +489,7 @@ results matter" for live queries.
 
 ### 13.4 Consumption Pattern 2: Training-Data Sampling Prior (planned)
 
-`docs/plans/USLP_WEIGHTED_QUESTION_GENERATION_PLAN.md` proposes re-weighting
+The USLP-weighted question-generation design proposes re-weighting
 `generate_mapqa_training_data`'s entity pool by head salience (link count +
 avg score, rank-normalized, blended with uniform at `alpha=0.5` by default)
 so question generation focuses on the POIs USLP recognizes: the locations

@@ -10,9 +10,9 @@
 > **Companion docs:**
 > - `docs/Schematics/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md`, the batch-then-serve architecture
 > - `docs/Schematics/05_Learned_Layer/04_Graph_Spectral_Drift.md`, temporal drift
-> - `docs/plans/next-stage/GRAPH_SPECTRAL_FEEDBACK_HARDENING_PLAN.md`, hardening plan (this layer's known gaps)
-> - `docs/plans/completed/DIRECT_PATH_ENRICHMENT_PLAN.md`, `getEntityContext` (the runtime tool that consumes these tables, §6)
-> - `docs/plans/completed/FACTOR_NODE_RUNTIME_JOINS_PLAN.md`, original architecture
+> - Graph spectral feedback hardening (this layer's known gaps)
+> - Direct-path enrichment — `getEntityContext` (the runtime tool that consumes these tables)
+> - Factor-node runtime joins, the batch-then-serve architecture
 >
 > **Code map:**
 > - Graph build: `backend/semantic_search/services/knn_graph_service.py`
@@ -324,8 +324,7 @@ Key: `(region, snapshot_from, snapshot_to)`. Pure numpy/JSON, no pgvector.
 ## 6. Calling the Factor Tables at Runtime: `getEntityContext`
 
 The enrichment layer consumes these tables through
-`EntityContextService.get_context` (from
-`docs/plans/completed/DIRECT_PATH_ENRICHMENT_PLAN.md`), the deterministic
+`EntityContextService.get_context`, the deterministic
 replacement for LLM tool selection:
 
 1. `QueryExecutorService.execute(parsed)` → results (osm_ids)

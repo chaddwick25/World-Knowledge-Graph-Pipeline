@@ -1,7 +1,6 @@
 """Invariant tests for SpectralAnalysisService.
 
-Pins the Phase 0 invariants from GRAPH_SPECTRAL_TEMPORAL_PLAN.md §"Phase 0:
-Spectral Analysis" and §"Phase 0: Heat Kernel Diffusion":
+Pins the Phase 0 invariants ("Phase 0: Spectral Analysis" and "Phase 0: Heat Kernel Diffusion"):
 
 - Eigenvalues are non-negative and sorted ascending
 - λ₀ ≈ 0 (trivial eigenvalue, dropped from the returned features)

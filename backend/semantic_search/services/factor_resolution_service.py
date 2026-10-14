@@ -1,6 +1,6 @@
 """FactorResolutionService — runtime (SQL-only) factor-node resolution.
 
-Implements the runtime half of docs/plans/FACTOR_NODE_RUNTIME_JOINS_PLAN.md:
+Implements the runtime half of the factor-node runtime joins:
 the MapQA executor's SUPPORT/factor nodes resolve to indexed joins against
 the ``factor_*`` tables (written by Steps 5c/5d) instead of GraphML loading,
 NetworkX traversal, or scipy heat kernels at request time.
@@ -145,7 +145,6 @@ class FactorResolutionService:
         coefficients are transported to each target subgraph's eigenbasis
         via the functional map C, and a pgvector query runs in each
         target subgraph.  Results are merged and re-ranked by score.
-        See ``docs/plans/SUBGRAPH_FUNCTIONAL_MAPS_PLAN_v2.md``.
         """
         country_code = country_code.upper()
 

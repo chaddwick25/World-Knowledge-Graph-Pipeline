@@ -1,6 +1,6 @@
 """Math-correctness tests for the GeoVectors IDW damped-weight formulas.
 
-Pins the two formulas identified in ``docs/issues/ENCODER_MATH_REVIEW.md``
+Pins the two formulas identified in ``ENCODER_MATH_REVIEW``
 against their reference implementations:
 
 Training (paper §3.2, ``WeightedDeepWalkGraph._damp_and_row_norm``):

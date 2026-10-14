@@ -8,7 +8,6 @@ trigger: fired 2026-10-12 (cross-run checkpoint/resume required by the metacogni
 source: session 2026-10-11 design review; superseded session 2026-10-12
 citations:
   - backend/semantic_search/services/research_service.py:74
-  - deploy/plans/AGENT_ORCHESTRATION_TIERED_PLAN.md:55
 ---
 Superseded by [[DEC-006]] (LangGraph control plane, Plan-SOFAI policy).
 The trigger fired by this recipe's own terms: the metacognitive router's

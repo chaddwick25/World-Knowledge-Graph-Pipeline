@@ -158,7 +158,7 @@ class SpatialLink(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# Graph spectral analysis (Step 5c / 5d — GRAPH_SPECTRAL_TEMPORAL_PLAN.md)
+# Graph spectral analysis (Step 5c / 5d)
 # ---------------------------------------------------------------------------
 
 class GraphSpectralFingerprint(models.Model):

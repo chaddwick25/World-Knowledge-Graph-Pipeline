@@ -3,7 +3,7 @@
 All models that previously lived in the `extraction` and `orchestration` apps
 are now defined in `core`. Their Django app_label is `core`; the underlying
 ``db_table`` names are unchanged so existing data is preserved across the
-consolidation (see ``docs/plans/CORE_APP_CONSOLIDATION_PLAN.md``).
+consolidation.
 
 Module layout matches the old `orchestration/models/` split, plus
 ``extraction.py`` and ``hierarchy.py`` for the former `extraction` models.

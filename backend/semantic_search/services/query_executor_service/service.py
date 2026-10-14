@@ -42,7 +42,7 @@ class QueryExecutorService(
                 "PLACE-ATTRIBUTE-QUERY (#8)": cls._execute_place_attribute_query,
                 "LOCATION-BEARING-CLASSIFY (#5)": cls._execute_location_bearing_classify,
                 "OBJECT-FIELD-MEASURE (#2)": cls._execute_object_field_measure,
-                # New graph/spectral templates (GRAPH_SPECTRAL_TEMPORAL_PLAN.md Phase 4)
+                # New graph/spectral templates (Phase 4)
                 "SPECTRAL-ANALYSIS (#11)": cls._execute_spectral_analysis,
                 "TEMPORAL-DRIFT (#12)": cls._execute_temporal_drift,
                 "COMMUNITY-DETECT (#13)": cls._execute_community_detect,
@@ -290,7 +290,7 @@ class QueryExecutorService(
     def _get_concepts_by_type(concepts: list, ctype: str) -> list:
         return [c for c in concepts if c["type"] == ctype]
 
-    # ── Factor-node tables (FACTOR_NODE_RUNTIME_JOINS_PLAN.md) ────────────
+    # ── Factor-node tables ────────────────────────────
     # The table path is authoritative; the legacy runtime graph path
     # (GraphML → NetworkX → SciPy) has been removed.  PostGIS remains as
     # a spatial fallback for templates without factor-table coverage.

@@ -1,6 +1,6 @@
 """Tests for the DB-driven amenity → WorldKG class mapping (rule 6.2).
 
-Covers GRAPH_SPECTRAL_FEEDBACK_HARDENING_PLAN Phase 5:
+Covers Phase 5 of the graph-spectral feedback hardening:
 - ``compute_amenity_class_mappings`` command: data tier aggregates
   OsmEntity amenity values into (amenity → most common wkg_class,
   support_count); idempotent delete-then-insert.

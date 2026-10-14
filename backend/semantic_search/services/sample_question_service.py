@@ -90,9 +90,11 @@ def _amenity_label(amenity: str) -> str:
 
 
 # Question-generation recipes (2026-10-01): scope → templates → entity
-# selection → verification. Every recipe ends in execute-and-keep: a
-# question is stored only when the real parser+executor returns results
-# for it (criterion: each question has results).
+# selection → verification. Every recipe keeps a question on DB evidence
+# (2026-10-11): the census count that built the candidate IS the result
+# size the executor's exact-tag tier would return (criterion: each
+# question has results). The executor deep-check stays for curated loads
+# and the verify-only sweep.
 QUESTION_RECIPES = {
     "subdivision": {
         "scope": "subdivision",
@@ -492,7 +494,7 @@ class SampleQuestionService:
         }
 
     # ── Verification (DB evidence for generation; executor deep-check
-#    remains for curated/verify-only sweeps) ──────────────────────────────
+    #    remains for curated/verify-only sweeps) ──────────────────────────
 
     @staticmethod
     def _verify_question(question: str, country_code: str,

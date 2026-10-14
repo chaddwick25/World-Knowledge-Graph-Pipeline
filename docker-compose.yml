@@ -82,6 +82,10 @@ services:
       # No fallback secret: a missing key must fail the deploy, not silently
       # drop to a public string (session/CSRF forgery).
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set in .env}
+      # Fail-closed like the other secrets: the funnel's only gated path
+      # (the pipeline trigger) is key-gated on every surface, so a missing
+      # key must fail the deploy, not fall open.
+      - PIPELINE_TRIGGER_KEY=${PIPELINE_TRIGGER_KEY:?PIPELINE_TRIGGER_KEY must be set in .env}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-false}
       - POSTGRES_HOST=postgres-default
       - PGVECTOR_HOST=postgres-vectors
@@ -159,8 +163,7 @@ services:
       dockerfile: Dockerfile
     container_name: eda-worker
     runtime: nvidia
-    # Live stack dumps for wedged steps (py-spy) — see
-    # deploy/plans/WORKER_PTRACE_DIAGNOSTICS_PLAN.md.
+    # Live stack dumps for wedged steps (py-spy).
     cap_add:
       - SYS_PTRACE
     env_file:
@@ -252,7 +255,7 @@ services:
       retries: 5
 
   # Batch research orchestrator LLM (RTX 2070, 8 GB — idle/spare card).
-  # The research loop (RESEARCH_ORCHESTRATOR_MVP_PLAN.md) decomposes big
+  # The research loop decomposes big
   # prompts and assembles summaries on this card; the 4070's interactive
   # slots never see research traffic. Separate models volume: two Ollama
   # daemons on one models dir can lock each other's writes.
@@ -312,8 +315,8 @@ services:
         condition: service_started
     restart: "no"
 
-  # MCP sidecar — standalone host for the vendored MCP tool surface
-  # (deploy/plans/MCP_SIDECAR_PLAN.md). Internal only: no published port;
+  # MCP sidecar — standalone host for the vendored MCP tool surface.
+  # Internal only: no published port;
   # agents reach it through the nginx tailnet surface at /mcp/. The
   # bearer token is checked inside the service (fail-closed); browser
   # tools stay registered but fail fast (no HMR channel here).
@@ -346,7 +349,7 @@ services:
       timeout: 5s
       retries: 3
 
-  # Self-hosted Langfuse (LLM trace observability, UNIFIED_LLM_TRACE_PLAN.md).
+  # Self-hosted Langfuse (LLM trace observability).
   # Not started by default: `docker compose --profile observability up -d`.
   # Backend env for the HTTP sink: TRACE_SINK=langfuse,
   # TRACE_SINK_URL=http://langfuse:3000/api/public, TRACE_SINK_PUBLIC_KEY /

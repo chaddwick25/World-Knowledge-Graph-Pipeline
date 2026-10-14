@@ -37,8 +37,7 @@ class SearchReadyService:
 
         Also transitions the linked ``SnapshotJob`` (if any) to COMPLETED
         with the run's entity/alignment/spatial-link counts. This is the
-        DB ground-truth update described in
-        ``docs/plans/TEMPORAL_SNAPSHOT_REFACTOR.md`` Phase D1.
+        DB ground-truth update (Phase D1 of the temporal-snapshot refactor).
 
         Args:
             cfg: CountryEnvelope with iso, slug, name, pipeline_run_id.

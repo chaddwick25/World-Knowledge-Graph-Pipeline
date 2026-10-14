@@ -1,6 +1,6 @@
 """Graph / spectral / community / event query endpoints.
 
-New endpoints from GRAPH_SPECTRAL_TEMPORAL_PLAN.md Phase 4. These use the
+New graph-spectral endpoints (Phase 4). These use the
 existing ``QueryExecutorService`` (which dispatches to the new
 ``SpectralAnalysisService`` / ``CommunityDetectionService`` / etc.) so the
 control-plane parsing pipeline is reused.

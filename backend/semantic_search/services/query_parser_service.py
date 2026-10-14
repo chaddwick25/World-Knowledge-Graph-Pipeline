@@ -11,8 +11,6 @@ Parses a natural-language geospatial question into a GeoFlow Graph spec:
 This is the control plane. It does NOT touch the data plane (FastText, PostGIS).
 The executor (QueryExecutorService) consumes the parsed output and runs the
 data-plane operators.
-
-Implements MAPQA_TO_EXECUTION_PLAN.md §1.2.2 and MAPQA_PARSER_BUILD_ORDER.md §7.
 """
 
 import json

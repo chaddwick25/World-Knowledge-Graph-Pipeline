@@ -1,4 +1,4 @@
-"""Tests for subgraph-scoped spectral analysis (STEP_5C_SUBDIVISION_SPECTRAL_PLAN.md).
+"""Tests for subgraph-scoped spectral analysis.
 
 Covers:
 - KNNGraphService.build_sparse_graph_for_subgraph (polygon/bbox filtering)

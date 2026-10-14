@@ -1,6 +1,6 @@
 """Unit tests for the MapQA paraphraser.
 
-Tests paraphrase invariants ([MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §4, §8):
+Tests paraphrase invariants (coverage-expansion §4, §8):
   - Slot invariance: every paraphrase (both tiers) contains all slot values
     verbatim; LLM outputs failing this are rejected.
   - With the LLM tier disabled, only rule-based output is produced (and no

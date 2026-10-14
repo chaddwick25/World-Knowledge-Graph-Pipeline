@@ -688,7 +688,7 @@ class TemplateExecutorsMixin:
             if anchor_coords:
                 anchor_osm_id = anchor_coords.get("osm_id")
 
-        # Factor-table path (FACTOR_NODE_RUNTIME_JOINS_PLAN.md): SQL-only
+        # Factor-table path: SQL-only
         # heat-kernel ranking via stored eigen-loadings.
         if (country_code and anchor_osm_id and amenity_type):
             table_results = cls._heat_kernel_search_via_tables(

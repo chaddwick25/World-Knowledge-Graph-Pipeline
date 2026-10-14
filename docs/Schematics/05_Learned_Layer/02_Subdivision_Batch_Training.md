@@ -123,7 +123,7 @@ They are orthogonal concepts.
 
 > **Status note (2026-09-09):** steps 2-3 of the callback are pending. The
 > fused `static_embedding` is NULL for all rows and no `static_embedding`
-> HNSW index exists (see `docs/plans/FUSED_400D_ANN_DEDUP_PLAN.md`).
+> HNSW index exists.
 
 ---
 

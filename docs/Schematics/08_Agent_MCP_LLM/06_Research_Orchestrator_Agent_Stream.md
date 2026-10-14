@@ -20,10 +20,8 @@
 > cadence and latency budget change.
 >
 > **Status:** ✅ live 2026-09-18/19 (MVP 2026-09-18, KE chat + structured
-> brief + trace UI 2026-09-18/19). Plan:
-> `docs/plans/completed/RESEARCH_ORCHESTRATOR_MVP_PLAN.md`. User-facing
-> test doc: `sample_research_prompts.md`. The K80 migration
-> (`docs/plans/later-stages/K80_LLM_MIGRATION_PLAN.md`) replaces the 2070
+> brief + trace UI 2026-09-18/19). The K80 migration
+> replaces the 2070
 > Ollama daemon with llama-server on K80 die 0; when it lands, this
 > schematic gets a sibling with the K80 deltas (§7).
 
@@ -219,8 +217,7 @@ errors}`.
 the body). It appears in the `done` payload's `result` and in the
 `X-Trace-Id` response header. The run executes inside
 `TraceService.run_trace` (thread-local), so LLM spans emitted by
-`LLMService` in the same worker thread attach as children
-(`UNIFIED_LLM_TRACE_PLAN.md`).
+`LLMService` in the same worker thread attach as children.
 
 ## 5. Traceability
 
@@ -275,7 +272,7 @@ Fail-soft records, all surfaced in the trace and the `errors` list:
 
 `TraceService` (`core/services/trace_service.py`) adds the
 developer-facing observability layer under the SSE spine
-(`UNIFIED_LLM_TRACE_PLAN.md`, implemented 2026-09-19): one schema
+(implemented 2026-09-19): one schema
 (`trace` + `span` events), pluggable sinks (none default | console |
 file | langfuse | memory), SDK-free Langfuse HTTP ingestion (backend is
 Python 3.8), bounded queue + batched daemon flush
@@ -309,7 +306,7 @@ instead of the agent.
 
 ## 7. K80 follow-on (sibling schematic when it lands)
 
-`K80_LLM_MIGRATION_PLAN.md` (later-stages, Planned): K80 die 0 takes the
+The K80 migration (later-stages, Planned): K80 die 0 takes the
 orchestrator role via llama-server (OpenAI-compatible HTTP), not Ollama.
 This is the batch path of §2: the flow contract does not change (same
 endpoints, same SSE protocol, same traceability), only the cadence and the
@@ -344,19 +341,14 @@ stream/batch contrast against this doc the way §2 does here:
   terminal `research_demo` command was removed 2026-09; this is the
   end-to-end surface)
 - `docker-compose.yml`, `ollama-research` service + `RESEARCH_LLM_*` env
-- `docs/plans/completed/RESEARCH_ORCHESTRATOR_MVP_PLAN.md`, implementation
-  plan (moved from later-stages 2026-09-19)
-- `sample_research_prompts.md`, user-facing test doc (worked Belize
-  interview, resolved runaway-brief issue, test scenarios, console
-  diagnostics, per-country starter prompts)
 - `backend/tests/unit/test_research_service.py` (29 tests),
   `backend/tests/unit/test_research_chat.py` (11 tests); LLM, parser, and
   executor mocked, no Ollama/network required
 - `backend/core/services/trace_service.py`, unified trace adapter
-  (sinks, queue, spans); `docs/plans/next-stage/UNIFIED_LLM_TRACE_PLAN.md`
+  (sinks, queue, spans)
 - `backend/tests/unit/test_trace_service.py` (22 tests, incl. the
   research_stream view path)
 - `backend/semantic_search/services/entity_geocoder.py` +
   `query_parser_service.py`, the anchor place-preference and the OBJECT
   back-in vocabulary behind the Belfast grounding failure; see
-  `docs/issues/resolved/BELFAST_ANCHOR_SIGNPOST_BUG.md`
+  BELFAST_ANCHOR_SIGNPOST_BUG

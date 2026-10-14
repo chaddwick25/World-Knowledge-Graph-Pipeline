@@ -4,9 +4,7 @@ How the measured building context from the GlobalBuildingAtlas (GBA, TUM)
 combines with the pipeline's global OSM-derived embedding stack to make
 built-form computable anywhere and anywhen, and how the transport-matrix
 formalism already built for subgraph functional maps makes that transfer
-rigorous. Originated 2026-09-10 from the GBA Africa integration plan
-(`docs/plans/next-stage/GLOBAL_BUILDING_ATLAS_INTEGRATION_PLAN.md`) and
-notebook 08 (Doppelganger Physical Agent, `08_gba_physical_agent_dev.ipynb`).
+rigorous. Originated 2026-09-10 from the GBA Africa integration work.
 
 ---
 
@@ -307,7 +305,7 @@ height, on different loadings:
 
 #### 5.3.3 The seal as training signal
 
-`docs/plans/DESCRIPTOR_COMMUTATIVITY_REGULARIZER_PLAN.md` (proposed, not
+A descriptor-commutativity regularizer (proposed, not
 implemented) makes the loop a regularizer: descriptors commute with
 transport. The built-form coordinates are a descriptor family, so it
 applies verbatim:
@@ -480,21 +478,16 @@ on the side. W4 is W1 applied temporally, no separate work.
 The validation loop is free: the 13 snapshot countries are a ready
 cross-continent test set.
 
-Next artifact: `docs/plans/next-stage/OSM_TO_BUILT_FORM_TRANSFER_PLAN.md`,
+Next step: the OSM-to-built-form transfer work,
 with W1 + W2, the four caveats and the commutativity constraint as gates.
 
 ## 9. Source References
 
-- GBA integration plan: `docs/plans/next-stage/GLOBAL_BUILDING_ATLAS_INTEGRATION_PLAN.md`
-- Parallel factor family: `docs/plans/next-stage/SATELLITE_EMBEDDING_INTEGRATION_PLAN.md`
-- Prior exploration: `notebooks/07_global_building_atlas_learning.ipynb`,
-  `notebooks/08_gba_physical_agent_dev.ipynb` (PhysicalAgent, PCA loadings)
-- Transport matrices: `docs/plans/completed/SUBGRAPH_FUNCTIONAL_MAPS_PLAN_v2.md`
-  (C = Φ_Bᵀ S Φ_A, line 104; regularized objective, line 179; BZ-validated
+- Transport matrices: functional maps
+  (C = Φ_Bᵀ S Φ_A, regularized objective; BZ-validated
   2026-08-20)
-- Descriptor commutativity: `docs/plans/DESCRIPTOR_COMMUTATIVITY_REGULARIZER_PLAN.md`
+- Descriptor commutativity regularizer
   (proposed, not implemented)
-- Factor-node architecture: `docs/plans/completed/FACTOR_NODE_RUNTIME_JOINS_PLAN.md`
 - GBA dataset: mediaTUM DOI 10.14459/2025mp1782307; arXiv 2506.04106;
   ESSD 17-6647-2025
 - Gauge problem: Bronstein et al., "Geometric Deep Learning: Grids, Groups,

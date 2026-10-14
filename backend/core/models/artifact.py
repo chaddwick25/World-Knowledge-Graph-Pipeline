@@ -271,7 +271,7 @@ class PartitionRegistry(models.Model):
 class ReasoningWorkflow(models.Model):
     """Stores the agent's proposed GeoFlow Graph and its lifecycle.
 
-    The agentic application layer (see ``docs/plans/GEO_SPATIAL_AGENT_CELERY_PLAN_V3.md``)
+    The agentic application layer
     proposes a DAG of operators to answer a natural-language question. This
     model records that proposal and tracks it through approval and execution.
 
@@ -396,6 +396,5 @@ class ReasoningStep(models.Model):
 # ══════════════════════════════════════════════════════════════════════════
 # SnapshotJob — DB ground truth for "has this country been processed for
 # this snapshot date?" Replaces the in-memory runsByYear tracking and the
-# filesystem-based SnapshotDatesView scanning. See
-# docs/plans/TEMPORAL_SNAPSHOT_REFACTOR.md.
+# filesystem-based SnapshotDatesView scanning.
 # ══════════════════════════════════════════════════════════════════════════

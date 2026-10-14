@@ -2,7 +2,7 @@
 
 > **Status**: new doc (2026-09-28). Records the provenance of the query-time
 > fusion score, the diffusion term's math and implementation, and the
-> Laplacian choice behind it. Complements `docs/issues/HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN.md`
+> Laplacian choice behind it. Complements HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN
 > (exact-search decision) and `docs/Schematics/05_Learned_Layer/09_Factor_Table_Math_Reference.md`
 > (full formula reference with the worked heat-kernel example).
 
@@ -212,11 +212,10 @@ wiring into the remaining trained templates is open.
 ## 7. Modes and PCA: not implemented
 
 **Status: not implemented (2026-09-28).** No PCA call exists in the
-backend. The only PCA in the repo is notebook 08's urban-morphology
-feature PCA (`notebooks/08_gba_physical_agent_dev.ipynb`,
-`OSM_TO_BUILT_FORM.md` "PCA basis Ψ"), which operates on measured building
+backend. The only PCA described is the urban-morphology feature PCA
+(`OSM_TO_BUILT_FORM.md` "PCA basis Ψ"), which operates on measured building
 features, not on graph modes. The pattern library classifies PCA as the
-covariance-operator pattern (`MATHEMATICAL_PATTERN_LIBRARY_SEED_CARDS.md`,
+covariance-operator pattern (the pattern-library seed cards —
 variance structure → axis-aligned, ranked), a sibling of the spectral
 pattern, not the same operator.
 
@@ -247,7 +246,7 @@ change. Three directions, in increasing distance from the current code:
    yields semantic principal axes, orthogonal to the graph modes. This is
    the pattern-library covariance-operator card, and the natural carrier
    for the `static_embedding` ANN path if that fusion is ever materialized
-   (`docs/plans/FUSED_400D_ANN_DEDUP_PLAN.md`, open, not implemented).
+   (open, not implemented).
 
 **The discipline constraint.** Any learned filter is a learned component
 and must pass the same relevance test that killed HNSW ANN: a cafe query
@@ -261,10 +260,8 @@ the factorization is 128-dim and batch-time.
 
 | Topic | Document |
 |---|---|
-| Exact-search decision, USLP re-rank, HNSW failure | `docs/issues/HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN.md` |
+| Exact-search decision, USLP re-rank, HNSW failure | HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN |
 | Full formula reference, worked heat-kernel example | `docs/Schematics/05_Learned_Layer/09_Factor_Table_Math_Reference.md` |
 | Runtime diffusion row, factor-table joins | `docs/Schematics/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md` |
-| Subdivision functional maps plan | `docs/plans/SUBGRAPH_FUNCTIONAL_MAPS_PLAN_v2.md` |
 | Network concept realization | `docs/preserving_the_process/KUHN_CORE_CONCEPTS.md` §6-7 |
 | USLP tri-space scoring, §13.3 consumption | `docs/Schematics/06_IGEA_USLP/02_USLP_Spatial_Link_Prediction.md` |
-| PCA as covariance-operator pattern | `docs/plans/later-stages/MATHEMATICAL_PATTERN_LIBRARY_SEED_CARDS.md` |

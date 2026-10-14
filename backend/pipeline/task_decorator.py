@@ -84,7 +84,7 @@ def _extract_pending_assets(env) -> list:
         record_count, file_size_bytes, metadata, parent_asset_id
 
     The ``@pipeline_step`` on_success hook turns these into ``PipelineAsset``
-    rows (Phase 1/2 of TEMPORAL_SHARDING_ARTIFACT_PLAN.md). Returns ``[]`` when
+    rows (sharding phases 1/2). Returns ``[]`` when
     the task body produced no artifacts — emission is opt-in and backward
     compatible.
     """

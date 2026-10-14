@@ -1,7 +1,6 @@
 """Invariant tests for SpectralDriftService.
 
-Pins the Phase 0 invariants from GRAPH_SPECTRAL_TEMPORAL_PLAN.md §"Phase 0:
-Spectral Drift (Distance Between Spectra)":
+Pins the Phase 0 invariants ("Phase 0: Spectral Drift (Distance Between Spectra)"):
 
 - Spectral distance ≥ 0 (L2 norm)
 - Spectral distance = 0 for identical snapshots

@@ -20,7 +20,7 @@ Solver selection:
 - CPU shift-invert randomized SVD (CG + AMG) — for large graphs that
   exceed GPU VRAM. Uses a rational filter ``1/(λ + σ)`` applied via
   Conjugate Gradient with pyamg Algebraic Multigrid preconditioning.
-  See ``docs/issues/STEP_5C_CHEBYSHEV_FILTER_FAILURE.md`` for the full
+  See ``STEP_5C_CHEBYSHEV_FILTER_FAILURE`` for the full
   analysis of why polynomial filters (Chebyshev) failed and rational
   filters (shift-invert) are needed for clustered spectra.
 - CPU ``eigsh(which='SM')`` — fallback for small graphs / unit tests
@@ -201,7 +201,7 @@ class SpectralAnalysisService:
            CG solves) is not worthwhile.  Also used when GPU VRAM is
            insufficient (fragmentation after many sequential solves).
 
-        See ``docs/issues/STEP_5C_CHEBYSHEV_FILTER_FAILURE.md`` for the
+        See ``STEP_5C_CHEBYSHEV_FILTER_FAILURE`` for the
         full solver comparison and why shift-invert replaced Chebyshev.
         """
         if _cuda_available() and n >= 10_000 and n < SHIFT_INVERT_NODE_THRESHOLD:

@@ -1,8 +1,8 @@
 """
 entity_context_service.py — deterministic enrichment context fetcher.
 
-Replaces the LLM research-tool selection loop on the direct query path
-(see docs/plans/DIRECT_PATH_ENRICHMENT_PLAN.md): instead of asking the
+Replaces the LLM research-tool selection loop on the direct query path:
+instead of asking the
 LLM which search tool to run (nameSearch / structuredSearch — both return
 entity-matching data, i.e. confirmation), fetch three different types of
 context from existing DB tables:
