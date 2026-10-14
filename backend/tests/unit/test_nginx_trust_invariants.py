@@ -7,7 +7,7 @@ Hosts from ever reaching that branch. The shared host allowlist used to
 include localhost/127.0.0.1 on the PUBLIC edge, so a spoofed
 "Host: localhost" flipped is_public_host() to "trusted" — the one real
 finding of the 2026-10-05 security-review model bake-off
-(docs/Schematics/08_Agent_MCP_LLM/07_Security_Review_Models.md, fixed the
+(docs/platform/security_review_models.md, fixed the
 same day by splitting the allowlist per surface). These tests parse the
 config file so the invariants survive future edits. No DB / network
 required.

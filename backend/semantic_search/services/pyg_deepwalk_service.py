@@ -4,7 +4,7 @@ PyTorch Geometric DeepWalk Service for GV-NLE Spatial Embeddings
 GPU-accelerated Node2Vec using PyTorch Geometric. Solves memory issues and provides
 10-20x speedup over CPU-based implementations.
 
-PRESERVATION COMPLIANCE (docs/preserving_the_process/GEOVECTORS.md):
+PRESERVATION COMPLIANCE (docs/research_to_runtime/GEOVECTORS.md):
 ================================================================================
 
 1. DIRECT ALGORITHMIC PRESERVATION ✅
@@ -39,7 +39,7 @@ IMPLEMENTATION DIFFERENCES (optimization, not algorithm):
 REFERENCE:
 - GeoVectors paper: https://hal.science/hal-03203496/document
 - PyG Node2Vec: https://pytorch-geometric.readthedocs.io/en/latest/modules/nn.html***REMOVED***torch_geometric.nn.models.Node2Vec
-- Preservation guide: docs/preserving_the_process/GEOVECTORS.md §2
+- Preservation guide: docs/research_to_runtime/GEOVECTORS.md §2
 
 Aligned with preservation principles:
 - "Direct Algorithmic Preservation": Maintains exact Node2Vec/DeepWalk mathematics
