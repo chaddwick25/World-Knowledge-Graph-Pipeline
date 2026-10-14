@@ -312,6 +312,40 @@ services:
         condition: service_started
     restart: "no"
 
+  ***REMOVED*** MCP sidecar — standalone host for the vendored MCP tool surface
+  ***REMOVED*** (deploy/plans/MCP_SIDECAR_PLAN.md). Internal only: no published port;
+  ***REMOVED*** agents reach it through the nginx tailnet surface at /mcp/. The
+  ***REMOVED*** bearer token is checked inside the service (fail-closed); browser
+  ***REMOVED*** tools stay registered but fail fast (no HMR channel here).
+  mcp:
+    build:
+      context: .
+      dockerfile: frontend-v3/mcp-sidecar.Dockerfile
+    container_name: eda-mcp
+    env_file:
+      - .env
+    environment:
+      - WORLDKG_BACKEND_URL=http://backend:8000/api
+      - MCP_TOKEN=${MCP_TOKEN:?MCP_TOKEN must be set in .env}
+      ***REMOVED*** Host allowlist for the in-process check — set in .env (keep it in
+      ***REMOVED*** sync with the nginx tailnet map). Default is loopback only: no
+      ***REMOVED*** funnel hostname or tailnet IPs baked into the repo file.
+      - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1}
+    ***REMOVED*** Least privilege: no capabilities needed, no privilege escalation.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8100/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
   ***REMOVED*** Self-hosted Langfuse (LLM trace observability, UNIFIED_LLM_TRACE_PLAN.md).
   ***REMOVED*** Not started by default: `docker compose --profile observability up -d`.
   ***REMOVED*** Backend env for the HTTP sink: TRACE_SINK=langfuse,
@@ -327,9 +361,9 @@ services:
     environment:
       - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-langfuse}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
       - NEXTAUTH_URL=${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
-      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:-change-me-nextauth-secret}
-      - SALT=${LANGFUSE_SALT:-change-me-salt}
-      - ENCRYPTION_KEY=${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:?LANGFUSE_NEXTAUTH_SECRET must be set in .env}
+      - SALT=${LANGFUSE_SALT:?LANGFUSE_SALT must be set in .env}
+      - ENCRYPTION_KEY=${LANGFUSE_ENCRYPTION_KEY:?LANGFUSE_ENCRYPTION_KEY must be set in .env}
       - HOSTNAME=0.0.0.0
     ports:
       - "127.0.0.1:3000:3000"
