@@ -54,7 +54,7 @@ container mapping `{osm_type}_{osm_id}` → embedding vector, produced by the
 DeepWalk (Word2Vec Skip-gram) training in Step 5. It is the pre-trained NLE
 model that `NLEModel.load_indexes()` loads for GV-NLE inference (the
 two-axis Step-1 encoding path that consumed it was removed 2026-09-10 — see
-`docs/issues/TICKET_REMOVE_DUAL_ENCODER.md`).
+TICKET_REMOVE_DUAL_ENCODER).
 
 ***REMOVED******REMOVED******REMOVED*** 2.1 Pickle Generation from TSVs
 
@@ -92,7 +92,7 @@ The pickle is stored at:
 > reproduced in-tree. `train()` only populated the PostGIS table and never
 > trained a Node2Vec model; it had **no callers**, so it was removed
 > entirely with the two-axis Step-1 path
-> (`docs/issues/TICKET_REMOVE_DUAL_ENCODER.md`). The WDW pickle is generated
+> (TICKET_REMOVE_DUAL_ENCODER). The WDW pickle is generated
 > by `GeoVectorsEncoderService.generate_subgraph_pickle()`, not by
 > `train()`.
 
@@ -431,6 +431,6 @@ query-time path.
   or no mapping in `country_relations.json`.
 - `NLEModel.train()` was **removed 2026-09-10** — an early `return None` made
   the Node2Vec training block unreachable dead code and the method had zero
-  callers (see `docs/issues/resolved/TICKET_REMOVE_DUAL_ENCODER.md`). The wdw
+  callers (see TICKET_REMOVE_DUAL_ENCODER). The wdw
   pickle is produced by `GeoVectorsEncoderService.generate_subgraph_pickle()`,
   never by `train()`.

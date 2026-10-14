@@ -1,6 +1,6 @@
 """
 Tests for the researcher amplification (2026-10-12): the three decision
-coefficients computed from resolved rows (RESEARCHER_AMPLIFICATION_PLAN.md).
+coefficients computed from resolved rows (researcher amplification).
 
 The pure logic: twin score combination (channels, agreement confidence,
 ranking), the Beta-Binomial presence posterior, the run-confidence

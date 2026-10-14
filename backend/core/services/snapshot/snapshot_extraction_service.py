@@ -5,7 +5,7 @@ extract a country snapshot PBF from the **continent** PBF (already extracted
 during planet init) for a given snapshot date, using a ``.poly`` boundary
 file and ``osmium time-filter``.
 
-Hierarchy (see docs/plans/TEMPORAL_SNAPSHOT_REFACTOR.md Phase B):
+Hierarchy (Phase B of the temporal-snapshot refactor):
 
     planet PBF ──osmium extract──▶ continent PBF (with history)
                                            │

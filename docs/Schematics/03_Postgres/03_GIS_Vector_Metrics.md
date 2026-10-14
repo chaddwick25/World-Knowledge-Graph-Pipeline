@@ -109,8 +109,7 @@ Both use the GiST index for O(log N + k) lookups.
 > query-time ANN flow in §3.2-3.3 are design, not live.** `static_embedding`
 > is NULL for all 46,030,536 rows, no index exists, `use_ann` is opt-in
 > `false`. Runtime search is exact (`+ 0`) + USLP re-rank (see
-> `docs/plans/FUSED_400D_ANN_DEDUP_PLAN.md` and
-> `docs/issues/HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN.md`).
+> HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN).
 
 ***REMOVED******REMOVED******REMOVED*** 3.1 Three Vector Columns
 

@@ -309,7 +309,7 @@ class InductiveSpatialService:
         (verified via codebase-wide search).  It implements the PRE-FIX
         geo formula ``1 / (1 + d_km)`` which was replaced by the paper's
         ``1 - d / d_max`` formula in ``spatial_link_prediction._geo_score``
-        (see ``docs/plans/USLP_GEO_SPACE_FORMULA_FIX.md``).  Retained for
+        (the USLP geo-space formula fix).  Retained for
         reference only; do not call in new code.
 
         The USLP paper selects geohash precision per relation type:

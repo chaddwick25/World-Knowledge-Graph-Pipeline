@@ -290,8 +290,8 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> CfgLike:
     """Generate snapshot PBF + poly file if they don't exist (v2 helper).
 
     Replaces the legacy ``TemporalOrchestratorService`` call chain with a
-    direct planet-PBF extraction via ``SnapshotExtractionService``. See
-    ``docs/plans/TEMPORAL_SNAPSHOT_REFACTOR.md`` Phase B.
+    direct planet-PBF extraction via ``SnapshotExtractionService`` (Phase B
+    of the temporal-snapshot refactor).
 
     Returns the (possibly replaced) envelope. The input envelope is a
     frozen dataclass — path updates are applied via ``dataclasses.replace``

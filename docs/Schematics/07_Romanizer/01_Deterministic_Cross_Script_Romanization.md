@@ -388,4 +388,3 @@ The code is the source of truth; the database is just a cache.
 | Model field | `backend/worldkg_nca/models.py` (`OsmEntity.name_romanized`) |
 | Search integration | `backend/worldkg_nca/views/search.py` (`_cross_script_name_score`) |
 | Unit tests | `backend/tests/unit/test_romanizers.py` (45 tests) |
-| Implementation plan | `docs/plans/NAME_ROMANIZING_FRAMEWORK_PLAN.md` |

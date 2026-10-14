@@ -3,8 +3,7 @@ query_enrichment_service.py — LLM-driven answer enrichment.
 
 The direct query path (execute-query/stream) calls ``synthesize()``: one LLM
 call grounded in pre-fetched entity context (EntityContextService: USLP
-links + communities + class distribution) — no tool selection
-(docs/plans/DIRECT_PATH_ENRICHMENT_PLAN.md).
+links + communities + class distribution) — no tool selection.
 
 The research orchestrator (research_service.py) reuses the tool helpers here
 (``_validate_tool_calls`` / ``_call_search_tool`` / ``_primary_digest``) for

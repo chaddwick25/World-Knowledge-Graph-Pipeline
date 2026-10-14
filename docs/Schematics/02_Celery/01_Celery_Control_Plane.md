@@ -259,7 +259,7 @@ Key mechanics:
 | Header task succeeds | `TaskResult` = SUCCESS; poller sees it on next tick |
 | Header task fails | `TaskResult` = FAILURE → poller fires → `deps.join(propagate=True)` raises → callback marked failed; chain after body does **not** run |
 | Header task lost | `TaskResult` stays PENDING → poller retries **forever** (`max_retries=None`); chord never fires; pipeline stalls at the chord |
-| Chord dispatched twice | Two pollers, both see `ready()`, both `callback.delay(ret)` → callback runs **twice**. The polling path has no once-only guard (the old `ChordCounter` did). See `docs/issues/CHORD_BACKEND_REVIEW_FINDINGS.md` F6 |
+| Chord dispatched twice | Two pollers, both see `ready()`, both `callback.delay(ret)` → callback runs **twice**. The polling path has no once-only guard (the old `ChordCounter` did). See CHORD_BACKEND_REVIEW_FINDINGS F6 |
 
 Ack semantics: Celery defaults, **acks-early** (`acks_late` is not set). A
 task that fails is rejected without requeue.

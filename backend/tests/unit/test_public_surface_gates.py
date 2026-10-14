@@ -97,18 +97,19 @@ class TestWriteEndpointGate:
 
     ***REMOVED*** NOTE: /api/worldkg-pipeline-v2/start/ is intentionally NOT in the 404
     ***REMOVED*** list above — it is key-gated on every surface (see
-    ***REMOVED*** test_pipeline_trigger_key_gated_on_public_host below).
+    ***REMOVED*** test_pipeline_trigger_fail_closed_without_key below).
 
-    def test_pipeline_trigger_key_gated_on_public_host(self):
-        """The pipeline trigger returns 403 (not 404) on public hosts so the
-        SPA's password modal can appear; with no key configured (this fixture)
-        it passes through, exactly like the local surface."""
+    def test_pipeline_trigger_fail_closed_without_key(self):
+        """Fail-closed: with no PIPELINE_TRIGGER_KEY configured (this
+        fixture), the key-gated trigger is DENIED on public hosts (403,
+        not pass-through) — an unset key must not leave the funnel's
+        only gated path triggerable by anyone."""
         resp = _call(
             WriteEndpointGateMiddleware,
             '/api/worldkg-pipeline-v2/start/',
             PUBLIC_HOST,
         )
-        assert resp is not None
+        assert resp.status_code == 403
 
     def test_write_endpoints_ok_on_local_host(self):
         resp = _call(

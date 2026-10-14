@@ -12,7 +12,7 @@ Covers the underscore-vs-hyphen fix (``north_america.pbf``, not
 These are pure filesystem/string tests: no osmium binary and no real PBF
 data required. The real extraction chain (poly download -> continent PBF
 -> country PBF) is exercised by the manual E2E run
-(``docs/plans/E2E_TESTING_PLAN.md``) and the ``integration``-marked
+and the ``integration``-marked
 ``test_parallel_embed_parity`` / ``test_geofabrik_poly_service`` suites.
 """
 import pytest

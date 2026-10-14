@@ -3,8 +3,7 @@
  *
  * These tools run inside the Vite dev server process and call the Django
  * backend directly via fetch. They do NOT require a browser tab — the agent
- * can use them headless (`goose run -t`). This is the "data tools live in
- * Node" design from docs/plans/MCP_AGENT_MVP_PLAN.md §5.
+ * can use them headless (`goose run -t`).
  *
  * The human UI path (SemanticSearchPanel) and these tools are independent
  * HTTP clients of the same backend endpoints — no shared implementation.

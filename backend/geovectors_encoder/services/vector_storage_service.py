@@ -182,7 +182,7 @@ class VectorStorageService:
     def _bulk_upsert(self):
         """Execute a raw SQL bulk upsert for high performance.
 
-        Optimizations applied (see docs/plans/PGVECTOR_BULK_UPSERT_OPTIMIZATIONS.md):
+        Optimizations applied:
         - Reusable UNLOGGED staging table with TRUNCATE (no per-batch CREATE/DROP).
         - Index on staging table built once after first COPY (survives TRUNCATE).
         - SET LOCAL synchronous_commit = off (eliminates per-commit fsync stall).

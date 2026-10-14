@@ -124,6 +124,6 @@ quality on all three task shapes (synthesis, tool selection, parser refine)
 at ~1.6x the generation speed (96–103 vs 61–63 tok/s), and the smaller
 resident footprint resolves the worker OOM on the shared 4070. `qwen3:14b`
 was deleted. See `05_LLM_Capacity_Envelope.md` for the measured envelope
-and `docs/plans/LLM_OLLAMA_4070_CAPACITY_ENVELOPE.md` for the A/B evidence.
+and the A/B evidence.
 Swap to a cloud provider by changing `LLM_BASE_URL` + `LLM_API_STYLE=openai`
 the tool surface and `LLMService` don't care where the model runs.

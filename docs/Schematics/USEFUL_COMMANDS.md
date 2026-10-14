@@ -115,7 +115,7 @@ docker compose exec backend python -m pytest tests/unit/test_mapqa_parser.py tes
 ***REMOVED*** diffusion parity vs numpy, amenity command, executor flag on/off)
 docker compose exec backend python -m pytest tests/unit/test_factor_node_tables.py -v
 
-***REMOVED*** ── Self-supervised training-data generation (docs/plans/completed/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md) ──
+***REMOVED*** ── Self-supervised training-data generation ──
 ***REMOVED*** Generate PostGIS-verifiable Q&A pairs for templates ***REMOVED***1/***REMOVED***2/***REMOVED***4/***REMOVED***5/***REMOVED***8 from
 ***REMOVED*** OsmEntity ground truth in processed countries. Appends to
 ***REMOVED*** {MAPQA_PARSER_DATA_DIR}/training_data/natural_language_qa_pairs.csv
@@ -354,7 +354,7 @@ for fp in fps:
 "
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Factor-Node Tables — Runtime Joins for MapQA (FACTOR_NODE_RUNTIME_JOINS_PLAN.md)
+***REMOVED******REMOVED*** Factor-Node Tables — Runtime Joins for MapQA
 **********************************************************************************************
 
 ***REMOVED*** Factor tables live on the vectors DB (models in worldkg_nca, migrations 0012/0013).
@@ -413,7 +413,7 @@ print(FactorResolutionService().check_availability([123, 456], '2025_12_31', 'BZ
 ***REMOVED*** The factor-table path is authoritative and always on. The shadow rollout
 ***REMOVED*** flags (FACTOR_NODE_TABLES_SHADOW / FACTOR_NODE_TABLES_ENABLED) and the
 ***REMOVED*** legacy runtime graph path were removed; FACTOR_NODE_TABLES_ENABLED is a
-***REMOVED*** dead setting (see docs/issues/FACTOR_NODE_REVIEW_FINDINGS.md F1).
+***REMOVED*** dead setting (see FACTOR_NODE_REVIEW_FINDINGS F1).
 
 ***REMOVED*** Run the executor end-to-end (table path)
 docker compose exec backend python manage.py shell -c "
@@ -476,7 +476,7 @@ curl -s -X POST http://localhost:8000/api/nca/execute-query/ \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Template: {d[\"parsed\"][\"template\"]}  conf={d[\"parsed\"][\"confidence\"]:.3f}'); print(f'Concepts: {[(c[\"type\"],c[\"text\"]) for c in d[\"parsed\"][\"concepts\"]]}')"
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Name Romanizing — Cross-Script Name Preprocessing (NAME_ROMANIZING_FRAMEWORK_PLAN.md)
+***REMOVED******REMOVED*** Name Romanizing — Cross-Script Name Preprocessing
 **********************************************************************************************
 
 ***REMOVED*** Romanize ALL entities across all countries (idempotent, resumable)
@@ -661,7 +661,7 @@ grep -r "from extraction\|import extraction\|from orchestration\|import orchestr
 grep -r "from analysis\|import analysis" backend/ --include="*.py" | grep -v "/migrations/"
 grep -r "TemporalSnapshot\|AssetBundle" backend/ --include="*.py" | grep -v "/migrations/"
 **********************************************************************************************
-***REMOVED******REMOVED*** Self-Hosted Deployment — nginx, Funnel, Login Guard (SELF_HOSTED_DEPLOYMENT_PLAN.md)
+***REMOVED******REMOVED*** Self-Hosted Deployment — nginx, Funnel, Login Guard
 **********************************************************************************************
 
 ***REMOVED*** Rebuild the SPA with the same-origin API base (dist is mounted into nginx, no restart needed)

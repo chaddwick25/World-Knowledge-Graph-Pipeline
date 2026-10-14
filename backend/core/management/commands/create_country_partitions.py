@@ -1,6 +1,6 @@
 """Create country leaf partitions + materialized views for all completed SnapshotJobs.
 
-Implements Steps 1-2 of ``docs/plans/PHASE6_COMPLETION_PLAN.md``.
+Implements Steps 1-2 of the Phase 6 completion.
 
 This command creates the partitioned table hierarchy for ``semantic_search_osmentity``
 (the Django OsmEntity model's table).  For each ``(snapshot_date, country_code)``

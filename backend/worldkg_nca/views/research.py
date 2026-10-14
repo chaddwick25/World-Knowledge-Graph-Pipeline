@@ -46,7 +46,7 @@ def research_stream(request):
     if not prompt_text:
         return JsonResponse({"error": "prompt required"}, status=400)
 
-    ***REMOVED*** Traceability (UNIFIED_LLM_TRACE_PLAN.md): one trace per run; the
+    ***REMOVED*** Traceability: one trace per run; the
     ***REMOVED*** caller can propagate a cross-app id via ?trace_id= (or X-Trace-Id).
     trace_id = request.GET.get("trace_id") or uuid.uuid4().hex
 

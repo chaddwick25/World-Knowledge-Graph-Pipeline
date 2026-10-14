@@ -21,7 +21,7 @@ def _compute_transport_matrices(
 
     Uses shared buffer-zone entities (Option A — entities in both subgraphs'
     buffered graphs) as correspondence points to fit a k×k transport matrix
-    per adjacent pair.  See ``docs/plans/SUBGRAPH_FUNCTIONAL_MAPS_PLAN_v2.md``.
+    per adjacent pair.
 
     Args:
         env: country envelope with subgraph configs

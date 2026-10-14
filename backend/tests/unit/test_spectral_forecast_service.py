@@ -1,7 +1,6 @@
 """Invariant tests for SpectralForecastService.
 
-Pins the Phase 0 invariants from GRAPH_SPECTRAL_TEMPORAL_PLAN.md §"Phase 0:
-Forecasting (ARIMA / Exponential Smoothing)":
+Pins the Phase 0 invariants ("Phase 0: Forecasting (ARIMA / Exponential Smoothing)"):
 
 - Forecast eigenvalues ≥ 0 (eigenvalues of a PSD matrix)
 - Falls back to exponential smoothing when <3 snapshots

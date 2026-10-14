@@ -4,7 +4,6 @@ WorldKG Pipeline — Celery Tasks Package
 Planet initialization (formerly step_0a..step_0m) is now handled by the
 ``init_planet`` management command, run as a Docker entrypoint step on
 the backend container after migrations. See
-``docs/plans/CORE_APP_CONSOLIDATION_PLAN.md`` and
 ``core/management/commands/init_planet.py``.
 """
 from __future__ import annotations

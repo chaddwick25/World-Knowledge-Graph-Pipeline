@@ -1,7 +1,6 @@
 """
 Train the MapQA TF-IDF parser and serialize model artifacts.
 
-Implements MAPQA_PARSER_BUILD_ORDER.md §4-6 and MAPQA_TO_EXECUTION_PLAN.md §1.2.
 Trains three classifiers on the MapQA dataset:
 
   1. Template classifier  — TF-IDF + MultinomialNB (5 macro-templates)
@@ -172,7 +171,6 @@ DIRECTION_SIGNALS = {"north", "south", "east", "west", "northeast",
 
 ***REMOVED*** ── Template mapping ──────────────────────────────────────────────────────
 ***REMOVED*** Each entry: (macro_template, concept_transformation, metric_produced)
-***REMOVED*** Sourced from docs/plans/GEO_SPATIAL_AGENT_CELERY_PLAN_V3.md §1.5 and §3.5
 TEMPLATE_MAP = {
     "amenities_dataset": (
         "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)",
@@ -224,7 +222,7 @@ TEMPLATE_MAP = {
 ***REMOVED*** MapQA dataset regions
 _DATASET_REGIONS = ["california_full", "illinois_test"]
 
-***REMOVED*** ── Extended CSV schema (MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md §5) ─────
+***REMOVED*** ── Extended CSV schema (coverage-expansion §5) ─────
 ***REMOVED*** Columns appended to the training CSV (nullable; old CSVs keep working via
 ***REMOVED*** _load_csv defaults). Source distinguishes provenance:
 ***REMOVED***   mapqa-llm      — raw MapQA dataset rows (california_full / illinois_test)
@@ -549,7 +547,7 @@ class Command(BaseCommand):
         Legacy CSVs (7 columns) get defaults for the appended columns
         (Source / Pipeline_run_id / Snapshot_date / Ground_truth_table /
         Country_code) so old files keep working unmodified
-        ([MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §5).
+        (coverage-expansion §5).
         """
         with open(csv_path, "r", encoding="utf-8", newline="") as f:
             rows = list(csv.DictReader(f))

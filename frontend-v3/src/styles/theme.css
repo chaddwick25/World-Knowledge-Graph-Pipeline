@@ -11,8 +11,7 @@
  * blocks still win where they appear). Sibling components can adopt these
  * vars incrementally during their own Bootstrap migration passes.
  *
- * Palette source: full scan of every .vue file in frontend-v3/src/ — see
- * docs/plans/FRONTEND_BOOTSTRAP_THEME_MIGRATION_PLAN.md §2.
+ * Palette source: full scan of every .vue file in frontend-v3/src/.
  */
 
 /* Page-level reset (survived from the deleted src/style.css — Vite-template

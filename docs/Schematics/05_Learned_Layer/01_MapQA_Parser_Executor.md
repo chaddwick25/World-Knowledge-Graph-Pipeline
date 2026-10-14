@@ -320,8 +320,7 @@ Artifacts are saved to `backend/data/mapqa_parser/artifacts/`:
 - Hand-curated `natural_language_qa_pairs.csv` (Region=`augmented`).
 - **Self-supervised rows (Region=`self_supervised`, implemented
   2026-08-25)**, PostGIS-verifiable Q&A pairs generated from `OsmEntity`
-  ground truth in processed countries. See §9 below and
-  `docs/plans/completed/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md`.
+  ground truth in processed countries. See §9 below.
 
 **Train/test split** (see `Command._split_rows`):
 - Train: `california_full` + `augmented` + `self_supervised`
@@ -386,8 +385,7 @@ docker compose exec backend python -m pytest tests/integration/test_mapqa_execut
 The parser is trained on the MapQA LLM dataset (California + Illinois
 splits), a hand-curated augmentation CSV, **and self-supervised rows**
 generated from the platform's own `OsmEntity` ground truth (implemented
-2026-08-25, `docs/plans/completed/MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md`
-Part 1). The raw MapQA dataset covers 5 of the 9 templates. The 4
+2026-08-25, Part 1 of the coverage expansion). The raw MapQA dataset covers 5 of the 9 templates. The 4
 graph-powered templates (`SPECTRAL-ANALYSIS`, `TEMPORAL-DRIFT`,
 `COMMUNITY-DETECT`, `EVENT-DIFFUSION`) have no training data in the source
 dataset and are currently exposed only via dedicated API endpoints that

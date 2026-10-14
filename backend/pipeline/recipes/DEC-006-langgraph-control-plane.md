@@ -5,7 +5,7 @@ kind: decision
 status: active
 date: 2026-10-12
 trigger: none (owner decision; DEC-004's checkpoint/resume trigger fired)
-source: session 2026-10-12 (Fabiano MFAI 2026 talk; Fast and Slow Planning arXiv:2303.04283); deploy/plans/next-stage/LANGGRAPH_ROUTER_PLAN.md
+source: session 2026-10-12 (Fabiano MFAI 2026 talk; Fast and Slow Planning arXiv:2303.04283)
 citations:
   - backend/semantic_search/services/research_service.py:1
   - backend/semantic_search/services/query_enrichment_service.py:98

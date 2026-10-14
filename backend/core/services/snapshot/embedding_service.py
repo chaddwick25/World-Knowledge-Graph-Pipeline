@@ -102,7 +102,7 @@ class EmbeddingService:
 
         ***REMOVED*** Step 1 is FastText-only (GV-Tags).  The two-axis Step-1 path
         ***REMOVED*** (DualEncodingWriter / _run_parallel_dual) was removed 2026-09-10 —
-        ***REMOVED*** see docs/issues/TICKET_REMOVE_DUAL_ENCODER.md.  GV-NLE comes from
+        ***REMOVED*** see TICKET_REMOVE_DUAL_ENCODER.  GV-NLE comes from
         ***REMOVED*** Step 5 training + the inductive query-time path, so the parallel
         ***REMOVED*** path needs no NLE gating.
         if workers > 1:

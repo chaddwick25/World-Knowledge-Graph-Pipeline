@@ -204,7 +204,7 @@ into the FastText pool, and the parser recovers a missing OBJECT for
 brand names by geocoding the span and checking its WorldKG class — no
 retraining. See
 `preserving_the_process/DIFFUSION_SCORE_AND_QUERY_FUSION.md` for the
-fusion provenance and `docs/issues/HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN.md`
+fusion provenance and HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN
 for the exact-search decision.
 
 See `Schematics/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md` for

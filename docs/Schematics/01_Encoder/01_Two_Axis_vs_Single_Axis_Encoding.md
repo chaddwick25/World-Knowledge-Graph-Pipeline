@@ -3,7 +3,7 @@
 > **Status: SUPERSEDED (2026-09-10).** The two-axis Step-1 encoding path
 > (`DualEncodingWriter` + `_build_dual_writer` + `_run_parallel_dual` +
 > `_PARALLEL_DUAL_ENABLED`) was **removed** as dead code — see
-> `docs/issues/TICKET_REMOVE_DUAL_ENCODER.md`. It never ran in production
+> TICKET_REMOVE_DUAL_ENCODER. It never ran in production
 > (zero country-level `wdw.pickle` on disk, verified 2026-08-31).
 >
 > What remains:
@@ -266,8 +266,7 @@ index on `static_embedding`. Only rows with **both** GV-Tags + GV-NLE have
 > and no `static_embedding` HNSW index exists. The only HNSW indexes present
 > are on the per-snapshot materialized views (not read by runtime queries).
 > The 400D fusion is a *design*, not a live artifact; the HNSW-on-400D search
-> path serves nothing until it is built (plan:
-> `docs/plans/FUSED_400D_ANN_DEDUP_PLAN.md`).
+> path serves nothing until it is built.
 
 ---
 
@@ -290,6 +289,6 @@ index on `static_embedding`. Only rows with **both** GV-Tags + GV-NLE have
 - Same-type similarity: entities with same tags should have high similarity
 - `static_embedding` is only populated when both GV-Tags + GV-NLE are present
 - Step 1 is FastText-only: the `_PARALLEL_DUAL_ENABLED` gate and the parity
-  precondition (`PARALLEL_UPSERT_APPROACH_B_PLAN.md` §5.2) are moot — the
+  precondition are moot — the
   gate, `DualEncodingWriter`, and `_run_parallel_dual` were removed
   2026-09-10.

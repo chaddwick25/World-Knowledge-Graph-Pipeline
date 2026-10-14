@@ -4,8 +4,6 @@ EntityGeocoder — resolve entity names to OsmEntity objects with lat/lon.
 Uses PostGIS ILIKE name search first (fast, exact-ish), falls back to
 FastText semantic search on the name (handles "Hollywood Boulevard" vs
 "Hollywood Blvd").
-
-Implements MAPQA_TO_EXECUTION_PLAN.md §2.2.3.
 """
 
 import logging

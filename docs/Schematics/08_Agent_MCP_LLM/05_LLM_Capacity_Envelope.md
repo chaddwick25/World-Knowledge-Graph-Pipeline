@@ -9,8 +9,7 @@
 > users at P95 TTFT ~6s while leaving ~1.6 GiB headroom for the pipeline
 > worker on the same card. All numbers measured live 2026-09-16 (A/B replay
 > of exact production prompts + `OLLAMA_NUM_PARALLEL` load-test sweep).
-> Supersedes the 14b envelope (qwen3:14b deleted 2026-09-16; see
-> `docs/plans/LLM_OLLAMA_4070_CAPACITY_ENVELOPE.md`).
+> Supersedes the 14b envelope (qwen3:14b deleted 2026-09-16).
 
 ---
 
@@ -193,7 +192,6 @@ not guaranteed; model or context-size changes shift the envelope.
   (`synthesize`, answer cache)
 - `backend/core/management/commands/warm_llm.py` (resident warm-up)
 - `docker-compose.yml` (ollama / backend / worker / goose env)
-- `docs/plans/LLM_OLLAMA_4070_CAPACITY_ENVELOPE.md` (plan + A/B evidence)
 - Companion schematics: `02_Platform_LLM_Enrichment.md` (LLMService /
   enrichment / parser refine), `03_SSE_Streaming_Performance.md` (SSE
   protocol + latency budget), `04_Docker_Agent_Stack.md` (containers)

@@ -35,9 +35,9 @@ class ShardRouter:
 class AppRouter:
     """Route database operations for core, extraction, orchestration apps.
 
-    ``extraction`` and ``orchestration`` are slated for deletion (see
-    ``docs/plans/CORE_APP_CONSOLIDATION_PLAN.md``) — their models now live in
-    ``core``. They are kept here temporarily so stale references during the
+    ``extraction`` and ``orchestration`` are slated for deletion — their
+    models now live in ``core``. They are kept here temporarily so stale
+    references during the
     migration window don't break routing.
     """
 

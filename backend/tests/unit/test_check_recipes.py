@@ -3,14 +3,9 @@ Tests for the decision-recipe checker (check_recipes).
 
 The recipes (backend/pipeline/recipes/) are project memory: plans cite
 them as [[DEC-001]] and the checker validates front matter, citations,
-and references. These tests cover the pure core on tmp_path fixtures
-plus one regression pass over the real recipes directory, so a broken
-recipe or a dangling reference fails here. No DB / network required.
+and references. These tests cover the pure core on tmp_path fixtures.
+No DB / network / real-repo-tree dependency required.
 """
-
-from pathlib import Path
-
-import pytest
 
 from backend.management.commands.check_recipes import (
     check_recipe,
@@ -18,8 +13,6 @@ from backend.management.commands.check_recipes import (
     run_check,
     scan_recipe_refs,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
 
 VALID_RECIPE = """---
 id: DEC-100
@@ -136,14 +129,3 @@ def test_fenced_code_blocks_are_skipped(tmp_path):
     root = _fixture_root(tmp_path, plan_text="***REMOVED*** Plan\n```\n[[DEC-999]]\n```\n")
     plan = root / "plans" / "PLAN.md"
     assert scan_recipe_refs([plan], {"DEC-100"}) == []
-
-
-def test_real_recipes_and_plan_references_pass():
-    ***REMOVED*** Host-checkout regression: the checker's paths are repo-root-relative
-    ***REMOVED*** (deploy/, AGENTS.md); the backend container mounts only backend/ at
-    ***REMOVED*** /app, so the plan-reference scan has nothing to see there.
-    if not (REPO_ROOT / "deploy" / "plans").is_dir():
-        pytest.skip("host repo layout (deploy/) not present")
-    errors, _, stats = run_check(REPO_ROOT)
-    assert errors == []
-    assert stats["recipes"] >= 6

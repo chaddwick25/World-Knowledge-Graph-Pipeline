@@ -1,7 +1,6 @@
 """Math-correctness unit tests for the USLP geographic-space formula fix.
 
-Implements the test plan from
-``docs/plans/USLP_GEO_SPACE_FORMULA_FIX.md`` §3 (Fix 4).
+Implements the test plan for the USLP geo-space formula fix (Fix 4).
 
 Pins the paper's reference-code invariants
 (``docs/Schematics/SSLPandUSLP-main/dataprep_utils.py:71-83``):

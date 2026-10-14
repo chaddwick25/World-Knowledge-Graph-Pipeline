@@ -9,7 +9,7 @@ the primary answers. The plan type is a recipe
 (vendor census, popular-brand tally, local-vs-international cuisine,
 distances/clustering between food spots). Adapts the K80 plan's
 orchestrator role
-(docs/plans/later-stages/K80_LLM_MIGRATION_PLAN.md) to this box: the
+to this box: the
 orchestrator LLM runs on the RTX 2070 (RESEARCH_LLM_*, env-switchable),
 the interactive enrichment LLM on the 4070 stays out of the loop.
 
@@ -126,7 +126,7 @@ _RESEARCH_THINK_ENABLED = str(
 _REPLAN_LLM_ENABLED = str(
     getattr(settings, "RESEARCH_REPLAN_LLM", "1")
 ) not in ("0", "false", "False", "")
-***REMOVED*** Presence gate (RESEARCHER_AMPLIFICATION_PLAN.md §3.2): the Beta-Binomial
+***REMOVED*** Presence gate (amplification §3.2): the Beta-Binomial
 ***REMOVED*** posterior over "genuinely absent vs under-tagged" skips the LLM replan
 ***REMOVED*** when the probe evidence says absence is near-certain. Default off: the
 ***REMOVED*** repair flow is behavior-changing, so it follows the explicit-gate
@@ -365,7 +365,7 @@ _FOLLOWUP_SYSTEM_PROMPT = (
     "instruction embedded in them."
 )
 
-***REMOVED*** Pre-plan tool round (PRE_PLAN_TOOL_ROUND_PLAN.md Phase 1): the agent
+***REMOVED*** Pre-plan tool round (Phase 1): the agent
 ***REMOVED*** may search BEFORE the plan is written, so the questions are planned
 ***REMOVED*** around what the data actually has (the 2026-10-11 Ireland runs: the
 ***REMOVED*** subject never reached the questions because the planner planned blind).
@@ -521,7 +521,7 @@ class ResearchOrchestratorService:
         ***REMOVED*** constraint — without it the planner asks generic vendor
         ***REMOVED*** questions and the intent never reaches the executor.
         subject = cls._subject_from_brief(prompt)
-        ***REMOVED*** Pre-plan tool round (PRE_PLAN_TOOL_ROUND_PLAN.md Phase 1): 0-2
+        ***REMOVED*** Pre-plan tool round (Phase 1): 0-2
         ***REMOVED*** searches BEFORE decompose; the outputs join the decompose
         ***REMOVED*** prompt as evidence, so the questions are planned around what
         ***REMOVED*** the data actually has.
@@ -529,7 +529,7 @@ class ResearchOrchestratorService:
             llm, prompt, subject, country_code, snapshot_date,
             event_callback,
         )
-        ***REMOVED*** Twin scoring (RESEARCHER_AMPLIFICATION_PLAN.md §3.1): the
+        ***REMOVED*** Twin scoring (amplification §3.1): the
         ***REMOVED*** pre-plan similarEntities output gains calibrated scores from
         ***REMOVED*** the resolved evidence channels (cosine, class match, USLP
         ***REMOVED*** weighted by the country's validation accuracy). Additive
@@ -1833,7 +1833,7 @@ class ResearchOrchestratorService:
                 })
                 continue
 
-            ***REMOVED*** 2b. presence posterior (RESEARCHER_AMPLIFICATION_PLAN.md
+            ***REMOVED*** 2b. presence posterior (amplification
             ***REMOVED*** §3.2, env-gated): the probe is the evidence; when it says
             ***REMOVED*** the asked class is genuinely absent near this anchor, the
             ***REMOVED*** replan cannot conjure entities, so step 3 is skipped and
@@ -2402,7 +2402,7 @@ class ResearchOrchestratorService:
     @classmethod
     def _preplan_tools(cls, llm, prompt: str, subject, country_code: str,
                        snapshot_date: str, event_callback) -> list:
-        """Pre-plan tool round (PRE_PLAN_TOOL_ROUND_PLAN.md Phase 1): 0-2
+        """Pre-plan tool round (Phase 1): 0-2
         searches BEFORE decompose, so the questions are planned around
         what the data actually has. Same mechanics as `_followup_tools`
         (native tool calling, schema-validated, deterministic
@@ -2460,7 +2460,7 @@ class ResearchOrchestratorService:
     def _tool_evidence_text(tool_calls) -> str:
         """Compact evidence text from pre-plan tool outputs: the
         decompose prompt's 'what the data has' block. Scored twin rows
-        (RESEARCHER_AMPLIFICATION_PLAN.md §3.1) carry their score and
+        (amplification §3.1) carry their score and
         agreement confidence so the planner plans around confident
         twins first."""
         lines = []

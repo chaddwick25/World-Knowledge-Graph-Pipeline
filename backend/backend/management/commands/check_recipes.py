@@ -4,10 +4,10 @@ Recipes are project memory: one recipe = one load-bearing decision or
 invariant; plans cite recipes as [[DEC-001]] instead of re-narrating them.
 This command is the citation checker: recipe front matter, id/filename
 match, citation paths + line ranges, [[...]] references across
-deploy/plans/**, docs/**, and AGENTS.md, orphan recipes, and bare .md
-mentions in deploy/plans/** that resolve nowhere (the reference-rot
-detector; it found the two dangling companion-doc references in
-AGENT_ORCHESTRATION_TIERED_PLAN.md on 2026-10-11).
+docs/** and AGENTS.md (plus any --plans-glob location), orphan
+recipes, and bare .md mentions in the scanned plans that resolve
+nowhere (the reference-rot detector; it found two dangling
+companion-doc references on 2026-10-11).
 
 Not the research orchestrator's report recipes (FOOD_REPORT in
 research_service.py): those are named report plans, these are numbered
@@ -144,8 +144,8 @@ def scan_md_mentions(md_files: List[Path], root: Path) -> List[Tuple[Path, int, 
 def run_check(
     root,
     recipes_dir: str = "backend/pipeline/recipes",
-    plans_glob: str = "deploy/plans/**/*.md",
-    ref_globs: Tuple[str, ...] = ("deploy/plans/**/*.md", "docs/**/*.md", "AGENTS.md"),
+    plans_glob: str = "docs/",
+    ref_globs: Tuple[str, ...] = ("docs/**/*.md", "AGENTS.md"),
     strict: bool = False,
 ) -> Tuple[List[str], List[str], dict]:
     """Run the full check. Returns (errors, warnings, stats)."""
@@ -204,12 +204,15 @@ def run_check(
 class Command(BaseCommand):
     help = (
         "Validate decision recipes (backend/pipeline/recipes/) and the "
-        "[[...]] references to them across deploy/plans/**, docs/**, AGENTS.md"
+        "[[...]] references to them across docs/**, AGENTS.md (plus any "
+        "--plans-glob location)"
     )
 
     def add_arguments(self, parser):
         parser.add_argument("--recipes-dir", default="backend/pipeline/recipes")
-        parser.add_argument("--plans-glob", default="deploy/plans/**/*.md")
+        parser.add_argument(
+            "--plans-glob", default="docs"
+        )
         parser.add_argument(
             "--strict", action="store_true",
             help="Warnings fail the check too",

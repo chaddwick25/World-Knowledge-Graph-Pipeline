@@ -82,6 +82,10 @@ services:
       ***REMOVED*** No fallback secret: a missing key must fail the deploy, not silently
       ***REMOVED*** drop to a public string (session/CSRF forgery).
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set in .env}
+      ***REMOVED*** Fail-closed like the other secrets: the funnel's only gated path
+      ***REMOVED*** (the pipeline trigger) is key-gated on every surface, so a missing
+      ***REMOVED*** key must fail the deploy, not fall open.
+      - PIPELINE_TRIGGER_KEY=${PIPELINE_TRIGGER_KEY:?PIPELINE_TRIGGER_KEY must be set in .env}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-false}
       - POSTGRES_HOST=postgres-default
       - PGVECTOR_HOST=postgres-vectors
@@ -159,8 +163,7 @@ services:
       dockerfile: Dockerfile
     container_name: eda-worker
     runtime: nvidia
-    ***REMOVED*** Live stack dumps for wedged steps (py-spy) — see
-    ***REMOVED*** deploy/plans/WORKER_PTRACE_DIAGNOSTICS_PLAN.md.
+    ***REMOVED*** Live stack dumps for wedged steps (py-spy).
     cap_add:
       - SYS_PTRACE
     env_file:
@@ -252,7 +255,7 @@ services:
       retries: 5
 
   ***REMOVED*** Batch research orchestrator LLM (RTX 2070, 8 GB — idle/spare card).
-  ***REMOVED*** The research loop (RESEARCH_ORCHESTRATOR_MVP_PLAN.md) decomposes big
+  ***REMOVED*** The research loop decomposes big
   ***REMOVED*** prompts and assembles summaries on this card; the 4070's interactive
   ***REMOVED*** slots never see research traffic. Separate models volume: two Ollama
   ***REMOVED*** daemons on one models dir can lock each other's writes.
@@ -312,8 +315,8 @@ services:
         condition: service_started
     restart: "no"
 
-  ***REMOVED*** MCP sidecar — standalone host for the vendored MCP tool surface
-  ***REMOVED*** (deploy/plans/MCP_SIDECAR_PLAN.md). Internal only: no published port;
+  ***REMOVED*** MCP sidecar — standalone host for the vendored MCP tool surface.
+  ***REMOVED*** Internal only: no published port;
   ***REMOVED*** agents reach it through the nginx tailnet surface at /mcp/. The
   ***REMOVED*** bearer token is checked inside the service (fail-closed); browser
   ***REMOVED*** tools stay registered but fail fast (no HMR channel here).
@@ -346,7 +349,7 @@ services:
       timeout: 5s
       retries: 3
 
-  ***REMOVED*** Self-hosted Langfuse (LLM trace observability, UNIFIED_LLM_TRACE_PLAN.md).
+  ***REMOVED*** Self-hosted Langfuse (LLM trace observability).
   ***REMOVED*** Not started by default: `docker compose --profile observability up -d`.
   ***REMOVED*** Backend env for the HTTP sink: TRACE_SINK=langfuse,
   ***REMOVED*** TRACE_SINK_URL=http://langfuse:3000/api/public, TRACE_SINK_PUBLIC_KEY /

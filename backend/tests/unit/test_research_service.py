@@ -1,4 +1,4 @@
-"""Unit tests for the research orchestrator (RESEARCH_ORCHESTRATOR_MVP_PLAN.md).
+"""Unit tests for the research orchestrator.
 
 Covers:
   - LLMService constructor overrides + get_research_instance() (RESEARCH_LLM_*)
@@ -611,7 +611,7 @@ class TestRecipeRouting:
             assert route_to_recipe(prompt)["key"] == "food_report", prompt
 
     def test_trip_prompts_now_land_on_food_report(self):
-        ***REMOVED*** TRIP_PLAN was removed 2026-10-01 (tourism strained the data);
+        ***REMOVED*** The trip recipe was removed 2026-10-01 (tourism strained the data);
         ***REMOVED*** even explicit travel phrasing stays on the default recipe.
         for prompt in (
             "Plan a 2-day trip to Belize City",
@@ -1401,8 +1401,8 @@ class TestPlan:
         ]})
         with self._patch_loop(fake_llm) as _executor:
             result = ResearchOrchestratorService.plan(
-                ***REMOVED*** Trip phrasing no longer routes anywhere else — TRIP_PLAN
-                ***REMOVED*** removed 2026-10-01; the default recipe is the result.
+                ***REMOVED*** Trip phrasing no longer routes anywhere else — the trip
+                ***REMOVED*** recipe was removed 2026-10-01; the default recipe is the result.
                 "Plan a 2-day trip to Belize City", "BZ", None,
             )
         ***REMOVED*** The run reports the recipe (rides the done payload so the
@@ -1684,8 +1684,7 @@ class TestPlan:
 
         ***REMOVED*** Decompose stays chat_json; the picks are native tools now: one
         ***REMOVED*** pre-plan round + one post-summary follow-up round (the
-        ***REMOVED*** pre-plan round landed 2026-10-11, PRE_PLAN_TOOL_ROUND_PLAN
-        ***REMOVED*** Phase 1).
+        ***REMOVED*** pre-plan round landed 2026-10-11, Phase 1).
         assert fake_llm.chat_json_calls == 1
         assert fake_llm.chat_tools_calls == 2
         assert len(result["tool_calls"]) == 1

@@ -176,8 +176,7 @@ The routing key is the pair `(snapshot_id, country_code)`.
 > all 46,030,536 rows, `osmentity_static_embedding_hnsw_idx` does not exist,
 > and `use_ann` is opt-in `false`. The only HNSW indexes in the DB are the
 > per-snapshot MV indexes (`idx_mv_embeddings_*_hnsw`), which no runtime query
-> reads. Sections 4.1-4.3 describe the intended build (plan:
-> `docs/plans/FUSED_400D_ANN_DEDUP_PLAN.md`).
+> reads. Sections 4.1-4.3 describe the intended build.
 
 ***REMOVED******REMOVED******REMOVED*** 4.1 What HNSW Stores
 

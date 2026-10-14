@@ -12,7 +12,7 @@ bearing → cardinal) and can be recomputed at test time. Generation is
 deterministic for a given (seed, snapshot, DB state): pool selection uses
 md5-hash ordering and all sampling goes through a seeded ``random.Random``.
 
-Sampling rules ([MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §3):
+Sampling rules (coverage-expansion §3):
 - Only named entities (``tags->>'name' IS NOT NULL``) with valid, non-NaN
   coordinates.
 - Names containing CSV-breaking characters (quotes, commas) are excluded from

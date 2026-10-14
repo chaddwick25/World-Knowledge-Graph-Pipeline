@@ -1,4 +1,4 @@
-"""Unit tests for the unified LLM trace adapter (UNIFIED_LLM_TRACE_PLAN.md).
+"""Unit tests for the unified LLM trace adapter.
 
 Covers:
   - config resolution: sink, sample rate, deterministic stages flag

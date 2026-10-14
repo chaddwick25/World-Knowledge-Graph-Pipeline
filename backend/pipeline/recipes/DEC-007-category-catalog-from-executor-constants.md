@@ -5,7 +5,7 @@ kind: decision
 status: active
 date: 2026-10-12
 trigger: none (design decision)
-source: INDEX_BUILDER_POST_PROCESSING_PLAN.md §3 (decided 2026-10-11); the amenity_to_wkgs hand-maintained dict diverging from _constants.AMENITY_TO_WKGS is the failure mode this prevents
+source: decided 2026-10-11 (index-builder post-processing design §3); the amenity_to_wkgs hand-maintained dict diverging from _constants.AMENITY_TO_WKGS is the failure mode this prevents
 citations:
   - backend/semantic_search/services/query_executor_service/_constants.py:62
   - backend/semantic_search/services/query_executor_service/_constants.py:299

@@ -1,7 +1,6 @@
 """Unit tests for the per-leaf HNSW index lifecycle.
 
-Implements the test plan from
-``docs/plans/PER_LEAF_INDEX_LIFECYCLE_PLAN.md`` §6.1:
+Implements the per-leaf index lifecycle test plan:
 
 - ``drop_osmentity_vector_indexes --country ni --snapshot 2025_12_31``:
   - Drops HNSW on ``embeddings_2025_12_31_ni`` only

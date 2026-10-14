@@ -155,8 +155,4 @@ the GPU dedicated to the application side.
 | `docs/Schematics/` | Canonical public schematics (owner voice; the `_public` mirror was dropped 2026-09-09) |
 | `docs/Schematics/MATH_FORMULA_REFERENCE.md` | The complete formula base (every formula in the schematics, by source doc, byte-identical) plus the group-theoretic reading (group, invariant, equivariance statement per formula family) |
 | `docs/Schematics/USEFUL_COMMANDS.md` | Operator command cookbook (compose, Django, osmium, MapQA, factor tables, DB reset) |
-| `docs/plans/` | Implementation plans (active) |
-| `docs/plans/completed/` | Completed implementation plans |
-| `docs/plans/next-stage/` | Coupled plans for the next stage |
-| `docs/issues/` | Open issues and incidents |
-| `docs/issues/resolved/` | Resolved issues and incidents |
+| Plans (external) | Implementation plans (active / completed / next-stage) — not tracked in this repo; live on GitLab / a local plans dir |

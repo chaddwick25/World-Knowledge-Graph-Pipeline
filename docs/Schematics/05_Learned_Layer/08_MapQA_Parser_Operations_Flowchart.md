@@ -118,8 +118,7 @@ self_supervised).
 - ***REMOVED***8 seeds fell short of the 250/country budget (712/1,000). The
   named-with-amenity (***REMOVED***8a) + 50 m adjacency (***REMOVED***8b) constraints are the
   tightest; the class-balance cap keeps the class ≥ 1,000 regardless.
-- **Planned follow-up**: USLP-weighted sampling prior
-  (`docs/plans/USLP_WEIGHTED_QUESTION_GENERATION_PLAN.md`). Use USLP
+- **Planned follow-up**: USLP-weighted sampling prior. Use USLP
   predicted links as a salience prior for *which* locations to sample
   (answers stay PostGIS-exact; USLP never becomes ground truth).
 

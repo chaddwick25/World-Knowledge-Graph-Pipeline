@@ -1,7 +1,6 @@
 """Invariant tests for CommunityDetectionService.
 
-Pins the Phase 0 invariants from GRAPH_SPECTRAL_TEMPORAL_PLAN.md §"Phase 0:
-Community Detection":
+Pins the Phase 0 invariants ("Phase 0: Community Detection"):
 
 - Every node belongs to exactly one community (partition)
 - Number of communities ≤ number of nodes

@@ -91,7 +91,7 @@ def process_single_snapshot_combined(country_name, continent, snap_date, snap_pa
 
         ***REMOVED*** TODO(two-axis-removal): the NLE-from-pickle phase of this legacy
         ***REMOVED*** single-pass path was removed with DualEncodingWriter 2026-09-10
-        ***REMOVED*** (docs/issues/TICKET_REMOVE_DUAL_ENCODER.md).  GV-NLE comes from
+        ***REMOVED*** (TICKET_REMOVE_DUAL_ENCODER).  GV-NLE comes from
         ***REMOVED*** Step 5 training + the inductive query-time path, so this endpoint
         ***REMOVED*** is FastText-only regardless of pickle availability.
         tags_writer = DBOnlyWriter(ft_model, tags_storage)

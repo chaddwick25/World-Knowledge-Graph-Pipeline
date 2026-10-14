@@ -76,7 +76,7 @@ class TestResultBackendConfig:
             f"ChordCounter.DoesNotExist bug for chords inside chains, "
             f"causing duplicate task execution. Use "
             f"pipeline.celery_results_backend:PatchedDatabaseBackend instead. "
-            f"See: docs/issues/CHORDCOUNTER_DOES_NOT_EXIST_BUG.md"
+            f"See: CHORDCOUNTER_DOES_NOT_EXIST_BUG"
         )
 
     def test_result_backend_uses_patched_backend(self):
@@ -348,7 +348,7 @@ class TestChordInChainNoDuplicates:
       ``TestResultBackendConfig`` (config gate) and
       ``TestPatchedDatabaseBackend`` (method-level behavior), plus the
       interval test ``test_apply_chord_overrides_none_interval``.
-    - See ``docs/issues/CHORD_BACKEND_REVIEW_FINDINGS.md`` F3.
+    - See ``CHORD_BACKEND_REVIEW_FINDINGS`` F3.
     """
 
     @pytest.fixture
@@ -486,7 +486,7 @@ class TestChordInChainNoDuplicates:
         bypass so nobody re-assumes the behavioral tests exercise the
         backend's chord path.
 
-        See ``docs/issues/CHORD_BACKEND_REVIEW_FINDINGS.md`` F3.
+        See ``CHORD_BACKEND_REVIEW_FINDINGS`` F3.
         """
         from celery import chord, chain
         from unittest.mock import patch

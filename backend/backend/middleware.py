@@ -54,7 +54,8 @@ _WRITE_PREFIXES = frozenset({
 ***REMOVED*** Write endpoints the SPA legitimately calls WITH the operator key: the
 ***REMOVED*** pipeline trigger. The SPA's password modal only opens on a 403 response,
 ***REMOVED*** so this endpoint must NOT be hard-404-hidden on public hosts — it is
-***REMOVED*** key-gated on EVERY surface instead (funnel included). All other write
+***REMOVED*** key-gated on EVERY surface instead (funnel included), fail-closed: an
+***REMOVED*** unset PIPELINE_TRIGGER_KEY denies it (see _key_ok). All other write
 ***REMOVED*** endpoints stay 404-hidden on public hosts.
 _KEY_GATED_ON_PUBLIC = frozenset({
     '/api/worldkg-pipeline-v2/start/',
@@ -109,6 +110,9 @@ class WriteEndpointGateMiddleware:
     key-gated on EVERY surface — public hosts get 403 (not 404) so the SPA's
     password modal can appear and let the operator run from the funnel. An
     anonymous public user still cannot trigger anything without the key.
+    Fail-closed: with ``PIPELINE_TRIGGER_KEY`` unset the trigger is denied
+    everywhere (compose also fails startup via ``:?``), so a deployment
+    without the key cannot leave the funnel's only gated path open.
 
     The host-trust model alone is spoofable: nginx forwards any Host header
     (server_name _), so a LAN client can fake ``localhost`` and reach the
@@ -123,9 +127,16 @@ class WriteEndpointGateMiddleware:
 
     @staticmethod
     def _key_ok(request):
+        """True when ``X-Pipeline-Key`` matches a CONFIGURED key.
+
+        Fail-closed: with ``PIPELINE_TRIGGER_KEY`` unset this returns
+        False, so the key-gated trigger is denied everywhere instead of
+        falling open (an unset key must not leave the funnel's only
+        gated path triggerable by anyone).
+        """
         expected = getattr(settings, 'PIPELINE_TRIGGER_KEY', '')
         if not expected:
-            return True
+            return False
         return hmac.compare_digest(
             request.headers.get('X-Pipeline-Key', ''), expected
         )
@@ -133,11 +144,19 @@ class WriteEndpointGateMiddleware:
     def __call__(self, request):
         if _is_write_path(request.path):
             if request.path in _KEY_GATED_ON_PUBLIC:
+                ***REMOVED*** Fail-closed on every surface: the trigger requires a
+                ***REMOVED*** configured key, so a deployment without one denies it
+                ***REMOVED*** rather than leaving it open.
                 if not self._key_ok(request):
                     return JsonResponse({'detail': 'Pipeline key required.'}, status=403)
             else:
                 if not _is_trusted_request(request):
                     raise Http404('Endpoint is local-only.')
-                if not self._key_ok(request):
+                ***REMOVED*** Key required on trusted hosts only when one is
+                ***REMOVED*** configured (legacy host-gated behavior; the compose
+                ***REMOVED*** service requires the key at startup, so production is
+                ***REMOVED*** always configured).
+                if getattr(settings, 'PIPELINE_TRIGGER_KEY', '') \
+                        and not self._key_ok(request):
                     return JsonResponse({'detail': 'Pipeline key required.'}, status=403)
         return self.get_response(request)

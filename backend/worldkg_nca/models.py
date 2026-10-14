@@ -223,8 +223,8 @@ class OsmEntity(models.Model):
         ***REMOVED*** Phase 6 cutover: widened to include partition keys (snapshot_id,
         ***REMOVED*** country_code).  The monolith's old constraint was
         ***REMOVED*** (osm_type, osm_id, gv_tags_version).  Migration 0009 applies this
-        ***REMOVED*** change — it must only be run AFTER the table rename cutover (see
-        ***REMOVED*** PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md Step 4).
+        ***REMOVED*** change — it must only be run AFTER the table rename cutover
+        ***REMOVED*** (cutover Step 4).
         unique_together = [['osm_type', 'osm_id', 'gv_tags_version', 'snapshot_id', 'country_code']]
         indexes = [
             models.Index(fields=['osm_type', 'osm_id']),
@@ -309,7 +309,7 @@ class OsmEntity(models.Model):
 
 
 ***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Factor-node metric tables (docs/plans/FACTOR_NODE_RUNTIME_JOINS_PLAN.md)
+***REMOVED*** Factor-node metric tables (per-entity spectral/drift metrics)
 ***REMOVED***
 ***REMOVED*** Per-entity, snapshot-pinned metrics written by batch pipeline steps
 ***REMOVED*** (5c/5d) and consumed at query time via SQL joins — the materialized
@@ -610,7 +610,6 @@ class SubgraphTransport(models.Model):
     Grounded in:
     - Ovsjanikov et al. 2012 — functional maps framework
     - Pegoraro et al. 2023 — spectral maps for graphs/subgraphs
-    - See ``docs/plans/SUBGRAPH_FUNCTIONAL_MAPS_PLAN_v2.md``
     """
 
     id = models.BigAutoField(primary_key=True)

@@ -18,7 +18,7 @@ Every coefficient is computed from rows that already exist
 USLP links weighted by ProjectionWeightAsset.validation_accuracy, and
 the probe digest. Nothing is estimated by the LLM; v0 is deterministic
 (no training). The multilevel/ABI calibration of the weights is the
-later rung (RESEARCHER_AMPLIFICATION_PLAN.md phase 2), gated on trace
+later rung (amplification phase 2), gated on trace
 volume.
 
 Fail-soft everywhere: a missing channel is skipped, a failed lookup

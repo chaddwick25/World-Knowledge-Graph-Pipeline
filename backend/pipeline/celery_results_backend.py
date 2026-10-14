@@ -7,7 +7,7 @@ embedded in a ``chain()``.  When each chord header task completes,
 → ``DoesNotExist`` → task marked ``FAILURE`` → Celery re-delivers the
 task → duplicate execution.
 
-See ``docs/issues/CHORDCOUNTER_DOES_NOT_EXIST_BUG.md`` for the full
+See ``CHORDCOUNTER_DOES_NOT_EXIST_BUG`` for the full
 analysis.
 
 This backend fixes the bug by:

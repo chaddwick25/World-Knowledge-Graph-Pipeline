@@ -1,5 +1,5 @@
 ***REMOVED*** MCP sidecar — standalone Streamable HTTP host for the vendored
-***REMOVED*** frontend-v3/src/mcp tool surface (deploy/plans/MCP_SIDECAR_PLAN.md).
+***REMOVED*** frontend-v3/src/mcp tool surface.
 ***REMOVED***
 ***REMOVED*** Build stage bundles the TypeScript sources into one ESM file with the
 ***REMOVED*** project lockfile's own esbuild (vite dep) — the runtime image carries
