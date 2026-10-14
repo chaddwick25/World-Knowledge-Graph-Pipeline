@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # and entity URIs use `http://www.worldkg.org/resource/`). Do NOT use the old
 # GeoVectors v2 namespaces (geovectors.l3s.uni-hannover.de/...) or the bogus
 # `http://schema.worldkg.org/` variant — both match ZERO triples in the data.
-# See docs/Schematics/04_ETL_Django_Vue_Primitives/05_Slug_Gate_And_RDF_Namespaces.md.
+# See docs/core/slug_gate_and_rdf_namespaces.md.
 WKGS_BASE_URI = "http://www.worldkg.org/schema/"
 WKG_BASE_URI = "http://www.worldkg.org/resource/"
 OSMN_BASE_URI = "https://www.openstreetmap.org/node/"

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 # `wkgs: <http://www.worldkg.org/schema/>`). The legacy
 # `http://schema.worldkg.org/` variant and the GeoVectors v2 namespace
 # (geovectors.l3s.uni-hannover.de/...) both match ZERO triples.
-# See docs/Schematics/04_ETL_Django_Vue_Primitives/05_Slug_Gate_And_RDF_Namespaces.md.
+# See docs/core/slug_gate_and_rdf_namespaces.md.
 WKGS_BASE_URI = "http://www.worldkg.org/schema/"
 OSMN_BASE_URI = "https://www.openstreetmap.org/node/"
 

@@ -15,10 +15,11 @@ same division. `docs/papers/WorldKG/` cleans the unstructured OSM data.
 supplies the domain expertise. This overview tells that story end to
 end: which paper contributes which mathematical idea, where the
 pipeline embeds it, and how the frontend turns the batch artifacts into
-a queryable application. `docs/SETUP.md` covers environment setup,
-Docker, migrations, and operational commands. `docs/Schematics/` is the
-architectural truth with file:line references to production source.
-`docs/preserving_the_process/` is the per-paper preservation record.
+a queryable application. `SETUP.md` covers environment setup,
+Docker, migrations, and operational commands. The app directories are
+the architectural truth with file:line references to production
+source. `research_to_runtime/` is the per-paper translation record —
+how each paper became running code.
 
 ---
 
@@ -168,8 +169,8 @@ entities match the historical state of the world relative to the
 training data, avoiding the temporal drift failure where 2024 boundary
 data validates 2018 entity extractions.
 
-See `preserving_the_process/PIPELINE_INTENT_OVERVIEW.md` for the full
-step table and `Schematics/02_Celery/01_Celery_Control_Plane.md` for the
+See `research_to_runtime/PIPELINE_INTENT_OVERVIEW.md` for the full
+step table and `pipeline/celery_control_plane.md` for the
 canvas structure.
 
 ---
@@ -203,12 +204,12 @@ of X") get a name-first pool tier (trigram on `name_romanized`) merged
 into the FastText pool, and the parser recovers a missing OBJECT for
 brand names by geocoding the span and checking its WorldKG class — no
 retraining. See
-`preserving_the_process/DIFFUSION_SCORE_AND_QUERY_FUSION.md` for the
+`research_to_runtime/DIFFUSION_SCORE_AND_QUERY_FUSION.md` for the
 fusion provenance and HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN
 for the exact-search decision.
 
-See `Schematics/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md` for
-the table schemas and `Schematics/05_Learned_Layer/09_Factor_Table_Math_Reference.md`
+See `semantic_search/factor_node_runtime_joins.md` for
+the table schemas and `semantic_search/factor_table_math_reference.md`
 for the complete math, including a worked heat-kernel example as one
 pgvector query.
 
@@ -329,11 +330,11 @@ Spatial-Agent research loop for MCP agents. Results stream to the
 frontend over SSE: `parsed` → `executed` → `context` → `answer_delta` →
 `done`.
 
-See `preserving_the_process/MAPQA.md` for the parser, executor, and
-enrichment details, `preserving_the_process/SPATIAL_AGENT.md` for the
-MCP tool surface, `preserving_the_process/KUHN_CORE_CONCEPTS.md` for
+See `research_to_runtime/MAPQA.md` for the parser, executor, and
+enrichment details, `research_to_runtime/SPATIAL_AGENT.md` for the
+MCP tool surface, `research_to_runtime/KUHN_CORE_CONCEPTS.md` for
 the category-coverage analysis, and
-`Schematics/05_Learned_Layer/01_MapQA_Parser_Executor.md` for the
+`semantic_search/mapqa_parser_executor.md` for the
 implementation.
 
 ---
@@ -342,22 +343,29 @@ implementation.
 
 | Path | What lives here |
 |---|---|
-| `Schematics/` | Architectural truth: 8 concept subdirectories (Encoder, Celery, Postgres, ETL/Django/Vue primitives, Learned Layer, IGEA/USLP, Romanizer, Agent/MCP/LLM) with file:line references to production source. Rewritten in the owner voice per `.devin/rules/10-doc-voice-spec.md`. |
-| `preserving_the_process/` | Research-preservation docs: how each academic paper's intent is embedded in the pipeline. `PIPELINE_INTENT_OVERVIEW.md` is the master overview; per-paper docs (`IGEA.md`, `GEOVECTORS.md`, `USLP.md`, `MAPQA.md`, `KUHN_CORE_CONCEPTS.md`, `SPATIAL_AGENT.md`, `OSM2KG.md`, `WORLDKG_ENRICHMENT.md`, `WORLDKG_CDD_ARCHITECTURE.md`, `OSM_TO_BUILT_FORM.md`) cover each. `DIFFUSION_SCORE_AND_QUERY_FUSION.md` records the query-fusion provenance and the diffusion score. |
+| `core/` | `core` app: planet init (`init_planet`), snapshots, country extraction, overrides, Wikidata/hierarchy primitives |
+| `pipeline/` | `pipeline` package: Celery control plane, task decorators, decision recipes |
+| `geovectors_encoder/` | `geovectors_encoder` app: Step 1 embedding, batch collector, vector storage/partitioning |
+| `semantic_search/` | `semantic_search` app: MapQA parser/executor, spectral layer, factor tables, romanizer, research orchestrator |
+| `igea/` | `igea` app: entity alignment, USLP spatial link prediction |
+| `worldkg_nca/` | `worldkg_nca` app: OsmEntity + factor tables on the vectors DB, API views |
+| `mcp_agent/` | `frontend-v3` + MCP sidecar: tool surface, LLM enrichment, frontend flow |
+| `platform/` | `backend/` project + compose + deploy: settings, middleware, entrypoint, agent stack, LLM capacity, SSE |
+| `reference/` | Lookup docs: math formula reference, operator command cookbook |
+| `research_to_runtime/` | Paper-to-pipeline docs: one doc per paper, describing how its intent became running code. `research_to_runtime/PIPELINE_INTENT_OVERVIEW.md` is the master overview; `research_to_runtime/README.md` indexes the rest. |
 | `papers/` | The source PDFs, one subfolder per tier: `WorldKG/` (clean), `WernerKuhn/` (interpret), `Maps/` (domain expertise). |
 | `SETUP.md` | Environment setup, Docker, migrations, planet init, romanization, fresh-DB reset, overrides. |
 
 ### By audience
 
 - **Operators** running the system: start at `SETUP.md` for environment
-  and commands, then `Schematics/04_ETL_Django_Vue_Primitives/` for the
+  and commands, then `platform/docker_entrypoint_init.md` for the
   Docker entrypoint and `init_planet` architecture.
-- **Engineers** changing the pipeline: start at `Schematics/README.md`
-  for the 8-concept map with file:line refs, then
-  `preserving_the_process/PIPELINE_INTENT_OVERVIEW.md` for the
-  step-by-step paper alignment, then the relevant `Schematics/`
-  subdirectory.
+- **Engineers** changing the pipeline: start at `README.md`
+  for the papers-to-apps map, then
+  `research_to_runtime/PIPELINE_INTENT_OVERVIEW.md` for the
+  step-by-step paper alignment, then the app directory for the
+  subsystem being changed.
 - **Researchers** tracing a paper to its implementation: start at the
-  paper table above, then the matching `preserving_the_process/` doc,
-  then the `Schematics/` subdirectory for the production code
-  references.
+  paper table above, then the matching `research_to_runtime/` doc,
+  then the app directory for the production code references.

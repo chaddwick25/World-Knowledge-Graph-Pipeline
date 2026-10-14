@@ -5,9 +5,9 @@ database extensions, migrations, planet initialization, name romanization,
 worker configuration, and fresh-database resets.
 
 For architecture and operational details, see:
-- `docs/Schematics/README.md` — 7 schematic categories with file:line refs
-- `docs/Schematics/04_ETL_Django_Vue_Primitives/01_Docker_Entrypoint_Init.md` — `init_planet` architecture
-- `.devin/rules.md` — development rules, conventions, gotchas
+- `README.md` — overview and index of the app-organized folders
+- `platform/docker_entrypoint_init.md` — `init_planet` architecture
+- `../AGENTS.md` (repo root) — development rules, conventions, gotchas
 
 ---
 
@@ -109,7 +109,7 @@ and skips the command entirely when one exists. The worker has
 `RUN_INIT_PLANET=false`.
 
 For the 16-step list and architecture, see
-`docs/Schematics/04_ETL_Django_Vue_Primitives/01_Docker_Entrypoint_Init.md`.
+`platform/docker_entrypoint_init.md`.
 
 ## Path verification (boot-time)
 
@@ -166,7 +166,7 @@ the repo, so a bare checkout will report them as missing until you
 provision the real `.poly` files — that is correct behavior.
 
 Canonical field reference:
-`docs/preserving_the_process/NON_SOVEREIGN_TERRITORIES_AND_OVERRIDES.md`
+`research_to_runtime/NON_SOVEREIGN_TERRITORIES_AND_OVERRIDES.md`
 sections 2.1–2.3. Loader:
 `backend/core/services/snapshot/country_override_service.py:load_overrides()`
 (also accepts a flat legacy mapping like `{"IE": "ireland"}` at the top
@@ -192,7 +192,7 @@ docker compose exec backend python manage.py romanize_names --country-code KR
 docker compose exec backend python manage.py romanize_names --country-code KR --dry-run
 ```
 
-See `docs/Schematics/07_Romanizer/01_Deterministic_Cross_Script_Romanization.md`
+See `semantic_search/deterministic_cross_script_romanization.md`
 for the full architecture.
 
 ---

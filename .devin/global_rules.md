@@ -7,12 +7,12 @@ is organized in five places:
   example query. The entry point for anything user-facing.
 - `docs/SETUP.md` — operator setup: Docker Compose, database extensions,
   migrations, planet init, romanization, workers, fresh-DB reset.
-- `docs/Schematics/` — implementation with file:line refs, organized in 8
-  categories: `01_Encoder`, `02_Celery`, `03_Postgres`,
-  `04_ETL_Django_Vue_Primitives`, `05_Learned_Layer`, `06_IGEA_USLP`,
-  `07_Romanizer`, `08_Agent_MCP_LLM`. Start at `docs/Schematics/README.md`.
-- `docs/preserving_the_process/` — why it was built this way: process
-  narrative and design decisions (13 docs).
+- `docs/` app folders — implementation with file:line refs, organized by
+  owning app/service: `core/`, `pipeline/`, `geovectors_encoder/`,
+  `semantic_search/`, `igea/`, `worldkg_nca/`, `mcp_agent/`, `platform/`,
+  plus `reference/` for lookup docs. Start at `docs/README.md`.
+- `docs/research_to_runtime/` — why it was built this way: one doc per
+  paper, how each became running code (flat, 13 docs).
 - `docs/papers/` — the papers the pipeline implements (WorldKG, GeoVectors,
   IGEA, USLP, MapQA, Spatial-Agent, functional maps), grouped under
   `Maps/`, `WernerKuhn/`, `WorldKG/`.
@@ -42,4 +42,4 @@ Security review models (empirical, 2026-10-05):
   now funnel-hostname-only. Enforced by
   `backend/tests/unit/test_nginx_trust_invariants.py` + live probes in
   `deploy/probes/`.
-- Full bake-off writeup: `docs/Schematics/08_Agent_MCP_LLM/07_Security_Review_Models.md`.
+- Full bake-off writeup: `docs/platform/security_review_models.md`.

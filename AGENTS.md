@@ -138,7 +138,7 @@ were removed.
 - `semantic_search/services/entity_geocoder.py` — Geocodes named entities from MapQA LOCATION/OBJECT slots. Strips leading articles (`"a bus station"` → `"bus station"`) before ILIKE name search. Treats `POINT(NaN NaN)` way geometries as no-coordinate (returns `lat=None, lon=None` via `math.isnan` check). Prefers entities with valid coordinates over ways with NaN geom (iterates up to 20 ILIKE matches, returns first with usable lat/lon, falls back to no-coordinate match only as last resort). **Fragment guards (2026-09-13)**: tier 1 (pg_trgm) rejects candidates with sim < 0.6 whose name is > 1.6x the query; tier 3 (icontains) applies the same for queries < 8 chars — a truncated span ("Cliffs") can no longer match "Cliffs of Howth" while the equal-length typo case ("Shannon Bells" → "Shandon Bells", sim 0.65) and partial names ≥ 8 chars are preserved. `_entity_to_dict` carries `country_code` so the executor can prune partition queries. **Place preference (2026-09-19)**: all four tiers now select via `_pick` (prefer coordinates, then `_place_score` — settlements/admin boundaries up, marker/sign entities down) instead of `.first()` — "Belfast" the city beats "Belfast" the NCN 93 destination sign, which previously won the exact-name tie and sent every Belfast-anchored question radiating from a countryside signpost. See BELFAST_ANCHOR_SIGNPOST_BUG.
 - `worldkg_nca/views/search.py` — `worldkg_semantic_triplet_search` API: triple-space and ANN search paths over `OsmEntity.gv_tags_embedding` (300D FastText). **Tag key filtering**: when `query_tags` has specific keys, the queryset is always filtered to entities that have those tag keys present (`tags__has_key`), preventing entities without the tag from polluting results. `exact_tag_match=True` additionally requires exact key=value match. **Tag match boost**: +1.0 to `final_score` for each query tag value that exactly matches the entity's tag value, ensuring `{"cuisine": "jamaican"}` ranks `cuisine=jamaican` above `cuisine=indian`. **USLP geo_score** (Mann et al. 2023 §3.3): both ANN and triple-space paths use geohash P4 cluster-center distance with d_max=39km (P4 cell width), replacing the old `1/(1+d_km)` decay. Also handles `natural_query` (free-form name search with romanizer cross-script matching) and `execute_query` (MapQA parser → template → executor). The three query modes (Structured JSON, Natural language, Kuhn's Template) are independently testable and serve as the agent's tool palette for future MCP orchestration — see `VUE_MCP_SERVER_OVERVIEW.md` §8.
 - `semantic_search/services/query_correction_service.py` — **QueryCorrectionService** (Kuhn's Template correction layer): corrects misspelled/mistyped amenity phrases that break the MapQA executor's exact tiers ("resturant" → "restaurant"). Scores the snapshot's real OSM amenity tag vocabulary (`DISTINCT tags->>'amenity'`, cached per (snapshot, country), TTL 1h — `VOCAB_CACHE_TTL_SECONDS`, default 3600s; cleared on backfill) with pg_trgm `similarity()` + fuzzystrmatch `levenshtein()` in one SQL pass; tiers: exact pass → pg_trgm (sim ≥ 0.5) → fuzzystrmatch (≤ 3 edits), combined score floor 0.55; junk and open-vocabulary cuisine phrases are never force-corrected (fall through to the FastText tier). Wired into `QueryExecutorService._resolve_amenity_tag`, `_search_by_amenity` (step 2b, trace `match_type="fuzzy_correction"`) and `_amenity_candidate_osm_ids`. Scoped to Kuhn's Template (`execute-query/`) — structured-JSON and natural-name modes are unaffected. Suite: `tests/unit/test_query_correction_service.py` (18 tests).
-- `semantic_search/services/romanizing_names/` — Deterministic cross-script name romanization. `RomanizerRegistry.auto_romanize()` detects script (Hangul, diacritic Latin, identity) and dispatches to the appropriate romanizer. Hangul: Unicode decomposition + lookup tables (파리바게뜨 → paribagetteu). Diacritic: NFKD + combining mark removal (café → cafe, Señor → senor). Identity: lowercase + whitespace collapse fallback. No neural model, no network, pure Python stdlib. Romanized values persisted in `OsmEntity.name_romanized` with pg_trgm GIN index. `romanize_names` management command is idempotent/resumable (processes entities where `name_romanized IS NULL`), decoupled from country ingestion. Chinese Hanzi and Japanese Kanji intentionally excluded. See `docs/Schematics/07_Romanizer/01_Deterministic_Cross_Script_Romanization.md`.
+- `semantic_search/services/romanizing_names/` — Deterministic cross-script name romanization. `RomanizerRegistry.auto_romanize()` detects script (Hangul, diacritic Latin, identity) and dispatches to the appropriate romanizer. Hangul: Unicode decomposition + lookup tables (파리바게뜨 → paribagetteu). Diacritic: NFKD + combining mark removal (café → cafe, Señor → senor). Identity: lowercase + whitespace collapse fallback. No neural model, no network, pure Python stdlib. Romanized values persisted in `OsmEntity.name_romanized` with pg_trgm GIN index. `romanize_names` management command is idempotent/resumable (processes entities where `name_romanized IS NULL`), decoupled from country ingestion. Chinese Hanzi and Japanese Kanji intentionally excluded. See `docs/semantic_search/deterministic_cross_script_romanization.md`.
 - `core/services/pipeline/search_ready_service.py` — Mark country as search-ready + update SnapshotJob status
 
 ### Envelopes (message plane)
@@ -178,7 +178,7 @@ All task files in `pipeline/tasks/` are now thin wrappers that:
 
 ### Factor-Node Tables (worldkg_nca, vectors DB)
 
-Three flat pgvector tables in the `worldkg_nca` app (routed to `vectors` DB by `VectorDBRouter`, colocated with `OsmEntity` for runtime joins). Batch-written by Steps 5c/5d + `compute_amenity_embeddings`; resolved at runtime by `FactorResolutionService` via SQL + pgvector `<#>`. See `docs/Schematics/05_Learned_Layer/05_Factor_Node_Runtime_Joins.md`.
+Three flat pgvector tables in the `worldkg_nca` app (routed to `vectors` DB by `VectorDBRouter`, colocated with `OsmEntity` for runtime joins). Batch-written by Steps 5c/5d + `compute_amenity_embeddings`; resolved at runtime by `FactorResolutionService` via SQL + pgvector `<#>`. See `docs/semantic_search/factor_node_runtime_joins.md`.
 
 - **`factor_spectral_node_metric`** — One row per `(snapshot_id, country_code, subgraph_slug, osm_id)`. Fields: `fingerprint_id` (UUID, null — the GraphSpectralFingerprint.id whose eigenbasis produced the loadings; Phase 1 coherence check at runtime, mismatch → PostGIS fallback), `eigen_loadings` (VectorField 128D, zero-padded), `fiedler_component`, `louvain_community`, `dirichlet_contrib` (combinatorial Laplacian), `degree`, `clustering_coeff`, `component_id`, `component_size`, `subgraph_slug` (nullable — null for country-level/small territories). Written by `FactorNodeWriter.write_spectral_nodes()` in Step 5c. Unique on `(snapshot_id, country_code, subgraph_slug, osm_id)`. Composite index on `(snapshot_id, country_code, subgraph_slug)` for subgraph-scoped pgvector `<#>` queries.
 - **`factor_drift_node_metric`** — One row per `(country_code, snapshot_from_id, snapshot_to_id, osm_id)`. Fields: `fiedler_delta` (sign-aligned), `loading_drift` (cosine distance), `community_changed`, `degree_delta`. Written by `FactorNodeWriter.write_drift_nodes()` in Step 5d. Unique on `(country_code, snapshot_from_id, snapshot_to_id, osm_id)`.
@@ -206,7 +206,7 @@ Three flat pgvector tables in the `worldkg_nca` app (routed to `vectors` DB by `
   reads `RESEARCH_LLM_*` (batch orchestrator on the 2070; unset → platform
   instance). **Trace spans (2026-09-19)**: every call emits a
   `TraceService` span (model/temperature/tokens/latency) attached to the
-  thread-local run trace. See `docs/Schematics/08_Agent_MCP_LLM/02_Platform_LLM_Enrichment.md`.
+  thread-local run trace. See `docs/mcp_agent/platform_llm_enrichment.md`.
 - `core/services/trace_service.py` — Unified LLM/run trace adapter. One schema
   (`trace` + `span` events), pluggable sinks: none (default) | console |
   file | langfuse (self-hosted, compose profile `observability`, SDK-free
@@ -283,9 +283,9 @@ Three flat pgvector tables in the `worldkg_nca` app (routed to `vectors` DB by `
   `docker compose down ollama` during normal pipeline runs.
 - Tests: `test_llm_service.py`, `test_query_enrichment_service.py`,
   `test_snapshot_cache.py` — all LLM/DB-mocked, hermetic.
-- See `docs/Schematics/08_Agent_MCP_LLM/` (7 schematics: tool surface,
-  platform LLM, SSE/performance, Docker agent stack, LLM capacity
-  envelope, research orchestrator stream, security-review bake-off).
+- See `docs/mcp_agent/` + `docs/platform/` (tool surface, platform LLM,
+  SSE/performance, Docker agent stack, LLM capacity envelope, security-
+  review bake-off) and `docs/semantic_search/research_orchestrator_agent_stream.md`.
 
 ### MapQA self-supervised training data
 (Part 1 of 2)
@@ -511,7 +511,7 @@ Deployment posture for the Tailscale Funnel host:
   config invariants (allowlist split, trust-marker wiring, 444 guards);
   deploy/probes/ has the live-edge probes (public_edge_probes.sh,
   ws_flood_test.py) and the bake-off runner (run_pentest_review.py — see
-  docs/Schematics/08_Agent_MCP_LLM/07_Security_Review_Models.md).
+  docs/platform/security_review_models.md).
   Note: test_* failures from stale test-DB schema (e.g. `bbox_source`) and code/test drift
   (vector_storage batch_size 20000 vs 50000, parser "bus station" vs "bus_station") are
   pre-existing, unrelated to this hardening.
