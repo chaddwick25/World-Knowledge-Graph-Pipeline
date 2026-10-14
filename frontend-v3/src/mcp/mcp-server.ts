@@ -228,6 +228,89 @@ export function createMcpServer(mcpHandlers: McpHandlers): McpServer {
     },
   );
 
+  // ──────────── Doppelganger research tools (async job pattern) ────────────
+  // A research run is minutes of LLM + executor work — too long for a
+  // blocking tool call. The endpoint is synchronous SSE, so the job
+  // shape lives in server-tools.ts: submit returns a job_id, status /
+  // result poll an in-memory event buffer.
+
+  server.registerTool(
+    "runDoppelganger",
+    {
+      description:
+        "Start a doppelganger research run (similar-entities report) against " +
+        "the WorldKG pipeline. Pass a brief or interview text — a 'Seed: " +
+        "<place>' line selects the doppelganger recipe; other asks route to " +
+        "the default report recipe. Returns {job_id, status} immediately; " +
+        "poll getDoppelgangerStatus for progress and fetch the report with " +
+        "getDoppelgangerResult once status is 'done'.",
+      inputSchema: {
+        brief: z
+          .string()
+          .describe(
+            "The research ask or finalized brief, e.g. 'Doppelganger report " +
+              "for Friars Tavern, Limerick' or 'Seed: Friars Tavern ...'",
+          ),
+        countryCode: z
+          .string()
+          .optional()
+          .describe("Country name or ISO code (e.g. 'Ireland', 'MX')"),
+        snapshotDate: z
+          .string()
+          .optional()
+          .describe("Snapshot date string, e.g. '2025_12_31'"),
+        subdivisionQid: z
+          .string()
+          .optional()
+          .describe("Wikidata QID to scope the run to a subdivision"),
+      },
+    },
+    async (params) => {
+      const result = await serverTools.runDoppelganger(params);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result) }],
+      };
+    },
+  );
+
+  server.registerTool(
+    "getDoppelgangerStatus",
+    {
+      description:
+        "Poll a doppelganger research job. Returns {job_id, status, " +
+        "event_count, recent_events, error}. Status is 'running', 'done', " +
+        "or 'error'.",
+      inputSchema: {
+        jobId: z.string().describe("The job_id returned by runDoppelganger"),
+      },
+    },
+    async (params) => {
+      const result = await serverTools.getDoppelgangerStatus(params);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result) }],
+      };
+    },
+  );
+
+  server.registerTool(
+    "getDoppelgangerResult",
+    {
+      description:
+        "Fetch the final doppelganger report once the job's status is " +
+        "'done'. Returns {job_id, status, result} where result carries " +
+        "{questions, coverage, confidence, summary, tool_calls, ...}.",
+      inputSchema: {
+        jobId: z.string().describe("The job_id returned by runDoppelganger"),
+      },
+    },
+    async (params) => {
+      const result = await serverTools.getDoppelgangerResult(params);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result) }],
+      };
+    },
+  );
+
   // ──────────────── Overlay Tool (browser-side — renders on the map) ────────────────
 
   server.registerTool(
