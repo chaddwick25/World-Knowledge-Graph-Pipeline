@@ -29,6 +29,10 @@ class DummyCursor:
 
     def execute(self, sql, params=None):
         self.queries.append(sql)
+        self._last_result = (False,)
+
+    def fetchone(self):
+        return self._last_result
 
     def __enter__(self):
         return self
@@ -52,7 +56,7 @@ class DummyConnections:
 @pytest.mark.unit
 def test_vector_storage_service_default_batch_size():
     storage = VectorStorageService()
-    assert storage.batch_size == 50000
+    assert storage.batch_size == 20000
 
 
 @pytest.mark.unit
