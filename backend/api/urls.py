@@ -9,6 +9,7 @@ from .views import (
 )
 from .views import augmented_data as views_augmented_data
 from .views import system_summary as views_system_summary
+from .views import country_request as views_country_request
 
 # Core API Endpoints - E2E Tested
 urlpatterns = [
@@ -29,6 +30,13 @@ urlpatterns = [
 
     # Country Pre-Processing (Recipe Builder Integration)
     path('country-preprocess/', country_search_views.CountryPreProcessView.as_view(), name='country_preprocess'),
+
+    # Public country-request capture (CAPTCHA-gated tally — the app's
+    # only public write endpoint; intentionally outside the middleware
+    # write gate).
+    path('country-requests/captcha/', views_country_request.CountryRequestCaptchaView.as_view(), name='country_request_captcha'),
+    path('country-requests/tally/', views_country_request.CountryRequestTallyView.as_view(), name='country_request_tally'),
+    path('country-requests/', views_country_request.CountryRequestView.as_view(), name='country_request_create'),
 
     # WorldKG Pipeline state (v1 surface still used by the frontend)
     path('worldkg-pipeline/state/<str:country_name>/', views.WorldKGPipelineCountryStateView.as_view(), name='worldkg_pipeline_country_state'),

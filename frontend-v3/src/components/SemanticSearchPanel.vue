@@ -183,7 +183,6 @@
       :rows="displayResults"
       :total="cappedResults.length"
       :has-nameless="hasNameless"
-      :score-columns="activeScoreColumns"
       @name-hover="onResultNameHover"
       @name-leave="onResultNameLeave"
     />
@@ -456,23 +455,6 @@ export default {
       if (this.showNameless) return this.cappedResults
       return this.cappedResults.filter((r) => (r.name || '').trim().length > 0)
     },
-    /** Score columns that have at least one non-zero value in the current
-     *  result set. Columns that are always 0 for a given search mode
-     *  (e.g. Geo without lat/lon, Tag without specific tags) are hidden. */
-    activeScoreColumns() {
-      const cols = [
-        { key: 'name_score',       label: 'Name'  },
-        { key: 'geo_score',        label: 'Geo'   },
-        { key: 'class_score',      label: 'Class' },
-        { key: 'tag_match_score',  label: 'Tag'   },
-      ]
-      return cols.filter((c) =>
-        this.displayResults.some((r) => {
-          const v = r.scores?.[c.key]
-          return v != null && v !== 0 && !Number.isNaN(v)
-        })
-      )
-    },
     /** Confidence badge color: green >= 80%, yellow >= 60%, red < 60%. */
     confidenceBadgeClass() {
       const c = this.displayParsedQuery?.confidence || 0
@@ -599,7 +581,6 @@ export default {
           this.loading = false
           return
         }
-        console.log('[SSE] executeSync template mode @', Date.now())
         openTemplateStream(this)
         return  // loading is cleared by the stream's done/error events
       }

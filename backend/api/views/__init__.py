@@ -12,6 +12,11 @@ from api.views.pipeline_status import (
     SnapshotJobStatusView,
     SnapshotJobResultsView,
 )
+from api.views.country_request import (
+    CountryRequestCaptchaView,
+    CountryRequestView,
+    CountryRequestTallyView,
+)
 
 __all__ = [
     'InitialStatusView',
@@ -22,4 +27,7 @@ __all__ = [
     'SnapshotDatesView',
     'SnapshotJobStatusView',
     'SnapshotJobResultsView',
+    'CountryRequestCaptchaView',
+    'CountryRequestView',
+    'CountryRequestTallyView',
 ]
