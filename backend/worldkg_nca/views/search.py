@@ -383,7 +383,12 @@ def worldkg_semantic_triplet_search(request):
         tag_filters = Q()
         for key, value in query_tags.items():
             if value and exact_tag_match:
-                tag_filters &= Q(**{f"tags__{key}": value})
+                if key == "name":
+                    ***REMOVED*** name= is free text with OSM casing — exact match
+                    ***REMOVED*** must be case-insensitive ('jerk' == 'Jerk').
+                    tag_filters &= Q(tags__name__iexact=value)
+                else:
+                    tag_filters &= Q(**{f"tags__{key}": value})
             else:
                 tag_filters &= Q(tags__has_key=key)
         qs = qs.filter(tag_filters)
@@ -662,26 +667,51 @@ def worldkg_semantic_triplet_search(request):
     ***REMOVED*** Increase candidate limit when rdf_type is auto-inferred to find class matches
     initial_limit = max(top_k * 50, top_k) if auto_inferred_rdf_type else max(top_k * 10, top_k)
 
-    ***REMOVED*** ── Korean query handling ──────────────────────────────────────────
-    ***REMOVED*** When the query contains Hangul, FastText cc.en.300 cannot meaningfully
-    ***REMOVED*** rank candidates (all Korean OOV tokens produce similar/NaN distances).
-    ***REMOVED*** In this case, use a Postgres ILIKE pre-filter on the name= tag to find
-    ***REMOVED*** entities whose name contains the query text, then score them with the
-    ***REMOVED*** n-gram similarity.  This is a DB-level fallback for same-script Korean
-    ***REMOVED*** matching that the embedding-based path cannot handle.
+    ***REMOVED*** ── Name-term candidate pull ───────────────────────────────────────
+    ***REMOVED*** gv_tags_embedding encodes tag structure, not the name= text, so a
+    ***REMOVED*** name query ('jerk') has no path into the embedding-ordered window —
+    ***REMOVED*** on Jamaica it returned zero rows despite 25+ jerk-named entities
+    ***REMOVED*** (2026-10-16).  Pull name candidates separately and merge them into
+    ***REMOVED*** the embedding window so the substring boost / exact match can rank
+    ***REMOVED*** them.  When the query contains Hangul, FastText cc.en.300 cannot
+    ***REMOVED*** meaningfully rank candidates at all (OOV tokens produce similar/NaN
+    ***REMOVED*** distances), so the pre-filter is the primary retrieval path there.
     _is_korean_query = _contains_hangul(name_search_term)
+    name_candidates = []
     if _is_korean_query and name_search_term:
-        ***REMOVED*** Use ILIKE to find entities with the query text in their name
-        ***REMOVED*** This leverages the GIN index on tags jsonb for fast filtering
-        korean_candidates = list(
+        ***REMOVED*** Hangul never lands in name_romanized; ILIKE on the raw name=
+        ***REMOVED*** tag leverages the tags GIN index for same-script matching.
+        name_candidates = list(
             qs.filter(tags__name__icontains=name_search_term.strip())
             .order_by("name_distance")[:max(top_k * 10, 100)]
         )
+    elif name_search_term:
+        ***REMOVED*** Latin (and other) scripts: index-assisted trigram match on
+        ***REMOVED*** name_romanized (%% is the pg_trgm % operator — a bare % collides
+        ***REMOVED*** with psycopg2 placeholder parsing).  Case-free since romanized
+        ***REMOVED*** names are lowercased, and spelling-tolerant: 'jerk center'
+        ***REMOVED*** matches 'Jerk Centre' at sim 0.6.
+        name_candidates = list(
+            qs.extra(
+                where=["name_romanized %% %s"],
+                params=[name_search_term],
+            )
+            .annotate(
+                trgm_sim=RawSQL(
+                    "similarity(name_romanized, %s)",
+                    (name_search_term,),
+                    output_field=FloatField(),
+                )
+            )
+            .order_by("-trgm_sim")[:max(top_k * 10, 100)]
+        )
+
+    if name_candidates:
         ***REMOVED*** Merge with regular candidates (deduplicated by osm_type+osm_id)
         regular_candidates = list(qs.order_by("name_distance")[:initial_limit])
         seen_ids = set()
         candidates = []
-        for e in korean_candidates + regular_candidates:
+        for e in name_candidates + regular_candidates:
             key = (e.osm_type, e.osm_id)
             if key not in seen_ids:
                 seen_ids.add(key)
@@ -697,14 +727,22 @@ def worldkg_semantic_triplet_search(request):
     ***REMOVED*** stored OSM convention ("bubble tea" → "bubble_tea") so a typed
     ***REMOVED*** space form hits the underscore-stored tag. The `name` key is
     ***REMOVED*** exempt: entity names are free text, not tag vocabulary.
+    ***REMOVED*** name= values are free text stored with OSM casing, so match them
+    ***REMOVED*** case-insensitively — jsonb containment ('jerk center') misses the
+    ***REMOVED*** stored 'Jerk Center'.
+    _name_exact = (query_tags.get("name") or "").strip()
     _exact_pairs = {
-        k: (v if k == "name" else normalize_tag_value(v))
-        for k, v in query_tags.items() if v
+        k: normalize_tag_value(v)
+        for k, v in query_tags.items() if v and k != "name"
     }
-    if _exact_pairs:
+    if _exact_pairs or _name_exact:
+        qs_exact = qs
+        if _exact_pairs:
+            qs_exact = qs_exact.filter(tags__contains=_exact_pairs)
+        if _name_exact:
+            qs_exact = qs_exact.filter(tags__name__iexact=_name_exact)
         exact_matches = list(
-            qs.filter(tags__contains=_exact_pairs)
-            .order_by("name_distance")[:initial_limit]
+            qs_exact.order_by("name_distance")[:initial_limit]
         )
         if exact_matches:
             exact_ids = {(e.osm_type, e.osm_id) for e in exact_matches}

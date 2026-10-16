@@ -3,7 +3,10 @@
        plain ranked list — the score machinery (Show-scores toggle,
        per-column scores, final_score column) is gone. Layer-3 leaf:
        props in, events out; showNameless stays in the parent (it drives
-       the displayResults filter), toggled via v-model:show-nameless. -->
+       the displayResults filter), toggled via v-model:show-nameless.
+       Rows are one line (number · name · class); OSM tag strings were
+       dropped from the list 2026-10-16. -->
+
   <div v-if="rows.length > 0" class="d-flex flex-column gap-1">
     <div class="d-flex align-items-center gap-1">
       <h6 class="small fw-semibold mb-0">
@@ -25,7 +28,7 @@
       <li
         v-for="item in rows"
         :key="`${item.osm_type}-${item.osm_id}`"
-        class="list-group-item d-flex flex-column gap-0"
+        class="list-group-item"
       >
         <a
           :href="`https://www.openstreetmap.org/${item.osm_type}/${item.osm_id}`"
@@ -37,9 +40,7 @@
         >
           {{ item.name || '—' }}
         </a>
-        <small class="text-secondary">
-          {{ formatTags(item.tags) }}<template v-if="formatTags(item.tags)"> · </template>{{ (item.wkg_class || '—').replace(/^wkgs:/, '') }}
-        </small>
+        <small v-if="item.wkg_class" class="text-secondary"> · {{ item.wkg_class.replace(/^wkgs:/, '') }}</small>
       </li>
     </ol>
   </div>
@@ -55,14 +56,6 @@ export default {
     showNameless: { type: Boolean, default: false },
   },
   emits: ['update:showNameless', 'name-hover', 'name-leave'],
-  methods: {
-    formatTags(tags) {
-      if (!tags) return ''
-      const entries = Object.entries(tags).slice(0, 3)
-      const str = entries.map(([k, v]) => `${k}=${v}`).join(', ')
-      return entries.length < Object.keys(tags).length ? str + '…' : str
-    },
-  },
 }
 </script>
 

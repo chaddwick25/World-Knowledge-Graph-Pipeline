@@ -1,8 +1,8 @@
 <template>
   <div class="d-flex flex-column gap-2">
-    <!-- Query mode radio group — always visible (the mode switcher; only
-         the sub-mode content below swaps). Kept OUT of the v-else block
-         so the Researcher mode can switch back (2026-10-01). -->
+    <!-- Query mode radio group — the search primitives only; the
+         Researcher loop moved to the Doppelganger agent surface
+         (2026-10-16). -->
     <div class="d-flex flex-column gap-1">
       <div class="btn-group btn-group-sm" role="group" aria-label="Query mode">
         <input
@@ -26,38 +26,19 @@
           v-model="queryMode"
         >
         <label class="btn btn-outline-secondary" for="query-mode-tags">OSM Tag Query</label>
-
-        <input
-          type="radio"
-          class="btn-check"
-          name="query-mode"
-          id="query-mode-research"
-          autocomplete="off"
-          value="researcher"
-          v-model="queryMode"
-        >
-        <label class="btn btn-outline-secondary" for="query-mode-research">Researcher</label>
       </div>
     </div>
 
     <!-- Subdivision selector — always visible (2026-10-01): scopes the
-         sample questions, the structured/template searches, AND the
-         Researcher sub-mode (its QID rides the research endpoints). -->
+         sample questions and the structured/template searches. -->
     <SubdivisionSelector
       :country-name="countryName"
       @subdivision-selected="onSubdivisionSelected"
     />
 
-    <!-- Researcher sub-mode (2026-10-01): the general research loop
-         (KE interview → brief → decompose → execute → assemble) folded
-         in from the removed standalone Research tab. -->
-    <ResearchPanel
-      v-if="isResearcherMode"
-      :country-name="countryName"
-      :snapshot-date="snapshotDate"
-      :subdivision-qid="subdivisionQid"
-    />
-    <template v-else>
+    <!-- The Researcher loop lives on the Doppelganger agent surface
+         (2026-10-16) — the tools surface exposes only the search
+         primitives. -->
     <form class="d-flex flex-column gap-2" @submit.prevent="performSearch">
 
       <!-- Tag key/value (OSM Tag Query mode) -->
@@ -190,7 +171,6 @@
     <div v-if="!displayResults.length && searched" class="small text-secondary">
       No results found for this query.
     </div>
-    </template>
   </div>
 </template>
 
@@ -215,7 +195,7 @@
 import axios from 'axios'
 import ExecutionTraceFlow from './ExecutionTraceFlow.vue'
 import SubdivisionSelector from './SubdivisionSelector.vue'
-import ResearchPanel from './ResearchPanel.vue'
+
 import SampleQuestions from './SampleQuestions.vue'
 import SearchResultsTable from './SearchResultsTable.vue'
 import { useEntityInfoStore } from '../stores/entityInfoStore'
@@ -267,7 +247,7 @@ const SAMPLE_QUESTIONS = parseCsv(sampleQuestionsCsv)
 
 export default {
   name: 'SemanticSearchPanel',
-  components: { ExecutionTraceFlow, SubdivisionSelector, ResearchPanel, SampleQuestions, SearchResultsTable },
+  components: { ExecutionTraceFlow, SubdivisionSelector, SampleQuestions, SearchResultsTable },
   setup() {
     const entityInfoStore = useEntityInfoStore()
     return { entityInfoStore }
@@ -381,11 +361,7 @@ export default {
     isTemplateMode() {
       return this.queryMode === 'template'
     },
-    /** Researcher sub-mode (2026-10-01): the general research loop that
-     *  was folded in from the removed standalone Research tab. */
-    isResearcherMode() {
-      return this.queryMode === 'researcher'
-    },
+
     /** Sample questions served by the backend (country or subdivision
      *  scope — the service generates subdivision questions from the
      *  entities inside the subdivision). Falls back to the bundled CSV
