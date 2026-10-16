@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import (
-    PbfFile, Task, OsmiumDatasetMetrics
+    PbfFile, Task, OsmiumDatasetMetrics, CountryRequest
 )
 
 
@@ -35,4 +35,21 @@ class OsmiumDatasetMetricsAdmin(admin.ModelAdmin):
     readonly_fields = [field.name for field in OsmiumDatasetMetrics._meta.fields]
 
     def has_add_permission(self, request):
+        return False
+
+
+@admin.register(CountryRequest)
+class CountryRequestAdmin(admin.ModelAdmin):
+    """The request tally — rows are append-only votes; the count per
+    country is what drives 'which country to process next'."""
+    list_display = ('country_name', 'iso_code', 'surface', 'requester_name', 'created_at')
+    list_filter = ('surface', 'continent')
+    search_fields = ('country_name', 'iso_code', 'requester_name')
+    readonly_fields = [field.name for field in CountryRequest._meta.fields]
+    date_hierarchy = 'created_at'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
         return False
