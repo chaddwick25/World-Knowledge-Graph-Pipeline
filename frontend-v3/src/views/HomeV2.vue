@@ -42,7 +42,7 @@
         class="home-card"
         @click="openPicker('/agents/doppelganger')"
       >
-        Doppelganger agent
+        Doppelganger Agent
       </button>
     </section>
 
