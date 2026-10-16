@@ -50,6 +50,9 @@ from core.models.artifact import (
     ReasoningWorkflow,
     ReasoningStep,
 )
+from core.models.country_request import (
+    CountryRequest,
+)
 
 # Signal handler must be imported to register the receiver
 from core.models.infrastructure import update_processing_metrics
@@ -72,6 +75,8 @@ __all__ = [
     # artifact
     'CountryArtifact', 'EmbeddingArtifact', 'PartitionRegistry',
     'ReasoningWorkflow', 'ReasoningStep',
+    # country_request
+    'CountryRequest',
     # signals
     'update_processing_metrics',
 ]

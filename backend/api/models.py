@@ -27,6 +27,8 @@ from osmsnapshot.models import (
     PbfTagDistribution,
 )
 
+from core.models import CountryRequest
+
 # Export all models for backward compatibility
 __all__ = [
     'PbfFile',
@@ -46,4 +48,5 @@ __all__ = [
     'WorldKGClassDrift',
     'WorldKGClassFingerprint',
     'PbfTagDistribution',
+    'CountryRequest',
 ]
