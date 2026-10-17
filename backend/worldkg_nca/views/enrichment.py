@@ -27,7 +27,7 @@ def worldkg_enrich_entity(request):
     """
     Enrich a single OSM entity with WorldKG classification.
     
-    POST /api/worldkg/enrich/entity/
+    POST /api/nca/enrich/entity/
     Body: {
         "osm_type": "node|way|relation",
         "osm_id": int,

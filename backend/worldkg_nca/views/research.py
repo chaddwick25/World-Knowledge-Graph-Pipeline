@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import threading
+import time
 import uuid
 
 from django.http import JsonResponse, StreamingHttpResponse
@@ -46,6 +47,15 @@ def research_stream(request):
     if not prompt_text:
         return JsonResponse({"error": "prompt required"}, status=400)
 
+    # Normalize to ISO before anything downstream — the frontend sends
+    # country display names ("Jamaica"); persisting the raw param made
+    # /api/nca/research/runs/?country_code=JM miss the row (2026-10-16).
+    if country_code:
+        try:
+            country_code = resolve_iso_code(country_code)
+        except Exception:
+            pass  # use as-is if resolution fails
+
     # Traceability: one trace per run; the
     # caller can propagate a cross-app id via ?trace_id= (or X-Trace-Id).
     trace_id = request.GET.get("trace_id") or uuid.uuid4().hex
@@ -55,6 +65,10 @@ def research_stream(request):
 
         loop = asyncio.get_running_loop()
         events = asyncio.Queue(maxsize=512)
+        # Ordered copy of every emitted event for the persisted
+        # ResearchRun row; summary_delta tokens coalesce into one entry
+        # so the JSONB stays compact.
+        event_log = []
 
         def emit(event, **payload):
             if isinstance(event, dict):
@@ -62,40 +76,76 @@ def research_stream(request):
                 event = event.get("event") or "message"
             # Deterministic stage markers (behind TRACE_DETERMINISTIC_STAGES=1).
             TraceService.stage_event(event, payload)
-            loop.call_soon_threadsafe(events.put_nowait, {"event": event, **payload})
+            item = {"event": event, **payload}
+            loop.call_soon_threadsafe(events.put_nowait, item)
+            if event == "summary_delta" and event_log and \
+                    event_log[-1].get("event") == "summary_delta":
+                event_log[-1]["delta"] = \
+                    (event_log[-1].get("delta") or "") + (payload.get("delta") or "")
+            else:
+                event_log.append(item)
 
         def run():
+            from django.utils import timezone
+            from core.models import ResearchRun
+
+            started = time.monotonic()
+            # Run persistence is observability — fail-soft: a DB hiccup
+            # must never hang the stream (the sentinel below is the only
+            # thing that ends the client read).
+            run_row = None
             try:
-                from core.services.trace_service import TraceService
+                run_row = ResearchRun.objects.create(
+                    trace_id=trace_id,
+                    prompt=prompt_text,
+                    country_code=country_code or "",
+                    snapshot_date=snapshot_date or "",
+                    subdivision_qid=subdivision_qid or "",
+                )
+            except Exception:
+                logger.exception("ResearchRun create failed")
+            try:
                 from semantic_search.services.research_service import (
                     ResearchOrchestratorService,
                 )
-                cc = country_code
-                if cc:
-                    try:
-                        cc = resolve_iso_code(cc)
-                    except Exception:
-                        pass  # use as-is if resolution fails
                 # Thread-local trace: LLM spans from decompose/assemble/follow-ups
                 # attach as children; question/tool events become point spans.
                 with TraceService.run_trace(
                     "research", trace_id=trace_id,
                     metadata={
-                        "prompt": prompt_text[:200], "country_code": cc,
+                        "prompt": prompt_text[:200], "country_code": country_code,
                         "snapshot_date": snapshot_date,
                         "subdivision_qid": subdivision_qid,
                     },
                 ):
                     result = ResearchOrchestratorService.plan(
-                        prompt_text, cc, snapshot_date, event_callback=emit,
+                        prompt_text, country_code, snapshot_date, event_callback=emit,
                         subdivision_qid=subdivision_qid,
                     )
                     if isinstance(result, dict):
                         result["trace_id"] = trace_id
+                        if run_row is not None:
+                            run_row.recipe = result.get("recipe") or ""
+                    if run_row is not None:
+                        run_row.status = "done"
+                        run_row.result = result if isinstance(result, dict) else {}
                     emit("done", result=result)
             except Exception as exc:  # noqa: BLE001 — surface errors as an SSE event
+                if run_row is not None:
+                    run_row.status = "error"
+                    run_row.error = str(exc)
                 emit("error", error=str(exc))
             finally:
+                if run_row is not None:
+                    run_row.finished_at = timezone.now()
+                    run_row.duration_ms = int((time.monotonic() - started) * 1000)
+                    run_row.events = json.loads(
+                        json.dumps(event_log, default=str)
+                    )
+                    try:
+                        run_row.save()
+                    except Exception:
+                        logger.exception("ResearchRun persist failed")
                 loop.call_soon_threadsafe(events.put_nowait, None)  # sentinel
 
         threading.Thread(target=run, daemon=True).start()
@@ -270,3 +320,80 @@ def research_finalize(request):
     if not result:
         return JsonResponse({"error": "no brief extractable"}, status=422)
     return JsonResponse(result)
+
+
+@require_GET
+def research_runs(request):
+    """List persisted research runs (queryable run history).
+
+    GET /api/nca/research/runs/?country_code=JM&status=done&limit=50
+        &trace_id=<hex>
+
+    Compact rows only (no events/result payload) — detail via
+    research_run_detail.
+    """
+    from core.models import ResearchRun
+
+    qs = ResearchRun.objects.all()
+    country_code = request.GET.get("country_code")
+    if country_code:
+        qs = qs.filter(country_code__iexact=country_code)
+    status = request.GET.get("status")
+    if status:
+        qs = qs.filter(status=status)
+    trace_id = request.GET.get("trace_id")
+    if trace_id:
+        qs = qs.filter(trace_id=trace_id)
+    try:
+        limit = min(int(request.GET.get("limit") or 50), 200)
+    except (TypeError, ValueError):
+        limit = 50
+
+    runs = [
+        {
+            "id": str(r.id),
+            "trace_id": r.trace_id,
+            "prompt": r.prompt[:200],
+            "country_code": r.country_code,
+            "snapshot_date": r.snapshot_date,
+            "status": r.status,
+            "recipe": r.recipe,
+            "duration_ms": r.duration_ms,
+            "error": r.error[:300] if r.error else "",
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            "event_count": len(r.events or []),
+        }
+        for r in qs[:limit]
+    ]
+    return JsonResponse({"runs": runs, "count": len(runs)})
+
+
+@require_GET
+def research_run_detail(request, run_id):
+    """Full run record: events JSONB + terminal result.
+
+    GET /api/nca/research/runs/<uuid>/
+    """
+    from core.models import ResearchRun
+
+    try:
+        run = ResearchRun.objects.get(id=run_id)
+    except (ResearchRun.DoesNotExist, ValueError):
+        return JsonResponse({"error": "run not found"}, status=404)
+    return JsonResponse({
+        "id": str(run.id),
+        "trace_id": run.trace_id,
+        "prompt": run.prompt,
+        "country_code": run.country_code,
+        "snapshot_date": run.snapshot_date,
+        "subdivision_qid": run.subdivision_qid,
+        "status": run.status,
+        "recipe": run.recipe,
+        "events": run.events or [],
+        "result": run.result,
+        "error": run.error,
+        "duration_ms": run.duration_ms,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+    })
