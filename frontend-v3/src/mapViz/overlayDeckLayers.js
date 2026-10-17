@@ -84,7 +84,7 @@ export function escapeHtml(value) {
 
 /** Accept either a raw data-tool result or an explicit entities list
  *  (moved from useMapOverlayLayers.js — carries osm fields now). */
-export function normalizeOverlayEntities(overlay) {
+function normalizeOverlayEntities(overlay) {
   const raw = overlay.result || overlay.entities || []
   const source = Array.isArray(raw)
     ? raw

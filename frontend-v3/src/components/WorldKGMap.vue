@@ -438,7 +438,7 @@ export default {
 
     // ── Map Labels layers (mapLabelsStore → labelManager) ────────────────
     // Rebuilds the TextLayers from store state (data + size/limit settings
-    // from MapLabelsControls). Empty stores produce no layers, so the deck
+    // the label controls). Empty stores produce no layers, so the deck
     // canvas stays transparent until labels exist.
     renderMapLabels() {
       if (!this.mapLabelsStore) return
