@@ -116,6 +116,81 @@ def step_6_mark_search_ready(self, env: CountryEnvelope) -> CountryEnvelope:
             pipeline_run_id=env.pipeline_run_id,
         )
 
+    ***REMOVED*** WorldKG class fingerprint (ISSUE-class-drift-capability): the
+    ***REMOVED*** snapshot-scoped ontology profile — class distribution, Shannon
+    ***REMOVED*** entropy, unique classes, top-5. One aggregate over
+    ***REMOVED*** OsmEntity.wkg_class; non-fatal like 5c. When a previous snapshot
+    ***REMOVED*** exists, the newest pair's JS drift is computed inline (the pair
+    ***REMOVED*** math is dict-level once both fingerprints exist); older pair
+    ***REMOVED*** backfill stays with the compute_class_drift command.
+    try:
+        from osmsnapshot.models import Snapshot
+        from semantic_search.services.worldkg_drift_service import (
+            get_worldkg_drift_service,
+        )
+        snapshot = (
+            Snapshot.objects
+            .filter(
+                country_code__iexact=env.iso,
+                snapshot_date=env.snapshot_date,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if snapshot is not None:
+            service = get_worldkg_drift_service()
+            fp = service.compute_fingerprint(snapshot)
+            _log(
+                logger,
+                "info",
+                "WorldKG class fingerprint computed",
+                country=env.iso,
+                unique_classes=fp.unique_classes,
+                shannon_entropy=round(fp.shannon_entropy, 3),
+                pipeline_run_id=env.pipeline_run_id,
+            )
+            prev_snapshot = (
+                Snapshot.objects
+                .filter(
+                    country_code__iexact=env.iso,
+                    snapshot_date__lt=env.snapshot_date,
+                )
+                .order_by("-snapshot_date")
+                .first()
+            )
+            if prev_snapshot is not None:
+                drift = service.fill_pair_if_missing(prev_snapshot, snapshot)
+                if drift is not None:
+                    _log(
+                        logger,
+                        "info",
+                        "WorldKG class drift computed for latest pair",
+                        country=env.iso,
+                        snapshot_from=prev_snapshot.snapshot_date,
+                        snapshot_to=snapshot.snapshot_date,
+                        js_divergence=round(drift.js_divergence, 4),
+                        drift_magnitude=drift.drift_magnitude,
+                        pipeline_run_id=env.pipeline_run_id,
+                    )
+        else:
+            _log(
+                logger,
+                "info",
+                "No Snapshot row for country — fingerprint skipped",
+                country=env.iso,
+                snapshot_date=env.snapshot_date,
+                pipeline_run_id=env.pipeline_run_id,
+            )
+    except Exception as exc:
+        _log(
+            logger,
+            "warning",
+            "Class fingerprint failed — search readiness unaffected",
+            country=env.iso,
+            error=str(exc),
+            pipeline_run_id=env.pipeline_run_id,
+        )
+
     from core.services.pipeline.search_ready_service import SearchReadyService
     SearchReadyService().run(env)
 

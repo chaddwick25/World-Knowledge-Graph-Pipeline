@@ -53,6 +53,9 @@ from core.models.artifact import (
 from core.models.country_request import (
     CountryRequest,
 )
+from core.models.research_run import (
+    ResearchRun,
+)
 
 ***REMOVED*** Signal handler must be imported to register the receiver
 from core.models.infrastructure import update_processing_metrics
@@ -77,6 +80,8 @@ __all__ = [
     'ReasoningWorkflow', 'ReasoningStep',
     ***REMOVED*** country_request
     'CountryRequest',
+    ***REMOVED*** research_run
+    'ResearchRun',
     ***REMOVED*** signals
     'update_processing_metrics',
 ]

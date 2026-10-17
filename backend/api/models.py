@@ -1,5 +1,6 @@
-***REMOVED*** Backward compatibility imports - models moved to extraction, orchestration, osmsnapshot apps
-***REMOVED*** This file maintains imports for existing code that references api.models
+***REMOVED*** Backward compatibility imports - models live in the core and osmsnapshot
+***REMOVED*** apps (extraction/orchestration were consolidated into core). This file
+***REMOVED*** maintains imports for existing code that references api.models
 
 from core.models import (
     PbfFile,
@@ -27,7 +28,7 @@ from osmsnapshot.models import (
     PbfTagDistribution,
 )
 
-from core.models import CountryRequest
+from core.models import CountryRequest, ResearchRun
 
 ***REMOVED*** Export all models for backward compatibility
 __all__ = [
@@ -49,4 +50,5 @@ __all__ = [
     'WorldKGClassFingerprint',
     'PbfTagDistribution',
     'CountryRequest',
+    'ResearchRun',
 ]
