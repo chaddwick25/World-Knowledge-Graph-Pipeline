@@ -158,6 +158,59 @@ export function buildSearchResultLayer(results) {
   })]
 }
 
+// ── Seed overlay (doppelganger intake, ISSUE-48) ─────────────────────────
+
+/** Confirmed seed pin (green) + candidate markers (amber). The map click
+ *  on a candidate IS the confirmation gesture; rows carry the marker
+ *  shape the panel adapts ({geom: {lat, lon}, seed_kind}) plus the entity
+ *  fields the info panel reads, so hover/click work uniformly. */
+export function buildSeedOverlayLayers(seedOverlay) {
+  const { confirmed, candidates } = seedOverlay || {}
+  const layers = []
+  const rows = (candidates || [])
+    .filter((r) => r.geom && r.geom.lat != null && r.geom.lon != null)
+    .map((r) => ({ ...r, position: [r.geom.lon, r.geom.lat] }))
+  if (rows.length) {
+    layers.push(new ScatterplotLayer({
+      id: 'seed-candidates',
+      data: rows,
+      getPosition: (d) => d.position,
+      getRadius: 16,
+      radiusUnits: 'pixels',
+      filled: true,
+      stroked: true,
+      // Candidates: amber — visually distinct from search-result indigo.
+      getFillColor: [245, 158, 11, 230],
+      getLineColor: [254, 243, 199, 255],
+      lineWidthMinPixels: 1,
+      pickable: true,
+      autoHighlight: true,
+    }))
+  }
+  if (confirmed?.geom && confirmed.geom.lat != null
+    && confirmed.geom.lon != null) {
+    layers.push(new ScatterplotLayer({
+      id: 'seed-confirmed',
+      data: [{
+        ...confirmed,
+        position: [confirmed.geom.lon, confirmed.geom.lat],
+      }],
+      getPosition: (d) => d.position,
+      getRadius: 22,
+      radiusUnits: 'pixels',
+      filled: true,
+      stroked: true,
+      // Confirmed seed: green — the "this is the one" state.
+      getFillColor: [34, 197, 94, 235],
+      getLineColor: [209, 250, 229, 255],
+      lineWidthMinPixels: 2,
+      pickable: true,
+      autoHighlight: true,
+    }))
+  }
+  return layers
+}
+
 // ── Query graph (anchor/entity + links + distance lines) ────────────────
 
 export function buildQueryGraphLayers(graph) {

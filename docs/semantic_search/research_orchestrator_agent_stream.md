@@ -205,6 +205,35 @@ SSE event name and named listeners never fire.
 frontend `useChat`/`DefaultChatTransport` consumes it. 503 JSON when the
 4070 is down; the stream always terminates with a finish frame.
 
+**Live seed resolution (2026-10-17, ISSUE-48)**: `research_chat` may
+emit a `data-seed` part between `start` and `text-start`: the AI SDK
+data-part channel, so the frontend renders it from `message.parts`:
+
+```
+data: {"type": "data-seed", "id": "seed",
+       "data": {found, asked, name?, osm_id?, osm_type?, tags?,
+                lat?, lon?, candidates?: [...], suggestions?: [...]}}
+```
+
+The resolution is deterministic and slot-gated (`live_seed_part` in
+`research_service.py`): it fires on turn 1 when the ask routes as a
+doppelganger ask (the surface's `recipe=doppelganger_report` override or
+the router), and on the turn that answers a `[seed]`-marked KE question
+(the marker stays in the transcript; the frontend strips it for
+display). Trigram tier only (~50ms); `research/finalize/` keeps the
+full geocoder and stays authoritative; a live miss that finalize finds
+is acceptable. Multi-hit names carry `candidates` (the map click IS the
+confirmation); misses carry `suggestions` ("did you mean ...?").
+
+**Recipe hard-select (2026-10-17)**: `research_stream` and
+`research_finalize` accept a `recipe` param: the doppelganger surface
+sends `recipe=doppelganger_report`, and `plan`/`finalize_brief` bypass
+`route_to_recipe` when the key resolves. `/tools` sends none; its
+behavior is unchanged. The KE system prompt also gains the deterministic
+dataset-context block (`_render_ke_digest` over the same
+`_class_drift_report` builder the `classDrift` tool uses), so
+data-metadata questions are answered from data, never interviewed.
+
 Frontend consumption: `EventSource` (GET-only; the URL is built from
 `axios.defaults.baseURL`, a relative `/nca/...` path hits Vite with no
 proxy), same pattern as the search panel's template mode. The `done`

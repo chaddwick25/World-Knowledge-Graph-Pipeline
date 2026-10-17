@@ -221,6 +221,48 @@ def test_tool_evidence_text():
     assert "structuredSearch" not in text
 
 
+def test_tool_evidence_text_class_drift_dict():
+    ***REMOVED*** The classDrift executor returns a dict, not a row list: the
+    ***REMOVED*** evidence loop must render one compact line, not crash
+    ***REMOVED*** (TypeError: unhashable type: 'slice', found 2026-10-17).
+    calls = [
+        {"tool": "classDrift", "args": {}, "output": {
+            "fingerprint": {
+                "snapshot_date": "2025_12_31",
+                "top_classes": {"building": 22.1, "amenity=cafe": 8.0},
+                "shannon_entropy": 3.2,
+                "unique_classes": 214,
+                "total_entities": 368942,
+            },
+            "drift": {
+                "pairs": 1,
+                "latest": {
+                    "from": "2024_06_30", "to": "2025_12_31",
+                    "js_divergence": 0.421, "drift_magnitude": "high",
+                    "dominant_shift": {"building": 5.2},
+                },
+            },
+        }},
+        {"tool": "similarEntities", "args": {}, "output": [
+            {"name": "Madigan's", "country_code": "IE"},
+        ]},
+    ]
+    text = ResearchOrchestratorService._tool_evidence_text(calls)
+    assert "classDrift: 368942 entities" in text
+    assert "top: building 22.1%" in text
+    assert "drift high (JS 0.421)" in text
+    assert "similarEntities: Madigan's (IE)" in text
+
+
+def test_tool_evidence_text_class_drift_no_baseline():
+    calls = [{"tool": "classDrift", "args": {}, "output": {
+        "fingerprint": {"total_entities": 10, "top_classes": {}},
+        "drift": None,
+    }}]
+    text = ResearchOrchestratorService._tool_evidence_text(calls)
+    assert "single snapshot, no drift baseline" in text
+
+
 def test_preplan_tools_executes_and_emits(monkeypatch):
     from semantic_search.services import research_service as rs
     ***REMOVED*** The settings default is '0' locally (compose sets '1' for the
@@ -443,3 +485,310 @@ def test_local_name_places_construction():
                for t in tokens)
     ]
     assert hits == ["Father Bull Jerk"]
+
+
+def test_resolve_recipe_override_wins():
+    ***REMOVED*** The doppelganger surface hard-selects its recipe: the override
+    ***REMOVED*** wins even when the ask carries no doppelganger vocabulary.
+    recipe = ResearchOrchestratorService._resolve_recipe(
+        "best bubble tea spots", "doppelganger_report",
+    )
+    assert recipe.get("key") == "doppelganger_report"
+
+
+def test_resolve_recipe_unknown_key_routes():
+    ***REMOVED*** An unknown key must not silently become the default recipe with
+    ***REMOVED*** the surface's expectation unmet: it falls through to the router,
+    ***REMOVED*** which reads the ask.
+    recipe = ResearchOrchestratorService._resolve_recipe(
+        "find doppelgangers of The Friars Tavern", "bogus_recipe",
+    )
+    assert recipe.get("key") == "doppelganger_report"
+
+
+def test_resolve_recipe_no_override_routes():
+    recipe = ResearchOrchestratorService._resolve_recipe("best cafes", None)
+    assert recipe.get("key") == "food_report"
+
+
+def test_verify_seed_honors_recipe_override(monkeypatch):
+    ***REMOVED*** An ask without doppelganger vocabulary still verifies on the
+    ***REMOVED*** doppelganger surface: the override bypasses the route gate.
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    hit = {"osm_id": 1, "osm_type": "node", "name": "X", "lat": 1.0,
+           "lon": 2.0, "tags": {}}
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode", staticmethod(lambda *a, **k: hit),
+    )
+    seed = ResearchOrchestratorService._verify_seed(
+        "tell me about X", "Research X focusing on X", "JM", None,
+        recipe_key="doppelganger_report",
+    )
+    assert seed and seed["found"] is True and seed["name"] == "X"
+
+
+def test_verify_seed_no_override_non_doppelganger_ask(monkeypatch):
+    ***REMOVED*** /tools surface (no override): a food ask verifies nothing.
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode",
+        staticmethod(lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("geocode must not run"))),
+    )
+    seed = ResearchOrchestratorService._verify_seed(
+        "best cafes in town", "Research cafes", "JM", None,
+    )
+    assert seed is None
+
+
+def test_finalize_brief_confirmed_seed_skips_geocode(monkeypatch):
+    ***REMOVED*** The user's live map pick is authoritative: no re-geocode, the
+    ***REMOVED*** Seed line renders from the confirmed row.
+    def boom(*a, **k):
+        raise AssertionError("_verify_seed must not run for a confirmed seed")
+    monkeypatch.setattr(
+        ResearchOrchestratorService, "_verify_seed", staticmethod(boom),
+    )
+    confirmed = {"found": True, "asked": "The Friars Tavern",
+                 "name": "The Friars Tavern", "osm_id": 9842380892,
+                 "osm_type": "node", "tags": {"amenity": "pub"},
+                 "lat": 51.5, "lon": -0.1}
+    out = ResearchOrchestratorService.finalize_brief(
+        [{"role": "user", "content": "doppelgangers of The Friars Tavern"}],
+        "IE", None, recipe_key="doppelganger_report",
+        confirmed_seed=confirmed,
+    )
+    assert out["seed"]["osm_id"] == 9842380892
+    assert "Seed: The Friars Tavern (pub)" in out["brief"]
+
+
+def test_render_ke_digest_fingerprint_and_drift():
+    digest = {
+        "fingerprint": {
+            "snapshot_date": "2025_12_31",
+            "top_classes": {"building": 22.1, "amenity=cafe": 8.0},
+            "shannon_entropy": 3.2,
+            "unique_classes": 214,
+            "total_entities": 368942,
+        },
+        "drift": {
+            "pairs": 1,
+            "latest": {
+                "from": "2024_06_30", "to": "2025_12_31",
+                "js_divergence": 0.421, "drift_magnitude": "high",
+                "dominant_shift": {"building": 5.2},
+            },
+        },
+    }
+    text = ResearchOrchestratorService._render_ke_digest(digest)
+    assert "368942 entities" in text
+    assert "Drift since 2024_06_30: high (JS 0.421)" in text
+    assert "building +5.2%" in text
+
+
+def test_render_ke_digest_single_snapshot():
+    text = ResearchOrchestratorService._render_ke_digest({
+        "fingerprint": {"snapshot_date": "2025_12_31", "total_entities": 10,
+                        "unique_classes": 3, "top_classes": {}},
+        "drift": None,
+    })
+    assert "Single snapshot: no drift baseline yet" in text
+
+
+def test_render_ke_digest_empty_is_fail_soft():
+    assert ResearchOrchestratorService._render_ke_digest(None) == ""
+    assert "No class fingerprint yet" in \
+        ResearchOrchestratorService._render_ke_digest({})
+
+
+def test_chat_messages_injects_digest_and_strips_marker():
+    msgs = [
+        {"role": "user", "content": "find doppelgangers of a tavern"},
+        {"role": "assistant", "content": "[seed] Which place exactly?"},
+    ]
+    full = ResearchOrchestratorService.chat_messages(
+        msgs, "JM", "2025_12_31",
+        digest_text="Dataset context:\n- Snapshot 2025_12_31: 10 entities",
+    )
+    assert "Dataset context:" in full[0]["content"]
+    ***REMOVED*** the [seed] marker is protocol, not prose: stripped from LLM text
+    assert "[seed]" not in full[2]["content"]
+    assert "Which place exactly?" in full[2]["content"]
+
+
+def test_message_text_keeps_marker_for_gate():
+    ***REMOVED*** The live-resolution gate reads the RAW transcript to detect the
+    ***REMOVED*** marker; only LLM-facing text strips it.
+    raw = ResearchOrchestratorService._message_text(
+        {"role": "assistant", "content": "[seed] Which place exactly?"})
+    assert "[seed]" in raw
+
+
+def test_live_seed_part_turn1_doppelganger_ask(monkeypatch):
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    captured = {}
+
+    def fake_candidates(name, cc=None, sd=None, limit=5, min_sim=0.4):
+        captured["name"] = name
+        captured["cc"] = cc
+        return {"asked": name, "candidates": [
+            {"osm_id": 9842380892, "osm_type": "node",
+             "name": "The Friars Tavern", "lat": 53.09, "lon": -8.12,
+             "tags": {"amenity": "pub"}},
+        ]}
+
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode_candidates", staticmethod(fake_candidates),
+    )
+    part = ResearchOrchestratorService.live_seed_part(
+        [{"role": "user",
+          "content": "find doppelgangers of The Friars Tavern"}],
+        recipe_key="doppelganger_report", country_code="IE",
+    )
+    assert captured["name"] == "The Friars Tavern"
+    assert part["type"] == "data-seed" and part["id"] == "seed"
+    assert part["data"]["found"] is True
+    assert part["data"]["osm_id"] == 9842380892
+    assert "candidates" not in part["data"]  ***REMOVED*** single hit: no list
+
+
+def test_live_seed_part_marker_gated_turn(monkeypatch):
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode_candidates",
+        staticmethod(lambda name, cc=None, sd=None, limit=5, min_sim=0.4: {
+            "asked": name, "candidates": [
+                {"osm_id": 1, "osm_type": "node", "name": name,
+                 "lat": 1.0, "lon": 2.0, "tags": {}},
+            ]}),
+    )
+    part = ResearchOrchestratorService.live_seed_part(
+        [
+            {"role": "user", "content": "find doppelgangers of a tavern"},
+            {"role": "assistant", "content": "[seed] Which place exactly?"},
+            {"role": "user", "content": "Father Bull Jerk"},
+        ],
+        recipe_key="doppelganger_report",
+    )
+    assert part["data"]["found"] is True
+    assert part["data"]["asked"] == "Father Bull Jerk"
+
+
+def test_live_seed_part_absent_on_non_answer_turns(monkeypatch):
+    ***REMOVED*** No [seed] marker on the last assistant turn, no turn-1 ask: no
+    ***REMOVED*** resolution, no part (axis/constraint turns never geocode).
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode_candidates",
+        staticmethod(lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("must not geocode"))),
+    )
+    part = ResearchOrchestratorService.live_seed_part(
+        [
+            {"role": "user", "content": "find doppelgangers of a tavern"},
+            {"role": "assistant", "content": "Got it. Similar how?"},
+            {"role": "user", "content": "same cuisine"},
+        ],
+        recipe_key="doppelganger_report",
+    )
+    assert part is None
+
+
+def test_live_seed_part_not_found_carries_suggestions(monkeypatch):
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode_candidates",
+        staticmethod(lambda name, cc=None, sd=None, limit=5, min_sim=0.4: {
+            "asked": name, "candidates": []}))
+    monkeypatch.setattr(
+        EntityGeocoder, "seed_suggestions",
+        staticmethod(lambda name, cc=None, sd=None, limit=3: [
+            {"osm_id": 5, "osm_type": "node", "name": "The Friars Tavern",
+             "lat": 1.0, "lon": 2.0, "tags": {}}]))
+    part = ResearchOrchestratorService.live_seed_part(
+        [{"role": "user", "content": "doppelgangers of Friers Tavern"}],
+        recipe_key="doppelganger_report",
+    )
+    assert part["data"]["found"] is False
+    assert part["data"]["suggestions"][0]["name"] == "The Friars Tavern"
+
+
+def test_live_seed_part_multi_hit_carries_candidates(monkeypatch):
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    rows = [
+        {"osm_id": 1, "osm_type": "node", "name": "Jerk Center",
+         "lat": 18.1, "lon": -77.2, "tags": {}},
+        {"osm_id": 2, "osm_type": "node", "name": "Jerk Center 2",
+         "lat": 18.2, "lon": -77.3, "tags": {}},
+    ]
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode_candidates",
+        staticmethod(lambda name, cc=None, sd=None, limit=5, min_sim=0.4: {
+            "asked": name, "candidates": rows}),
+    )
+    part = ResearchOrchestratorService.live_seed_part(
+        [{"role": "user", "content": "doppelgangers of Jerk Center"}],
+        recipe_key="doppelganger_report",
+    )
+    assert part["data"]["candidates"] == rows
+    assert part["data"]["osm_id"] == 1
+
+
+def test_live_seed_part_no_resolution_on_tools_surface(monkeypatch):
+    ***REMOVED*** /tools (no override, food ask): turn 1 does not geocode.
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode_candidates",
+        staticmethod(lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("must not geocode"))),
+    )
+    part = ResearchOrchestratorService.live_seed_part(
+        [{"role": "user", "content": "best cafes in Dublin"}],
+    )
+    assert part is None
+
+
+def test_live_seed_part_turn1_unextractable_subject_skips(monkeypatch):
+    ***REMOVED*** Turn 1 routes as doppelganger but the subject pattern cannot
+    ***REMOVED*** extract a name: skip (the KE's [seed] question catches the answer
+    ***REMOVED*** next turn) instead of geocoding prose.
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode_candidates",
+        staticmethod(lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("must not geocode"))),
+    )
+    part = ResearchOrchestratorService.live_seed_part(
+        [{"role": "user", "content": "help me find twins"}],
+        recipe_key="doppelganger_report",
+    )
+    assert part is None
+
+
+def test_live_seed_part_strips_synthetic_seed_handshake(monkeypatch):
+    ***REMOVED*** An explicit map pick is announced as "Seed: <name> (kind)" - the
+    ***REMOVED*** handshake format. If the KE's [seed] question is still the last
+    ***REMOVED*** assistant turn, the gate must geocode the NAME, not the wrapper.
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    captured = {}
+
+    def fake_candidates(name, cc=None, sd=None, limit=5, min_sim=0.4):
+        captured["name"] = name
+        return {"asked": name, "candidates": [
+            {"osm_id": 9, "osm_type": "node", "name": "The Friars Tavern",
+             "lat": 53.09, "lon": -8.12, "tags": {"amenity": "pub"}},
+        ]}
+
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode_candidates", staticmethod(fake_candidates),
+    )
+    part = ResearchOrchestratorService.live_seed_part(
+        [
+            {"role": "user", "content": "find doppelgangers of a tavern"},
+            {"role": "assistant", "content": "[seed] Which place exactly?"},
+            {"role": "user", "content": "Seed: The Friars Tavern (pub)"},
+        ],
+        recipe_key="doppelganger_report",
+    )
+    assert captured["name"] == "The Friars Tavern"
+    assert part["data"]["found"] is True

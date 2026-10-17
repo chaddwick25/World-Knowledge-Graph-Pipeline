@@ -212,6 +212,97 @@ class EntityGeocoder:
         ]
 
     @staticmethod
+    def _trigram_rows(name_variant: str, qs, limit: int, min_sim: float):
+        """One indexed trigram query, ranked by descending similarity,
+        with the fragment guard (a short query must not match a much
+        longer candidate at low similarity). Shared by the live seed
+        path; `geocode()` keeps its own tier-1 query untouched."""
+        from django.contrib.postgres.search import TrigramSimilarity
+        return list(
+            qs.extra(
+                where=[
+                    "name_romanized %% %s AND "
+                    "similarity(name_romanized, %s) >= %s AND "
+                    "NOT (similarity(name_romanized, %s) < 0.6 AND "
+                    "     length(name_romanized) > %s)"
+                ],
+                params=[name_variant, name_variant, min_sim,
+                        name_variant, int(1.6 * len(name_variant))],
+            )
+            .order_by(
+                TrigramSimilarity("name_romanized", name_variant).desc(),
+            )[:limit]
+        )
+
+    @staticmethod
+    def geocode_candidates(entity_name: str, country_code: str = None,
+                           snapshot_date: str = None, limit: int = 5,
+                           min_sim: float = 0.4) -> dict:
+        """Ranked candidates for the live seed resolution (ISSUE-48).
+
+        Trigram tier ONLY — one indexed query (~50ms); the unindexed
+        exact/ILIKE tiers stay finalize-only (4-9s on a miss on IE-scale
+        tables). Returns {"asked", "candidates": [...]} with candidates
+        ranked by similarity, each the `_entity_to_dict` shape; empty
+        list when nothing clears the floor. The head row keeps `_pick`
+        semantics (coordinates first, then place score) so it matches
+        what `geocode()` would return.
+        """
+        empty = {"asked": entity_name, "candidates": []}
+        if not entity_name:
+            return empty
+        snapshot_id = snapshot_date or get_latest_snapshot_id()
+        if not snapshot_id:
+            return empty
+        clean_name = EntityGeocoder._strip_articles(entity_name)
+        qs = OsmEntity.objects.using("vectors").filter(
+            snapshot_id=snapshot_id,
+        )
+        if country_code:
+            qs = qs.filter(country_code=country_code.upper())
+        variants = [v for v in dict.fromkeys([clean_name, entity_name]) if v]
+        for name_variant in variants:
+            try:
+                rows = EntityGeocoder._trigram_rows(
+                    name_variant, qs, limit, min_sim,
+                )
+            except Exception:  ***REMOVED*** noqa: BLE001 — trigram unavailable → skip
+                break
+            candidates = [
+                d for d in (EntityGeocoder._entity_to_dict(e) for e in rows)
+                if d
+            ]
+            if not candidates:
+                continue
+            picked = EntityGeocoder._pick(rows)
+            head = EntityGeocoder._entity_to_dict(picked) if picked else None
+            ordered = []
+            seen = set()
+            for c in ([head] if head else []) + candidates:
+                key = (c.get("osm_type"), c.get("osm_id"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                ordered.append(c)
+            return {"asked": entity_name, "candidates": ordered}
+        return empty
+
+    @staticmethod
+    def seed_suggestions(entity_name: str, country_code: str = None,
+                         snapshot_date: str = None, limit: int = 3) -> list:
+        """Nearest names for the not-found path ("did you mean ...?").
+
+        Lower similarity floor than the geocode floor (0.3 vs 0.4) so a
+        misspelled name still surfaces its likely target; trigram-only,
+        indexed. Same row shape as `geocode_candidates`.
+        """
+        res = EntityGeocoder.geocode_candidates(
+            entity_name, country_code, snapshot_date,
+            limit=limit, min_sim=0.3,
+        )
+        return res.get("candidates") or []
+
+    @staticmethod
     def _entity_to_dict(entity: OsmEntity) -> dict:
         tags = entity.tags or {}
         lat = lon = None

@@ -37,6 +37,7 @@
           :search-results="searchResults"
           :query-graph="queryGraph"
           :template-visualization="templateVisualization"
+          :seed-overlay="seedOverlay"
           @countries-loaded="onCountriesLoaded"
           @country-toggled="onCountryToggled"
         />
@@ -83,6 +84,7 @@
             :set-search-results="setSearchResults"
             :set-query-graph="setQueryGraph"
             :set-template-visualization="setTemplateVisualization"
+            :set-seed-overlay="setSeedOverlay"
           ></slot>
         </template>
       </aside>
@@ -128,6 +130,9 @@ export default {
       searchResults: [],
       queryGraph: null,
       templateVisualization: null,
+      // Doppelganger seed overlay (ISSUE-48): {confirmed, candidates}
+      // from the panel's data-seed parts; rendered by WorldKGMap.
+      seedOverlay: null,
     }
   },
   computed: {
@@ -231,6 +236,7 @@ export default {
     setSearchResults(results) { this.searchResults = results },
     setQueryGraph(graph) { this.queryGraph = graph },
     setTemplateVisualization(viz) { this.templateVisualization = viz },
+    setSeedOverlay(overlay) { this.seedOverlay = overlay },
   },
 }
 </script>

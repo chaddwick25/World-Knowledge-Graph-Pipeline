@@ -405,7 +405,24 @@ KE_SYSTEM_PROMPT = (
     "entity: ask for the exact name of the place or entity to find "
     "doppelgangers for, and its area. The system verifies the name "
     "against the dataset and shows the match before running; a wrong "
-    "or misspelled name would anchor the whole run on nothing.\n"
+    "or misspelled name would anchor the whole run on nothing. On a "
+    "doppelganger ask the seed can be any named entity (a cave, a "
+    "tavern, a school), not only food & drink places.\n"
+    "When you ask which place or entity to find doppelgangers for, "
+    "start that question with the marker [seed] followed by a space. "
+    "The system resolves the answer live against the dataset and pins "
+    "it on the map; never write the marker anywhere else.\n"
+    "Named places resolve and pin on the map automatically, and a user "
+    "message starting with 'Seed:' is the confirmation of the pinned "
+    "pick. Never re-ask for a name that is already pinned or confirmed "
+    "with a Seed: message - move on to the next question (the area, "
+    "the comparison axis, constraints).\n"
+    "A 'Dataset context' block in the system context states what the "
+    "map contains (entity count, top classes) and the drift state. "
+    "When the user asks a data-metadata question (how fresh is the "
+    "data, what does this map contain, has it changed), answer from "
+    "that block in one or two sentences; never collect it as a "
+    "research slot and never invent numbers that are not in it.\n"
     "If the user's first message already contains enough detail, skip the "
     "questions and say you are ready.\n"
     "When you have enough detail, say you are ready to run the research.\n"
@@ -454,10 +471,22 @@ class ResearchOrchestratorService:
 
     ***REMOVED*** ── Public API ──────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _resolve_recipe(prompt: str, recipe_key: str = None) -> dict:
+        """The run's recipe: an explicit key (the doppelganger surface
+        hard-selects its single recipe) wins when it resolves; anything
+        else goes through the deterministic router. Unknown keys fall
+        through to routing rather than silently becoming FOOD_REPORT
+        with the surface's expectation unmet."""
+        if recipe_key and get_recipe(recipe_key).get("key") == recipe_key:
+            return get_recipe(recipe_key)
+        return route_to_recipe(prompt)
+
     @classmethod
     def plan(cls, prompt: str, country_code: str = None,
              snapshot_date: str = None, event_callback=None,
-             subdivision_qid: str = None) -> dict:
+             subdivision_qid: str = None,
+             recipe_key: str = None) -> dict:
         """Run the full research loop.
 
         ``subdivision_qid`` (2026-10-01) scopes every executed question's
@@ -514,7 +543,9 @@ class ResearchOrchestratorService:
 
         ***REMOVED*** Recipe routing: the plan-type schema this run fills (food_report
         ***REMOVED*** by default; further recipes plug in via research_recipes.py).
-        recipe = route_to_recipe(prompt)
+        ***REMOVED*** An explicit recipe_key (the doppelganger surface hard-selects
+        ***REMOVED*** its single recipe) bypasses the router when it resolves.
+        recipe = cls._resolve_recipe(prompt, recipe_key)
 
         ***REMOVED*** Phase 1: decompose. The brief's subject (the thing being
         ***REMOVED*** researched) rides into the decompose prompt as the class
@@ -660,12 +691,17 @@ class ResearchOrchestratorService:
     ***REMOVED*** ── KE interviewer chat ───────────────────────────────────────────────
 
     @staticmethod
-    def _message_text(m: dict) -> str:
+    def _message_text(m: dict, strip_seed_marker: bool = False) -> str:
         """Extract text from a client message.
 
         Accepts both the AI SDK UIMessage shape (``parts: [{type: "text",
         text: "..."}]`` — what useChat sends) and the plain
         ``{role, content}`` shape. Returns None for empty/unsupported.
+
+        ``strip_seed_marker`` (2026-10-17): the KE's ``[seed]`` question
+        marker is protocol, not prose — LLM-facing text (KE context,
+        finalize extraction) strips it; the live-resolution gate reads
+        the raw transcript to detect it.
         """
         if not isinstance(m, dict):
             return None
@@ -675,18 +711,72 @@ class ResearchOrchestratorService:
                 p.get("text", "")
                 for p in parts
                 if isinstance(p, dict) and p.get("type") == "text"
-            ).strip()
-            return text or None
-        content = m.get("content")
-        if isinstance(content, str):
-            content = content.strip()
-            return content or None
-        return None
+            )
+        else:
+            content = m.get("content")
+            text = content if isinstance(content, str) else ""
+        text = text.strip()
+        if strip_seed_marker:
+            text = text.replace("[seed]", " ").strip()
+        return text or None
+
+    @staticmethod
+    def _render_ke_digest(digest: dict) -> str:
+        """Deterministic dataset-context block for the KE system context.
+
+        Consumes the exact dict ``_class_drift_report`` returns so the
+        injected context and the classDrift tool output cannot disagree.
+        Empty string when nothing is available (fail-soft: the interview
+        proceeds without narration).
+        """
+        if not isinstance(digest, dict):
+            return ""
+        fp = digest.get("fingerprint") or {}
+        drift = digest.get("drift") or {}
+        lines = [
+            "Dataset context (deterministic, from the pipeline's own "
+            "tables; answer data-metadata questions from it, never "
+            "interview for it):",
+        ]
+        if fp:
+            top = fp.get("top_classes") or {}
+            top_text = ", ".join(
+                f"{cls} {pct:.1f}%" if isinstance(pct, (int, float))
+                else str(cls)
+                for cls, pct in list(top.items())[:5]
+            )
+            lines.append(
+                f"- Snapshot {fp.get('snapshot_date')}: "
+                f"{fp.get('total_entities')} entities, "
+                f"{fp.get('unique_classes')} classes"
+                + (f"; top: {top_text}" if top_text else "")
+            )
+        else:
+            lines.append("- No class fingerprint yet for this scope.")
+        latest = drift.get("latest") or {}
+        if latest:
+            js = latest.get("js_divergence")
+            shifts = latest.get("dominant_shift") or {}
+            shift_text = ", ".join(
+                f"{cls} {delta:+.1f}%" if isinstance(delta, (int, float))
+                else str(cls)
+                for cls, delta in list(shifts.items())[:3]
+            )
+            lines.append(
+                f"- Drift since {latest.get('from')}: "
+                f"{latest.get('drift_magnitude') or 'unknown'}"
+                + (f" (JS {js:.3f})" if isinstance(js, (int, float)) else "")
+                + (f"; largest shifts: {shift_text}" if shift_text else "")
+            )
+        elif fp:
+            lines.append("- Single snapshot: no drift baseline yet.")
+        return "\n".join(lines)
 
     @staticmethod
     def chat_messages(messages: list, country_code: str = None,
                       snapshot_date: str = None,
-                      subdivision_qid: str = None) -> list:
+                      subdivision_qid: str = None,
+                      digest_text: str = None) -> list:
         """Full message list for the KE interviewer (system + cleaned history).
 
         ``messages`` is the raw conversation from the client (AI SDK
@@ -694,6 +784,11 @@ class ResearchOrchestratorService:
         assistant turns with text survive. The system prompt carries the
         interview rules plus the country, snapshot, and (optionally,
         2026-10-01) subdivision scope.
+
+        ``digest_text`` (2026-10-17): the deterministic dataset-context
+        block rendered by ``_render_ke_digest`` — injected so
+        data-metadata questions are answered from data, never collected
+        as research slots.
         """
         context = (
             f"Country: {country_code or 'unspecified'}. "
@@ -703,6 +798,8 @@ class ResearchOrchestratorService:
                 if subdivision_qid else ""
             )
         )
+        if digest_text:
+            context += f"\n\n{digest_text}"
         full = [
             {"role": "system", "content": f"{KE_SYSTEM_PROMPT}\n{context}"},
         ]
@@ -710,7 +807,9 @@ class ResearchOrchestratorService:
             if not isinstance(m, dict):
                 continue
             role = m.get("role")
-            text = ResearchOrchestratorService._message_text(m)
+            text = ResearchOrchestratorService._message_text(
+                m, strip_seed_marker=True,
+            )
             if role in ("user", "assistant") and text:
                 full.append({"role": role, "content": text})
         return full
@@ -740,6 +839,87 @@ class ResearchOrchestratorService:
             parts.append(delta)
         reply = "".join(parts).strip()
         return reply or None
+
+    ***REMOVED*** ── Live seed resolution (doppelganger intake, ISSUE-48) ──────────────
+
+    @classmethod
+    def live_seed_part(cls, messages: list, recipe_key: str = None,
+                       country_code: str = None,
+                       snapshot_date: str = None) -> dict:
+        """Deterministic live seed resolution for the doppelganger intake.
+
+        Fires ONLY at the candidate slot — no free-text mention scanning:
+          (a) turn 1: the first user message routes as a doppelganger ask
+              (explicit recipe override or the router) and its subject
+              extracts via the existing raw-ask pattern;
+          (b) the user message that answers a ``[seed]``-marked KE
+              question (the marker stays in the transcript; the frontend
+              strips it for display).
+        The marker gate self-terminates: the KE writes it only on seed
+        asks, so axis/constraint turns never resolve.
+
+        Trigram-tier only (~50ms, indexed); ``research/finalize/`` keeps
+        the full geocoder and stays authoritative for the run — a live
+        miss that finalize finds is acceptable and documented.
+
+        Returns an AI SDK data part ``{"type": "data-seed", "id":
+        "seed", "data": {...}}`` or None when the turn is not at the
+        candidate slot. The data shape is ``_verify_seed``'s, extended
+        with ``candidates`` (multi-hit) and ``suggestions`` (not-found
+        nearest names).
+        """
+        from semantic_search.services.research_recipes import route_to_recipe
+        users, assistants = [], []
+        for m in messages or []:
+            if not isinstance(m, dict):
+                continue
+            role = m.get("role")
+            text = cls._message_text(m)
+            if role == "user" and text:
+                users.append(text)
+            elif role == "assistant" and text:
+                assistants.append(text)
+        asked = None
+        if len(users) == 1:
+            route = recipe_key or route_to_recipe(users[0]).get("key")
+            if route == "doppelganger_report":
+                asked = cls._subject_from_brief(users[0])
+        elif assistants and "[seed]" in assistants[-1] and users:
+            asked = users[-1]
+            ***REMOVED*** The synthetic Seed: handshake (an explicit pick announced
+            ***REMOVED*** to the KE) is a valid candidate answer: strip the protocol
+            ***REMOVED*** wrapper before geocoding, or the parenthetical kind word
+            ***REMOVED*** and the "Seed: " prefix trigram-miss.
+            asked = re.sub(r"^Seed:\s*", "", asked, flags=re.IGNORECASE)
+            asked = re.sub(r"\s*\([^)]*\)\s*$", "", asked).strip()
+        if not asked:
+            return None
+        from semantic_search.services.entity_geocoder import EntityGeocoder
+        res = EntityGeocoder.geocode_candidates(
+            asked, country_code, snapshot_date,
+        )
+        candidates = res.get("candidates") or []
+        head = next(
+            (c for c in candidates if c.get("lat") is not None), None,
+        )
+        if head is not None:
+            data = {
+                "found": True, "asked": asked,
+                "name": head.get("name"), "osm_id": head.get("osm_id"),
+                "osm_type": head.get("osm_type"),
+                "tags": head.get("tags") or {},
+                "lat": head.get("lat"), "lon": head.get("lon"),
+            }
+            if len(candidates) > 1:
+                data["candidates"] = candidates
+            return {"type": "data-seed", "id": "seed", "data": data}
+        data = {"found": False, "asked": asked}
+        suggestions = EntityGeocoder.seed_suggestions(
+            asked, country_code, snapshot_date,
+        )
+        if suggestions:
+            data["suggestions"] = suggestions
+        return {"type": "data-seed", "id": "seed", "data": data}
 
     ***REMOVED*** ── Brief finalize (structured extraction) ────────────────────────────
 
@@ -787,21 +967,29 @@ class ResearchOrchestratorService:
     @classmethod
     def finalize_brief(cls, messages: list, country_code: str = None,
                        snapshot_date: str = None,
-                       subdivision_qid: str = None) -> dict:
-        """Extract a structured brief from the interview conversation.
+                       subdivision_qid: str = None,
+                       recipe_key: str = None,
+                       confirmed_seed: dict = None) -> dict:
+        """Extract a structured research brief from the interview conversation.
 
         Returns {"brief", "fields", "source"} or None.
         ``source`` is "structured" (extracted via chat_json + deterministic
         render) or "fallback" (the first user message, when the LLM is down
         or extraction fails). The KE never emits free-form briefs, so the
         runaway place/distance list cannot reach the run.
+
+        ``recipe_key`` (2026-10-17): the surface's hard-selected recipe —
+        honored by the seed route gate so an ask without doppelganger
+        vocabulary still carries the Seed line on the doppelganger
+        surface. ``confirmed_seed``: the user's live map selection (the
+        seedStore row) — authoritative, skips re-geocoding.
         """
         from core.services.llm_service import LLMService
 
         llm = LLMService.get_instance()
 
         user_texts = [
-            cls._message_text(m)
+            cls._message_text(m, strip_seed_marker=True)
             for m in messages or []
             if isinstance(m, dict) and m.get("role") == "user"
         ]
@@ -817,7 +1005,7 @@ class ResearchOrchestratorService:
             if not isinstance(m, dict):
                 continue
             role = m.get("role")
-            text = cls._message_text(m)
+            text = cls._message_text(m, strip_seed_marker=True)
             if role in ("user", "assistant") and text:
                 turns.append(f"{role}: {text[:400]}")
         conversation = "\n".join(turns)
@@ -848,9 +1036,10 @@ class ResearchOrchestratorService:
                 ***REMOVED*** machinery never engaged. The KE's own wording ("looking
                 ***REMOVED*** for doppelgangers of?") carries the intent and is
                 ***REMOVED*** typo-proof.
-                seed = cls._verify_seed(
-                    conversation or fallback, brief, country_code,
-                    snapshot_date,
+                seed = cls._seed_for_brief(
+                    conversation, fallback, brief, country_code,
+                    snapshot_date, recipe_key=recipe_key,
+                    confirmed_seed=confirmed_seed,
                 )
                 if seed:
                     brief = cls._append_seed_line(brief, seed)
@@ -870,9 +1059,10 @@ class ResearchOrchestratorService:
             ***REMOVED*** user typed "Dopplegangers" (misspelled), the fallback
             ***REMOVED*** routed on the misspelled text alone, and the run lost the
             ***REMOVED*** route even though the KE's reply spelled it correctly).
-            seed = cls._verify_seed(
-                conversation or fallback, fallback, country_code,
-                snapshot_date,
+            seed = cls._seed_for_brief(
+                conversation, fallback, fallback, country_code,
+                snapshot_date, recipe_key=recipe_key,
+                confirmed_seed=confirmed_seed,
             )
             if seed:
                 fallback = cls._append_seed_line(fallback, seed)
@@ -886,9 +1076,24 @@ class ResearchOrchestratorService:
 
     ***REMOVED*** ── Phase 1: decompose ─────────────────────────────────────────────────
 
+    @classmethod
+    def _seed_for_brief(cls, conversation, fallback_text, brief,
+                        country_code, snapshot_date, recipe_key=None,
+                        confirmed_seed=None):
+        """The brief's seed: a user-confirmed selection (the live map
+        pick fed back through finalize) is authoritative and skips
+        re-geocoding; otherwise the deterministic verify path runs,
+        honoring the recipe override in its route gate."""
+        if confirmed_seed and confirmed_seed.get("found"):
+            return dict(confirmed_seed)
+        return cls._verify_seed(
+            conversation or fallback_text, brief, country_code,
+            snapshot_date, recipe_key=recipe_key,
+        )
+
     @staticmethod
     def _verify_seed(original_ask, brief, country_code=None,
-                     snapshot_date=None):
+                     snapshot_date=None, recipe_key=None):
         """Live seed verification for doppelganger runs (2026-10-11).
 
         Geocode the brief's subject against the dataset so the brief box
@@ -898,10 +1103,18 @@ class ResearchOrchestratorService:
         caught at interview time instead of anchoring the whole run on
         nothing. Routed on the ORIGINAL ask (the brief's rewording drops
         "doppelganger"/"similar"); None for non-doppelganger asks.
+        ``recipe_key`` (2026-10-17): the surface's hard-selected recipe
+        bypasses the router — every run on the doppelganger surface is a
+        doppelganger run even when the ask lacks the vocabulary.
         """
-        from semantic_search.services.research_recipes import route_to_recipe
-        if route_to_recipe(original_ask or brief).get("key") != \
-                "doppelganger_report":
+        if recipe_key:
+            routed = recipe_key
+        else:
+            from semantic_search.services.research_recipes import (
+                route_to_recipe,
+            )
+            routed = route_to_recipe(original_ask or brief).get("key")
+        if routed != "doppelganger_report":
             return None
         subject = ResearchOrchestratorService._subject_from_brief(brief)
         if not subject:
@@ -2462,12 +2675,23 @@ class ResearchOrchestratorService:
         decompose prompt's 'what the data has' block. Scored twin rows
         (amplification §3.1) carry their score and
         agreement confidence so the planner plans around confident
-        twins first."""
+        twins first. Dict-shaped outputs (the classDrift digest) render
+        as one compact line — `output[:6]` on a dict raised
+        TypeError: unhashable type: 'slice' (2026-10-17 finding), so a
+        pre-plan classDrift either killed the run or, when the executor
+        failed per-call, silently dropped its evidence."""
         lines = []
         for call in tool_calls or []:
-            output = call.get("output") or []
+            output = call.get("output")
+            if isinstance(output, dict):
+                line = ResearchOrchestratorService._class_drift_evidence_line(
+                    output,
+                )
+                if line:
+                    lines.append(f"- {call['tool']}: {line}")
+                continue
             names = []
-            for r in output[:6]:
+            for r in (output or [])[:6]:
                 if not isinstance(r, dict):
                     continue
                 label = r.get("name") or "?"
@@ -2482,6 +2706,36 @@ class ResearchOrchestratorService:
             if names:
                 lines.append(f"- {call['tool']}: " + "; ".join(names))
         return "\n".join(lines)
+
+    @staticmethod
+    def _class_drift_evidence_line(digest: dict) -> str:
+        """One-line classDrift digest for the evidence block: entity
+        count, top classes, drift magnitude (or the no-baseline note).
+        Consumes the exact dict `_class_drift_report` returns."""
+        fp = digest.get("fingerprint") or {}
+        drift = digest.get("drift") or {}
+        parts = []
+        total = fp.get("total_entities")
+        if total:
+            parts.append(f"{total} entities")
+        top = fp.get("top_classes") or {}
+        if top:
+            rendered = ", ".join(
+                f"{cls} {pct:.1f}%" if isinstance(pct, (int, float)) else str(cls)
+                for cls, pct in list(top.items())[:3]
+            )
+            parts.append(f"top: {rendered}")
+        latest = drift.get("latest") or {}
+        if latest:
+            mag = latest.get("drift_magnitude")
+            js = latest.get("js_divergence")
+            line = "drift " + (mag or "unknown")
+            if isinstance(js, (int, float)):
+                line += f" (JS {js:.3f})"
+            parts.append(line)
+        elif fp:
+            parts.append("single snapshot, no drift baseline")
+        return "; ".join(parts)
 
     @classmethod
     def _followup_tools(cls, llm, prompt: str, records: list,

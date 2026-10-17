@@ -64,6 +64,7 @@ import 'leaflet/dist/leaflet.css'
 import { useOverlayStore } from '../stores/overlayStore'
 import { useMapLabelsStore } from '../stores/mapLabelsStore'
 import { useEntityInfoStore } from '../stores/entityInfoStore'
+import { useSeedStore } from '../stores/seedStore'
 import EntityInfoPanel from './EntityInfoPanel.vue'
 import { labelManager } from '../mapLabels/labelManager'
 import { fmtM } from '../mapViz/format'
@@ -73,6 +74,7 @@ import {
   RELATION_COLORS,
   buildCountryLayer,
   buildSearchResultLayer,
+  buildSeedOverlayLayers,
   buildQueryGraphLayers,
   buildAugmentedLinkLayers,
   buildAgentOverlayLayers,
@@ -170,6 +172,13 @@ export default {
       type: Object,
       default: null,
     },
+    // Doppelganger seed overlay (ISSUE-48): {confirmed, candidates} in
+    // the marker shape ({geom: {lat, lon}, seed_kind}). Candidates are
+    // amber multi-hit markers; the confirmed seed is the green pin.
+    seedOverlay: {
+      type: Object,
+      default: null,
+    },
     augmentedLinks: {
       type: Object,
       default: null,
@@ -191,7 +200,8 @@ export default {
   components: { EntityInfoPanel },
   setup() {
     const entityInfoStore = useEntityInfoStore()
-    return { entityInfoStore }
+    const seedStore = useSeedStore()
+    return { entityInfoStore, seedStore }
   },
   data() {
     return {
@@ -292,6 +302,12 @@ export default {
     searchResults: {
       handler() {
         this.renderSearchResults()
+      },
+      deep: true,
+    },
+    seedOverlay: {
+      handler() {
+        this.renderSeedOverlay()
       },
       deep: true,
     },
@@ -401,7 +417,19 @@ export default {
           }
           if (obj) {
             // Marker click → open the info popover and keep it open until
-            // dismissed (the × button or another marker click).
+            // dismissed (the × button or another marker click). A seed
+            // CANDIDATE click is also the confirmation gesture (ISSUE-48):
+            // the store write re-renders the chip and swaps the pin.
+            if (obj.seed_kind === 'candidate') {
+              this.seedStore.selectCandidate({
+                osm_id: obj.osm_id,
+                osm_type: obj.osm_type,
+                name: obj.name,
+                tags: obj.tags || {},
+                lat: obj.geom?.lat,
+                lon: obj.geom?.lon,
+              })
+            }
             this.entityInfoStore.setEntity(obj, 'map')
           }
         },
@@ -494,6 +522,24 @@ export default {
         .map((r) => [r.geom.lat, r.geom.lon])
       if (bounds.length && mapInstance) {
         mapInstance.fitBounds(bounds, { padding: [100, 100] })
+      }
+    },
+
+    renderSeedOverlay() {
+      // Doppelganger seed (ISSUE-48): amber candidate markers + the
+      // green confirmed pin, in their own layer group so they coexist
+      // with search results. The frame follows the seed points.
+      const overlay = this.seedOverlay
+      labelManager.setLayerGroup('seed-overlay', buildSeedOverlayLayers(overlay))
+      const points = []
+      for (const c of overlay?.candidates || []) {
+        if (c.geom?.lat != null) points.push([c.geom.lat, c.geom.lon])
+      }
+      if (overlay?.confirmed?.geom?.lat != null) {
+        points.push([overlay.confirmed.geom.lat, overlay.confirmed.geom.lon])
+      }
+      if (points.length && mapInstance) {
+        mapInstance.fitBounds(points, { padding: [100, 100], maxZoom: 14 })
       }
     },
 

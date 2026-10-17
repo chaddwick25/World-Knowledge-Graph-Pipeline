@@ -27,6 +27,7 @@ from worldkg_nca.views.research import (
     research_stream,
     research_chat,
     research_finalize,
+    research_seed_examples,
     research_runs,
     research_run_detail,
 )
@@ -63,6 +64,7 @@ __all__ = [
     'research_stream',
     'research_chat',
     'research_finalize',
+    'research_seed_examples',
     'research_runs',
     'research_run_detail',
     'factor_availability',

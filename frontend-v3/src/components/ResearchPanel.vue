@@ -18,18 +18,38 @@
  *   snapshotDate   - Optional. Snapshot date string (e.g. "2025_12_31").
  *   subdivisionQid - Optional. Wikidata QID — scopes the run's results to
  *                    the subdivision polygon (2026-10-01).
+ *   recipe         - Optional. Hard-selected recipe key ("doppelganger_report"
+ *                    on the doppelganger surface) — sent on chat, finalize,
+ *                    and stream so routing is bypassed, not guessed (ISSUE-48).
+ *   setSeedOverlay - Optional. SurfaceShell slot setter; the panel feeds the
+ *                    confirmed seed + candidates to the map through it.
  */
 <template>
   <div class="d-flex flex-column gap-2">
     <!-- Chat: the research prompt section -->
     <div class="d-flex flex-column gap-1">
       <label class="form-label small text-secondary mb-0">
-        Research prompt (interview with the research assistant)
+        Doppelganger interview — name the place to find twins for
       </label>
       <div
         class="border rounded small p-2 d-flex flex-column gap-1"
         style="max-height: 240px; overflow-y: auto;"
       >
+        <!-- Onboarding greeting: display-only (rendered while the chat
+             is empty, never enters the transcript), so the KE's context
+             and the finalize extraction stay clean. -->
+        <div v-if="!chatMessages.length" class="d-flex">
+          <div
+            class="rounded px-2 py-1 bg-secondary-subtle"
+            style="max-width: 90%;"
+          >
+            Hello — I'm your doppelganger research assistant. Tell me
+            which place to find twins for, e.g.
+            <em>help me find a doppelganger for {{ seedExampleName || 'a place you know' }}</em>.
+            I'll pin it on the map for you to confirm, then ask a couple
+            of quick questions about how matches should compare.
+          </div>
+        </div>
         <div
           v-for="(m, i) in chatMessages"
           :key="i"
@@ -49,7 +69,7 @@
           v-model="draft"
           type="text"
           class="form-control form-control-sm"
-          placeholder="e.g. how well is Belize City served by public transit?"
+          :placeholder="inputPlaceholder"
           :disabled="isChatLoading"
         />
         <button
@@ -58,6 +78,58 @@
           :disabled="isChatLoading || !draft.trim()"
         >Send</button>
       </form>
+    </div>
+
+    <!-- Live seed (the data-seed stream part, ISSUE-48): the resolved
+         candidate pins mid-interview; multi-hit resolves by the user
+         clicking the map or the list — never the model guessing. -->
+    <div
+      v-if="seed.asked"
+      class="border rounded small py-1 px-2"
+      :class="seed.hasSeed ? 'border-success-subtle' : 'border-danger-subtle'"
+    >
+      <div v-if="seed.hasSeed" class="d-flex align-items-center gap-2">
+        <span class="badge bg-success">Seed</span>
+        <span class="fw-semibold">{{ seed.confirmed.name }}</span>
+        <span class="text-secondary">{{ seedKindLabel(seed.confirmed) }}</span>
+        <a
+          v-if="seedWikidataUrl(seed.confirmed)"
+          :href="seedWikidataUrl(seed.confirmed)"
+          target="_blank"
+          rel="noopener"
+          class="ms-auto text-decoration-none"
+        >Wikidata ↗</a>
+      </div>
+      <div v-else class="text-danger">
+        '{{ seed.asked }}' not found in the dataset
+        <span v-if="seed.suggestions.length" class="d-block mt-1">
+          Did you mean:
+          <button
+            v-for="s in seed.suggestions"
+            :key="s.osm_type + ':' + s.osm_id"
+            type="button"
+            class="btn btn-sm btn-outline-primary py-0 px-1 me-1"
+            @click="restateSeed(s)"
+          >{{ s.name }}</button>
+        </span>
+      </div>
+      <div v-if="seed.isMultiHit" class="mt-1">
+        <div class="text-secondary">{{ seedMenuHeader }}</div>
+        <div class="d-flex flex-wrap gap-1 mt-1">
+          <button
+            v-for="c in seed.candidates"
+            :key="c.osm_type + ':' + c.osm_id"
+            type="button"
+            class="btn btn-sm py-0 px-1"
+            :class="chipClass(c)"
+            @click="selectSeedCandidate(c)"
+            @mouseenter="seed.setHoveredKey(chipKey(c))"
+            @mouseleave="seed.clearHoveredKey(chipKey(c))"
+          >
+            {{ c.name }} <span class="text-secondary">{{ seedKindLabel(c) }}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Extracted brief + run -->
@@ -175,6 +247,7 @@
 import axios from 'axios'
 import { DefaultChatTransport } from 'ai'
 import { useChat } from '@ai-sdk/vue'
+import { useSeedStore } from '../stores/seedStore'
 
 export default {
   name: 'ResearchPanel',
@@ -191,6 +264,18 @@ export default {
       type: String,
       default: '',
     },
+    recipe: {
+      type: String,
+      default: '',
+    },
+    countryIso: {
+      type: String,
+      default: '',
+    },
+    setSeedOverlay: {
+      type: Function,
+      default: null,
+    },
   },
   setup(props) {
     // Rule 1.3 hybrid: acquire the composable (and its transport) here,
@@ -203,10 +288,12 @@ export default {
           country_code: props.countryName,
           snapshot_date: props.snapshotDate,
           subdivision_qid: props.subdivisionQid || undefined,
+          recipe: props.recipe || undefined,
         }),
       }),
     })
-    return { chat }
+    const seed = useSeedStore()
+    return { chat, seed }
   },
   data() {
     return {
@@ -221,25 +308,91 @@ export default {
       finalizedBrief: '',
       briefSource: '',
       finalizing: false,
+      // The in-flight finalize request (shared so Run awaits the actual
+      // request instead of polling past it).
+      finalizeInFlight: null,
       runRecipe: '',
       // ?debug — the SSE event stream rendered as a queryable log pane
       // (the events are already the execution trace; this just shows it).
       debugMode: new URLSearchParams(window.location.search).has('debug'),
       eventLog: [],
+      // The first explicit seed pick has been announced to the KE
+      // (once per interview: switches stay silent - the finalize's
+      // confirmed seed is authoritative, and re-announcing made the KE
+      // restart its question every switch, the 2026-10-17 spam loop).
+      announcedSeed: false,
+      // Real entity examples for the greeting/placeholder (the
+      // seed-examples endpoint; single-consumer server data stays
+      // component-local). Empty -> generic copy.
+      seedExamples: [],
     }
   },
   computed: {
     chatMessages() {
-      // UIMessage shape: role + parts[{type:'text', text}].
+      // UIMessage shape: role + parts[{type:'text', text}]. The KE's
+      // [seed] question marker is protocol, not prose — stripped for
+      // display (the backend keeps it in the transcript so the
+      // slot gate can detect the answer turn).
       return (this.chat.messages.value || [])
         .map((m) => ({
           role: m.role,
           text: (m.parts || [])
             .filter((p) => p.type === 'text')
             .map((p) => p.text || '')
-            .join(''),
+            .join('')
+            .replace(/\[seed\]\s*/g, ''),
         }))
         .filter((m) => m.text)
+    },
+    lastSeedPart() {
+      // The most recent data-seed part across the transcript (the
+      // backend re-emits with the same id, so the latest wins).
+      const msgs = this.chat.messages.value || []
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const part = (msgs[i].parts || []).find(
+          (p) => p.type === 'data-seed',
+        )
+        if (part) return part
+      }
+      return null
+    },
+    /**
+     * The seed state that matters to the overlay + announcement,
+     * content-addressed. The deep store watch this replaces ALSO fired
+     * on hoveredKey mutations (every chip/info-box hover), and each
+     * fire pushed a fresh overlay object whose map re-fit panned the
+     * map under the cursor - the click-storm behind the 2026-10-17
+     * Jerk Center session (announcement/KE-re-ask loop).
+     */
+    seedSignature() {
+      const s = this.seed
+      return JSON.stringify({
+        asked: s.asked,
+        confirmed: s.confirmed
+          ? `${s.confirmed.osm_type}:${s.confirmed.osm_id}` : null,
+        candidates: (s.candidates || [])
+          .map((c) => `${c.osm_type}:${c.osm_id}`),
+      })
+    },
+    seedMenuHeader() {
+      // String building stays in JS (template logic rule): the header
+      // reflects the picked state once a seed is confirmed.
+      const s = this.seed
+      return s.confirmed
+        ? `Picked ${s.confirmed.name} — click another to switch:`
+        : 'Multiple matches — click one on the map or pick here:'
+    },
+    /** A real entity name from the country's dataset for the greeting
+     *  example; '' when none (generic copy takes over). */
+    seedExampleName() {
+      const first = this.seedExamples.find((e) => e && e.name)
+      return first ? first.name : ''
+    },
+    inputPlaceholder() {
+      const name = this.seedExampleName
+      return name
+        ? `e.g. help me find a doppelganger for ${name}`
+        : 'e.g. help me find a doppelganger for a place you know'
     },
     isChatLoading() {
       const status = this.chat.status.value
@@ -258,18 +411,16 @@ export default {
       return ''
     },
     isDoppelgangerRun() {
-      // The Seed: line is the routing marker (the finalize's verified
-      // seed); the done payload's recipe key confirms it after the run.
-      // The doppelganger vocabulary stays user-facing wherever the run
-      // is one (owner direction, 2026-10-12).
+      // The recipe hard-select decides it on the doppelganger surface
+      // (ISSUE-48); elsewhere the Seed: line is the routing marker (the
+      // finalize's verified seed) and the done payload's recipe key
+      // confirms it after the run. The doppelganger vocabulary stays
+      // user-facing wherever the run is one (owner direction, 2026-10-12).
       return (
-        (this.brief || '').includes('Seed:')
+        this.recipe === 'doppelganger_report'
+        || (this.brief || '').includes('Seed:')
         || this.runRecipe === 'doppelganger_report'
       )
-    },
-    lastChatMessageText() {
-      const msgs = this.chatMessages
-      return msgs.length ? msgs[msgs.length - 1].text : ''
     },
     chatStatus() {
       return this.chat.status.value
@@ -278,11 +429,24 @@ export default {
       return this.chat.error.value
     },
   },
-  // Diagnostic signals — helpful while testing the interview + run live;
-  // trim once the flows are stable (same convention as SemanticSearchPanel).
   watch: {
+    countryIso: {
+      immediate: true,
+      handler(iso) {
+        this.fetchSeedExamples(iso)
+      },
+    },
+    lastSeedPart(part) {
+      if (part) this.applySeedPart(part)
+    },
+    // Seed state that changes the overlay or needs announcing. Hover
+    // state (hoveredKey) is deliberately NOT watched: it must never
+    // push the overlay or re-fit the map.
+    seedSignature() {
+      this.pushSeedOverlay()
+      this.announceExplicitSeed()
+    },
     chatStatus(status) {
-      console.log('[Research] chat status:', status, '@', Date.now())
       // Rebuild the brief after each completed KE reply (structured
       // extraction; the KE never emits a brief itself).
       if (
@@ -297,59 +461,160 @@ export default {
     chatError(err) {
       if (err) console.error('[Research] chat error:', err, '@', Date.now())
     },
-    lastChatMessageText(text) {
-      console.log('[Research] chat message:', text.slice(0, 200), '@', Date.now())
-    },
-    brief(val) {
-      console.log(val
-        ? `[Research] brief ready (${val.length} chars, source: ${this.briefSource})`
-        : '[Research] brief cleared', '@', Date.now())
-    },
-  },
-  mounted() {
-    const base = axios.defaults.baseURL || ''
-    console.log('[Research] mounted, chat api:', `${base}/nca/research/chat/`, '@', Date.now())
   },
   methods: {
     sendMessage() {
       const text = this.draft.trim()
       if (!text || this.isChatLoading) return
-      console.log('[Research] send:', text.slice(0, 120), '@', Date.now())
       this.draft = ''
       this.chat.sendMessage({ text })
     },
+    /** Real entity examples for the greeting/placeholder. Fail-soft:
+     *  an empty list renders the generic copy. */
+    async fetchSeedExamples(iso) {
+      if (!iso) {
+        this.seedExamples = []
+        return
+      }
+      try {
+        const { data } = await axios.get(
+          `${axios.defaults.baseURL || ''}/nca/research/seed-examples/`,
+          { params: { country_code: iso } },
+        )
+        this.seedExamples = data.examples || []
+      } catch (e) {
+        this.seedExamples = []
+      }
+    },
+    // ── Live seed (data-seed part → seedStore → map overlay) ──────────
+    applySeedPart(part) {
+      this.seed.applySeedPart(part.data || {})
+      this.pushSeedOverlay()
+    },
+    /**
+     * Seed rows → the map overlay through the SurfaceShell slot setter.
+     * The flat seed shape ({lat, lon}) adapts to the marker shape
+     * ({geom: {lat, lon}}) here, at the panel boundary; seed_kind
+     * discriminates confirmed-pin vs candidate-marker styling.
+     */
+    pushSeedOverlay() {
+      if (!this.setSeedOverlay) return
+      const s = this.seed
+      const toMarker = (row, kind) => ({
+        osm_id: row.osm_id,
+        osm_type: row.osm_type,
+        name: row.name,
+        tags: row.tags || {},
+        wkg_class: row.wkg_class || null,
+        geom: { lat: row.lat, lon: row.lon },
+        seed_kind: kind,
+      })
+      const candidates = s.isMultiHit
+        ? s.candidates.filter((c) => c.lat != null)
+            .map((c) => toMarker(c, 'candidate'))
+        : []
+      const confirmed = s.hasSeed ? toMarker(s.confirmed, 'confirmed') : null
+      this.setSeedOverlay({ confirmed, candidates })
+    },
+    /** The entity-kind word for the chip: first descriptive tag value. */
+    seedKindLabel(row) {
+      const tags = row.tags || {}
+      return tags.amenity || tags.shop || tags.tourism || tags.leisure
+        || tags.natural || ''
+    },
+    seedWikidataUrl(row) {
+      const qid = (row.tags || {}).wikidata
+      return qid ? `https://www.wikidata.org/wiki/${qid}` : ''
+    },
+    /** One-click restate: the suggestion chip fills the draft and sends,
+     * so the [seed] gate re-resolves against the corrected name. */
+    restateSeed(s) {
+      this.draft = s.name || ''
+      this.sendMessage()
+    },
+    /** The map click / list click: the confirmation gesture. */
+    selectSeedCandidate(c) {
+      this.seed.selectCandidate(c)
+      this.pushSeedOverlay()
+    },
+    chipKey(c) {
+      return `${c.osm_type}:${c.osm_id}`
+    },
+    /** Chip state: green when it IS the confirmed seed, solid when the
+     *  info box hovers it (shared hoveredKey), outline otherwise. */
+    chipClass(c) {
+      const key = this.chipKey(c)
+      const confirmed = this.seed.confirmed
+      if (confirmed
+        && key === `${confirmed.osm_type}:${confirmed.osm_id}`) {
+        return 'btn-success'
+      }
+      if (key === this.seed.hoveredKey) return 'btn-primary'
+      return 'btn-outline-secondary'
+    },
+    /**
+     * The FIRST explicit pick (map marker, info-box button, list chip)
+     * is announced to the KE as a "Seed:" user message - the existing
+     * handshake format (ISSUE-48 follow-up). Once per interview:
+     * switches stay silent (the finalize's confirmed seed is
+     * authoritative; re-announcing made the KE restart its question on
+     * every switch - the 2026-10-17 spam loop). The resolution path
+     * never announces (the user's answer is already in the transcript).
+     */
+    announceExplicitSeed() {
+      const s = this.seed
+      if (this.announcedSeed) return
+      if (s.confirmedSource !== 'explicit' || !s.confirmed) return
+      if (this.isChatLoading) return
+      this.announcedSeed = true
+      const kind = this.seedKindLabel(s.confirmed)
+      this.chat.sendMessage({
+        text: `Seed: ${s.confirmed.name}` + (kind ? ` (${kind})` : ''),
+      })
+    },
     async finalizeBrief() {
-      if (this.finalizing) {
+      if (this.finalizing && this.finalizeInFlight) {
         // A finalize is already in flight (the watch fired on the KE's
-        // last reply): pressing Run during it must wait it out, not
-        // no-op into the no-brief guard (the 2026-10-12 Redbones
-        // session: the race blocked the first Run press).
-        for (let i = 0; i < 40 && this.finalizing; i++) {
-          await new Promise((resolve) => setTimeout(resolve, 200))
-        }
-        return this.finalizedBrief || ''
+        // last reply): pressing Run during it awaits THE REQUEST, not a
+        // fixed poll. The old 8s poll gave up while a 10-14s finalize
+        // was still going and Run showed "could not build the brief"
+        // on a request that then succeeded (the 2026-10-17 Jerk Center
+        // session; the race the deferred hardening ticket described).
+        return await this.finalizeInFlight
       }
       const msgs = this.chatMessages.map((m) => ({ role: m.role, content: m.text }))
       if (!msgs.length) return ''
       this.finalizing = true
-      console.log('[Research] finalize start', '@', Date.now())
+      this.finalizeInFlight = this.requestBrief(msgs)
       try {
-        const payload = { messages: msgs }
-        if (this.countryName) payload.country_code = this.countryName
-        if (this.snapshotDate) payload.snapshot_date = this.snapshotDate
-        if (this.subdivisionQid) payload.subdivision_qid = this.subdivisionQid
+        return await this.finalizeInFlight
+      } finally {
+        this.finalizing = false
+        this.finalizeInFlight = null
+      }
+    },
+    async requestBrief(msgs) {
+      const payload = { messages: msgs }
+      if (this.countryName) payload.country_code = this.countryName
+      if (this.snapshotDate) payload.snapshot_date = this.snapshotDate
+      if (this.subdivisionQid) payload.subdivision_qid = this.subdivisionQid
+      if (this.recipe) payload.recipe = this.recipe
+      // The live-confirmed seed is authoritative: finalize skips
+      // re-geocoding and renders the Seed line from it (ISSUE-48).
+      if (this.seed.hasSeed) payload.seed = this.seed.finalizePayload()
+      try {
         const { data } = await axios.post(
           `${axios.defaults.baseURL || ''}/nca/research/finalize/`,
           payload,
-          { timeout: 15000 },
+          // Above the backend's realistic chat_json latency on a busy
+          // 4070: the 15s timeout aborted requests the server would
+          // have answered.
+          { timeout: 20000 },
         )
         this.finalizedBrief = data.brief || ''
         this.briefSource = data.source || ''
-        console.log('[Research] finalize:', data.source, (data.brief || '').slice(0, 120), '@', Date.now())
       } catch (e) {
         console.error('[Research] finalize error:', e.response?.data?.error || e.message, '@', Date.now())
-      } finally {
-        this.finalizing = false
       }
       return this.finalizedBrief || ''
     },
@@ -376,24 +641,21 @@ export default {
       this.resetRunState()
       this.isRunning = true
       this.runStartAt = Date.now()
-      const source = this.brief ? 'brief' : 'lastUserPrompt'
-      console.log('[Research] run start, source:', source, 'prompt:', prompt.slice(0, 120), '@', Date.now())
 
       const params = new URLSearchParams({ prompt })
       if (this.countryName) params.set('country_code', this.countryName)
       if (this.snapshotDate) params.set('snapshot_date', this.snapshotDate)
       if (this.subdivisionQid) params.set('subdivision_qid', this.subdivisionQid)
+      if (this.recipe) params.set('recipe', this.recipe)
 
       const base = axios.defaults.baseURL || ''
       const url = `${base}/nca/research/stream/?${params}`
-      console.log('[Research] stream url:', url, '@', Date.now())
       const es = new EventSource(url)
       this.eventSource = es
 
       es.addEventListener('plan', (e) => {
         const d = JSON.parse(e.data)
         this.recordEvent('plan', d)
-        console.log('[Research] plan:', (d.questions || []).length, 'questions', '@', Date.now())
         this.questions = (d.questions || []).map((q, index) => ({
           index,
           question: q.question,
@@ -410,7 +672,6 @@ export default {
         const d = JSON.parse(e.data)
         this.recordEvent('question', d)
         const i = d.index
-        console.log('[Research] question:', i, d.template, 'count:', d.result_count, d.error || '', 'round:', d.round || 1, '@', Date.now())
         if (this.questions[i]) {
           this.questions[i].template = d.template || null
           this.questions[i].answer = d.answer || ''
@@ -435,7 +696,6 @@ export default {
       es.addEventListener('follow_up', (e) => {
         const d = JSON.parse(e.data)
         this.recordEvent('follow_up', d)
-        console.log('[Research] follow-up:', d.kind, d.question, 'count:', d.result_count, '@', Date.now())
         // Visible gap-repair re-ask: probe / class-swap / llm_replan rows
         // append to the trace so the user sees the follow-up questions.
         this.questions.push({
@@ -454,14 +714,12 @@ export default {
       es.addEventListener('tool', (e) => {
         const d = JSON.parse(e.data)
         this.recordEvent('tool', d)
-        console.log('[Research] tool call:', d.tool, JSON.stringify(d.args || {}), '@', Date.now())
         this.tools.push({ tool: d.tool, args: d.args || {}, output: null })
       })
 
       es.addEventListener('tool_out', (e) => {
         const d = JSON.parse(e.data)
         this.recordEvent('tool_out', d)
-        console.log('[Research] tool output:', d.tool, '@', Date.now())
         const t = this.tools[this.tools.length - 1]
         if (t && t.tool === d.tool) t.output = d.output
       })
@@ -480,7 +738,6 @@ export default {
         const delta = d.delta
         if (delta) {
           if (!this.summary) {
-            console.log('[Research] summary stream started', '@', Date.now())
             this.collapseQuestions()
           }
           this.summary += delta
@@ -494,8 +751,6 @@ export default {
         this.recordEvent('done', d)
         const result = d.result || {}
         this.runRecipe = result.recipe || ''
-        const elapsed = this.runStartAt ? ((Date.now() - this.runStartAt) / 1000).toFixed(1) + 's' : '?'
-        console.log('[Research] done, summary len:', (result.summary || this.summary || '').length, 'elapsed:', elapsed, 'errors:', (result.errors || []).length, '@', Date.now())
         this.runStartAt = null
         if (result.summary && !this.summary) {
           // Summary arrived without a stream (edge case) — collapse too.
@@ -509,7 +764,6 @@ export default {
 
       es.addEventListener('error', () => {
         this.recordEvent('error', { readyState: es.readyState })
-        console.log('[Research] stream error, readyState:', es.readyState, 'running:', this.isRunning, '@', Date.now())
         if (es.readyState === EventSource.CLOSED && this.isRunning) {
           this.isRunning = false
           this.error = this.error || 'Research stream error'
@@ -651,15 +905,16 @@ export default {
     },
     closeStream() {
       if (this.eventSource) {
-        console.log('[Research] closing stream', '@', Date.now())
         this.eventSource.close()
         this.eventSource = null
       }
     },
   },
   beforeUnmount() {
-    console.log('[Research] unmount', '@', Date.now())
     this.closeStream()
+    // The seed state is surface-scoped: leaving the panel clears it so
+    // the next interview starts clean (the store is Pinia-global).
+    this.seed.reset()
   },
 }
 </script>

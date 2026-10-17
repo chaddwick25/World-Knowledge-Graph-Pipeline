@@ -23,6 +23,7 @@ urlpatterns = [
     path('research/stream/', views.research_stream, name='nca_research_stream'),
     path('research/chat/', views.research_chat, name='nca_research_chat'),
     path('research/finalize/', views.research_finalize, name='nca_research_finalize'),
+    path('research/seed-examples/', views.research_seed_examples, name='nca_research_seed_examples'),
     path('research/runs/', views.research_runs, name='nca_research_runs'),
     path('research/runs/<uuid:run_id>/', views.research_run_detail, name='nca_research_run_detail'),
     path('factor-availability/', views.factor_availability, name='nca_factor_availability'),
