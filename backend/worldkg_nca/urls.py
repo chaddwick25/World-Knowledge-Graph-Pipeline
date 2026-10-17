@@ -23,6 +23,8 @@ urlpatterns = [
     path('research/stream/', views.research_stream, name='nca_research_stream'),
     path('research/chat/', views.research_chat, name='nca_research_chat'),
     path('research/finalize/', views.research_finalize, name='nca_research_finalize'),
+    path('research/runs/', views.research_runs, name='nca_research_runs'),
+    path('research/runs/<uuid:run_id>/', views.research_run_detail, name='nca_research_run_detail'),
     path('factor-availability/', views.factor_availability, name='nca_factor_availability'),
     path('subdivisions/', views.worldkg_subdivisions, name='nca_subdivisions'),
     path('sample-questions/', views.sample_questions, name='nca_sample_questions'),
@@ -34,8 +36,7 @@ urlpatterns = [
     path('link-candidates/', views.worldkg_link_candidates, name='nca_link_candidates'),
     path('apply-link/', views.worldkg_apply_link, name='nca_apply_link'),
     
-    # Temporal analysis
-    path('fingerprint/compute/', views.worldkg_compute_fingerprint, name='nca_compute_fingerprint'),
-    path('drift/compute/', views.worldkg_compute_drift, name='nca_compute_drift'),
+    # Temporal analysis (read-only; computation is pipeline-side — Step 6
+    # + the compute_class_drift backfill command)
     path('drift/', views.worldkg_drift_list, name='nca_list_drift'),
 ]

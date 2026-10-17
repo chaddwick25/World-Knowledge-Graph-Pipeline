@@ -156,6 +156,23 @@ class LLMService:
             ) not in ("", "0", "false", "False"),
         )
 
+    def _span_attrs(self, temperature, max_tokens, extra=None) -> dict:
+        """Span attributes under the OTel GenAI semantic conventions.
+
+        gen_ai.system / gen_ai.request.model / .temperature / .max_tokens
+        at begin; callers add gen_ai.usage.input_tokens / .output_tokens
+        at end. Kept to one helper so the four call sites stay aligned.
+        """
+        attrs = {
+            "gen_ai.system": self.style if self.style != "native" else "ollama",
+            "gen_ai.request.model": self.model,
+            "gen_ai.request.temperature": temperature,
+            "gen_ai.request.max_tokens": max_tokens,
+        }
+        if extra:
+            attrs.update(extra)
+        return attrs
+
     # ── Availability ──────────────────────────────────────────────────────
 
     def is_available(self) -> bool:
@@ -194,10 +211,7 @@ class LLMService:
         """
         if not self.enabled:
             return None
-        attrs = {
-            "model": self.model, "style": self.style,
-            "temperature": temperature, "max_tokens": max_tokens,
-        }
+        attrs = self._span_attrs(temperature, max_tokens)
         span = TraceService.begin_span("chat", attributes=attrs)
         error = None
         usage_attrs = {}
@@ -224,8 +238,10 @@ class LLMService:
                 data = resp.json()
                 content = data.get("message", {}).get("content")
                 if isinstance(data, dict):
-                    usage_attrs["prompt_tokens"] = data.get("prompt_eval_count")
-                    usage_attrs["output_tokens"] = data.get("eval_count")
+                    usage_attrs.update({
+                        "gen_ai.usage.input_tokens": data.get("prompt_eval_count"),
+                        "gen_ai.usage.output_tokens": data.get("eval_count"),
+                    })
                 return (content or "").strip() or None
             else:
                 payload = {
@@ -246,8 +262,10 @@ class LLMService:
                 content = data["choices"][0]["message"].get("content")
                 usage = (data or {}).get("usage") or {}
                 if isinstance(usage, dict):
-                    usage_attrs["prompt_tokens"] = usage.get("prompt_tokens")
-                    usage_attrs["output_tokens"] = usage.get("completion_tokens")
+                    usage_attrs.update({
+                        "gen_ai.usage.input_tokens": usage.get("prompt_tokens"),
+                        "gen_ai.usage.output_tokens": usage.get("completion_tokens"),
+                    })
                 return (content or "").strip() or None
         except (requests.RequestException, KeyError, IndexError, ValueError) as exc:
             logger.warning("LLM chat failed: %s", exc)
@@ -267,10 +285,7 @@ class LLMService:
         """
         if not self.enabled:
             return
-        attrs = {
-            "model": self.model, "style": self.style,
-            "temperature": temperature, "max_tokens": max_tokens,
-        }
+        attrs = self._span_attrs(temperature, max_tokens)
         span = None
         error = None
         output_chars = 0
@@ -360,10 +375,7 @@ class LLMService:
         """
         if not self.enabled:
             return None
-        attrs = {
-            "model": self.model, "style": self.style,
-            "temperature": temperature, "max_tokens": max_tokens,
-        }
+        attrs = self._span_attrs(temperature, max_tokens)
         span = TraceService.begin_span("chat_json", attributes=attrs)
         error = None
         usage_attrs = {}
@@ -391,8 +403,10 @@ class LLMService:
                 data = resp.json()
                 text = (data.get("message", {}).get("content") or "").strip()
                 if isinstance(data, dict):
-                    usage_attrs["prompt_tokens"] = data.get("prompt_eval_count")
-                    usage_attrs["output_tokens"] = data.get("eval_count")
+                    usage_attrs.update({
+                        "gen_ai.usage.input_tokens": data.get("prompt_eval_count"),
+                        "gen_ai.usage.output_tokens": data.get("eval_count"),
+                    })
             else:
                 text = self.chat(messages, temperature=temperature,
                                  max_tokens=max_tokens)
@@ -419,14 +433,15 @@ class LLMService:
         """
         if not self.enabled:
             return None, None
-        attrs = {
-            "model": self.model, "style": self.style,
-            "temperature": temperature, "max_tokens": max_tokens,
-            "tools": [
-                (t or {}).get("function", {}).get("name")
-                for t in (tools or [])
-            ],
-        }
+        attrs = self._span_attrs(
+            temperature, max_tokens,
+            extra={
+                "gen_ai.tool.names": [
+                    (t or {}).get("function", {}).get("name")
+                    for t in (tools or [])
+                ],
+            },
+        )
         span = TraceService.begin_span("chat_tools", attributes=attrs)
         error = None
         usage_attrs = {}
@@ -458,8 +473,10 @@ class LLMService:
                 msg = data.get("message") or {}
                 content = (msg.get("content") or "").strip() or None
                 if isinstance(data, dict):
-                    usage_attrs["prompt_tokens"] = data.get("prompt_eval_count")
-                    usage_attrs["output_tokens"] = data.get("eval_count")
+                    usage_attrs.update({
+                        "gen_ai.usage.input_tokens": data.get("prompt_eval_count"),
+                        "gen_ai.usage.output_tokens": data.get("eval_count"),
+                    })
                 return content, self._normalize_tool_calls(msg.get("tool_calls"))
             else:
                 payload = {
@@ -483,8 +500,10 @@ class LLMService:
                 content = (message.get("content") or "").strip() or None
                 usage = (data or {}).get("usage") or {}
                 if isinstance(usage, dict):
-                    usage_attrs["prompt_tokens"] = usage.get("prompt_tokens")
-                    usage_attrs["output_tokens"] = usage.get("completion_tokens")
+                    usage_attrs.update({
+                        "gen_ai.usage.input_tokens": usage.get("prompt_tokens"),
+                        "gen_ai.usage.output_tokens": usage.get("completion_tokens"),
+                    })
                 return content, self._normalize_tool_calls(
                     message.get("tool_calls"),
                 )

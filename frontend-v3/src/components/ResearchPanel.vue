@@ -147,6 +147,27 @@
       <div class="text-secondary small mb-1">Summary</div>
       <div style="white-space: pre-wrap;">{{ summary }}</div>
     </div>
+
+    <!-- ?debug — raw SSE event log (the persisted run trace, client-side) -->
+    <details
+      v-if="debugMode && eventLog.length"
+      class="research-details small text-secondary"
+      open
+    >
+      <summary class="cursor-pointer">
+        Event log ({{ eventLog.length }})
+      </summary>
+      <div
+        class="font-monospace border rounded p-2 mt-1 d-flex flex-column gap-1"
+        style="max-height: 240px; overflow-y: auto;"
+      >
+        <div v-for="(ev, i) in eventLog" :key="i" class="text-truncate">
+          <span class="text-secondary">{{ ev.at }}</span>
+          <span class="badge bg-secondary-subtle text-dark">{{ ev.event }}</span>
+          <span :title="JSON.stringify(ev.data)">{{ eventSummary(ev) }}</span>
+        </div>
+      </div>
+    </details>
   </div>
 </template>
 
@@ -201,6 +222,10 @@ export default {
       briefSource: '',
       finalizing: false,
       runRecipe: '',
+      // ?debug — the SSE event stream rendered as a queryable log pane
+      // (the events are already the execution trace; this just shows it).
+      debugMode: new URLSearchParams(window.location.search).has('debug'),
+      eventLog: [],
     }
   },
   computed: {
@@ -367,6 +392,7 @@ export default {
 
       es.addEventListener('plan', (e) => {
         const d = JSON.parse(e.data)
+        this.recordEvent('plan', d)
         console.log('[Research] plan:', (d.questions || []).length, 'questions', '@', Date.now())
         this.questions = (d.questions || []).map((q, index) => ({
           index,
@@ -382,6 +408,7 @@ export default {
 
       es.addEventListener('question', (e) => {
         const d = JSON.parse(e.data)
+        this.recordEvent('question', d)
         const i = d.index
         console.log('[Research] question:', i, d.template, 'count:', d.result_count, d.error || '', 'round:', d.round || 1, '@', Date.now())
         if (this.questions[i]) {
@@ -407,6 +434,7 @@ export default {
 
       es.addEventListener('follow_up', (e) => {
         const d = JSON.parse(e.data)
+        this.recordEvent('follow_up', d)
         console.log('[Research] follow-up:', d.kind, d.question, 'count:', d.result_count, '@', Date.now())
         // Visible gap-repair re-ask: probe / class-swap / llm_replan rows
         // append to the trace so the user sees the follow-up questions.
@@ -425,19 +453,31 @@ export default {
 
       es.addEventListener('tool', (e) => {
         const d = JSON.parse(e.data)
+        this.recordEvent('tool', d)
         console.log('[Research] tool call:', d.tool, JSON.stringify(d.args || {}), '@', Date.now())
         this.tools.push({ tool: d.tool, args: d.args || {}, output: null })
       })
 
       es.addEventListener('tool_out', (e) => {
         const d = JSON.parse(e.data)
+        this.recordEvent('tool_out', d)
         console.log('[Research] tool output:', d.tool, '@', Date.now())
         const t = this.tools[this.tools.length - 1]
         if (t && t.tool === d.tool) t.output = d.output
       })
 
+      es.addEventListener('replan', (e) => {
+        this.recordEvent('replan', JSON.parse(e.data))
+      })
+
+      es.addEventListener('round', (e) => {
+        this.recordEvent('round', JSON.parse(e.data))
+      })
+
       es.addEventListener('summary_delta', (e) => {
-        const delta = JSON.parse(e.data).delta
+        const d = JSON.parse(e.data)
+        this.recordEvent('summary_delta', d)
+        const delta = d.delta
         if (delta) {
           if (!this.summary) {
             console.log('[Research] summary stream started', '@', Date.now())
@@ -451,6 +491,7 @@ export default {
         this.isRunning = false
         this.closeStream()
         const d = JSON.parse(e.data)
+        this.recordEvent('done', d)
         const result = d.result || {}
         this.runRecipe = result.recipe || ''
         const elapsed = this.runStartAt ? ((Date.now() - this.runStartAt) / 1000).toFixed(1) + 's' : '?'
@@ -467,6 +508,7 @@ export default {
       })
 
       es.addEventListener('error', () => {
+        this.recordEvent('error', { readyState: es.readyState })
         console.log('[Research] stream error, readyState:', es.readyState, 'running:', this.isRunning, '@', Date.now())
         if (es.readyState === EventSource.CLOSED && this.isRunning) {
           this.isRunning = false
@@ -480,7 +522,37 @@ export default {
       this.summary = ''
       this.error = ''
       this.runRecipe = ''
+      this.eventLog = []
       this.closeStream()
+    },
+    /**
+     * Append an SSE event to the ?debug event log. One compact row per
+     * event — the same records the backend persists on ResearchRun.
+     */
+    recordEvent(event, data) {
+      if (!this.debugMode) return
+      this.eventLog.push({
+        event,
+        at: new Date().toISOString().slice(11, 23),
+        data,
+      })
+    },
+    /** One-line summary of a logged event for the debug pane. */
+    eventSummary(entry) {
+      const d = entry.data || {}
+      switch (entry.event) {
+        case 'plan': return `${(d.questions || []).length} questions`
+        case 'question': return `#${d.index} ${d.template || ''} count=${d.result_count ?? '?'}`
+        case 'follow_up': return `${d.kind || ''} ${d.question || ''}`.trim()
+        case 'replan': return d.question || ''
+        case 'round': return `round ${d.round}`
+        case 'tool': return `${d.tool} ${JSON.stringify(d.args || {})}`
+        case 'tool_out': return `${d.tool} ${JSON.stringify(d.output || {}).slice(0, 120)}`
+        case 'summary_delta': return JSON.stringify(d.delta || '')
+        case 'done': return `result: ${Object.keys(d.result || {}).join(', ')}`
+        case 'error': return `readyState=${d.readyState}`
+        default: return JSON.stringify(d).slice(0, 160)
+      }
     },
     collapseQuestions() {
       const el = this.$refs.questionsDetails

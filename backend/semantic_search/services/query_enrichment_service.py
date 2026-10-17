@@ -169,6 +169,32 @@ RESEARCH_TOOLS = {
             "required": ["entity"],
         },
     },
+    "classDrift": {
+        "description": (
+            "Data profile + freshness for the scoped country. Returns the "
+            "snapshot's WorldKG class fingerprint (top classes, Shannon "
+            "entropy, unique classes) and, when a second snapshot exists, "
+            "per-pair Jensen-Shannon drift (magnitude low/medium/high/"
+            "extreme, dominant shifts, new/lost classes). Use it to state "
+            "what the country's map actually contains and whether it "
+            "changed — a high or extreme magnitude means the map moved "
+            "between snapshots; tell the user the data may be out of date."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+}
+
+# OSM venue types the LLM drops under `cuisine` ("same cuisine" ->
+# {"cuisine": "fast_food"} — guaranteed empty, the 2026-10-16 Island
+# Grill run). cuisine holds food types (jerk, regional); these belong to
+# amenity. Guarded in _call_search_tool's structuredSearch branch.
+_AMENITY_VENUE_VALUES = {
+    "restaurant", "fast_food", "cafe", "bar", "pub", "food_court",
+    "ice_cream", "biergarten", "nightclub", "marketplace",
 }
 
 
@@ -502,7 +528,7 @@ class QueryEnrichmentService:
         trace shows the decision → call → result chain.
         """
         from core.services.trace_service import TraceService
-        token = TraceService.begin_span("execute_tool", attributes={
+        span = TraceService.begin_span("execute_tool", attributes={
             "gen_ai.tool.name": tool,
             "gen_ai.tool.call.id": uuid.uuid4().hex,
             "gen_ai.tool.call.arguments": args,
@@ -510,6 +536,13 @@ class QueryEnrichmentService:
         error = None
         output = None
         try:
+            # classDrift reads the drift/fingerprint tables directly —
+            # there is no public fingerprint read endpoint, and the tool
+            # is a scope-level capability check, not a search.
+            if tool == "classDrift":
+                if not country_code:
+                    return None
+                return cls._class_drift_report(country_code, snapshot_date)
             # similarEntities needs no country (scope=all crosses
             # countries; the seed geocode scopes optionally).
             if tool == "similarEntities":
@@ -542,7 +575,7 @@ class QueryEnrichmentService:
                         "similarEntities error: %s", data["error"]
                     )
                     return None
-                return [
+                rows = [
                     {
                         "osm_id": r.get("osm_id"),
                         "osm_type": r.get("osm_type"),
@@ -556,6 +589,20 @@ class QueryEnrichmentService:
                     }
                     for r in data.get("results", [])
                 ]
+                # Self/sibling exclusion: for chains the top embedding
+                # twins are the seed's own branches (the 2026-10-16
+                # Island Grill run returned 5 entities all named
+                # "Island Grill" — correct similarity, useless as
+                # doppelgangers). Drop same-name results; the seed's own
+                # row is covered by the same check.
+                seed_name = (args.get("entity") or "").strip().casefold()
+                if seed_name:
+                    rows = [
+                        r for r in rows
+                        if (r.get("name") or "").strip().casefold()
+                        != seed_name
+                    ]
+                return rows
             if not country_code:
                 return None
             if tool == "nameSearch":
@@ -565,7 +612,20 @@ class QueryEnrichmentService:
                     "top_k": int(args.get("topK") or 5),
                 }
             elif tool == "structuredSearch":
-                query_tags = args.get("queryTags") or {}
+                query_tags = dict(args.get("queryTags") or {})
+                # Tag-key guard: the LLM puts amenity values under
+                # cuisine ("same cuisine" -> {"cuisine": "fast_food"},
+                # guaranteed empty — the 2026-10-16 Island Grill run).
+                # cuisine values are food types (jerk, regional); venue
+                # types (fast_food, restaurant, cafe) belong to amenity.
+                cuisine = query_tags.get("cuisine")
+                if isinstance(cuisine, str):
+                    cuisine = cuisine.replace(" ", "_")
+                    if cuisine in _AMENITY_VENUE_VALUES:
+                        del query_tags["cuisine"]
+                        query_tags.setdefault("amenity", cuisine)
+                    else:
+                        query_tags["cuisine"] = cuisine
                 if not query_tags:
                     dominant = cls._dominant_amenity(results)
                     if not dominant:
@@ -622,9 +682,88 @@ class QueryEnrichmentService:
             raise
         finally:
             TraceService.end_span(
-                token, error=error,
+                span, error=error,
                 attributes={"gen_ai.tool.call.result": output},
             )
+
+    @staticmethod
+    def _class_drift_report(country_code: str, snapshot_date: str) -> dict:
+        """classDrift executor: fingerprint + JS-drift digest for the scope.
+
+        Returns {fingerprint: {snapshot_date, top_classes, shannon_entropy,
+        unique_classes, total_entities} | None, drift: {pairs, latest} |
+        None}. Reads the osmsnapshot tables directly — this is a scope-level
+        capability check, not an entity search.
+        """
+        from osmsnapshot.models import (
+            Snapshot,
+            WorldKGClassDrift,
+            WorldKGClassFingerprint,
+        )
+        from core.services.planet_init.osm_wikidata_resolver import (
+            resolve_iso_code,
+        )
+
+        iso = country_code
+        try:
+            resolved = resolve_iso_code(country_code)
+            if resolved:
+                iso = resolved
+        except Exception:  # noqa: BLE001 — fall through to the raw value
+            pass
+        iso = (iso or "").upper()
+
+        snaps = list(
+            Snapshot.objects
+            .filter(country_code__iexact=iso)
+            .order_by("snapshot_date")
+        )
+        target = None
+        if snapshot_date:
+            target = next(
+                (s for s in snaps if s.snapshot_date == snapshot_date), None,
+            )
+        if target is None and snaps:
+            target = snaps[-1]
+
+        fingerprint = None
+        if target is not None:
+            row = (
+                WorldKGClassFingerprint.objects
+                .filter(snapshot=target)
+                .order_by("-created_at")
+                .first()
+            )
+            if row is not None:
+                fingerprint = {
+                    "snapshot_date": target.snapshot_date,
+                    "top_classes": row.top_5_classes,
+                    "shannon_entropy": row.shannon_entropy,
+                    "unique_classes": row.unique_classes,
+                    "total_entities": row.total_entities,
+                }
+
+        drift_rows = list(
+            WorldKGClassDrift.objects
+            .filter(region__iexact=iso)
+            .order_by("snapshot_to__snapshot_date")
+        )
+        drift = None
+        if drift_rows:
+            latest = drift_rows[-1]
+            drift = {
+                "pairs": len(drift_rows),
+                "latest": {
+                    "from": latest.snapshot_from.snapshot_date,
+                    "to": latest.snapshot_to.snapshot_date,
+                    "js_divergence": latest.js_divergence,
+                    "drift_magnitude": latest.drift_magnitude,
+                    "dominant_shift": latest.dominant_shift,
+                    "new_classes": latest.new_classes,
+                    "lost_classes": latest.lost_classes,
+                },
+            }
+        return {"fingerprint": fingerprint, "drift": drift}
 
     @staticmethod
     def _dominant_amenity(results: list):

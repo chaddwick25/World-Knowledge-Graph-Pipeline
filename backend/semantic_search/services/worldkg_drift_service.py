@@ -1,7 +1,6 @@
 import logging
 import numpy as np
 from typing import Dict, List, Optional, Tuple
-from collections import Counter
 from django.db.models import Count, Avg, StdDev
 from django.utils import timezone
 
@@ -61,9 +60,11 @@ class WorldKGDriftService:
                 processing_session=processing_session
             )
         
-        # Get class distribution
-        class_counts = Counter(
-            entities.values_list('wkg_class', flat=True)
+        # Get class distribution — SQL GROUP BY instead of streaming
+        # one row per entity into a Python Counter (Canada-scale).
+        class_counts = dict(
+            entities.values('wkg_class').annotate(n=Count('wkg_class'))
+            .values_list('wkg_class', 'n')
         )
         
         # Normalize to percentages
@@ -163,29 +164,55 @@ class WorldKGDriftService:
         else:
             drift_magnitude = 'extreme'
         
-        drift = WorldKGClassDrift.objects.create(
+        drift, _created = WorldKGClassDrift.objects.update_or_create(
             region=snapshot_from.country_code,
-            bbox=bbox or [],
             snapshot_from=snapshot_from,
             snapshot_to=snapshot_to,
-            class_distribution_from=dist_from,
-            class_distribution_to=dist_to,
-            kl_divergence=kl_div,
-            js_divergence=js_div,
-            depth_delta=depth_delta,
-            new_classes=new_classes,
-            lost_classes=lost_classes,
-            dominant_shift=dominant_shift,
-            drift_magnitude=drift_magnitude,
-            processing_session=processing_session
+            defaults={
+                'bbox': bbox or [],
+                'class_distribution_from': dist_from,
+                'class_distribution_to': dist_to,
+                'kl_divergence': kl_div,
+                'js_divergence': js_div,
+                'depth_delta': depth_delta,
+                'new_classes': new_classes,
+                'lost_classes': lost_classes,
+                'dominant_shift': dominant_shift,
+                'drift_magnitude': drift_magnitude,
+                'processing_session': processing_session,
+            },
         )
-        
+
         logger.info(
             f"Computed drift for {snapshot_from.country_code}: "
             f"JS={js_div:.3f}, depth_delta={depth_delta:.2f}, magnitude={drift_magnitude}"
         )
-        
+
         return drift
+
+    def fill_pair_if_missing(
+        self,
+        snapshot_from: Snapshot,
+        snapshot_to: Snapshot,
+        processing_session=None
+    ):
+        """Compute drift for a pair only if no row exists.
+
+        Shared by ``compute_class_drift`` (series backfill) and Step 6
+        (newest pair inline). Returns the WorldKGClassDrift row or None
+        when the pair already has one.
+        """
+        exists = WorldKGClassDrift.objects.filter(
+            region=snapshot_from.country_code,
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+        ).exists()
+        if exists:
+            return None
+        return self.compute_drift(
+            snapshot_from, snapshot_to,
+            processing_session=processing_session,
+        )
     
     def _get_or_create_fingerprint(
         self,
