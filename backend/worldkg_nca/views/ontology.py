@@ -27,7 +27,7 @@ def worldkg_ontology_info(request):
     """
     Get WorldKG ontology information.
     
-    GET /api/worldkg/ontology/info/
+    GET /api/nca/ontology/info/
     
     Returns:
         {
@@ -71,7 +71,7 @@ def worldkg_class_hierarchy(request, class_name):
     """
     Get class hierarchy for a specific WorldKG class.
     
-    GET /api/worldkg/ontology/class/{class_name}/
+    GET /api/nca/ontology/class/{class_name}/
     
     Returns:
         {
@@ -105,7 +105,7 @@ def worldkg_class_distribution(request):
     """
     Get WorldKG class distribution for a snapshot or region.
     
-    GET /api/worldkg/distribution/?snapshot_id={uuid}&region={str}
+    GET /api/nca/distribution/?snapshot_id={uuid}&region={str}
     
     Returns:
         {
