@@ -223,7 +223,7 @@ class PipelineLogEntry(models.Model):
 
 ***REMOVED******REMOVED******REMOVED*** 4.5 USLP Dashboard: aggregate() + Case/When
 
-**Source:** `igea/services/augmented_data_service.py`
+**Source:** `api/services/augmented_data_service.py`
 
 USLP predictions are persisted as `SpatialTripletScore` rows. The dashboard
 retrieves and aggregates them in a single SQL round-trip:
