@@ -11,8 +11,8 @@ import axios from "axios"
 
 // Match the existing frontend: point axios at the Django API.
 // VITE_API_BASE_URL overrides it at build time. Same-origin self-host:
-// set it to '/api' so REST, SSE (derived from axios.defaults.baseURL) and
-// the WebSocket (derived in pipelineStore) all stay on one host.
+// set it to '/api' so REST and SSE (derived from axios.defaults.baseURL)
+// stay on one host.
 axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 axios.defaults.withCredentials = true
 

@@ -84,7 +84,7 @@ export function escapeHtml(value) {
 
 /** Accept either a raw data-tool result or an explicit entities list
  *  (moved from useMapOverlayLayers.js — carries osm fields now). */
-export function normalizeOverlayEntities(overlay) {
+function normalizeOverlayEntities(overlay) {
   const raw = overlay.result || overlay.entities || []
   const source = Array.isArray(raw)
     ? raw
@@ -156,6 +156,117 @@ export function buildSearchResultLayer(results) {
     pickable: true,
     autoHighlight: true,
   })]
+}
+
+// ── Seed overlay (doppelganger intake, ISSUE-48) ─────────────────────────
+
+/** Confirmed seed pin (green) + candidate markers (amber). The map click
+ *  on a candidate IS the confirmation gesture; rows carry the marker
+ *  shape the panel adapts ({geom: {lat, lon}, seed_kind}) plus the entity
+ *  fields the info panel reads, so hover/click work uniformly. */
+export function buildSeedOverlayLayers(seedOverlay) {
+  const { confirmed, candidates } = seedOverlay || {}
+  const layers = []
+  const rows = (candidates || [])
+    .filter((r) => r.geom && r.geom.lat != null && r.geom.lon != null)
+    .map((r) => ({ ...r, position: [r.geom.lon, r.geom.lat] }))
+  if (rows.length) {
+    layers.push(new ScatterplotLayer({
+      id: 'seed-candidates',
+      data: rows,
+      getPosition: (d) => d.position,
+      getRadius: 16,
+      radiusUnits: 'pixels',
+      filled: true,
+      stroked: true,
+      // Candidates: amber — visually distinct from search-result indigo.
+      getFillColor: [245, 158, 11, 230],
+      getLineColor: [254, 243, 199, 255],
+      lineWidthMinPixels: 1,
+      pickable: true,
+      autoHighlight: true,
+    }))
+  }
+  if (confirmed?.geom && confirmed.geom.lat != null
+    && confirmed.geom.lon != null) {
+    layers.push(new ScatterplotLayer({
+      id: 'seed-confirmed',
+      data: [{
+        ...confirmed,
+        position: [confirmed.geom.lon, confirmed.geom.lat],
+      }],
+      getPosition: (d) => d.position,
+      getRadius: 22,
+      radiusUnits: 'pixels',
+      filled: true,
+      stroked: true,
+      // Confirmed seed: green — the "this is the one" state.
+      getFillColor: [34, 197, 94, 235],
+      getLineColor: [209, 250, 229, 255],
+      lineWidthMinPixels: 2,
+      pickable: true,
+      autoHighlight: true,
+    }))
+  }
+  return layers
+}
+
+// ── Doppelganger twin overlay (map results, ISSUE-50 Part A) ───────────
+
+/** Twin markers + seed-to-twin spread lines for a completed doppelganger
+ *  run. Rows carry the marker shape the panel adapts ({geom: {lat, lon}})
+ *  plus the entity fields the info panel reads, so hover/click work
+ *  uniformly. Colors are the doppelganger purple theme, distinct from
+ *  the intake: green seed pin, amber candidates, purple twins. Size
+ *  scales with twin_score when present, else similarity. */
+export function buildTwinOverlayLayers(twinOverlay) {
+  const { seed, twins } = twinOverlay || {}
+  const layers = []
+  const seedPos = (seed && seed.geom && seed.geom.lat != null
+    && seed.geom.lon != null)
+    ? [seed.geom.lon, seed.geom.lat]
+    : null
+  const rows = (twins || [])
+    .filter((r) => r.geom && r.geom.lat != null && r.geom.lon != null)
+    .map((r) => ({
+      ...r,
+      position: [r.geom.lon, r.geom.lat],
+    }))
+
+  if (seedPos && rows.length) {
+    layers.push(new LineLayer({
+      id: 'twin-spread-lines',
+      data: rows.map((r) => ({ from: seedPos, to: r.position })),
+      getSourcePosition: (d) => d.from,
+      getTargetPosition: (d) => d.to,
+      getColor: [192, 132, 252, 140],
+      widthUnits: 'pixels',
+      getWidth: 1.5,
+      pickable: false,
+    }))
+  }
+
+  if (rows.length) {
+    layers.push(new ScatterplotLayer({
+      id: 'twin-markers',
+      data: rows,
+      getPosition: (d) => d.position,
+      getRadius: (d) => {
+        const score = d.twin_score != null ? d.twin_score : d.similarity
+        return 10 + (score == null ? 0 : score) * 12
+      },
+      radiusUnits: 'pixels',
+      filled: true,
+      stroked: true,
+      // Twins: purple - the "the search found these" state.
+      getFillColor: [168, 85, 247, 220],
+      getLineColor: [243, 232, 255, 255],
+      lineWidthMinPixels: 1.5,
+      pickable: true,
+      autoHighlight: true,
+    }))
+  }
+  return layers
 }
 
 // ── Query graph (anchor/entity + links + distance lines) ────────────────

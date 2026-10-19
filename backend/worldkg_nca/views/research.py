@@ -43,6 +43,10 @@ def research_stream(request):
     country_code = request.GET.get("country_code") or None
     snapshot_date = request.GET.get("snapshot_date") or None
     subdivision_qid = request.GET.get("subdivision_qid") or None
+    ***REMOVED*** Recipe hard-select (2026-10-17): the doppelganger surface sends
+    ***REMOVED*** recipe=doppelganger_report so every run on it is a doppelganger
+    ***REMOVED*** run regardless of the ask's vocabulary; /tools sends none.
+    recipe_key = request.GET.get("recipe") or None
 
     if not prompt_text:
         return JsonResponse({"error": "prompt required"}, status=400)
@@ -121,6 +125,7 @@ def research_stream(request):
                     result = ResearchOrchestratorService.plan(
                         prompt_text, country_code, snapshot_date, event_callback=emit,
                         subdivision_qid=subdivision_qid,
+                        recipe_key=recipe_key,
                     )
                     if isinstance(result, dict):
                         result["trace_id"] = trace_id
@@ -175,6 +180,11 @@ def research_chat(request):
     Emits the AI SDK v7 UI-message-stream protocol (frontend
     ``useChat``/``DefaultChatTransport`` consumes it):
         data: {"type": "start"}
+        data: {"type": "data-seed", "id": "seed",
+               "data": {found, asked, name?, osm_id?, osm_type?, tags?,
+                        lat?, lon?, candidates?|suggestions?}}
+               (live seed resolution, slot-gated — ISSUE-48; absent on
+               non-candidate turns)
         data: {"type": "text-start", "id": "t1"}
         data: {"type": "text-delta", "id": "t1", "delta": "..."}  (repeated)
         data: {"type": "text-end", "id": "t1"}
@@ -200,7 +210,19 @@ def research_chat(request):
     country_code = body.get("country_code") or None
     snapshot_date = body.get("snapshot_date") or None
     subdivision_qid = body.get("subdivision_qid") or None
+    ***REMOVED*** Recipe hard-select (2026-10-17): gates the live seed resolution's
+    ***REMOVED*** turn-1 doppelganger check on this surface.
+    recipe_key = body.get("recipe") or None
     trace_id = body.get("trace_id") or uuid.uuid4().hex
+    ***REMOVED*** The KE context keeps the display name ("Jamaica"); the live seed
+    ***REMOVED*** geocode needs the ISO code (the frontend sends the display name —
+    ***REMOVED*** the 2026-10-11 Friars Tavern lesson).
+    geocode_country = country_code
+    if geocode_country:
+        try:
+            geocode_country = resolve_iso_code(geocode_country)
+        except Exception:
+            pass  ***REMOVED*** use as-is if resolution fails
 
     from core.services.llm_service import LLMService
     from semantic_search.services.research_service import (
@@ -211,9 +233,26 @@ def research_chat(request):
     if not llm.is_available():
         return JsonResponse({"error": "interviewer LLM unavailable"}, status=503)
 
+    ***REMOVED*** Digest prefetch (2026-10-17): the same builder the classDrift tool
+    ***REMOVED*** uses, injected into the KE context so data-metadata questions are
+    ***REMOVED*** answered from data. Fail-soft: no digest, no narration, interview
+    ***REMOVED*** proceeds.
+    digest_text = None
+    try:
+        from semantic_search.services.query_enrichment_service import (
+            QueryEnrichmentService,
+        )
+        digest_text = ResearchOrchestratorService._render_ke_digest(
+            QueryEnrichmentService._class_drift_report(
+                country_code, snapshot_date,
+            ),
+        )
+    except Exception as exc:  ***REMOVED*** noqa: BLE001 — narration is optional
+        logger.warning("KE digest prefetch failed: %s", exc)
+
     full_messages = ResearchOrchestratorService.chat_messages(
         messages, country_code, snapshot_date,
-        subdivision_qid=subdivision_qid,
+        subdivision_qid=subdivision_qid, digest_text=digest_text,
     )
 
     def _part(part_dict):
@@ -240,6 +279,21 @@ def research_chat(request):
                     },
                 ):
                     emit(_part({"type": "start"}))
+                    ***REMOVED*** Live seed resolution (ISSUE-48): deterministic,
+                    ***REMOVED*** slot-gated; the part precedes the text stream so the
+                    ***REMOVED*** pin renders while the KE thinks. Fail-soft: a
+                    ***REMOVED*** geocoder failure must not kill the interview.
+                    try:
+                        seed_part = ResearchOrchestratorService.live_seed_part(
+                            messages, recipe_key=recipe_key,
+                            country_code=geocode_country,
+                            snapshot_date=snapshot_date,
+                        )
+                    except Exception as exc:  ***REMOVED*** noqa: BLE001
+                        logger.warning("Live seed resolution failed: %s", exc)
+                        seed_part = None
+                    if seed_part is not None:
+                        emit(_part(seed_part))
                     emit(_part({"type": "text-start", "id": "t1"}))
                     for delta in llm.chat_stream(
                         full_messages, temperature=0.4, max_tokens=400,
@@ -308,6 +362,11 @@ def research_finalize(request):
             pass  ***REMOVED*** use as-is if resolution fails (same as research_stream)
     snapshot_date = body.get("snapshot_date") or None
     subdivision_qid = body.get("subdivision_qid") or None
+    ***REMOVED*** Recipe hard-select + the live-confirmed seed (2026-10-17): the
+    ***REMOVED*** doppelganger surface sends both; the confirmed seed skips
+    ***REMOVED*** re-geocoding in finalize_brief.
+    recipe_key = body.get("recipe") or None
+    confirmed_seed = body.get("seed") or None
 
     from semantic_search.services.research_service import (
         ResearchOrchestratorService,
@@ -316,10 +375,134 @@ def research_finalize(request):
     result = ResearchOrchestratorService.finalize_brief(
         messages, country_code, snapshot_date,
         subdivision_qid=subdivision_qid,
+        recipe_key=recipe_key,
+        confirmed_seed=confirmed_seed,
     )
     if not result:
         return JsonResponse({"error": "no brief extractable"}, status=422)
     return JsonResponse(result)
+
+
+@require_GET
+def research_seed_examples(request):
+    """Real entity examples for the doppelganger intake's greeting.
+
+    GET /api/nca/research/seed-examples/?country_code=JM&snapshot_date=...
+
+    Returns {"examples": [{name, kind, osm_id, osm_type, lat, lon}]}:
+    up to 3 named, coordinate-bearing FOOD venues (cuisine-tagged) with
+    tag embeddings, for the country, ordered by tag richness then
+    deterministically (md5 of the entity key - the MapQA sampler's
+    ordering pattern), so the greeting's invocation example is a REAL
+    place in the dataset ("help me find a doppelganger for X") instead
+    of a hardcoded name. The cuisine filter is GIN-indexable (tags
+    has-key), the embedding check guarantees a suggested seed can never
+    fail the run with "seed entity has no tag embedding". Read-only,
+    public (the open-read posture). Fail-soft: an empty list when the
+    country has no data or the query fails; the frontend falls back to
+    generic copy.
+    """
+    country_code = request.GET.get("country_code") or None
+    snapshot_date = request.GET.get("snapshot_date") or None
+    if country_code:
+        try:
+            country_code = resolve_iso_code(country_code)
+        except Exception:
+            pass  ***REMOVED*** use as-is if resolution fails (same as research_stream)
+
+    from django.db.models.expressions import RawSQL
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    from worldkg_nca.models import OsmEntity
+    from worldkg_nca.snapshot_utils import get_latest_snapshot_id
+
+    snapshot_id = snapshot_date or get_latest_snapshot_id()
+    if not snapshot_id or not country_code:
+        return JsonResponse({"examples": []})
+    try:
+        qs = (
+            OsmEntity.objects.using("vectors")
+            .filter(
+                snapshot_id=snapshot_id,
+                country_code=country_code.upper(),
+            )
+            .filter(tags__has_key="name")
+            .filter(tags__has_key="cuisine")
+            .exclude(gv_tags_embedding__isnull=True)
+            .exclude(geom__isnull=True)
+        )
+        ***REMOVED*** Geometry guard (demo fix, ISSUE-50): the country partitions can
+        ***REMOVED*** carry foreign-coordinate rows (extraction-era polygon drift), so
+        ***REMOVED*** a suggested example must fall inside the country's boundary
+        ***REMOVED*** bbox. Fail-soft: no boundary row means no guard, current
+        ***REMOVED*** behavior preserved.
+        bbox = _country_bbox(country_code.upper())
+        if bbox:
+            from django.contrib.gis.geos import Polygon
+            qs = qs.filter(geom__within=Polygon.from_bbox(bbox))
+        rows = list(
+            qs.annotate(
+                tag_count=RawSQL(
+                    "(SELECT count(*) FROM jsonb_object_keys(tags))", []
+                )
+            )
+            .order_by(
+                "-tag_count",
+                RawSQL("md5(concat(osm_type, ':', osm_id::text))", []),
+            )[:30]
+        )
+    except Exception as exc:  ***REMOVED*** noqa: BLE001 — examples are optional
+        logger.warning("seed-examples query failed: %s", exc)
+        return JsonResponse({"examples": []})
+
+    examples = []
+    for entity in rows:
+        example = _entity_to_example(entity)
+        if example is not None:
+            examples.append(example)
+        if len(examples) == 3:
+            break
+    return JsonResponse({"examples": examples})
+
+
+def _country_bbox(country_code):
+    """Country bbox from OsmBoundary (admin_level=2) ->
+    [minLon, minLat, maxLon, maxLat], or None. Fail-soft: a missing
+    boundary (or a DB hiccup) means no geometry guard, never an error.
+    """
+    try:
+        from core.models import OsmBoundary
+        boundary = (
+            OsmBoundary.objects.filter(
+                iso_code__iexact=country_code, admin_level=2,
+            )
+            .exclude(bbox__isnull=True)
+            .order_by("-valid_from")
+            .first()
+        )
+        return boundary.bbox if boundary else None
+    except Exception:  ***REMOVED*** noqa: BLE001 — guard is optional
+        return None
+
+
+def _entity_to_example(entity):
+    """OsmEntity row -> greeting example {name, kind, osm_id, osm_type,
+    lat, lon}; None when unusable (no name, or no usable coordinates -
+    the POINT(NaN NaN) ways the writer guard let through)."""
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    d = EntityGeocoder._entity_to_dict(entity)
+    if not d or not d.get("name") or d.get("lat") is None:
+        return None
+    tags = d.get("tags") or {}
+    kind = next(
+        (tags[k] for k in ("amenity", "tourism", "leisure", "shop")
+         if tags.get(k)),
+        "",
+    )
+    return {
+        "name": d["name"], "kind": kind,
+        "osm_id": d["osm_id"], "osm_type": d["osm_type"],
+        "lat": d["lat"], "lon": d["lon"],
+    }
 
 
 @require_GET

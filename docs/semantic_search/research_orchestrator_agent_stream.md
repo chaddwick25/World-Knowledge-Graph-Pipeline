@@ -205,6 +205,70 @@ SSE event name and named listeners never fire.
 frontend `useChat`/`DefaultChatTransport` consumes it. 503 JSON when the
 4070 is down; the stream always terminates with a finish frame.
 
+**Live seed resolution (2026-10-17, ISSUE-48)**: `research_chat` may
+emit a `data-seed` part between `start` and `text-start`: the AI SDK
+data-part channel, so the frontend renders it from `message.parts`:
+
+```
+data: {"type": "data-seed", "id": "seed",
+       "data": {found, asked, name?, osm_id?, osm_type?, tags?,
+                lat?, lon?, candidates?: [...], suggestions?: [...]}}
+```
+
+The resolution is deterministic and slot-gated (`live_seed_part` in
+`research_service.py`): it fires on turn 1 when the ask routes as a
+doppelganger ask (the surface's `recipe=doppelganger_report` override or
+the router), and on the turn that answers a `[seed]`-marked KE question
+(the marker stays in the transcript; the frontend strips it for
+display). Trigram tier only (~50ms); `research/finalize/` keeps the
+full geocoder and stays authoritative; a live miss that finalize finds
+is acceptable. Multi-hit names carry `candidates` (the map click IS the
+confirmation); misses carry `suggestions` ("did you mean ...?").
+
+**Recipe hard-select (2026-10-17)**: `research_stream` and
+`research_finalize` accept a `recipe` param: the doppelganger surface
+sends `recipe=doppelganger_report`, and `plan`/`finalize_brief` bypass
+`route_to_recipe` when the key resolves. `/tools` sends none; its
+behavior is unchanged. The KE system prompt also gains the deterministic
+dataset-context block (`_render_ke_digest` over the same
+`_class_drift_report` builder the `classDrift` tool uses), so
+data-metadata questions are answered from data, never interviewed.
+
+**Confirmed-seed finalize payload (2026-10-17)**: `research_finalize`
+also accepts a `seed` body field: the frontend's confirmed seed row
+(`{found, asked, name, osm_id, osm_type, tags, lat, lon}`). It is
+authoritative: `finalize_brief` renders the `Seed:` line from it and
+skips re-geocoding, so the run anchors on the entity the user actually
+picked on the map, not on the interview's rewording.
+
+**Seed examples for the onboarding copy (2026-10-17)**:
+`GET /api/nca/research/seed-examples/?country_code=<iso>` returns up to
+3 named, coordinate-bearing venue-class entities for the country,
+deterministically ordered (md5 of the entity key, the MapQA sampler's
+pattern), NaN-geom rows rejected. The interview panel's greeting and
+input placeholder use the first one ("help me find a doppelganger for
+\<real entity\>"); an empty list or fetch failure degrades to generic
+copy. Read-only.
+
+**Frontend seed flow (2026-10-17)**: `seedStore`
+(`frontend-v3/src/stores/seedStore.js`) is the seed's single state
+owner: the panel writes it from `data-seed` parts; `WorldKGMap` renders
+amber candidate markers + the green confirmed pin
+(`buildSeedOverlayLayers`, its own `seed-overlay` layer group) and a
+candidate-marker click IS the confirmation (a direct store write, the
+same pattern as `entityInfoStore`); `EntityInfoPanel` shows the
+"Use as seed: \<name\>" button for candidates and a "Seed ✓" badge for
+the confirmed entity, with a Wikidata link when `tags.wikidata` exists.
+An explicit pick locks the seed (`locked` + `confirmedSource='explicit'`):
+later `data-seed` parts update the candidate display but never clobber
+it, and the FIRST explicit pick is announced to the KE once as a
+`Seed: <name> (kind)` user message (the existing handshake format);
+switches stay silent. Hover state (`hoveredKey`) is shared between the
+info box and the chat menu (bidirectional highlight) and deliberately
+never drives the map overlay: the overlay watcher keys on a content
+signature (`seedSignature`), not the store deeply, so hovering cannot
+re-fit the map (the 2026-10-17 click-storm fix).
+
 Frontend consumption: `EventSource` (GET-only; the URL is built from
 `axios.defaults.baseURL`, a relative `/nca/...` path hits Vite with no
 proxy), same pattern as the search panel's template mode. The `done`

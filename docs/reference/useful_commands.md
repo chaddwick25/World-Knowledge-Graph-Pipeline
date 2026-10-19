@@ -91,7 +91,7 @@ curl -s http://localhost:8000/api/semantic-search/gv-tags/ \
 docker compose exec backend python manage.py prototype_physical_sharding --skip-data
 
 **********************************************************************************************
-***REMOVED******REMOVED*** MapQA Parser — Training, Testing, and Query Execution
+***REMOVED******REMOVED*** MapQA Parser - Training, Testing, and Query Execution
 **********************************************************************************************
 
 ***REMOVED*** Retrain the parser (includes natural-language QA pairs augmentation)
@@ -102,16 +102,16 @@ docker compose exec backend python manage.py train_mapqa_parser
 docker compose exec backend python manage.py train_mapqa_parser --csv-path /path/to/custom.csv
 docker compose exec backend python manage.py train_mapqa_parser --no-concept-models
 
-***REMOVED*** Run parser unit tests (22 tests — classification, concepts, DAG, multi-entity, edge cases)
+***REMOVED*** Run parser unit tests (22 tests - classification, concepts, DAG, multi-entity, edge cases)
 docker compose exec backend python -m pytest tests/unit/test_mapqa_parser.py -v
 
-***REMOVED*** Run executor integration tests (12 tests — endpoint, executor, plan)
+***REMOVED*** Run executor integration tests (12 tests - endpoint, executor, plan)
 docker compose exec backend python -m pytest tests/integration/test_mapqa_executor.py -v
 
 ***REMOVED*** Run all MapQA + spectral + community tests together
 docker compose exec backend python -m pytest tests/unit/test_mapqa_parser.py tests/integration/test_mapqa_executor.py tests/unit/test_spectral_analysis_service.py tests/unit/test_graph_signal_service.py tests/unit/test_community_detection_service.py -v
 
-***REMOVED*** Run the factor-node table tests (16 tests — writer, drift sign alignment,
+***REMOVED*** Run the factor-node table tests (16 tests - writer, drift sign alignment,
 ***REMOVED*** diffusion parity vs numpy, amenity command, executor flag on/off)
 docker compose exec backend python -m pytest tests/unit/test_factor_node_tables.py -v
 
@@ -119,12 +119,12 @@ docker compose exec backend python -m pytest tests/unit/test_factor_node_tables.
 ***REMOVED*** Generate PostGIS-verifiable Q&A pairs for templates ***REMOVED***1/***REMOVED***2/***REMOVED***4/***REMOVED***5/***REMOVED***8 from
 ***REMOVED*** OsmEntity ground truth in processed countries. Appends to
 ***REMOVED*** {MAPQA_PARSER_DATA_DIR}/training_data/natural_language_qa_pairs.csv
-***REMOVED*** (idempotent — replaces its own prior (country, snapshot, template) rows).
+***REMOVED*** (idempotent - replaces its own prior (country, snapshot, template) rows).
 docker compose exec backend python manage.py generate_mapqa_training_data --country BZ
 docker compose exec backend python manage.py generate_mapqa_training_data --country BZ,JM,IE --per-class 250
 docker compose exec backend python manage.py generate_mapqa_training_data --all-processed --dry-run
 docker compose exec backend python manage.py generate_mapqa_training_data --all-processed --retrain
-***REMOVED*** Optional LLM paraphrase tier (Ollama via LLMService — off by default)
+***REMOVED*** Optional LLM paraphrase tier (Ollama via LLMService - off by default)
 MAPQA_LLM_AUGMENTATION_ENABLED=true docker compose exec backend python manage.py generate_mapqa_training_data --country BZ --llm
 
 ***REMOVED*** Generator unit tests (11 tests, needs test DBs with vector + postgis extensions)
@@ -133,7 +133,7 @@ docker compose exec backend python -m pytest tests/unit/test_mapqa_question_gene
 ***REMOVED*** Paraphraser unit tests (16 tests, no DB needed)
 docker compose exec backend python -m pytest tests/unit/test_mapqa_paraphraser.py -v --reuse-db
 
-***REMOVED*** Quick parser test (no DB needed) — verify all 5 templates classify correctly
+***REMOVED*** Quick parser test (no DB needed) - verify all 5 templates classify correctly
 docker compose exec backend python manage.py shell -c "
 from semantic_search.services.query_parser_service import QueryParserService
 QueryParserService.reset_instance()
@@ -183,7 +183,7 @@ for q in tests:
 "
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Graph Endpoints — Spectral, Community, Event Diffusion
+***REMOVED******REMOVED*** Graph Endpoints - Spectral, Community, Event Diffusion
 **********************************************************************************************
 
 ***REMOVED*** Spectral query (uses cached fingerprint from Step 5c if available)
@@ -207,7 +207,7 @@ curl -s http://localhost:8000/api/nca/temporal-query/ \
   -d '{"query": "how has this area changed", "country_code": "BZ", "snapshot_date": "2025_12_31"}' | python -m json.tool
 
 **********************************************************************************************
-***REMOVED******REMOVED*** k-NN Graph — Build, Serialize, and Inspect (Step 5c artifact)
+***REMOVED******REMOVED*** k-NN Graph - Build, Serialize, and Inspect (Step 5c artifact)
 **********************************************************************************************
 
 ***REMOVED*** Build the k-NN graph for a country/snapshot and serialize to GraphML
@@ -236,7 +236,7 @@ ls -lh backend/data/graph_artifacts/
 docker compose exec backend ls -lh /app/data/graph_artifacts/
 
 **********************************************************************************************
-***REMOVED******REMOVED*** USLP Calibration — Hyperparameter Threshold Validation
+***REMOVED******REMOVED*** USLP Calibration - Hyperparameter Threshold Validation
 **********************************************************************************************
 
 ***REMOVED*** Run USLP threshold calibration (uses worker container for GPU reporting)
@@ -247,7 +247,7 @@ docker compose exec worker python manage.py calibrate_uslp_thresholds --country 
 docker compose exec backend python -m pytest tests/unit/test_uslp_threshold_calibration.py -v
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Database Indexes — Migration 0011 (wkg_class B-tree + tags GIN)
+***REMOVED******REMOVED*** Database Indexes - Migration 0011 (wkg_class B-tree + tags GIN)
 **********************************************************************************************
 
 ***REMOVED*** Check migration state
@@ -330,7 +330,7 @@ env = CountryEnvelope(
 step_5c_graph_spectral_analysis.apply(args=[env])
 "
 
-***REMOVED*** Run Step 5d (temporal drift) manually — requires 2+ snapshots
+***REMOVED*** Run Step 5d (temporal drift) manually - requires 2+ snapshots
 docker compose exec backend python manage.py shell -c "
 from pipeline.tasks.country_pipeline_steps.step_5d_temporal_drift import step_5d_temporal_drift
 from pipeline.envelopes import CountryEnvelope
@@ -354,7 +354,7 @@ for fp in fps:
 "
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Factor-Node Tables — Runtime Joins for MapQA
+***REMOVED******REMOVED*** Factor-Node Tables - Runtime Joins for MapQA
 **********************************************************************************************
 
 ***REMOVED*** Factor tables live on the vectors DB (models in worldkg_nca, migrations 0012/0013).
@@ -384,7 +384,7 @@ docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
 "
 
 ***REMOVED*** Smoke-test the SQL-only heat-kernel diffusion (factor tables) for a country
-***REMOVED*** that has completed Step 5c — one pgvector inner-product query per call
+***REMOVED*** that has completed Step 5c - one pgvector inner-product query per call
 docker compose exec backend python manage.py shell -c "
 from semantic_search.services.factor_resolution_service import FactorResolutionService
 from worldkg_nca.models import SpectralNodeMetric
@@ -404,7 +404,7 @@ for r in ranked:
     print(f'  {r[\"osm_id\"]:>12}  score={r[\"score\"]:.6f}')
 "
 
-***REMOVED*** G4 availability check (Spatial-Agent §3.3 — is a factor row executable?)
+***REMOVED*** G4 availability check (Spatial-Agent §3.3 - is a factor row executable?)
 docker compose exec backend python manage.py shell -c "
 from semantic_search.services.factor_resolution_service import FactorResolutionService
 print(FactorResolutionService().check_availability([123, 456], '2025_12_31', 'BZ'))
@@ -433,10 +433,10 @@ docker compose exec postgres-vectors psql -U vector_user -d test_vector_db -c "C
 docker compose exec postgres-default psql -U django_user -d test_django_db -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS postgis;"
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Query Modes — Three Independent Search Endpoints
+***REMOVED******REMOVED*** Query Modes - Three Independent Search Endpoints
 **********************************************************************************************
 
-***REMOVED*** Mode 1: Structured JSON (tags + name) — FastText + romanizer
+***REMOVED*** Mode 1: Structured JSON (tags + name) - FastText + romanizer
 ***REMOVED*** Search by OSM tags (semantic type matching)
 curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   -H "Content-Type: application/json" \
@@ -449,7 +449,7 @@ curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   -d '{"country_code": "South Korea", "query_tags": {"name": "파리바게뜨"}, "top_k": 5}' \
   | python3 -m json.tool
 
-***REMOVED*** Mode 2: Natural language name search — FastText + romanizer
+***REMOVED*** Mode 2: Natural language name search - FastText + romanizer
 ***REMOVED*** Type a name in any language or script (cross-script matching)
 curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   -H "Content-Type: application/json" \
@@ -462,7 +462,7 @@ curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   -d '{"country_code": "South Korea", "natural_query": "원탕", "top_k": 5}' \
   | python3 -m json.tool
 
-***REMOVED*** Mode 3: Natural language template (MapQA parser) — parser + executor only
+***REMOVED*** Mode 3: Natural language template (MapQA parser) - parser + executor only
 ***REMOVED*** Type a full geospatial question (separate endpoint, independent of Modes 1-2)
 curl -s -X POST http://localhost:8000/api/nca/execute-query/ \
   -H "Content-Type: application/json" \
@@ -476,13 +476,13 @@ curl -s -X POST http://localhost:8000/api/nca/execute-query/ \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Template: {d[\"parsed\"][\"template\"]}  conf={d[\"parsed\"][\"confidence\"]:.3f}'); print(f'Concepts: {[(c[\"type\"],c[\"text\"]) for c in d[\"parsed\"][\"concepts\"]]}')"
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Name Romanizing — Cross-Script Name Preprocessing
+***REMOVED******REMOVED*** Name Romanizing - Cross-Script Name Preprocessing
 **********************************************************************************************
 
 ***REMOVED*** Romanize ALL entities across all countries (idempotent, resumable)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py romanize_names
 
-***REMOVED*** Romanize one country (e.g., South Korea — ~4 min at ~4,400 entities/sec)
+***REMOVED*** Romanize one country (e.g., South Korea - ~4 min at ~4,400 entities/sec)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py romanize_names --country-code KR
 
 ***REMOVED*** Dry run (see samples without writing to DB)
@@ -545,20 +545,20 @@ curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   | python3 -c "import sys,json; [print(r['tags']['name']) for r in json.load(sys.stdin)['results']]"
 
 **********************************************************************************************
-***REMOVED******REMOVED*** MCP Agent Stack — Ollama + Goose (../platform/docker_agent_stack.md)
+***REMOVED******REMOVED*** MCP Agent Stack - Ollama + Goose (../platform/docker_agent_stack.md)
 **********************************************************************************************
 
 ***REMOVED*** Start the LLM server and pull the model (one-time ~5.2 GB)
 docker compose up -d ollama
 docker compose exec ollama ollama pull qwen3:8b
 
-***REMOVED*** Run the agent — interactive TUI
+***REMOVED*** Run the agent - interactive TUI
 docker compose run --rm goose session
 
-***REMOVED*** Run the agent — headless single task
+***REMOVED*** Run the agent - headless single task
 docker compose run --rm goose run -t "Which cafes are within 50km of Belize City?"
 
-***REMOVED*** Goose config lives in goose/config/config.yaml (mounted as a DIRECTORY —
+***REMOVED*** Goose config lives in goose/config/config.yaml (mounted as a DIRECTORY -
 ***REMOVED*** goose rewrites it on session start; a file bind-mount fails with EBUSY).
 ***REMOVED*** Agent instructions: goose/worldkg-recipe.yaml
 
@@ -567,7 +567,7 @@ docker compose exec ollama nvidia-smi -L
 docker compose exec worker nvidia-smi -L
 
 **********************************************************************************************
-***REMOVED******REMOVED*** MCP Tool Surface — 9 tools at /__mcp
+***REMOVED******REMOVED*** MCP Tool Surface - 9 tools at /__mcp
 **********************************************************************************************
 
 ***REMOVED*** MCP wire smoke test (start a second Vite on 5174 first, then):
@@ -577,11 +577,11 @@ node frontend-v3/scripts/mcp-smoke-test.mjs 5174
 ***REMOVED*** Have goose list the tools it sees (via the worldkg-mcp extension)
 docker compose run --rm goose run -t "List the MCP tools available on the worldkg-mcp server and report their names."
 
-***REMOVED*** MVP demo page — open in the browser
+***REMOVED*** MVP demo page - open in the browser
 ***REMOVED*** http://localhost:5173/agent
 
 **********************************************************************************************
-***REMOVED******REMOVED*** SSE Streaming — execute-query/stream
+***REMOVED******REMOVED*** SSE Streaming - execute-query/stream
 **********************************************************************************************
 
 ***REMOVED*** Stream the full pipeline as events (parsed → executed → research →
@@ -593,11 +593,11 @@ curl -sN -H "Accept: text/event-stream" \
 curl -s "http://localhost:8000/api/nca/factor-availability/?country_code=JM"
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Platform LLM — Warm-up, Enrichment, Caches
+***REMOVED******REMOVED*** Platform LLM - Warm-up, Enrichment, Caches
 **********************************************************************************************
 
 ***REMOVED*** Load the model into VRAM at container create (entrypoint hook). NOTE:
-***REMOVED*** `docker compose restart` does NOT re-run the entrypoint — use force-recreate.
+***REMOVED*** `docker compose restart` does NOT re-run the entrypoint - use force-recreate.
 docker compose exec backend python manage.py warm_llm
 docker compose up -d --force-recreate backend
 
@@ -627,18 +627,18 @@ t0 = time.monotonic(); get_latest_snapshot_id()
 print(f'cached: {(time.monotonic()-t0)*1000:.0f}ms')
 "
 
-***REMOVED*** Spatial geography expression index (GIST on geom::geography) — makes
+***REMOVED*** Spatial geography expression index (GIST on geom::geography) - makes
 ***REMOVED*** ST_DWithin(geom::geography, ...) an Index Scan instead of a partition scan
 docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   SELECT indexname FROM pg_indexes WHERE indexname='idx_osmentity_geom_geog';
 "
 
-***REMOVED*** LLM / enrichment / snapshot-cache unit tests (all mocked — no Ollama needed)
+***REMOVED*** LLM / enrichment / snapshot-cache unit tests (all mocked - no Ollama needed)
 docker compose exec backend python -m pytest tests/unit/test_llm_service.py \
   tests/unit/test_query_enrichment_service.py tests/unit/test_snapshot_cache.py -v
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Verification — System Checks and Syntax Validation
+***REMOVED******REMOVED*** Verification - System Checks and Syntax Validation
 **********************************************************************************************
 
 ***REMOVED*** Django system check
@@ -661,7 +661,7 @@ grep -r "from extraction\|import extraction\|from orchestration\|import orchestr
 grep -r "from analysis\|import analysis" backend/ --include="*.py" | grep -v "/migrations/"
 grep -r "TemporalSnapshot\|AssetBundle" backend/ --include="*.py" | grep -v "/migrations/"
 **********************************************************************************************
-***REMOVED******REMOVED*** Self-Hosted Deployment — nginx, Funnel, Login Guard
+***REMOVED******REMOVED*** Self-Hosted Deployment - nginx, Funnel, Login Guard
 **********************************************************************************************
 
 ***REMOVED*** Rebuild the SPA with the same-origin API base (dist is mounted into nginx, no restart needed)
@@ -671,29 +671,8 @@ cd frontend-v3 && VITE_API_BASE_URL=/api npm run build
 docker compose up -d nginx
 docker compose logs -f nginx
 
-***REMOVED*** Tailscale Funnel — targets nginx :80 (NOT backend :8000)
-tailscale funnel status
-sudo tailscale funnel --bg 80            ***REMOVED*** public https://<tailnet>.ts.net -> :80
-sudo tailscale funnel --https=443 off    ***REMOVED*** stop exposing
-
 ***REMOVED*** .env changes need a RECREATE, not a restart (restart keeps the old env)
 docker compose up -d --force-recreate backend
-
-***REMOVED*** ── Public-surface smoke tests (simulate the public host locally) ──
-***REMOVED*** Open read surface: any /api/* read endpoint -> 200 without a session
-curl -s -o /dev/null -w "%{http_code}\n" -H "Host: <tailnet>.ts.net" http://localhost/api/system/status/
-***REMOVED*** Write/trigger endpoints: 404 on public hosts (WriteEndpointGateMiddleware);
-***REMOVED*** the pipeline trigger is key-gated instead (403 without X-Pipeline-Key — the
-***REMOVED*** SPA password modal depends on the 403, so runs work from the funnel with the key)
-curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Host: <tailnet>.ts.net" http://localhost/api/worldkg-pipeline-v2/start/
-curl -s -o /dev/null -w "%{http_code}\n" -X POST -H "Host: <tailnet>.ts.net" -H "X-Pipeline-Key: $PIPELINE_TRIGGER_KEY" http://localhost/api/worldkg-pipeline-v2/start/
-***REMOVED*** WebSocket pipeline stream: open (session guard removed 2026-10-05)
-curl -s -m 3 -i -N -H "Host: <tailnet>.ts.net" -H "Connection: Upgrade" -H "Upgrade: websocket" \
-  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-  http://localhost/ws/pipeline/12345678-1234-1234-1234-123456789abc/ | head -1
-***REMOVED*** Admin gate: public host -> 404, localhost -> login redirect
-curl -s -o /dev/null -w "%{http_code}\n" -H "Host: <tailnet>.ts.net" http://localhost/admin/
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost/admin/
 
 ***REMOVED*** Create a test account from the shell
 docker compose exec backend python manage.py shell -c "

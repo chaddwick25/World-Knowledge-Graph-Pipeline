@@ -55,6 +55,30 @@
           >{{ entity.osm_type }}/{{ entity.osm_id }}</a>
         </span>
       </div>
+      <div v-if="wikidataUrl" class="entity-info-panel__row">
+        <span class="entity-info-panel__label">Wikidata</span>
+        <span class="entity-info-panel__value">
+          <a :href="wikidataUrl" target="_blank" rel="noopener">{{ wikidataQid }}</a>
+        </span>
+      </div>
+      <div v-if="seedMatch && !isConfirmedSeed" class="entity-info-panel__actions">
+        <!-- The confirmation gesture (ISSUE-48): the click IS the
+             selection; the store write re-renders the chip and swaps
+             the pin. Hover links to the candidate chip in the chat
+             menu (shared hoveredKey in seedStore). -->
+        <button
+          type="button"
+          class="btn btn-sm btn-success py-0 px-2 text-truncate"
+          :class="{ 'entity-info-panel__seed-btn--hot': seedStore.hoveredKey === entityKeyStr }"
+          :title="`Use ${title} as the doppelganger seed`"
+          @click="useAsSeed"
+          @mouseenter="seedStore.setHoveredKey(entityKeyStr)"
+          @mouseleave="seedStore.clearHoveredKey(entityKeyStr)"
+        >Use as seed: {{ title }}</button>
+      </div>
+      <div v-else-if="isConfirmedSeed" class="entity-info-panel__actions">
+        <span class="badge bg-success">Seed ✓</span>
+      </div>
       <div v-if="tagRows.length" class="entity-info-panel__tags">
         <span
           v-for="(tag, idx) in tagRows"
@@ -68,6 +92,7 @@
 
 <script>
 import { useEntityInfoStore } from '../stores/entityInfoStore'
+import { useSeedStore } from '../stores/seedStore'
 
 const TAG_LIMIT = 8
 
@@ -82,7 +107,8 @@ export default {
   },
   setup() {
     const store = useEntityInfoStore()
-    return { store }
+    const seedStore = useSeedStore()
+    return { store, seedStore }
   },
   computed: {
     flipBelow() {
@@ -129,12 +155,54 @@ export default {
         .slice(0, TAG_LIMIT)
         .map(([k, v]) => `${k}=${v}`)
     },
+    wikidataQid() {
+      return (this.entity.tags || {}).wikidata || null
+    },
+    wikidataUrl() {
+      return this.wikidataQid
+        ? `https://www.wikidata.org/wiki/${this.wikidataQid}`
+        : ''
+    },
+    /** The focused entity as a seed candidate (multi-hit selection). */
+    seedMatch() {
+      const key = (r) => `${r.osm_type}:${r.osm_id}`
+      const ek = key(this.entity)
+      if (!ek || ek.endsWith(':null')) return null
+      return (this.seedStore.candidates || []).find(
+        (c) => key(c) === ek,
+      ) || null
+    },
+    isConfirmedSeed() {
+      const c = this.seedStore.confirmed
+      if (!c || this.entity.osm_id == null) return false
+      return `${c.osm_type}:${c.osm_id}`
+        === `${this.entity.osm_type}:${this.entity.osm_id}`
+    },
+    entityKeyStr() {
+      if (this.entity.osm_type == null || this.entity.osm_id == null) {
+        return null
+      }
+      return `${this.entity.osm_type}:${this.entity.osm_id}`
+    },
   },
   methods: {
     formatDistance(m) {
       if (m == null) return ''
       if (m >= 1000) return `${(m / 1000).toFixed(1)} km`
       return `${Math.round(m)} m`
+    },
+    /** The confirmation gesture: normalize the focused entity to the
+     *  store's flat seed row and select it. */
+    useAsSeed() {
+      const e = this.entity
+      this.seedStore.selectCandidate({
+        osm_id: e.osm_id,
+        osm_type: e.osm_type,
+        name: e.name || (e.tags || {}).name || '',
+        tags: e.tags || {},
+        lat: e.lat != null ? e.lat : e.geom?.lat,
+        lon: e.lon != null ? e.lon : e.geom?.lon,
+      })
     },
   },
 }
@@ -226,6 +294,18 @@ export default {
 
 .entity-info-panel__value a {
   color: var(--bs-info-text-emphasis);
+}
+
+.entity-info-panel__actions {
+  margin-top: 0.3rem;
+}
+
+/* Hover-link highlight: the chat menu's candidate chip sets
+   seedStore.hoveredKey; this button lights up when it matches (and
+   vice versa - hovering here highlights the menu chip). */
+.entity-info-panel__seed-btn--hot {
+  outline: 2px solid var(--bs-info);
+  outline-offset: 1px;
 }
 
 .entity-info-panel__tags {
