@@ -38,6 +38,7 @@
           :query-graph="queryGraph"
           :template-visualization="templateVisualization"
           :seed-overlay="seedOverlay"
+          :twins-overlay="twinsOverlay"
           @countries-loaded="onCountriesLoaded"
           @country-toggled="onCountryToggled"
         />
@@ -85,6 +86,7 @@
             :set-query-graph="setQueryGraph"
             :set-template-visualization="setTemplateVisualization"
             :set-seed-overlay="setSeedOverlay"
+            :set-twins-overlay="setTwinsOverlay"
           ></slot>
         </template>
       </aside>
@@ -133,6 +135,9 @@ export default {
       // Doppelganger seed overlay (ISSUE-48): {confirmed, candidates}
       // from the panel's data-seed parts; rendered by WorldKGMap.
       seedOverlay: null,
+      // Doppelganger twin overlay (ISSUE-50 Part A): {seed, twins} from
+      // a completed run's similarEntities output; rendered by WorldKGMap.
+      twinsOverlay: null,
     }
   },
   computed: {
@@ -237,6 +242,7 @@ export default {
     setQueryGraph(graph) { this.queryGraph = graph },
     setTemplateVisualization(viz) { this.templateVisualization = viz },
     setSeedOverlay(overlay) { this.seedOverlay = overlay },
+    setTwinsOverlay(overlay) { this.twinsOverlay = overlay },
   },
 }
 </script>

@@ -11,7 +11,7 @@
     back-to="/"
     leaf-base="/agents/doppelganger"
   >
-    <template ***REMOVED***default="{ country, snapshotDate, setSeedOverlay }">
+    <template ***REMOVED***default="{ country, snapshotDate, setSeedOverlay, setTwinsOverlay }">
       <ResearchPanel
         v-if="country"
         :country-name="country.name"
@@ -19,6 +19,7 @@
         :snapshot-date="snapshotDate"
         recipe="doppelganger_report"
         :set-seed-overlay="setSeedOverlay"
+        :set-twins-overlay="setTwinsOverlay"
       />
     </template>
   </SurfaceShell>

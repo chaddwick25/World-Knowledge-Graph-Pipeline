@@ -34,6 +34,12 @@ class EntityGeocoder:
         if not entity_name:
             return None
 
+        ***REMOVED*** Curly vs straight quotes: OSM names and user input both carry
+        ***REMOVED*** U+2018/U+2019 ("Ice N' Beans" fails every exact/ILIKE tier when
+        ***REMOVED*** one side is curly). Normalize the query; the SQL tiers
+        ***REMOVED*** normalize the stored name the same way.
+        entity_name = EntityGeocoder._normalize_quotes(entity_name)
+
         snapshot_id = snapshot_date or get_latest_snapshot_id()
         if not snapshot_id:
             logger.warning("No snapshot_id available for geocoding")
@@ -96,9 +102,16 @@ class EntityGeocoder:
             except Exception:  ***REMOVED*** noqa: BLE001 — trigram unavailable → skip
                 break
 
-        ***REMOVED*** 2. Exact name match (case-insensitive) — check the 'name' tag
+        ***REMOVED*** 2. Exact name match (case-insensitive) — check the 'name' tag.
+        ***REMOVED***    The stored name is quote-normalized in SQL so a curly stored
+        ***REMOVED***    apostrophe still matches the straight query (and vice versa).
         for name_variant in variants:
-            qs_exact = qs.filter(tags__name__iexact=name_variant)
+            qs_exact = qs.extra(
+                where=["%s = LOWER(%s)"],
+                params=[name_variant,
+                        "REPLACE(REPLACE(tags->>'name', chr(8216), chr(39)),"
+                        " chr(8217), chr(39))"],
+            )
             entity = EntityGeocoder._pick(list(qs_exact[:5]))
             if entity:
                 result = EntityGeocoder._entity_to_dict(entity)
@@ -109,9 +122,16 @@ class EntityGeocoder:
 
         ***REMOVED*** 3. ILIKE contains match — prefer entities with valid coordinates.
         ***REMOVED***    Unbounded scan on names not romanized (94% of IE) — only hit
-        ***REMOVED***    when both the indexed trigram and exact steps missed.
+        ***REMOVED***    when both the indexed trigram and exact steps missed. Stored
+        ***REMOVED***    name is quote-normalized like the query.
         for name_variant in variants:
-            qs_ilike = qs.filter(tags__name__icontains=name_variant)
+            qs_ilike = qs.extra(
+                where=[
+                    "REPLACE(REPLACE(tags->>'name', chr(8216), chr(39)),"
+                    " chr(8217), chr(39)) ILIKE %s"
+                ],
+                params=[f"%{name_variant}%"],
+            )
             ***REMOVED*** Fragment guard (Kuhn's Template correction layer): a short
             ***REMOVED*** query ("Cliffs", 6 chars) must not substring-match a much
             ***REMOVED*** longer name ("Cliffs of Howth") — that is a truncated span,
@@ -132,7 +152,13 @@ class EntityGeocoder:
         ***REMOVED*** 4. Try with common abbreviations expanded
         expanded = EntityGeocoder._expand_abbreviations(clean_name)
         if expanded != clean_name:
-            qs_exp = qs.filter(tags__name__icontains=expanded)
+            qs_exp = qs.extra(
+                where=[
+                    "REPLACE(REPLACE(tags->>'name', chr(8216), chr(39)),"
+                    " chr(8217), chr(39)) ILIKE %s"
+                ],
+                params=[f"%{expanded}%"],
+            )
             entity = EntityGeocoder._pick(list(qs_exp[:20]))
             if entity:
                 result = EntityGeocoder._entity_to_dict(entity)
@@ -251,6 +277,7 @@ class EntityGeocoder:
         empty = {"asked": entity_name, "candidates": []}
         if not entity_name:
             return empty
+        entity_name = EntityGeocoder._normalize_quotes(entity_name)
         snapshot_id = snapshot_date or get_latest_snapshot_id()
         if not snapshot_id:
             return empty
@@ -363,6 +390,21 @@ class EntityGeocoder:
             if lower.startswith(article):
                 return name.strip()[len(article):].strip()
         return name.strip()
+
+    @staticmethod
+    def _normalize_quotes(name: str) -> str:
+        """Curly quotes to straight: U+2018/U+2019/U+201B -> ' and
+        U+201C/U+201D -> \". OSM names and user input both carry the
+        curly forms (keyboards, autocorrect), and every exact/ILIKE
+        tier fails when one side is curly."""
+        if not name:
+            return name
+        return (
+            name
+            .replace("\u2018", "'").replace("\u2019", "'")
+            .replace("\u201b", "'")
+            .replace("\u201c", '"').replace("\u201d", '"')
+        )
 
     @staticmethod
     def _expand_abbreviations(name: str) -> str:

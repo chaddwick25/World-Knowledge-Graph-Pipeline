@@ -211,6 +211,64 @@ export function buildSeedOverlayLayers(seedOverlay) {
   return layers
 }
 
+// ── Doppelganger twin overlay (map results, ISSUE-50 Part A) ───────────
+
+/** Twin markers + seed-to-twin spread lines for a completed doppelganger
+ *  run. Rows carry the marker shape the panel adapts ({geom: {lat, lon}})
+ *  plus the entity fields the info panel reads, so hover/click work
+ *  uniformly. Colors are the doppelganger purple theme, distinct from
+ *  the intake: green seed pin, amber candidates, purple twins. Size
+ *  scales with twin_score when present, else similarity. */
+export function buildTwinOverlayLayers(twinOverlay) {
+  const { seed, twins } = twinOverlay || {}
+  const layers = []
+  const seedPos = (seed && seed.geom && seed.geom.lat != null
+    && seed.geom.lon != null)
+    ? [seed.geom.lon, seed.geom.lat]
+    : null
+  const rows = (twins || [])
+    .filter((r) => r.geom && r.geom.lat != null && r.geom.lon != null)
+    .map((r) => ({
+      ...r,
+      position: [r.geom.lon, r.geom.lat],
+    }))
+
+  if (seedPos && rows.length) {
+    layers.push(new LineLayer({
+      id: 'twin-spread-lines',
+      data: rows.map((r) => ({ from: seedPos, to: r.position })),
+      getSourcePosition: (d) => d.from,
+      getTargetPosition: (d) => d.to,
+      getColor: [192, 132, 252, 140],
+      widthUnits: 'pixels',
+      getWidth: 1.5,
+      pickable: false,
+    }))
+  }
+
+  if (rows.length) {
+    layers.push(new ScatterplotLayer({
+      id: 'twin-markers',
+      data: rows,
+      getPosition: (d) => d.position,
+      getRadius: (d) => {
+        const score = d.twin_score != null ? d.twin_score : d.similarity
+        return 10 + (score == null ? 0 : score) * 12
+      },
+      radiusUnits: 'pixels',
+      filled: true,
+      stroked: true,
+      // Twins: purple - the "the search found these" state.
+      getFillColor: [168, 85, 247, 220],
+      getLineColor: [243, 232, 255, 255],
+      lineWidthMinPixels: 1.5,
+      pickable: true,
+      autoHighlight: true,
+    }))
+  }
+  return layers
+}
+
 // ── Query graph (anchor/entity + links + distance lines) ────────────────
 
 export function buildQueryGraphLayers(graph) {

@@ -75,6 +75,7 @@ import {
   buildCountryLayer,
   buildSearchResultLayer,
   buildSeedOverlayLayers,
+  buildTwinOverlayLayers,
   buildQueryGraphLayers,
   buildAugmentedLinkLayers,
   buildAgentOverlayLayers,
@@ -176,6 +177,13 @@ export default {
     // the marker shape ({geom: {lat, lon}, seed_kind}). Candidates are
     // amber multi-hit markers; the confirmed seed is the green pin.
     seedOverlay: {
+      type: Object,
+      default: null,
+    },
+    // Doppelganger twin overlay (ISSUE-50 Part A): {seed, twins} from a
+    // completed run's similarEntities output. Twins render as teal
+    // markers with seed-to-twin spread lines.
+    twinsOverlay: {
       type: Object,
       default: null,
     },
@@ -308,6 +316,12 @@ export default {
     seedOverlay: {
       handler() {
         this.renderSeedOverlay()
+      },
+      deep: true,
+    },
+    twinsOverlay: {
+      handler() {
+        this.renderTwinsOverlay()
       },
       deep: true,
     },
@@ -537,6 +551,24 @@ export default {
       }
       if (overlay?.confirmed?.geom?.lat != null) {
         points.push([overlay.confirmed.geom.lat, overlay.confirmed.geom.lon])
+      }
+      if (points.length && mapInstance) {
+        mapInstance.fitBounds(points, { padding: [100, 100], maxZoom: 14 })
+      }
+    },
+
+    renderTwinsOverlay() {
+      // Doppelganger run results (ISSUE-50 Part A): twin markers + the
+      // seed-to-twin spread lines, in their own layer group so they
+      // coexist with the seed overlay and search results.
+      const overlay = this.twinsOverlay
+      labelManager.setLayerGroup('twin-overlay', buildTwinOverlayLayers(overlay))
+      const points = []
+      if (overlay?.seed?.geom?.lat != null) {
+        points.push([overlay.seed.geom.lat, overlay.seed.geom.lon])
+      }
+      for (const t of overlay?.twins || []) {
+        if (t.geom?.lat != null) points.push([t.geom.lat, t.geom.lon])
       }
       if (points.length && mapInstance) {
         mapInstance.fitBounds(points, { padding: [100, 100], maxZoom: 14 })

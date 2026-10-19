@@ -276,6 +276,12 @@ export default {
       type: Function,
       default: null,
     },
+    // ISSUE-50 Part A: the panel pushes a completed run's twins to the
+    // map through this setter (same pattern as setSeedOverlay).
+    setTwinsOverlay: {
+      type: Function,
+      default: null,
+    },
   },
   setup(props) {
     // Rule 1.3 hybrid: acquire the composable (and its transport) here,
@@ -515,6 +521,58 @@ export default {
         : []
       const confirmed = s.hasSeed ? toMarker(s.confirmed, 'confirmed') : null
       this.setSeedOverlay({ confirmed, candidates })
+    },
+    /**
+     * The completed run's twins -> the map overlay through the
+     * SurfaceShell slot setter (ISSUE-50 Part A). The authoritative
+     * source is the done event's result.tool_calls similarEntities
+     * output; rows adapt to the marker shape here, at the panel
+     * boundary, like pushSeedOverlay. No twins (or no setter) clears
+     * the overlay.
+     */
+    pushTwinOverlay(result) {
+      if (!this.setTwinsOverlay) return
+      const seen = new Set()
+      const twins = []
+      const addRows = (rows) => {
+        for (const r of (rows || [])) {
+          if (!r || r.lat == null || r.lon == null) continue
+          const key = `${r.osm_type || ''}:${r.osm_id || ''}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          twins.push({
+            osm_id: r.osm_id,
+            osm_type: r.osm_type,
+            name: r.name || (r.tags || {}).name || '',
+            tags: r.tags || {},
+            wkg_class: r.wkg_class || null,
+            similarity: r.similarity,
+            // The pre-plan twin rows carry the calibrated `score` field
+            // (EvidenceScoringService); accept it first, then the raw
+            // service fields.
+            twin_score: r.score != null ? r.score
+              : (r.twin_score != null ? r.twin_score : null),
+            geom: { lat: r.lat, lon: r.lon },
+          })
+        }
+      }
+      for (const tc of (result?.tool_calls || [])) {
+        if (tc.tool !== 'similarEntities') continue
+        const out = tc.output
+        // Actual shape: a flat list of scored twin rows. Dict shape
+        // ({results: [...]}) is the fallback for other tool paths.
+        if (Array.isArray(out)) addRows(out)
+        else addRows(out?.results)
+      }
+      const s = this.seed
+      const seed = (s.hasSeed && s.confirmed.lat != null)
+        ? { geom: { lat: s.confirmed.lat, lon: s.confirmed.lon } }
+        : null
+      if (!twins.length) {
+        this.setTwinsOverlay(null)
+        return
+      }
+      this.setTwinsOverlay({ seed, twins })
     },
     /** The entity-kind word for the chip: first descriptive tag value. */
     seedKindLabel(row) {
@@ -760,6 +818,7 @@ export default {
         if (result.errors && result.errors.length && !this.error) {
           this.error = `Errors: ${result.errors.map((x) => x.error || x.question).join('; ')}`
         }
+        this.pushTwinOverlay(result)
       })
 
       es.addEventListener('error', () => {
@@ -777,6 +836,7 @@ export default {
       this.error = ''
       this.runRecipe = ''
       this.eventLog = []
+      if (this.setTwinsOverlay) this.setTwinsOverlay(null)
       this.closeStream()
     },
     /**

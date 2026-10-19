@@ -390,14 +390,17 @@ def research_seed_examples(request):
     GET /api/nca/research/seed-examples/?country_code=JM&snapshot_date=...
 
     Returns {"examples": [{name, kind, osm_id, osm_type, lat, lon}]}:
-    up to 3 named, coordinate-bearing venue-class entities for the
-    country, deterministically ordered (md5 of the entity key - the
-    MapQA sampler's ordering pattern), so the greeting's invocation
-    example is a REAL place in the dataset ("help me find a doppelganger
-    for X") instead of a hardcoded name. Read-only, public (the
-    open-read posture). Fail-soft: an empty list when the country has
-    no data or the query fails; the frontend falls back to generic
-    copy.
+    up to 3 named, coordinate-bearing FOOD venues (cuisine-tagged) with
+    tag embeddings, for the country, ordered by tag richness then
+    deterministically (md5 of the entity key - the MapQA sampler's
+    ordering pattern), so the greeting's invocation example is a REAL
+    place in the dataset ("help me find a doppelganger for X") instead
+    of a hardcoded name. The cuisine filter is GIN-indexable (tags
+    has-key), the embedding check guarantees a suggested seed can never
+    fail the run with "seed entity has no tag embedding". Read-only,
+    public (the open-read posture). Fail-soft: an empty list when the
+    country has no data or the query fails; the frontend falls back to
+    generic copy.
     """
     country_code = request.GET.get("country_code") or None
     snapshot_date = request.GET.get("snapshot_date") or None
@@ -416,18 +419,36 @@ def research_seed_examples(request):
     if not snapshot_id or not country_code:
         return JsonResponse({"examples": []})
     try:
-        rows = list(
+        qs = (
             OsmEntity.objects.using("vectors")
             .filter(
                 snapshot_id=snapshot_id,
                 country_code=country_code.upper(),
             )
             .filter(tags__has_key="name")
-            .filter(tags__has_any_keys=["amenity", "tourism", "leisure",
-                                        "shop"])
+            .filter(tags__has_key="cuisine")
+            .exclude(gv_tags_embedding__isnull=True)
             .exclude(geom__isnull=True)
-            .order_by(RawSQL("md5(concat(osm_type, ':', osm_id::text))", []))
-            [:30]
+        )
+        ***REMOVED*** Geometry guard (demo fix, ISSUE-50): the country partitions can
+        ***REMOVED*** carry foreign-coordinate rows (extraction-era polygon drift), so
+        ***REMOVED*** a suggested example must fall inside the country's boundary
+        ***REMOVED*** bbox. Fail-soft: no boundary row means no guard, current
+        ***REMOVED*** behavior preserved.
+        bbox = _country_bbox(country_code.upper())
+        if bbox:
+            from django.contrib.gis.geos import Polygon
+            qs = qs.filter(geom__within=Polygon.from_bbox(bbox))
+        rows = list(
+            qs.annotate(
+                tag_count=RawSQL(
+                    "(SELECT count(*) FROM jsonb_object_keys(tags))", []
+                )
+            )
+            .order_by(
+                "-tag_count",
+                RawSQL("md5(concat(osm_type, ':', osm_id::text))", []),
+            )[:30]
         )
     except Exception as exc:  ***REMOVED*** noqa: BLE001 — examples are optional
         logger.warning("seed-examples query failed: %s", exc)
@@ -441,6 +462,26 @@ def research_seed_examples(request):
         if len(examples) == 3:
             break
     return JsonResponse({"examples": examples})
+
+
+def _country_bbox(country_code):
+    """Country bbox from OsmBoundary (admin_level=2) ->
+    [minLon, minLat, maxLon, maxLat], or None. Fail-soft: a missing
+    boundary (or a DB hiccup) means no geometry guard, never an error.
+    """
+    try:
+        from core.models import OsmBoundary
+        boundary = (
+            OsmBoundary.objects.filter(
+                iso_code__iexact=country_code, admin_level=2,
+            )
+            .exclude(bbox__isnull=True)
+            .order_by("-valid_from")
+            .first()
+        )
+        return boundary.bbox if boundary else None
+    except Exception:  ***REMOVED*** noqa: BLE001 — guard is optional
+        return None
 
 
 def _entity_to_example(entity):
