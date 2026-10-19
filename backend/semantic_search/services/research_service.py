@@ -42,6 +42,7 @@ import json
 import logging
 import re
 from collections import Counter
+from typing import Optional
 
 from django.conf import settings
 
@@ -411,12 +412,17 @@ KE_SYSTEM_PROMPT = (
     "When you ask which place or entity to find doppelgangers for, "
     "start that question with the marker [seed] followed by a space. "
     "The system resolves the answer live against the dataset and pins "
-    "it on the map; never write the marker anywhere else.\n"
+    "it on the map; never write the marker anywhere else. In "
+    "particular, the area/region question is a SCOPING question, not "
+    "the seed question - never mark it [seed] (2026-10-19: a region "
+    "answer hijacked the seed when the area question carried the "
+    "marker).\n"
     "Named places resolve and pin on the map automatically, and a user "
     "message starting with 'Seed:' is the confirmation of the pinned "
     "pick. Never re-ask for a name that is already pinned or confirmed "
     "with a Seed: message - move on to the next question (the area, "
-    "the comparison axis, constraints).\n"
+    "the comparison axis, constraints). Ask the area question at most "
+    "once; do not repeat a question the user already answered.\n"
     "A 'Dataset context' block in the system context states what the "
     "map contains (entity count, top classes) and the drift state. "
     "When the user asks a data-metadata question (how fresh is the "
@@ -880,16 +886,33 @@ class ResearchOrchestratorService:
             elif role == "assistant" and text:
                 assistants.append(text)
         asked = None
-        if len(users) == 1:
+        ***REMOVED*** Turn-1 routing: a first message that routes to the doppelganger
+        ***REMOVED*** report establishes the seed subject ("find twins of X"). It is
+        ***REMOVED*** the anchor; later turns only override it through an explicit
+        ***REMOVED*** "Seed:" pick.
+        turn1_subject = None
+        if users:
             route = recipe_key or route_to_recipe(users[0]).get("key")
             if route == "doppelganger_report":
-                asked = cls._subject_from_brief(users[0])
+                turn1_subject = cls._subject_from_brief(users[0])
+        if len(users) == 1:
+            asked = turn1_subject
         elif assistants and "[seed]" in assistants[-1] and users:
             asked = users[-1]
             ***REMOVED*** The synthetic Seed: handshake (an explicit pick announced
             ***REMOVED*** to the KE) is a valid candidate answer: strip the protocol
             ***REMOVED*** wrapper before geocoding, or the parenthetical kind word
             ***REMOVED*** and the "Seed: " prefix trigram-miss.
+            if turn1_subject and not cls._vague_subject(turn1_subject):
+                ***REMOVED*** Turn 1 pinned a SPECIFIC subject. Only an explicit
+                ***REMOVED*** "Seed: <name>" pick may override it: a plain answer to
+                ***REMOVED*** a mis-marked region question must not hijack the seed
+                ***REMOVED*** (2026-10-19: "ocho rios" became the seed for "mobay
+                ***REMOVED*** airport cave" when the KE marked its area question
+                ***REMOVED*** [seed]). A vague turn-1 ("a tavern") still needs the
+                ***REMOVED*** marker re-ask.
+                if not re.match(r"^Seed:\s*", asked, flags=re.IGNORECASE):
+                    return None
             asked = re.sub(r"^Seed:\s*", "", asked, flags=re.IGNORECASE)
             asked = re.sub(r"\s*\([^)]*\)\s*$", "", asked).strip()
         if not asked:
@@ -1151,6 +1174,18 @@ class ResearchOrchestratorService:
         ***REMOVED*** the router's line-anchored "Seed:" pattern reads it as the
         ***REMOVED*** doppelganger handshake.
         return (brief.rstrip(".") + ".\n" + line)[:450]
+
+    @staticmethod
+    def _vague_subject(subject: str) -> bool:
+        """A turn-1 subject is vague when it is article-prefixed ("a
+        tavern", "the place") - the marker re-ask is then legitimate.
+        A specific name ("mobay airport cave") pins the seed for the
+        whole interview (2026-10-19 Ocho Rios regression guard).
+        """
+        return bool(
+            re.match(r"^(?:a|an|the)\s+\S", (subject or "").strip(),
+                     re.IGNORECASE)
+        )
 
     @staticmethod
     def _subject_from_brief(prompt: str):
@@ -2833,6 +2868,19 @@ class ResearchOrchestratorService:
                     f"{json.dumps(call.get('output'), ensure_ascii=False)}"
                 )
             user_content += "Follow-up tool outputs:\n" + "\n".join(tool_lines)
+        twins = cls._twin_evidence(tool_calls)
+        if twins:
+            ***REMOVED*** The twins section must match what the map plots (2026-10-19:
+            ***REMOVED*** the summary drifted into follow-up search results while the
+            ***REMOVED*** similarEntities payload had one row). Deterministic list,
+            ***REMOVED*** same cite-exactly discipline as the derived tallies.
+            user_content += (
+                "\nTwin candidates (AUTHORITATIVE list from the "
+                "similarEntities search - the twins section must cite "
+                "exactly these rows and no other entities):\n"
+                + twins
+                + "\n"
+            )
         derived = cls._derived_tallies(records, country_code)
         if derived:
             user_content += (
@@ -2863,6 +2911,33 @@ class ResearchOrchestratorService:
             )
             summary = (summary or "").strip()
         return summary or None
+
+    @staticmethod
+    def _twin_evidence(tool_calls) -> Optional[str]:
+        """The similarEntities output rows as cite-exactly lines, so the
+        summary's twins section matches what the map plots (2026-10-19:
+        the summary named entities from follow-up searches while the twin
+        payload had one row). Handles the flat-list output shape and the
+        dict ({results: [...]}) fallback; unnamed rows are skipped.
+        """
+        lines = []
+        for call in tool_calls or []:
+            if call.get("tool") != "similarEntities":
+                continue
+            out = call.get("output")
+            rows = out if isinstance(out, list) else (out or {}).get("results", [])
+            for r in rows:
+                name = (r.get("name") or "").strip()
+                if not name:
+                    continue
+                score = r.get("score")
+                if score is None:
+                    score = r.get("similarity")
+                try:
+                    lines.append(f"- {name} (score {float(score):.3f})")
+                except (TypeError, ValueError):
+                    lines.append(f"- {name}")
+        return "\n".join(lines) or None
 
     @staticmethod
     def _derived_tallies(records: list, country_code: str = None) -> str:

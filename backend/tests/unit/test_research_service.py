@@ -1774,3 +1774,34 @@ class TestFinalizeBrief:
                 {"role": "assistant", "content": "hello"},
             ])
         assert result is None
+
+
+class TestTwinEvidence:
+    """The deterministic twins block (2026-10-19): the summary's twins
+    section must cite exactly the similarEntities rows so it matches
+    what the map plots, never the follow-up search results."""
+
+    def test_flat_list_shape_only_similar_entities(self):
+        out = ResearchOrchestratorService._twin_evidence([
+            {"tool": "similarEntities", "output": [
+                {"name": "Ediya", "score": 0.9153},
+            ]},
+            {"tool": "structuredSearch", "output": [
+                {"name": "Nerd", "score": 0.5},
+            ]},
+        ])
+        assert out == "- Ediya (score 0.915)"
+
+    def test_dict_shape_fallback(self):
+        out = ResearchOrchestratorService._twin_evidence([
+            {"tool": "similarEntities", "output": {
+                "results": [{"name": "A", "similarity": 0.8}],
+            }},
+        ])
+        assert out == "- A (score 0.800)"
+
+    def test_empty_and_unnamed_rows(self):
+        assert ResearchOrchestratorService._twin_evidence([]) is None
+        assert ResearchOrchestratorService._twin_evidence([
+            {"tool": "similarEntities", "output": [{"name": "", "score": 0.9}]},
+        ]) is None

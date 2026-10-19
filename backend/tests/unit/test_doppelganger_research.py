@@ -792,3 +792,58 @@ def test_live_seed_part_strips_synthetic_seed_handshake(monkeypatch):
     )
     assert captured["name"] == "The Friars Tavern"
     assert part["data"]["found"] is True
+
+
+def test_live_seed_part_region_answer_does_not_hijack_specific_seed(monkeypatch):
+    """2026-10-19 regression: a plain region answer ("ocho rios") after
+    a specific turn-1 seed ("mobay airport cave") must NOT override the
+    seed, even when the KE mis-marks its area question with [seed]."""
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+
+    def boom(*a, **k):
+        raise AssertionError("must not geocode the region answer")
+
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode_candidates", staticmethod(boom),
+    )
+    part = ResearchOrchestratorService.live_seed_part(
+        [
+            {"role": "user", "content": "find doppelgangers of mobay airport cave"},
+            {"role": "assistant", "content": "[seed] What area or region are you interested in exploring for similar entities?"},
+            {"role": "user", "content": "ocho rios"},
+        ],
+        recipe_key="doppelganger_report",
+    )
+    assert part is None
+
+
+def test_live_seed_part_explicit_pick_overrides_specific_seed(monkeypatch):
+    """An explicit 'Seed: <name>' pick after a specific turn-1 seed is
+    the confirmation gesture and must still resolve."""
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    monkeypatch.setattr(
+        EntityGeocoder, "geocode_candidates",
+        staticmethod(lambda name, cc=None, sd=None, limit=5, min_sim=0.4: {
+            "asked": name, "candidates": [
+                {"osm_id": 7, "osm_type": "node", "name": "Ocho Rios",
+                 "lat": 18.4, "lon": -77.1, "tags": {"place": "town"}},
+            ]}),
+    )
+    part = ResearchOrchestratorService.live_seed_part(
+        [
+            {"role": "user", "content": "find doppelgangers of mobay airport cave"},
+            {"role": "assistant", "content": "[seed] What area or region are you interested in exploring for similar entities?"},
+            {"role": "user", "content": "Seed: Ocho Rios (town)"},
+        ],
+        recipe_key="doppelganger_report",
+    )
+    assert part is not None
+    assert part["data"]["asked"] == "Ocho Rios"
+    assert part["data"]["osm_id"] == 7
+
+
+def test_vague_subject_detection():
+    assert ResearchOrchestratorService._vague_subject("a tavern") is True
+    assert ResearchOrchestratorService._vague_subject("the place") is True
+    assert ResearchOrchestratorService._vague_subject("mobay airport cave") is False
+    assert ResearchOrchestratorService._vague_subject(None) is False
