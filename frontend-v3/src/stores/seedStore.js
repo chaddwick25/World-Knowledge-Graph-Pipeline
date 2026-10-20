@@ -100,6 +100,15 @@ export const useSeedStore = defineStore('seed', {
       if (!this.confirmed) return null
       return { ...this.confirmed, asked: this.asked, found: true }
     },
+    /** Remove the confirmed seed (the info box's "Unseed" gesture,
+     * 2026-10-19). Asked + candidates stay so the list remains; the
+     * seed is just un-pinned. */
+    unseed() {
+      this.confirmed = null
+      this.confirmedSource = null
+      this.locked = false
+      this.hoveredKey = null
+    },
     reset() {
       this.asked = ''
       this.confirmed = null

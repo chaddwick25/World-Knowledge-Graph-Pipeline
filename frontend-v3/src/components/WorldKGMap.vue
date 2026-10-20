@@ -8,8 +8,9 @@
     </div>
 
     <!-- Focused-entity info popover (marker click or results-table hover),
-         anchored to the entity's map point -->
-    <EntityInfoPanel :position="infoPanelPos" />
+         anchored to the entity's map point. Seed actions only in agent
+         mode (SurfaceShell passes seedActions). -->
+    <EntityInfoPanel :position="infoPanelPos" :seed-actions="seedActions" />
 
     <!-- Relation legend (only when augmented links are visible) -->
     <div v-if="activeRelationLegend.length" class="map-legend">
@@ -64,7 +65,6 @@ import 'leaflet/dist/leaflet.css'
 import { useOverlayStore } from '../stores/overlayStore'
 import { useMapLabelsStore } from '../stores/mapLabelsStore'
 import { useEntityInfoStore } from '../stores/entityInfoStore'
-import { useSeedStore } from '../stores/seedStore'
 import EntityInfoPanel from './EntityInfoPanel.vue'
 import { labelManager } from '../mapLabels/labelManager'
 import { fmtM } from '../mapViz/format'
@@ -157,6 +157,11 @@ export default {
       type: Array,
       default: () => [],
     },
+    // Seed actions in the info box: agent mode only (SurfaceShell).
+    seedActions: {
+      type: Boolean,
+      default: false,
+    },
     searchResults: {
       type: Array,
       default: () => [],
@@ -208,8 +213,7 @@ export default {
   components: { EntityInfoPanel },
   setup() {
     const entityInfoStore = useEntityInfoStore()
-    const seedStore = useSeedStore()
-    return { entityInfoStore, seedStore }
+    return { entityInfoStore }
   },
   data() {
     return {
@@ -431,19 +435,9 @@ export default {
           }
           if (obj) {
             // Marker click → open the info popover and keep it open until
-            // dismissed (the × button or another marker click). A seed
-            // CANDIDATE click is also the confirmation gesture (ISSUE-48):
-            // the store write re-renders the chip and swaps the pin.
-            if (obj.seed_kind === 'candidate') {
-              this.seedStore.selectCandidate({
-                osm_id: obj.osm_id,
-                osm_type: obj.osm_type,
-                name: obj.name,
-                tags: obj.tags || {},
-                lat: obj.geom?.lat,
-                lon: obj.geom?.lon,
-              })
-            }
+            // dismissed (the × button or another marker click). Seeding
+            // happens ONLY inside the info box (2026-10-19: marker clicks
+            // no longer select the seed).
             this.entityInfoStore.setEntity(obj, 'map')
           }
         },
@@ -518,6 +512,15 @@ export default {
       // Leaflet GeoJSON layer and its style/refresh methods were removed
       // 2026-09-28).
       labelManager.setLayerGroup('countries', [buildCountryLayer(features)])
+
+      // Restore the selected country's frame once the geometries exist.
+      // On a page refresh the route's country resolves BEFORE the
+      // countries fetch, so the selectedIds watcher fires against an
+      // empty countryLookup and the flight is a no-op (the map stays at
+      // the default world view) - 2026-10-19. Re-fire here.
+      if (this.selectedIds.length === 1) {
+        this.flyToCountry(this.selectedIds[0])
+      }
     },
 
     renderSearchResults() {

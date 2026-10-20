@@ -61,11 +61,9 @@
           <a :href="wikidataUrl" target="_blank" rel="noopener">{{ wikidataQid }}</a>
         </span>
       </div>
-      <div v-if="seedMatch && !isConfirmedSeed" class="entity-info-panel__actions">
-        <!-- The confirmation gesture (ISSUE-48): the click IS the
-             selection; the store write re-renders the chip and swaps
-             the pin. Hover links to the candidate chip in the chat
-             menu (shared hoveredKey in seedStore). -->
+      <div v-if="seedActions && canBeSeed && !isConfirmedSeed" class="entity-info-panel__actions">
+        <!-- The only seeding gesture (2026-10-19): open the info box
+             and click seed. Agent mode only (seedActions). -->
         <button
           type="button"
           class="btn btn-sm btn-success py-0 px-2 text-truncate"
@@ -76,8 +74,14 @@
           @mouseleave="seedStore.clearHoveredKey(entityKeyStr)"
         >Use as seed: {{ title }}</button>
       </div>
-      <div v-else-if="isConfirmedSeed" class="entity-info-panel__actions">
+      <div v-else-if="seedActions && isConfirmedSeed" class="entity-info-panel__actions">
         <span class="badge bg-success">Seed ✓</span>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-danger py-0 px-2 text-truncate"
+          :title="`Remove ${title} as the doppelganger seed`"
+          @click="unseed"
+        >Unseed: {{ title }}</button>
       </div>
       <div v-if="tagRows.length" class="entity-info-panel__tags">
         <span
@@ -103,6 +107,12 @@ export default {
     position: {
       type: Object,
       default: null,
+    },
+    // Show the seed actions (Use as seed / Unseed). Agent mode only
+    // (2026-10-19): the tools surface keeps the info box read-only.
+    seedActions: {
+      type: Boolean,
+      default: false,
     },
   },
   setup() {
@@ -163,14 +173,14 @@ export default {
         ? `https://www.wikidata.org/wiki/${this.wikidataQid}`
         : ''
     },
-    /** The focused entity as a seed candidate (multi-hit selection). */
-    seedMatch() {
-      const key = (r) => `${r.osm_type}:${r.osm_id}`
-      const ek = key(this.entity)
-      if (!ek || ek.endsWith(':null')) return null
-      return (this.seedStore.candidates || []).find(
-        (c) => key(c) === ek,
-      ) || null
+    /** Any entity with an identity and usable coordinates can be the
+     *  seed (2026-10-19: the info box is the only seeding surface). */
+    canBeSeed() {
+      const e = this.entity
+      if (e.osm_id == null || e.osm_type == null) return false
+      const lat = e.lat != null ? e.lat : e.geom?.lat
+      const lon = e.lon != null ? e.lon : e.geom?.lon
+      return lat != null && lon != null
     },
     isConfirmedSeed() {
       const c = this.seedStore.confirmed
@@ -203,6 +213,10 @@ export default {
         lat: e.lat != null ? e.lat : e.geom?.lat,
         lon: e.lon != null ? e.lon : e.geom?.lon,
       })
+    },
+    /** The inverse gesture: remove the seed (2026-10-19). */
+    unseed() {
+      this.seedStore.unseed()
     },
   },
 }
