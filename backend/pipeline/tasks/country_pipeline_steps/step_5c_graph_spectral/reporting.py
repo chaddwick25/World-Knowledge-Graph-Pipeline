@@ -24,7 +24,7 @@ def _write_report(report: dict, env) -> None:
         from django.conf import settings
         report_dir = getattr(settings, 'SPECTRAL_REPORT_DIR', None)
         if not report_dir:
-            ***REMOVED*** Log the report as structured info
+            # Log the report as structured info
             _log(
                 logger, "info",
                 "Step 5c: Run report (SPECTRAL_REPORT_DIR not configured)",

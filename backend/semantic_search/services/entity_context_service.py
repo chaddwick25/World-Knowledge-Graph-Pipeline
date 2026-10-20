@@ -24,28 +24,28 @@ from django.db.models import Count
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Per-template context sources (plan §3). Unknown template → all three
-***REMOVED*** (safe default).
+# Per-template context sources (plan §3). Unknown template → all three
+# (safe default).
 TEMPLATE_CONTEXT_MAP = {
-    "FILTER-AGGREGATE-MEASURE (***REMOVED***1)": {"uslp", "communities", "classes"},
-    "OBJECT-FIELD-MEASURE (***REMOVED***2)": {"uslp", "communities"},
-    "GEOCODE-BATCH-COMPARE (***REMOVED***4)": {"uslp", "communities", "classes"},
-    "LOCATION-BEARING-CLASSIFY (***REMOVED***5)": {"classes"},
-    "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)": {"uslp", "classes"},
-    ***REMOVED*** Graph templates already carry spectral/community context from the
-    ***REMOVED*** executor — only add what they lack.
-    "SPECTRAL-ANALYSIS (***REMOVED***11)": {"communities"},
-    "TEMPORAL-DRIFT (***REMOVED***12)": {"communities"},
-    "COMMUNITY-DETECT (***REMOVED***13)": {"communities"},
-    "EVENT-DIFFUSION (***REMOVED***14)": {"communities"},
+    "FILTER-AGGREGATE-MEASURE (#1)": {"uslp", "communities", "classes"},
+    "OBJECT-FIELD-MEASURE (#2)": {"uslp", "communities"},
+    "GEOCODE-BATCH-COMPARE (#4)": {"uslp", "communities", "classes"},
+    "LOCATION-BEARING-CLASSIFY (#5)": {"classes"},
+    "PLACE-ATTRIBUTE-QUERY (#8)": {"uslp", "classes"},
+    # Graph templates already carry spectral/community context from the
+    # executor — only add what they lack.
+    "SPECTRAL-ANALYSIS (#11)": {"communities"},
+    "TEMPORAL-DRIFT (#12)": {"communities"},
+    "COMMUNITY-DETECT (#13)": {"communities"},
+    "EVENT-DIFFUSION (#14)": {"communities"},
 }
 
 ALL_SOURCES = frozenset({"uslp", "communities", "classes"})
 
-***REMOVED*** Cap the USLP link payload — 50 links inflated the synthesis prompt to
-***REMOVED*** ~1.5K tokens (fresh queries 50-115s vs ~7s pre-refactor). 10 links +
-***REMOVED*** the prompt-side relation histogram (see _format_context_for_prompt in
-***REMOVED*** query_enrichment_service.py) carry the same signal.
+# Cap the USLP link payload — 50 links inflated the synthesis prompt to
+# ~1.5K tokens (fresh queries 50-115s vs ~7s pre-refactor). 10 links +
+# the prompt-side relation histogram (see _format_context_for_prompt in
+# query_enrichment_service.py) carry the same signal.
 USLP_LINK_CAP = 10
 
 
@@ -136,7 +136,7 @@ class EntityContextService:
                         "normalized_score")
                 .order_by("-normalized_score")[:USLP_LINK_CAP]
             )
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — fail-soft per source
+        except Exception as exc:  # noqa: BLE001 — fail-soft per source
             logger.warning("USLP context fetch failed: %s", exc)
             return []
 
@@ -172,7 +172,7 @@ class EntityContextService:
                 }
                 for osm_id, m in metrics.items()
             }
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — fail-soft per source
+        except Exception as exc:  # noqa: BLE001 — fail-soft per source
             logger.warning("Community context fetch failed: %s", exc)
             return {}
 
@@ -203,6 +203,6 @@ class EntityContextService:
             if cc:
                 qs = qs.filter(country_code=cc)
             return list(qs)
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — fail-soft per source
+        except Exception as exc:  # noqa: BLE001 — fail-soft per source
             logger.warning("Class distribution fetch failed: %s", exc)
             return []

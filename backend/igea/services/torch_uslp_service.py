@@ -29,8 +29,8 @@ class TorchUSLP(GPUAcceleratedUSLP):
         self._geohash_matrices: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
         self._geohash_hash_to_idx: Dict[int, Dict[str, int]] = {}
         self._relation_emb_cache: Dict[str, torch.Tensor] = {}
-        ***REMOVED*** Per-precision (N,) d_max tensors aligned with pool rows, for the
-        ***REMOVED*** paper's geo formula 1 - d/d_max (Fix 1, §3.1.4).
+        # Per-precision (N,) d_max tensors aligned with pool rows, for the
+        # paper's geo formula 1 - d/d_max (Fix 1, §3.1.4).
         self._d_max_tensors: Dict[int, torch.Tensor] = {}
 
     def load_candidate_pool(self, entities: List[Dict]) -> int:
@@ -42,10 +42,10 @@ class TorchUSLP(GPUAcceleratedUSLP):
         if count == 0:
             return count
 
-        ***REMOVED*** Precompute geohash cluster similarity matrices for each precision level used
+        # Precompute geohash cluster similarity matrices for each precision level used
         self._build_geohash_matrices()
         
-        ***REMOVED*** Cache relation embeddings to avoid CPU calls during scoring
+        # Cache relation embeddings to avoid CPU calls during scoring
         self._build_relation_embedding_cache()
         
         return count
@@ -73,11 +73,11 @@ class TorchUSLP(GPUAcceleratedUSLP):
                 centers[i, 0] = float(lat_s)
                 centers[i, 1] = float(lon_s)
 
-            ***REMOVED*** Store as radians to speed up scoring Haversine
+            # Store as radians to speed up scoring Haversine
             self._geohash_matrices[precision] = torch.deg2rad(centers)
 
-            ***REMOVED*** Per-row d_max from the module global (populated by the parent
-            ***REMOVED*** class's load_candidate_pool via _compute_d_max_per_precision).
+            # Per-row d_max from the module global (populated by the parent
+            # class's load_candidate_pool via _compute_d_max_per_precision).
             d_max_map = _D_MAX_PER_CLUSTER.get(precision, {})
             fallback = _FALLBACK_D_MAX.get(precision, 39.0)
             d_max_np = np.array(
@@ -92,9 +92,9 @@ class TorchUSLP(GPUAcceleratedUSLP):
         self._init_gpu_services()
         logger.info(f"TorchUSLP: Caching FastText embeddings for {len(RELATION_TO_NATURAL_TEXT)} relations...")
         for relation, nat_text in RELATION_TO_NATURAL_TEXT.items():
-            cpu_emb = self.gpu_fasttext.calculate_embedding(nat_text)  ***REMOVED*** (300,) np
+            cpu_emb = self.gpu_fasttext.calculate_embedding(nat_text)  # (300,) np
             self._relation_emb_cache[relation] = (
-                torch.from_numpy(cpu_emb).unsqueeze(0).to(self.device)  ***REMOVED*** (1, 300) GPU
+                torch.from_numpy(cpu_emb).unsqueeze(0).to(self.device)  # (1, 300) GPU
             )
 
     def _get_relation_embedding(self, relation: str) -> torch.Tensor:
@@ -124,7 +124,7 @@ class TorchUSLP(GPUAcceleratedUSLP):
                 relation = TAG_TO_RELATION.get(tag_key, tag_key)
                 literal = tag_value.strip()
                 
-                ***REMOVED*** Create a shallow copy for this specific relation/literal pair
+                # Create a shallow copy for this specific relation/literal pair
                 head_instance = head.copy()
                 head_instance['literal'] = literal
                 relation_groups[relation].append(head_instance)
@@ -157,8 +157,8 @@ class TorchUSLP(GPUAcceleratedUSLP):
         precision = RELATION_GEOHASH_PRECISION.get(relation, 4)
         pool_centers_rad = self._geohash_matrices[precision]
 
-        ***REMOVED*** -- Space 1: Geo (geohash cluster similarity) --
-        ***REMOVED*** Decode head geohash centers
+        # -- Space 1: Geo (geohash cluster similarity) --
+        # Decode head geohash centers
         head_geohashes = [geohash2.encode(lat, lon, precision=precision)
                           for lat, lon in zip(head_lats.cpu().numpy(), head_lons.cpu().numpy())]
 
@@ -171,7 +171,7 @@ class TorchUSLP(GPUAcceleratedUSLP):
         head_centers_rad = torch.deg2rad(head_centers)
         del head_centers
 
-        ***REMOVED*** (H, N) Haversine distance between geohash centers
+        # (H, N) Haversine distance between geohash centers
         dlat = pool_centers_rad[:, 0].unsqueeze(0) - head_centers_rad[:, 0].unsqueeze(1)
         dlon = pool_centers_rad[:, 1].unsqueeze(0) - head_centers_rad[:, 1].unsqueeze(1)
 
@@ -183,16 +183,16 @@ class TorchUSLP(GPUAcceleratedUSLP):
 
         dist_km_centers = 6371.0 * 2 * torch.arcsin(torch.sqrt(a.clamp(0, 1)))
         del a
-        ***REMOVED*** Paper formula: 1 - d/d_max, d_max per tail cluster (column max of
-        ***REMOVED*** the reference repo's distance matrix; dataprep_utils.py:83).
-        d_max_rows = self._d_max_tensors[precision]  ***REMOVED*** (N,) km, per pool row
+        # Paper formula: 1 - d/d_max, d_max per tail cluster (column max of
+        # the reference repo's distance matrix; dataprep_utils.py:83).
+        d_max_rows = self._d_max_tensors[precision]  # (N,) km, per pool row
         geo_scores = torch.clamp(
             1.0 - dist_km_centers / d_max_rows.unsqueeze(0), min=0.0, max=1.0
         )
         del dist_km_centers
 
-        ***REMOVED*** Spatial radius mask
-        ***REMOVED*** 5000km, 156km and 39km
+        # Spatial radius mask
+        # 5000km, 156km and 39km
         radius_km = {1: 5000.0, 3: 156.0, 4: 39.0}.get(precision, 156.0)
         pool_lats = self._gpu_pool_coords[:, 0]
         pool_lons = self._gpu_pool_coords[:, 1]
@@ -211,23 +211,23 @@ class TorchUSLP(GPUAcceleratedUSLP):
 
         geo_scores *= radius_mask_f
 
-        ***REMOVED*** -- Space 2: Name (cosine similarity literal -> candidate name) --
+        # -- Space 2: Name (cosine similarity literal -> candidate name) --
         name_scores = torch.mm(head_literal_embs, self._gpu_pool_embeddings.t())
 
-        ***REMOVED*** -- Space 3: Class (cosine similarity relation -> candidate class) --
+        # -- Space 3: Class (cosine similarity relation -> candidate class) --
         rel_emb = self._get_relation_embedding(relation)
         class_scores = torch.mm(rel_emb, self._gpu_pool_class_embeddings.t())
         class_scores = class_scores.expand(head_literal_embs.shape[0], -1)
 
         if return_components:
-            ***REMOVED*** Keep components separate for per-space persistence (Fix 2).
-            ***REMOVED*** Apply radius mask to geo only (name/class are not spatial).
+            # Keep components separate for per-space persistence (Fix 2).
+            # Apply radius mask to geo only (name/class are not spatial).
             total = geo_scores + name_scores + class_scores
             total *= radius_mask_f
             total /= 3.0
             return total, geo_scores, name_scores, class_scores
 
-        ***REMOVED*** -- Total score (in-place accumulation to minimize allocations) --
+        # -- Total score (in-place accumulation to minimize allocations) --
         geo_scores += name_scores
         del name_scores
         geo_scores += class_scores
@@ -270,7 +270,7 @@ class TorchUSLP(GPUAcceleratedUSLP):
                 scores, geo_mat, name_mat, class_mat = self.score_batch(
                     lit_embs, lats, lons, relation, return_components=True
                 )
-                ***REMOVED*** TODO: Update this to collect the rejected links
+                # TODO: Update this to collect the rejected links
                 for i, head in enumerate(chunk):
                     row = scores[i]
                     mask = row >= threshold
@@ -281,7 +281,7 @@ class TorchUSLP(GPUAcceleratedUSLP):
                     top_vals, top_idxs = torch.topk(row[mask], k)
                     masked_pool_idxs = torch.where(mask)[0][top_idxs]
 
-                    ***REMOVED*** Gather per-space scores at the selected top-k indices.
+                    # Gather per-space scores at the selected top-k indices.
                     geo_row = geo_mat[i][masked_pool_idxs].cpu().tolist()
                     name_row = name_mat[i][masked_pool_idxs].cpu().tolist()
                     class_row = class_mat[i][masked_pool_idxs].cpu().tolist()
@@ -316,8 +316,8 @@ class TorchUSLP(GPUAcceleratedUSLP):
         if not torch.cuda.is_available() or N == 0:
             return requested
 
-        ***REMOVED*** torch.cuda.mem_get_info returns (free, total) — free accounts
-        ***REMOVED*** for other processes' allocations. Available in PyTorch >= 1.11.
+        # torch.cuda.mem_get_info returns (free, total) — free accounts
+        # for other processes' allocations. Available in PyTorch >= 1.11.
         try:
             free_bytes, _total = torch.cuda.mem_get_info(self.device)
         except AttributeError:
@@ -326,10 +326,10 @@ class TorchUSLP(GPUAcceleratedUSLP):
                 - torch.cuda.memory_allocated(self.device)
             )
 
-        ***REMOVED*** Peak: ~6 simultaneous (H, N) float32 tensors during haversine
-        ***REMOVED*** plus the radius mask computation (2 more H×N tensors).
-        ***REMOVED*** Use 0.50 multiplier for safety — concurrent tasks may allocate
-        ***REMOVED*** between our check and our tensor creation.
+        # Peak: ~6 simultaneous (H, N) float32 tensors during haversine
+        # plus the radius mask computation (2 more H×N tensors).
+        # Use 0.50 multiplier for safety — concurrent tasks may allocate
+        # between our check and our tensor creation.
         bytes_per_head = N * 4 * 8
         safe = max(1, int(free_bytes * 0.50 / bytes_per_head))
 

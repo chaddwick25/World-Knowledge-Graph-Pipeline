@@ -38,7 +38,7 @@ class RegionStatusService:
             'downstream_tasks': RegionStatusService._get_downstream_task_status(region_hierarchy)
         }
         
-        ***REMOVED*** Calculate overall completion percentage
+        # Calculate overall completion percentage
         status['completion_percent'] = RegionStatusService._calculate_completion_percent(status)
         
         return status
@@ -107,13 +107,13 @@ class RegionStatusService:
                 'asset_bundles': {'available': False}
             }
         
-        ***REMOVED*** Check for semantic search embeddings
+        # Check for semantic search embeddings
         semantic_status = RegionStatusService._check_semantic_search_status(pbf)
         
-        ***REMOVED*** Check for GNN training
+        # Check for GNN training
         gnn_status = RegionStatusService._check_gnn_training_status(pbf)
         
-        ***REMOVED*** Check for asset bundles
+        # Check for asset bundles
         asset_status = RegionStatusService._check_asset_bundle_status(pbf)
         
         return {
@@ -129,20 +129,20 @@ class RegionStatusService:
             from worldkg_nca.models import OsmEntity
             from osmsnapshot.models import Snapshot
 
-            ***REMOVED*** Resolve the Snapshot UUID for this PbfFile.
-            ***REMOVED*** OsmEntity.source_snapshot_id stores the Snapshot UUID, not the
-            ***REMOVED*** PbfFile UUID.  Older code incorrectly used pbf.id here.
+            # Resolve the Snapshot UUID for this PbfFile.
+            # OsmEntity.source_snapshot_id stores the Snapshot UUID, not the
+            # PbfFile UUID.  Older code incorrectly used pbf.id here.
             snapshot = Snapshot.objects.filter(pbf_file=pbf).first()
             if snapshot is None:
                 return {'available': False}
             snapshot_uuid = str(snapshot.id)
 
-            ***REMOVED*** Check if any entities exist for this snapshot
+            # Check if any entities exist for this snapshot
             entity_count = OsmEntity.objects.using('vectors').filter(
                 source_snapshot_id=snapshot_uuid
             ).count()
 
-            ***REMOVED*** Check for GV-Tags and GV-NLE embeddings
+            # Check for GV-Tags and GV-NLE embeddings
             gv_tags_count = OsmEntity.objects.using('vectors').filter(
                 source_snapshot_id=snapshot_uuid,
                 gv_tags_embedding__isnull=False
@@ -168,7 +168,7 @@ class RegionStatusService:
     @staticmethod
     def _check_gnn_training_status(pbf: PbfFile) -> Dict:
         """Check GNN training status for this PBF"""
-        ***REMOVED*** This would check for trained models in the database
+        # This would check for trained models in the database
         return {
             'available': False,
             'gcn_trained': False,
@@ -215,23 +215,23 @@ class RegionStatusService:
         """
         percent = 0
         
-        ***REMOVED*** PBF exists
+        # PBF exists
         if status['pbf_status']['exists']:
             percent += 40
         
-        ***REMOVED*** Yearly extracts
+        # Yearly extracts
         if status['extraction_status']['yearly_extracts']:
             percent += 20
         
-        ***REMOVED*** Semantic embeddings
+        # Semantic embeddings
         if status['downstream_tasks']['semantic_search']['available']:
             percent += 20
         
-        ***REMOVED*** GNN training
+        # GNN training
         if status['downstream_tasks']['gnn_training']['available']:
             percent += 10
         
-        ***REMOVED*** Asset bundles
+        # Asset bundles
         if status['downstream_tasks']['asset_bundles']['available']:
             percent += 10
         
@@ -245,7 +245,7 @@ class RegionStatusService:
         Returns:
             list: Hierarchical structure with status for all regions
         """
-        ***REMOVED*** Get top-level regions (continents)
+        # Get top-level regions (continents)
         top_level_regions = RegionHierarchy.objects.filter(
             region_type=RegionHierarchy.RegionType.CONTINENT
         ).prefetch_related('children', 'corresponding_pbf', 'polygon_file')
@@ -268,10 +268,10 @@ class RegionStatusService:
         Returns:
             dict: Region data with children
         """
-        ***REMOVED*** Get status for this region
+        # Get status for this region
         status = RegionStatusService.get_region_status(region)
         
-        ***REMOVED*** Add basic info
+        # Add basic info
         region_data = {
             'id': str(region.id),
             'name': region.name,
@@ -280,7 +280,7 @@ class RegionStatusService:
             'children': []
         }
         
-        ***REMOVED*** Recursively add children
+        # Recursively add children
         for child in region.children.all():
             child_data = RegionStatusService._build_region_tree(child)
             region_data['children'].append(child_data)
@@ -294,7 +294,7 @@ class RegionStatusService:
         
         Returns: 'continent', 'country', 'region', or 'city'
         """
-        ***REMOVED*** Count ancestors to determine level
+        # Count ancestors to determine level
         depth = 0
         current = region
         while current.parent:
@@ -324,7 +324,7 @@ class RegionStatusService:
             total=Sum('size_bytes')
         )['total'] or 0
         
-        ***REMOVED*** Count regions by status
+        # Count regions by status
         regions_with_pbf = RegionHierarchy.objects.filter(
             corresponding_pbf__isnull=False
         ).count()

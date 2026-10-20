@@ -45,8 +45,8 @@ class GPUFastTextService:
     def _load_model(self):
         """Lazy load FastText model."""
         if self._model is None:
-            ***REMOVED*** Reuse the centralized FastText model from ModelRegistryService so the
-            ***REMOVED*** heavy(7GBs) cc.en.300.bin binary is loaded exactly once per process and shared across paths.
+            # Reuse the centralized FastText model from ModelRegistryService so the
+            # heavy(7GBs) cc.en.300.bin binary is loaded exactly once per process and shared across paths.
             from semantic_search.services.model_registry_service import ModelRegistryService
             self._model = ModelRegistryService.get_fasttext_model()
             logger.info("GPU FastText: FastText model handle acquired from ModelRegistryService")
@@ -70,13 +70,13 @@ class GPUFastTextService:
         if not tokens:
             return np.zeros(300, dtype=np.float32)
 
-        ***REMOVED*** Weighted average of word vectors (matching CPU path)
+        # Weighted average of word vectors (matching CPU path)
         total_weight = len(tokens)
         synthesized = np.zeros(300, dtype=np.float32)
         for token in tokens:
             synthesized += self._model.get_word_vector(token) / total_weight
 
-        ***REMOVED*** L2 normalization
+        # L2 normalization
         norm = np.linalg.norm(synthesized)
         if norm > 0:
             synthesized = synthesized / norm
@@ -98,10 +98,10 @@ class GPUFastTextService:
         """
         self._load_model()
         
-        ***REMOVED*** Use the same embedding method as calculate_embedding (get_word_vector)
+        # Use the same embedding method as calculate_embedding (get_word_vector)
         cpu_embeddings = [self.calculate_embedding(text) for text in texts]
         
-        ***REMOVED*** Convert to numpy array and move to GPU
+        # Convert to numpy array and move to GPU
         embeddings_np = np.array(cpu_embeddings, dtype=np.float32)
         embeddings_gpu = torch.from_numpy(embeddings_np).to(self.device)
         
@@ -118,18 +118,18 @@ class GPUFastTextService:
         Returns:
             Similarity scores (N,) - always at least 1D
         """
-        ***REMOVED*** Ensure query is 2D
+        # Ensure query is 2D
         if query.dim() == 1:
             query = query.unsqueeze(0)
         
-        ***REMOVED*** Normalize vectors
+        # Normalize vectors
         query_norm = torch.nn.functional.normalize(query, p=2, dim=1)
         candidates_norm = torch.nn.functional.normalize(candidates, p=2, dim=1)
         
-        ***REMOVED*** Compute cosine similarity
+        # Compute cosine similarity
         similarities = torch.mm(query_norm, candidates_norm.t()).squeeze()
         
-        ***REMOVED*** Ensure result is at least 1D (handle single candidate case)
+        # Ensure result is at least 1D (handle single candidate case)
         if similarities.dim() == 0:
             similarities = similarities.unsqueeze(0)
         
@@ -154,7 +154,7 @@ class GPUFastTextService:
             batch_embeddings = self.calculate_embedding_batch(batch_texts)
             all_embeddings.append(batch_embeddings)
         
-        ***REMOVED*** Concatenate all batches
+        # Concatenate all batches
         return torch.cat(all_embeddings, dim=0)
     
     def get_device_info(self) -> Dict:
@@ -166,6 +166,6 @@ class GPUFastTextService:
             'device': str(self.device),
             'cuda_available': True,
             'device_name': torch.cuda.get_device_name(self.device),
-            'memory_allocated': torch.cuda.memory_allocated(self.device) / 1024**3,  ***REMOVED*** GB
-            'memory_reserved': torch.cuda.memory_reserved(self.device) / 1024**3,  ***REMOVED*** GB
+            'memory_allocated': torch.cuda.memory_allocated(self.device) / 1024**3,  # GB
+            'memory_reserved': torch.cuda.memory_reserved(self.device) / 1024**3,  # GB
         }

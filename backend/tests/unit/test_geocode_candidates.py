@@ -67,8 +67,8 @@ def _stub_rows(monkeypatch, rows_by_variant):
 
 
 def test_head_row_keeps_pick_semantics(fake_objects, monkeypatch):
-    ***REMOVED*** candidates[0] by similarity is a coordinate-less row; the head
-    ***REMOVED*** must be the `_pick` choice (coordinates first), deduped.
+    # candidates[0] by similarity is a coordinate-less row; the head
+    # must be the `_pick` choice (coordinates first), deduped.
     no_coords = _FakeEntity("Jerk Center", tags={"amenity": "fast_food"},
                             geom=None, osm_id=11)
     with_coords = _FakeEntity("Jerk Center", tags={"amenity": "restaurant"},
@@ -104,8 +104,8 @@ def test_empty_on_no_rows(fake_objects, monkeypatch):
 
 
 def test_first_variant_hit_skips_second_query(fake_objects, monkeypatch):
-    ***REMOVED*** The cleaned name ("Friars Tavern") hits: the original variant
-    ***REMOVED*** ("The Friars Tavern") must not run a second query.
+    # The cleaned name ("Friars Tavern") hits: the original variant
+    # ("The Friars Tavern") must not run a second query.
     calls = []
     row = _FakeEntity("The Friars Tavern", tags={"amenity": "pub"},
                       geom=_FakeGeom(-8.12, 53.09), osm_id=21)
@@ -131,7 +131,7 @@ def test_second_variant_falls_back(fake_objects, monkeypatch):
         "Shannon Bells": [],
         "Shannon Bells ".strip(): [],
     })
-    ***REMOVED*** The article-stripped variant misses, the original hits.
+    # The article-stripped variant misses, the original hits.
     def fake_trigram_rows(name_variant, qs, limit, min_sim):
         return [row] if name_variant == "Shannon Bells" else []
 

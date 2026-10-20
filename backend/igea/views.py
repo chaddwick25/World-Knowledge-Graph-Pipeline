@@ -11,7 +11,7 @@ from igea.tasks import run_uslp_for_subgraph_batch
 
 logger = logging.getLogger(__name__)
 
-***REMOVED***TODO: looking into this
+#TODO: looking into this
 @api_view(['POST'])
 def run_igea_alignment(request):
     """
@@ -89,7 +89,7 @@ def predict_triplets(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    ***REMOVED*** Build subgraph list using shared service
+    # Build subgraph list using shared service
     try:
         subgraphs = build_subgraph_list(
             country_name=country_name,
@@ -102,7 +102,7 @@ def predict_triplets(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    ***REMOVED*** Resolve country metadata for response (needed for session config)
+    # Resolve country metadata for response (needed for session config)
     country_data = get_country_by_name(country_name)
     if not country_data:
         return Response(
@@ -115,14 +115,14 @@ def predict_triplets(request):
     raw_slug = country_data.get('slug') or country_name
     country_slug = normalize_country_slug(raw_slug)
 
-    ***REMOVED*** USLP parameters (hyperparams.yaml uslp section default, allow request override)
+    # USLP parameters (hyperparams.yaml uslp section default, allow request override)
     hp = ModelHyperparams.load_from_yaml()
     threshold = float(request.data.get('threshold', hp.uslp_threshold))
     top_k = int(request.data.get('top_k', hp.uslp_top_k))
     limit = int(request.data.get('limit', hp.uslp_limit))
     max_heads = int(request.data.get('max_heads', hp.uslp_max_heads))
 
-    ***REMOVED*** GPU handling: 'auto' means detect, 'true'/'false' means force
+    # GPU handling: 'auto' means detect, 'true'/'false' means force
     use_gpu_setting = request.data.get('use_gpu', str(hp.uslp_use_gpu).lower())
     if use_gpu_setting == 'auto':
         try:
@@ -138,15 +138,15 @@ def predict_triplets(request):
     gpu_device = request.data.get('gpu_device', hp.uslp_gpu_device)
     use_fp64 = bool(request.data.get('use_fp64', hp.uslp_use_fp64))
 
-    ***REMOVED*** Optional existing ProcessingSession for websocket tracking
+    # Optional existing ProcessingSession for websocket tracking
     session_id = request.data.get('session_id')
     session = None
     if session_id:
         session = ProcessingSession.objects.filter(id=session_id).first()
 
     if not session:
-        ***REMOVED*** Try to find an existing pipeline session for this country
-        ***REMOVED*** This ensures websocket updates go to the right frontend connection
+        # Try to find an existing pipeline session for this country
+        # This ensures websocket updates go to the right frontend connection
         existing_session = ProcessingSession.objects.filter(
             configuration__country_name=country_name,
             session_type__in=[
@@ -164,7 +164,7 @@ def predict_triplets(request):
             session_id = str(session.id)
             logger.info(f"Reusing existing pipeline session {session_id} for USLP")
         else:
-            ***REMOVED*** Create a dedicated session for this USLP run
+            # Create a dedicated session for this USLP run
             session = ProcessingSession.objects.create(
                 session_name=f"USLP Subgraphs: {country_name}",
                 session_type=ProcessingSession.SessionType.DATASET_GENERATION,
@@ -177,14 +177,14 @@ def predict_triplets(request):
                     'subgraph_count': len(subgraphs),
                 },
             )
-            session_id = str(session.id)  ***REMOVED*** Use the new session_id for websocket
+            session_id = str(session.id)  # Use the new session_id for websocket
 
-    ***REMOVED*** Get snapshot_id from session configuration if available
+    # Get snapshot_id from session configuration if available
     snapshot_id = None
     if session and session.configuration:
         snapshot_id = session.configuration.get('snapshot_id')
 
-    ***REMOVED*** Dispatch Celery batch task (or run synchronously if Celery unavailable)
+    # Dispatch Celery batch task (or run synchronously if Celery unavailable)
     try:
         async_result = run_uslp_for_subgraph_batch.delay(
             country_name=country_name,
@@ -203,7 +203,7 @@ def predict_triplets(request):
         response_status = status.HTTP_202_ACCEPTED
         response_status_text = "started"
     except AttributeError:
-        ***REMOVED*** Celery not available - run synchronously for testing
+        # Celery not available - run synchronously for testing
         logger.warning("Celery not available, running USLP task synchronously")
         summary = run_uslp_for_subgraph_batch(
             country_name=country_name,

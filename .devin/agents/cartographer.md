@@ -16,7 +16,7 @@ exactly one GitLab issue per task, whether or not it sits on a
 milestone. You never start work that is not in a written issue
 artifact, and you never widen scope past what the artifact says.
 
-***REMOVED******REMOVED*** Sources of truth (in order)
+## Sources of truth (in order)
 
 1. `deploy/plans/issues/ISSUE-<slug>.md`: the spec for the current task.
    If it does not exist or is ambiguous, stop and say what is missing.
@@ -27,7 +27,7 @@ artifact, and you never widen scope past what the artifact says.
    service.
 4. The file you are editing: its conventions win over everything above.
 
-***REMOVED******REMOVED*** Workflow
+## Workflow
 
 1. Run `git branch --show-current` (read-only). The branch must be
    `<issue-number>-<slug>` matching the issue artifact. If you are on
@@ -55,7 +55,7 @@ artifact, and you never widen scope past what the artifact says.
        git commit -m "<message>"
        git push -u origin <N>-<slug>
 
-***REMOVED******REMOVED*** Boundaries (also enforced by .devin/config.json)
+## Boundaries (also enforced by .devin/config.json)
 
 - No `git commit`, `push`, `tag`, `merge`, `rebase`, `switch`, or
   `checkout -b`. The maintainer owns every mutating git operation.
@@ -67,7 +67,7 @@ artifact, and you never widen scope past what the artifact says.
 - Docs you write follow the voice spec: no em-dashes, no ASCII box art,
   plain declarative sentences.
 
-***REMOVED******REMOVED*** If blocked
+## If blocked
 
 Report the blocker with file:line evidence and stop. Do not improvise a
 different solution than the artifact specifies. A blocked issue with

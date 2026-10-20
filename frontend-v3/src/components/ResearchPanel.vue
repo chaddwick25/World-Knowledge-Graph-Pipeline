@@ -925,7 +925,7 @@ export default {
       const d = entry.data || {}
       switch (entry.event) {
         case 'plan': return `${(d.questions || []).length} questions`
-        case 'question': return `***REMOVED***${d.index} ${d.template || ''} count=${d.result_count ?? '?'}`
+        case 'question': return `#${d.index} ${d.template || ''} count=${d.result_count ?? '?'}`
         case 'follow_up': return `${d.kind || ''} ${d.question || ''}`.trim()
         case 'replan': return d.question || ''
         case 'round': return `round ${d.round}`
@@ -1079,7 +1079,7 @@ export default {
   padding-left: 0.75rem;
   /* Question + answer plain text in white; values (entity names,
      distances) get the dark blue via .answer-value. Errors stay red. */
-  color: ***REMOVED***fff;
+  color: #fff;
 }
 .research-details[open] .research-questions-flow {
   border-left-color: var(--bs-info-border-subtle);

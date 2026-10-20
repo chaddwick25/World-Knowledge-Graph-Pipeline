@@ -37,7 +37,7 @@ class Command(BaseCommand):
         save_json = options.get('save_json', False)
 
         if json_path_override:
-            ***REMOVED*** Legacy mode: read from a JSON file
+            # Legacy mode: read from a JSON file
             json_path = Path(json_path_override)
             if not json_path.exists():
                 self.stdout.write(self.style.ERROR(f'File not found: {json_path}'))
@@ -46,7 +46,7 @@ class Command(BaseCommand):
                 data = json.load(f)
             self.stdout.write(f'Loaded {len(data)} countries from {json_path}')
         else:
-            ***REMOVED*** Direct mode: resolve from SPARQL + Geofabrik, no JSON file hop
+            # Direct mode: resolve from SPARQL + Geofabrik, no JSON file hop
             self.stdout.write('Resolving country relations directly from SPARQL + Geofabrik...')
             from core.services.planet_init.country_relation_resolver import country_relation_resolver
 
@@ -73,10 +73,10 @@ class Command(BaseCommand):
         pbf_url = country_data.get('pbf_url')
         wkg_uri = country_data.get('wkg_uri')
         
-        ***REMOVED*** Extract wikidata_id from URI
+        # Extract wikidata_id from URI
         wikidata_id = wkg_uri.split('/')[-1] if wkg_uri else None
         
-        ***REMOVED*** Check if exists
+        # Check if exists
         hierarchy = OSMWikiDataHierarchy.objects.filter(slug=slug).first()
         
         if hierarchy:
@@ -104,10 +104,10 @@ class Command(BaseCommand):
                     continent_name=continent_name,
                     continent_id=continent_id,
                     pbf_url=pbf_url,
-                    admin_level=2  ***REMOVED*** Countries are admin_level 2
+                    admin_level=2  # Countries are admin_level 2
                 )
                 
-                ***REMOVED*** Link to RegionHierarchy if exists
+                # Link to RegionHierarchy if exists
                 region = RegionHierarchy.objects.filter(name__iexact=name).first()
                 if region:
                     hierarchy.region_hierarchy = region

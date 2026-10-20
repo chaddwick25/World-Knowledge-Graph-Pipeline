@@ -37,13 +37,13 @@ class GbToUkCopyService:
         """
         europe_dir = self.embeddings_root / "europe"
 
-        ***REMOVED*** Source directories (great-britain naming)
+        # Source directories (great-britain naming)
         gb_location_src = europe_dir / "great-britain-location" / "great-britain-location.tsv.gz"
         gb_tags_src = europe_dir / "great-britain-tags" / "great-britain-tags.tsv.gz"
         gb_header_location = europe_dir / "great-britain-location" / "header.tsv"
         gb_header_tags = europe_dir / "great-britain-tags" / "header.tsv"
 
-        ***REMOVED*** Target directories (united-kingdom naming)
+        # Target directories (united-kingdom naming)
         uk_location_dir = europe_dir / "united-kingdom-location"
         uk_tags_dir = europe_dir / "united-kingdom-tags"
         uk_location_tgt = uk_location_dir / "united-kingdom-location.tsv.gz"
@@ -64,7 +64,7 @@ class GbToUkCopyService:
                 skipped.append(label)
                 continue
 
-            ***REMOVED*** Check if target exists and is same size (idempotent)
+            # Check if target exists and is same size (idempotent)
             src_size = src.stat().st_size
             if tgt.exists():
                 tgt_size = tgt.stat().st_size
@@ -76,10 +76,10 @@ class GbToUkCopyService:
                 logger.info("  %s: target exists but size differs (%s vs %s) — re-copying",
                             label, f"{src_size:,}", f"{tgt_size:,}")
 
-            ***REMOVED*** Ensure target directory exists
+            # Ensure target directory exists
             tgt_dir.mkdir(parents=True, exist_ok=True)
 
-            ***REMOVED*** Copy the TSV file
+            # Copy the TSV file
             logger.info("  %s: copying %s (%s bytes) → %s",
                         label, src, f"{src_size:,}", tgt)
             try:
@@ -89,14 +89,14 @@ class GbToUkCopyService:
                 failed.append(label)
                 continue
 
-            ***REMOVED*** Copy header.tsv if available
+            # Copy header.tsv if available
             if header_src.exists():
                 header_tgt = tgt_dir / "header.tsv"
                 if not header_tgt.exists():
                     shutil.copy2(str(header_src), str(header_tgt))
                     logger.info("  %s: copied header.tsv", label)
 
-            ***REMOVED*** Verify
+            # Verify
             tgt_size = tgt.stat().st_size
             if tgt_size == src_size:
                 logger.info("  %s: verified — %s bytes", label, f"{tgt_size:,}")

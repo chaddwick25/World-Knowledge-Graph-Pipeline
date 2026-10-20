@@ -26,11 +26,11 @@ def get_e_core_list() -> List[int]:
     E-cores are typically cores 12-19 on hybrid architecture.
     """
     total_cores = psutil.cpu_count(logical=True)
-    if total_cores >= 20:  ***REMOVED*** i7-14700K has 20 logical cores
-        ***REMOVED*** E-cores are typically the last 8 cores (12-19)
+    if total_cores >= 20:  # i7-14700K has 20 logical cores
+        # E-cores are typically the last 8 cores (12-19)
         return list(range(12, 20))
     else:
-        ***REMOVED*** Fallback for other systems - use last quarter of cores
+        # Fallback for other systems - use last quarter of cores
         e_core_start = total_cores * 3 // 4
         return list(range(e_core_start, total_cores))
 
@@ -68,10 +68,10 @@ class ExtractionService:
             job_id=job_id
         )
         
-        ***REMOVED*** If successful, register in database
+        # If successful, register in database
         if result.get('status') == 'completed':
             try:
-                ***REMOVED*** Find source_pbf if not provided
+                # Find source_pbf if not provided
                 if not source_pbf_file:
                     from api.models import PbfFile
                     source_pbf_file = PbfFile.objects.filter(path=source_pbf_path).first()
@@ -97,10 +97,10 @@ class ExtractionService:
         try:
             start_time = timezone.now()
             
-            ***REMOVED*** Ensure output directory exists
+            # Ensure output directory exists
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            ***REMOVED*** Using osmium time-filter (single timestamp flattens history)
+            # Using osmium time-filter (single timestamp flattens history)
             result = self.osmium.time_filter(
                 input_file=source_pbf_path,
                 timestamp=timestamp,
@@ -117,14 +117,14 @@ class ExtractionService:
                 result['output_file_size_bytes'] = os.path.getsize(output_path)
                 result['status'] = 'completed'
                 
-                ***REMOVED*** Database registration
+                # Database registration
                 result['extraction_level'] = extraction_level
                 logger.info(f"DB Lookup: Searching for PBF with path: '{source_pbf_path}'")
                 source_pbf = PbfFile.objects.filter(path=source_pbf_path).first()
                 if not source_pbf:
                     logger.warning(f"DB Lookup FAILED for '{source_pbf_path}'. Total PBFs in DB: {PbfFile.objects.count()}")
                 
-                ***REMOVED*** Fallback: if source exists on disk but not in DB, register it as a region
+                # Fallback: if source exists on disk but not in DB, register it as a region
                 if not source_pbf and os.path.exists(source_pbf_path):
                     source_pbf = PbfFile.objects.create(
                         path=source_pbf_path,
@@ -135,7 +135,7 @@ class ExtractionService:
                     )
 
                 register_extraction_result(
-                    poly_file_path="",  ***REMOVED*** Path-based snapshot filter
+                    poly_file_path="",  # Path-based snapshot filter
                     output_pbf_path=output_path,
                     source_pbf=source_pbf,
                     metrics=result
@@ -191,7 +191,7 @@ def register_extraction_result(poly_file_path: str, output_pbf_path: str, source
         duration_seconds = metrics.get('duration_seconds', 0)
         cpu_core_id = metrics.get('cpu_core_id', 0)
         
-        ***REMOVED*** 1. Update/Create PbfExtract record
+        # 1. Update/Create PbfExtract record
         from api.models import PbfExtract, PbfFile, RegionHierarchy
         if not source_pbf:
             raise RuntimeError(f"Cannot register extraction result for {output_pbf_path}: source_pbf is None. Ensure source is registered in PbfFile table.")
@@ -211,14 +211,14 @@ def register_extraction_result(poly_file_path: str, output_pbf_path: str, source
             }
         )
 
-        ***REMOVED*** 2. Register/Update PbfFile record
+        # 2. Register/Update PbfFile record
         pbf_type = PbfFile.PbfType.REGION
         if 'continents' in poly_file_path or 'continent' in output_pbf_path.lower():
             pbf_type = PbfFile.PbfType.CONTINENT
             
         timestamp_info = {'min_timestamp': None, 'max_timestamp': None, 'method': 'UNKNOWN'}
         
-        ***REMOVED*** Regex patterns for filenames: 2021_01.pbf, snapshot_2021_01_31.pbf, or 2021.pbf
+        # Regex patterns for filenames: 2021_01.pbf, snapshot_2021_01_31.pbf, or 2021.pbf
         import re
         yearly_match = re.search(r'(\d{4})\.pbf$', output_pbf_path)
         monthly_match = re.search(r'(\d{4})_(\d{2})\.pbf$', output_pbf_path)
@@ -274,7 +274,7 @@ def register_extraction_result(poly_file_path: str, output_pbf_path: str, source
             }
         )
 
-        ***REMOVED*** 3. Link to RegionHierarchy (Skip for temporal slices/empty poly paths)
+        # 3. Link to RegionHierarchy (Skip for temporal slices/empty poly paths)
         if poly_file_path:
             region_node = RegionHierarchy.objects.filter(poly_file_path__icontains=Path(poly_file_path).name).first()
             if region_node:
@@ -298,7 +298,7 @@ def run_pbf_extraction(source_pbf_id: str, poly_file_path: str, output_pbf_path:
         print(f"Error: Could not find source PBF or Task. {e}")
         return
 
-    ***REMOVED*** Find the optimal source PBF using hierarchy resolution
+    # Find the optimal source PBF using hierarchy resolution
     try:
         optimal_pbf, selection_reason = pbf_hierarchy_resolver.find_optimal_source_pbf(
             poly_file_path=poly_file_path,
@@ -313,7 +313,7 @@ def run_pbf_extraction(source_pbf_id: str, poly_file_path: str, output_pbf_path:
     start_time = timezone.now()
     source_file_size = os.path.getsize(source_pbf.path)
 
-    ***REMOVED*** Use taskset --cpu-list 2-27 (High-performance cores)
+    # Use taskset --cpu-list 2-27 (High-performance cores)
     cpu_cores = '2-27' 
     osmium_path = settings.OSMIUM_BINARY_PATH
     command = [
@@ -345,7 +345,7 @@ def run_pbf_extraction(source_pbf_id: str, poly_file_path: str, output_pbf_path:
             'start_time': start_time,
             'end_time': end_time,
             'duration_seconds': (end_time - start_time).total_seconds(),
-            'cpu_core_id': 12, ***REMOVED*** representative E-core
+            'cpu_core_id': 12, # representative E-core
             'osmium_params': {'with-history': True, 'strategy': 'complete_ways'}
         }
         
@@ -364,7 +364,7 @@ def run_pbf_extraction(source_pbf_id: str, poly_file_path: str, output_pbf_path:
         print(f"Error during extraction: {e}")
         raise
 
-***REMOVED*** Global cache manager instance
+# Global cache manager instance
 _cache_manager = None
 _cache_coordinator = None
 
@@ -390,7 +390,7 @@ def run_pbf_extraction_with_e_cores(source_pbf_path: str, poly_file_path: str, o
     """
     return run_pbf_extraction_with_caching(source_pbf_path, poly_file_path, output_pbf_path, used_cores)
 
-***REMOVED*** Thread-safe cache for relation bboxes to avoid redundant scans
+# Thread-safe cache for relation bboxes to avoid redundant scans
 _bbox_cache = {}
 _bbox_lock = threading.Lock()
 
@@ -401,27 +401,27 @@ def _get_relation_bbox_locally(source_pbf_path: str, relation_id: int, cpu_core_
     """
     cache_key = f"{source_pbf_path}_{relation_id}"
     
-    ***REMOVED*** Fast path: already in cache
+    # Fast path: already in cache
     with _bbox_lock:
         if cache_key in _bbox_cache:
             return _bbox_cache[cache_key]
 
-    ***REMOVED*** Slow path: only one thread scans at a time for the same relation
-    ***REMOVED*** Using a global lock for simplicity since we usually process one region at a time
+    # Slow path: only one thread scans at a time for the same relation
+    # Using a global lock for simplicity since we usually process one region at a time
     with _bbox_lock:
-        ***REMOVED*** Re-check inside lock
+        # Re-check inside lock
         if cache_key in _bbox_cache:
             return _bbox_cache[cache_key]
 
         import tempfile
         
-        ***REMOVED*** We use a temp file to hold the relation + its members
+        # We use a temp file to hold the relation + its members
         with tempfile.NamedTemporaryFile(suffix='.pbf', delete=False) as tmp:
             tmp_rel_pbf = tmp.name
     
         try:
-            ***REMOVED*** Step A: Extract the relation AND its members (nodes/ways) to get coordinates
-            ***REMOVED*** We need --add-referenced to include the nodes which have the actual locations.
+            # Step A: Extract the relation AND its members (nodes/ways) to get coordinates
+            # We need --add-referenced to include the nodes which have the actual locations.
             getid_cmd = [
                 settings.OSMIUM_BINARY_PATH, 'getid',
                 '--with-history',
@@ -438,8 +438,8 @@ def _get_relation_bbox_locally(source_pbf_path: str, relation_id: int, cpu_core_
                 logger.error(f"[Core {cpu_core_id}] Osmium getid FAILED: {e.stderr}")
                 raise
             
-            ***REMOVED*** Step B: Use fileinfo to get the data bbox from the temp file
-            ***REMOVED*** Note: We use '-e' (extended) and '-j' (json output)
+            # Step B: Use fileinfo to get the data bbox from the temp file
+            # Note: We use '-e' (extended) and '-j' (json output)
             logger.info(f"[Core {cpu_core_id}] Running EXTENDED fileinfo on {tmp_rel_pbf}")
             info_cmd = [
                 settings.OSMIUM_BINARY_PATH, 'fileinfo',
@@ -450,7 +450,7 @@ def _get_relation_bbox_locally(source_pbf_path: str, relation_id: int, cpu_core_
             res = subprocess.run(info_cmd, check=True, capture_output=True, text=True)
             info_data = json.loads(res.stdout)
             
-            ***REMOVED*** Osmium returns [min_lon, min_lat, max_lon, max_lat]
+            # Osmium returns [min_lon, min_lat, max_lon, max_lat]
             bbox_list = info_data.get('data', {}).get('bbox', [])
             if not bbox_list:
                 raise RuntimeError(f"Could not find geographic bounds for r{relation_id} (is it missing nodes in {source_pbf_path}?)")
@@ -478,7 +478,7 @@ def run_pbf_extraction_with_relation(source_pbf_path: str, relation_id: int, out
     """
     cpu_core_id = get_next_available_e_core(used_cores)
     if cpu_core_id is None:
-        cpu_core_id = 12  ***REMOVED*** safe fallback
+        cpu_core_id = 12  # safe fallback
 
     used_cores.add(cpu_core_id)
 
@@ -488,11 +488,11 @@ def run_pbf_extraction_with_relation(source_pbf_path: str, relation_id: int, out
     import tempfile
 
     try:
-        ***REMOVED*** Step 1: Resolve bbox LOCALLY
+        # Step 1: Resolve bbox LOCALLY
         bbox = _get_relation_bbox_locally(source_pbf_path, relation_id, cpu_core_id)
         logger.info(f"[Core {cpu_core_id}] Local Bbox resolved: {bbox}")
 
-        ***REMOVED*** Step 2: Build osmium extract config with bbox geometry
+        # Step 2: Build osmium extract config with bbox geometry
         config = {
             "extracts": [
                 {
@@ -523,7 +523,7 @@ def run_pbf_extraction_with_relation(source_pbf_path: str, relation_id: int, out
         ]
 
         logger.info(f"[Core {cpu_core_id}] Running: {' '.join(command)}")
-        ***REMOVED*** Let stderr pass through so osmium progress bar is visible in terminal
+        # Let stderr pass through so osmium progress bar is visible in terminal
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=None)
         stdout, _ = process.communicate()
 
@@ -549,14 +549,14 @@ def run_pbf_extraction_with_relation(source_pbf_path: str, relation_id: int, out
             'osmium_params': {'bbox': bbox, 'strategy': 'complete_ways'}
         }
 
-        ***REMOVED*** Database Registration
+        # Database Registration
         from api.models import PbfFile
         logger.info(f"DB Lookup (Phase 1): Searching for path: '{source_pbf_path}'")
         source_pbf = PbfFile.objects.filter(path=source_pbf_path).first()
         if not source_pbf:
              logger.warning(f"DB Lookup (Phase 1) FAILED for '{source_pbf_path}'. Total PBFs in DB: {PbfFile.objects.count()}")
         
-        ***REMOVED*** Fallback: if source exists on disk but not in DB, register it
+        # Fallback: if source exists on disk but not in DB, register it
         if not source_pbf and os.path.exists(source_pbf_path):
             source_pbf = PbfFile.objects.create(
                 path=source_pbf_path,
@@ -567,7 +567,7 @@ def run_pbf_extraction_with_relation(source_pbf_path: str, relation_id: int, out
             )
 
         register_extraction_result(
-            poly_file_path="",  ***REMOVED*** Relation-based extraction
+            poly_file_path="",  # Relation-based extraction
             output_pbf_path=output_pbf_path,
             source_pbf=source_pbf,
             metrics=result
@@ -594,14 +594,14 @@ def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, o
     Now includes hierarchy resolution to automatically select the closest parent PBF
     instead of always using the planet file.
     """
-    ***REMOVED*** Get available E-core
+    # Get available E-core
     cpu_core_id = get_next_available_e_core(used_cores)
     if cpu_core_id is None:
         raise RuntimeError("No available E-cores for processing")
     
     used_cores.add(cpu_core_id)
     
-    ***REMOVED*** Initialize caching
+    # Initialize caching
     cache_manager = get_cache_manager()
     cache_coordinator = get_cache_coordinator()
     
@@ -611,10 +611,10 @@ def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, o
     try:
         start_time = timezone.now()
         
-        ***REMOVED*** Use hierarchy resolution to find optimal source
+        # Use hierarchy resolution to find optimal source
         try:
             from api.models import PbfFile
-            ***REMOVED*** Get the planet PBF as fallback
+            # Get the planet PBF as fallback
             planet_pbf = PbfFile.objects.filter(
                 pbf_file_type=PbfFile.PbfType.PLANET,
                 has_history=True,
@@ -628,7 +628,7 @@ def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, o
                 )
                 print(f"[Core {cpu_core_id}] {selection_reason}")
                 
-                ***REMOVED*** Use the optimal PBF path
+                # Use the optimal PBF path
                 source_pbf_path = optimal_pbf.path
                 
                 if optimal_pbf.id != planet_pbf.id:
@@ -637,15 +637,15 @@ def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, o
         except Exception as e:
             print(f"[Core {cpu_core_id}] Hierarchy resolution warning: {e}")
         
-        ***REMOVED*** Check for cached source or better alternative
+        # Check for cached source or better alternative
         best_source = cache_manager.get_best_cached_source(poly_file_path, source_pbf_path)
         
-        ***REMOVED*** Acquire read access to the source file
+        # Acquire read access to the source file
         actual_source, memory_map = cache_coordinator.concurrent_access.acquire_read_access(best_source, job_id)
         
         source_file_size = os.path.getsize(actual_source)
         
-        ***REMOVED*** Create output directory if it doesn't exist
+        # Create output directory if it doesn't exist
         os.makedirs(os.path.dirname(output_pbf_path), exist_ok=True)
         
         print(f"[Core {cpu_core_id}] Using source: {Path(actual_source).name} (cached: {actual_source != source_pbf_path})")
@@ -657,11 +657,11 @@ def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, o
             'strategy': 'complete_ways'
         }
         
-        ***REMOVED*** Using user-requested high-performance range 2-27 for ALL tasks
+        # Using user-requested high-performance range 2-27 for ALL tasks
         cpu_cores_str = "2-27"
         print(f"[Multi-Core] Utilizing core range: {cpu_cores_str}")
 
-        ***REMOVED*** Construct the command with correct osmium path
+        # Construct the command with correct osmium path
         osmium_path = settings.OSMIUM_BINARY_PATH
         command = [
             'taskset',
@@ -678,11 +678,11 @@ def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, o
         ]
         
         print(f"[Core {cpu_core_id}] Running: {' '.join(command)}")
-        ***REMOVED*** Capture stderr so the error handler can report the real osmium failure
+        # Capture stderr so the error handler can report the real osmium failure
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
 
-        ***REMOVED*** Record timing and size immediately
+        # Record timing and size immediately
         end_time = timezone.now()
         duration_seconds = (end_time - start_time).total_seconds()
         output_file_size = os.path.getsize(output_pbf_path) if process.returncode == 0 and os.path.exists(output_pbf_path) else 0
@@ -727,7 +727,7 @@ def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, o
         print(f"[Core {cpu_core_id}] Duration: {duration_seconds:.2f}s, Rate: {metrics['processing_rate_mb_per_sec']:.2f} MB/s")
         print(f"[Core {cpu_core_id}] Cache hit: {metrics['cache_hit']}, Memory mapped: {metrics['memory_mapped']}")
         
-        ***REMOVED*** Release read access
+        # Release read access
         cache_coordinator.concurrent_access.release_read_access(best_source, job_id)
         
         return metrics
@@ -758,7 +758,7 @@ def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, o
             'osmium_params': extract_params
         }
         
-        ***REMOVED*** Release read access on error
+        # Release read access on error
         try:
             if 'best_source' in locals():
                 cache_coordinator.concurrent_access.release_read_access(locals()['best_source'], job_id)
@@ -771,7 +771,7 @@ def run_pbf_extraction_with_caching(source_pbf_path: str, poly_file_path: str, o
     finally:
         used_cores.discard(cpu_core_id)
         
-        ***REMOVED*** Trigger cleanup if needed
+        # Trigger cleanup if needed
         if cache_coordinator.cleanup_manager.should_cleanup():
             print(f"[Core {cpu_core_id}] Triggering cache cleanup...")
             cleanup_stats = cache_coordinator.cleanup_manager.cleanup_cache()

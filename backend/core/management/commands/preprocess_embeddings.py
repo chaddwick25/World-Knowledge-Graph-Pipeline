@@ -93,7 +93,7 @@ class Command(BaseCommand):
         "Backend options: 'shapely' (fast, vectorized, default) or 'pyosmium' (legacy)."
     )
 
-    def add_arguments(self, parser) -> None:  ***REMOVED*** type: ignore[override]
+    def add_arguments(self, parser) -> None:  # type: ignore[override]
         parser.add_argument(
             "--embeddings-root",
             type=str,
@@ -149,7 +149,7 @@ class Command(BaseCommand):
             help="Spatial splitter backend: 'pyosmium' (legacy) or 'shapely' (fast, vectorized, default)",
         )
 
-    def handle(self, *args, **options) -> None:  ***REMOVED*** type: ignore[override]
+    def handle(self, *args, **options) -> None:  # type: ignore[override]
         emb_root = Path(options["embeddings_root"]) if options["embeddings_root"] else Path(settings.EMBEDDINGS_ROOT)
         polys_root = Path(options["polygons_root"]) if options["polygons_root"] else Path(settings.POLYGON_FILES_DIR)
         continents_root = (
@@ -194,7 +194,7 @@ class Command(BaseCommand):
             self.stdout.write(f"  Country filter: {country_filter}")
         self.stdout.write("=" * 60)
 
-        ***REMOVED*** Fail fast: validate all inputs (source TSVs + poly files) before work
+        # Fail fast: validate all inputs (source TSVs + poly files) before work
         errors: List[str] = []
         for split_def in splits:
             src_rel = split_def.get("source_tsv")
@@ -239,7 +239,7 @@ class Command(BaseCommand):
         total_start = time.time()
         groups_processed = 0
 
-        ***REMOVED*** Build list of split groups to process
+        # Build list of split groups to process
         task_defs = []
         for split_def in splits:
             src_rel = split_def.get("source_tsv")
@@ -252,7 +252,7 @@ class Command(BaseCommand):
 
             src_path = emb_root / src_rel
             if not src_path.exists():
-                ***REMOVED*** Already reported during validation; skip
+                # Already reported during validation; skip
                 continue
 
             if dry_run:
@@ -285,13 +285,13 @@ class Command(BaseCommand):
             self.stdout.write(f"{'=' * 60}")
             return
 
-        ***REMOVED*** Optional multi-core: control workers via hyperparams.yaml
-        ***REMOVED*** (embedding_splits.workers — the former EMBEDDING_SPLITS_WORKERS env).
+        # Optional multi-core: control workers via hyperparams.yaml
+        # (embedding_splits.workers — the former EMBEDDING_SPLITS_WORKERS env).
         workers = ModelHyperparams.load_from_yaml().embedding_splits_workers
         workers = max(1, workers)
         workers = min(workers, len(task_defs))
 
-        ***REMOVED*** Create the appropriate service based on backend
+        # Create the appropriate service based on backend
         if backend == "shapely":
             service = ShapelySpatialSplitter(
                 embeddings_root=emb_root,
@@ -308,7 +308,7 @@ class Command(BaseCommand):
             )
 
         if workers == 1:
-            ***REMOVED*** Sequential processing (default)
+            # Sequential processing (default)
             for split_def in task_defs:
                 src_rel = split_def.get("source_tsv")
                 self.stdout.write(f"\n  Processing split group: {src_rel}")
@@ -320,13 +320,13 @@ class Command(BaseCommand):
                         force_snapshot=force_snapshot,
                     )
                     groups_processed += 1
-                except Exception as exc:  ***REMOVED*** noqa: BLE001
+                except Exception as exc:  # noqa: BLE001
                     logger.exception("Error while processing split group %s", src_rel)
                     self.stdout.write(
                         self.style.ERROR(f"  Split failed for {src_rel}: {exc}"),
                     )
         else:
-            ***REMOVED*** Multi-process execution across split groups
+            # Multi-process execution across split groups
             self.stdout.write(
                 f"\nRunning embedding splits with {workers} worker processes (backend: {backend})...",
             )
@@ -355,7 +355,7 @@ class Command(BaseCommand):
                         future.result()
                         groups_processed += 1
                         self.stdout.write(f"  [OK] {src_rel}")
-                    except Exception as exc:  ***REMOVED*** noqa: BLE001
+                    except Exception as exc:  # noqa: BLE001
                         logger.exception("Error while processing split group %s", src_rel)
                         self.stdout.write(
                             self.style.ERROR(f"  Split failed for {src_rel}: {exc}"),

@@ -1,10 +1,10 @@
-***REMOVED*** World Knowledge Graph Pipeline - Agent Notes
+# World Knowledge Graph Pipeline - Agent Notes
 
-***REMOVED******REMOVED*** Architecture (post-refactor)
+## Architecture (post-refactor)
 
 The pipeline has been refactored into a modular, service-oriented architecture:
 
-***REMOVED******REMOVED******REMOVED*** OSMSnapshot app (snapshot identity + graph data)
+### OSMSnapshot app (snapshot identity + graph data)
 
 The `osmsnapshot` app is the canonical home for snapshot identity and graph data:
 
@@ -26,7 +26,7 @@ The `osmsnapshot` app is the canonical home for snapshot identity and graph data
 - Legacy services: `FilteredSnapshotService`, `OptimizedSnapshotService`, `ParallelSnapshotService`, `GraphAssetParallelService`, `GraphAssetService`, `AssetGenerationService`.
 - Legacy endpoints: `/api/tag-discovery/analyze/`, `/api/assets/bundles/`, `/api/country-search-update/`, filtered snapshot views.
 
-***REMOVED******REMOVED******REMOVED*** Core app (consolidated from `extraction` + `orchestration`)
+### Core app (consolidated from `extraction` + `orchestration`)
 
 The `extraction` and `orchestration` Django apps have been **deleted**. All their
 models, services, and management commands now live in the `core` app. Planet
@@ -110,7 +110,7 @@ during the consolidation. `core.0001_initial` (29 models) and
 apps. `django_migrations` rows for the deleted `extraction`/`orchestration` apps
 were removed.
 
-***REMOVED******REMOVED******REMOVED*** Service Classes (data plane)
+### Service Classes (data plane)
 - `core/services/snapshot/gb_uk_copy_service.py` - Copy great-britain TSVs to united-kingdom naming
 - `core/services/snapshot/embedding_split_service.py` - Split multi-country TSVs (GB, MY/SG/BN)
 - `core/services/snapshot/embedding_merge_service.py` - Merge US regional shards
@@ -129,33 +129,33 @@ were removed.
 - `semantic_search/services/embedding_drift_service.py` - Sliced Wasserstein Distance between snapshot embeddings, freshness score. Management command only.
 - `semantic_search/services/knn_graph_service.py` - `build_graph()` builds weighted NetworkX graph with `wkg_class` node attributes for spectral/community analysis. `build_sparse_graph()` returns a PyG-style COO `SparseGraph` for large graphs. `build_sparse_graph_for_subgraph()` filters entities by subgraph polygon/bbox with a buffer zone for correct boundary k-NN behavior (used by Step 5c subdivision fan-out). With `return_core_ids=True` (Option A from the functional maps plan), returns `(SparseGraph, core_ids)` where the graph includes all buffered entities (core + buffer) and `core_ids` is used to prune at factor-write time - gives shared buffer entities exact eigen-loadings for transport matrix computation.
 - `semantic_search/services/factor_node_writer.py` - Batch writer for per-entity factor tables (`factor_spectral_node_metric`, `factor_drift_node_metric` on vectors DB, models in `worldkg_nca`). Called by Steps 5c/5d (non-fatal). `write_spectral_nodes` accepts an optional `subgraph_slug` for subdivision-scoped rows, an optional `core_ids` set for Option A (full buffered graph solve - factor rows written for core entities only), and an optional `fingerprint_id` stamped on every row (Phase 1 eigenbasis coherence). Drift writer sign-aligns eigenbases across snapshot pairs.
-- `semantic_search/services/factor_resolution_service.py` - Runtime SQL-only factor resolution: `check_availability` (G4), `resolve_metrics`, `diffusion_rank` (heat kernel as one pgvector `<***REMOVED***>` query over stored eigen-loadings, subgraph-scoped when the anchor has a `subgraph_slug`; supports cross-subgraph transport via functional maps when `cross_subgraph=True` and transport matrices exist in `factor_subgraph_transport`), `community_summary` (optional `subgraph_slug` filter), `amenity_embedding`. Used by the MapQA executor (table path is authoritative; `FACTOR_NODE_TABLES_ENABLED` defaults `true`).
+- `semantic_search/services/factor_resolution_service.py` - Runtime SQL-only factor resolution: `check_availability` (G4), `resolve_metrics`, `diffusion_rank` (heat kernel as one pgvector `<#>` query over stored eigen-loadings, subgraph-scoped when the anchor has a `subgraph_slug`; supports cross-subgraph transport via functional maps when `cross_subgraph=True` and transport matrices exist in `factor_subgraph_transport`), `community_summary` (optional `subgraph_slug` filter), `amenity_embedding`. Used by the MapQA executor (table path is authoritative; `FACTOR_NODE_TABLES_ENABLED` defaults `true`).
 - `semantic_search/services/subgraph_transport_service.py` - Functional map (k×k transport matrix) computation and runtime transport between adjacent subgraph eigenbases. `compute_transport_matrix()` solves regularized least squares (descriptor + Laplacian commutativity). `transport_loadings()` applies the matrix at runtime. `compute_adjacency()` detects adjacent subgraph pairs via polygon/bbox intersection. `write_transport_matrices()` / `load_transport_matrix()` handle vectors DB I/O. Grounded in Ovsjanikov et al. 2012, Pegoraro et al. 2023.
 - `semantic_search/management/commands/compute_amenity_embeddings.py` - Precompute FastText embeddings for the MapQA amenity vocab (621 rows in `factor_amenity_embedding`). Registered as an `init_planet` step after `train_mapqa_parser` and before `finalize`.
 - **Test infra**: pytest needs `CREATE EXTENSION vector` in BOTH test DBs (`test_vector_db` on postgres-vectors - pre-create with `OWNER vector_user` - and `test_django_db` on postgres-default). Kuhn's Template correction tests additionally need `pg_trgm` + `fuzzystrmatch` on `test_vector_db` (migrations 0017/0019 create them on the live DBs; `--no-migrations` means test DBs need them created once by hand: `CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;`). DB tests using vectors need `pytest.mark.django_db(transaction=False, databases=["default", "vectors"])`. The legacy runtime graph path has been removed; factor tables are the authoritative source for spectral/diffusion/community queries.
-- `semantic_search/services/query_parser_service.py` - MapQA parser: TF-IDF + MultinomialNB template classifier, one-vs-rest Logistic Regression concept extractor, Logistic Regression role assigner, DAG composition. OBJECT extraction is open-vocabulary (returns raw phrase before first structural preposition). Includes a deterministic post-classification override: queries matching `within X(km|m) of` are forced to `FILTER-AGGREGATE-MEASURE (***REMOVED***1)` regardless of TF-IDF classifier output, preventing radius-bearing queries from being misrouted to PLACE-ATTRIBUTE-QUERY (heat kernel diffusion with no geographic radius filter). **Question-word typo tolerance (2026-09-13)**: `_normalize_question_words` rewrites near-miss question words ("Whichs" → "Which") via prefix-constrained edit distance (the question word must be a prefix of the token or vice versa - excludes "Mill"→"Will"/"What"→"Who"), applied in `extract_all_entities`/`_extract_entity_name`; `_extract_entity_name` anchors on the EARLIEST preposition with a ":" span terminator so "...to Moher Cottage: ...the Cliffs OF Moher?" anchors on Moher Cottage, not "Moher". **Heuristic OBJECT back-in vocabulary (2026-09-19)**: the trained concept model misses rare amenity words, and the `_heuristic_concepts` OBJECT signature list lacked the documented `sample_questions.md` vocabulary - "Which museums are within 2km of Belfast?" extracted no OBJECT, so the executor skipped the search entirely and research summaries reported "no museums found". The list now carries museum/beach/park/supermarket/gas station/bakery/library/cinema/clinic/church/university/gallery/theatre/theater/stadium/swimming/playground/brewery/distillery (substring matching covers plurals). See BELFAST_ANCHOR_SIGNPOST_BUG.
-- `semantic_search/services/query_executor_service/` - MapQA executor package: 5 template executors using the factor-table path (SQL + pgvector `<***REMOVED***>` for spectral/diffusion/community queries) with PostGIS fallback for distance/radius templates. **Partition-pruned context + NaN guard (2026-09-13)**: result dicts carry `country_code`; the enrichment block resolves an `effective_country` from the results when the request has none (class-distribution context query 12.4s → ~0.3s); compare-closer candidate geocodes prune to the anchor's country with an unpruned cross-country retry (executor fn 6.9s → 0.22s); `_search_by_amenity_spatial` excludes `POINT(NaN NaN)` geometries (`ST_Distance` on NaN returns 0 - the "nearest (0m away)" regression). Endpoint on the Moher Cottage compare question: 40.4s → 9.0s. The legacy runtime graph path (GraphML → NetworkX → SciPy) has been removed. 3-tier amenity fallback: exact tag → WorldKG ontology class → FastText semantic (checks `factor_amenity_embedding` first). Also handles 4 graph endpoints (spectral, temporal, community, event-diffusion). Radius parsing supports km/m units (`"2km"` → 2000m). PostGIS `_search_by_amenity_spatial` applies haversine filtering using anchor coordinates. Returns empty list with `spatial_filter_skipped` trace when anchor has no usable coordinates and a radius was requested (no silent unfiltered fallback). **USLP geographic scoring** (Mann et al. 2023 §3.3): `_geo_score_uslp()` encodes anchor and candidate coordinates to geohash at P4 precision (~39km cells), computes haversine between cluster centers, normalizes by d_max (P4 cell width fallback when no precomputed pool is available). FILTER-AGGREGATE-MEASURE with an explicit radius uses raw haversine with the user's radius as d_max. OBJECT-FIELD-MEASURE returns 0.0 (distance IS the answer). **Radius guard**: PLACE-ATTRIBUTE-QUERY executor filters heat kernel results by haversine distance when an AMOUNT concept is present, preventing graph-connected but geographically distant entities from appearing. **USLP signal boost**: entities that appear as predicted link tails (`SpatialTripletScore.predicted=True`) from the anchor entity get a +0.5 score boost, connecting the link prediction layer to search ranking. `_enrich_with_geo_and_uslp()` applies geo_score + USLP boost and re-ranks by `combined_score = diffusion_score + geo_score + uslp_boost`.
+- `semantic_search/services/query_parser_service.py` - MapQA parser: TF-IDF + MultinomialNB template classifier, one-vs-rest Logistic Regression concept extractor, Logistic Regression role assigner, DAG composition. OBJECT extraction is open-vocabulary (returns raw phrase before first structural preposition). Includes a deterministic post-classification override: queries matching `within X(km|m) of` are forced to `FILTER-AGGREGATE-MEASURE (#1)` regardless of TF-IDF classifier output, preventing radius-bearing queries from being misrouted to PLACE-ATTRIBUTE-QUERY (heat kernel diffusion with no geographic radius filter). **Question-word typo tolerance (2026-09-13)**: `_normalize_question_words` rewrites near-miss question words ("Whichs" → "Which") via prefix-constrained edit distance (the question word must be a prefix of the token or vice versa - excludes "Mill"→"Will"/"What"→"Who"), applied in `extract_all_entities`/`_extract_entity_name`; `_extract_entity_name` anchors on the EARLIEST preposition with a ":" span terminator so "...to Moher Cottage: ...the Cliffs OF Moher?" anchors on Moher Cottage, not "Moher". **Heuristic OBJECT back-in vocabulary (2026-09-19)**: the trained concept model misses rare amenity words, and the `_heuristic_concepts` OBJECT signature list lacked the documented `sample_questions.md` vocabulary - "Which museums are within 2km of Belfast?" extracted no OBJECT, so the executor skipped the search entirely and research summaries reported "no museums found". The list now carries museum/beach/park/supermarket/gas station/bakery/library/cinema/clinic/church/university/gallery/theatre/theater/stadium/swimming/playground/brewery/distillery (substring matching covers plurals). See BELFAST_ANCHOR_SIGNPOST_BUG.
+- `semantic_search/services/query_executor_service/` - MapQA executor package: 5 template executors using the factor-table path (SQL + pgvector `<#>` for spectral/diffusion/community queries) with PostGIS fallback for distance/radius templates. **Partition-pruned context + NaN guard (2026-09-13)**: result dicts carry `country_code`; the enrichment block resolves an `effective_country` from the results when the request has none (class-distribution context query 12.4s → ~0.3s); compare-closer candidate geocodes prune to the anchor's country with an unpruned cross-country retry (executor fn 6.9s → 0.22s); `_search_by_amenity_spatial` excludes `POINT(NaN NaN)` geometries (`ST_Distance` on NaN returns 0 - the "nearest (0m away)" regression). Endpoint on the Moher Cottage compare question: 40.4s → 9.0s. The legacy runtime graph path (GraphML → NetworkX → SciPy) has been removed. 3-tier amenity fallback: exact tag → WorldKG ontology class → FastText semantic (checks `factor_amenity_embedding` first). Also handles 4 graph endpoints (spectral, temporal, community, event-diffusion). Radius parsing supports km/m units (`"2km"` → 2000m). PostGIS `_search_by_amenity_spatial` applies haversine filtering using anchor coordinates. Returns empty list with `spatial_filter_skipped` trace when anchor has no usable coordinates and a radius was requested (no silent unfiltered fallback). **USLP geographic scoring** (Mann et al. 2023 §3.3): `_geo_score_uslp()` encodes anchor and candidate coordinates to geohash at P4 precision (~39km cells), computes haversine between cluster centers, normalizes by d_max (P4 cell width fallback when no precomputed pool is available). FILTER-AGGREGATE-MEASURE with an explicit radius uses raw haversine with the user's radius as d_max. OBJECT-FIELD-MEASURE returns 0.0 (distance IS the answer). **Radius guard**: PLACE-ATTRIBUTE-QUERY executor filters heat kernel results by haversine distance when an AMOUNT concept is present, preventing graph-connected but geographically distant entities from appearing. **USLP signal boost**: entities that appear as predicted link tails (`SpatialTripletScore.predicted=True`) from the anchor entity get a +0.5 score boost, connecting the link prediction layer to search ranking. `_enrich_with_geo_and_uslp()` applies geo_score + USLP boost and re-ranks by `combined_score = diffusion_score + geo_score + uslp_boost`.
 - `semantic_search/services/entity_geocoder.py` - Geocodes named entities from MapQA LOCATION/OBJECT slots. Strips leading articles (`"a bus station"` → `"bus station"`) before ILIKE name search. Treats `POINT(NaN NaN)` way geometries as no-coordinate (returns `lat=None, lon=None` via `math.isnan` check). Prefers entities with valid coordinates over ways with NaN geom (iterates up to 20 ILIKE matches, returns first with usable lat/lon, falls back to no-coordinate match only as last resort). **Fragment guards (2026-09-13)**: tier 1 (pg_trgm) rejects candidates with sim < 0.6 whose name is > 1.6x the query; tier 3 (icontains) applies the same for queries < 8 chars - a truncated span ("Cliffs") can no longer match "Cliffs of Howth" while the equal-length typo case ("Shannon Bells" → "Shandon Bells", sim 0.65) and partial names ≥ 8 chars are preserved. `_entity_to_dict` carries `country_code` so the executor can prune partition queries. **Place preference (2026-09-19)**: all four tiers now select via `_pick` (prefer coordinates, then `_place_score` - settlements/admin boundaries up, marker/sign entities down) instead of `.first()` - "Belfast" the city beats "Belfast" the NCN 93 destination sign, which previously won the exact-name tie and sent every Belfast-anchored question radiating from a countryside signpost. See BELFAST_ANCHOR_SIGNPOST_BUG.
 - `worldkg_nca/views/search.py` - `worldkg_semantic_triplet_search` API: triple-space and ANN search paths over `OsmEntity.gv_tags_embedding` (300D FastText). **Tag key filtering**: when `query_tags` has specific keys, the queryset is always filtered to entities that have those tag keys present (`tags__has_key`), preventing entities without the tag from polluting results. `exact_tag_match=True` additionally requires exact key=value match. **Tag match boost**: +1.0 to `final_score` for each query tag value that exactly matches the entity's tag value, ensuring `{"cuisine": "jamaican"}` ranks `cuisine=jamaican` above `cuisine=indian`. **USLP geo_score** (Mann et al. 2023 §3.3): both ANN and triple-space paths use geohash P4 cluster-center distance with d_max=39km (P4 cell width), replacing the old `1/(1+d_km)` decay. Also handles `natural_query` (free-form name search with romanizer cross-script matching) and `execute_query` (MapQA parser → template → executor). The three query modes (Structured JSON, Natural language, Kuhn's Template) are independently testable and serve as the agent's tool palette for future MCP orchestration - see `VUE_MCP_SERVER_OVERVIEW.md` §8.
 - `semantic_search/services/query_correction_service.py` - **QueryCorrectionService** (Kuhn's Template correction layer): corrects misspelled/mistyped amenity phrases that break the MapQA executor's exact tiers ("resturant" → "restaurant"). Scores the snapshot's real OSM amenity tag vocabulary (`DISTINCT tags->>'amenity'`, cached per (snapshot, country), TTL 1h - `VOCAB_CACHE_TTL_SECONDS`, default 3600s; cleared on backfill) with pg_trgm `similarity()` + fuzzystrmatch `levenshtein()` in one SQL pass; tiers: exact pass → pg_trgm (sim ≥ 0.5) → fuzzystrmatch (≤ 3 edits), combined score floor 0.55; junk and open-vocabulary cuisine phrases are never force-corrected (fall through to the FastText tier). Wired into `QueryExecutorService._resolve_amenity_tag`, `_search_by_amenity` (step 2b, trace `match_type="fuzzy_correction"`) and `_amenity_candidate_osm_ids`. Scoped to Kuhn's Template (`execute-query/`) - structured-JSON and natural-name modes are unaffected. Suite: `tests/unit/test_query_correction_service.py` (18 tests).
 - `semantic_search/services/romanizing_names/` - Deterministic cross-script name romanization. `RomanizerRegistry.auto_romanize()` detects script (Hangul, diacritic Latin, identity) and dispatches to the appropriate romanizer. Hangul: Unicode decomposition + lookup tables (파리바게뜨 → paribagetteu). Diacritic: NFKD + combining mark removal (café → cafe, Señor → senor). Identity: lowercase + whitespace collapse fallback. No neural model, no network, pure Python stdlib. Romanized values persisted in `OsmEntity.name_romanized` with pg_trgm GIN index. `romanize_names` management command is idempotent/resumable (processes entities where `name_romanized IS NULL`), decoupled from country ingestion. Chinese Hanzi and Japanese Kanji intentionally excluded. See `docs/semantic_search/deterministic_cross_script_romanization.md`.
 - `core/services/pipeline/search_ready_service.py` - Mark country as search-ready + update SnapshotJob status
 
-***REMOVED******REMOVED******REMOVED*** Envelopes (message plane)
+### Envelopes (message plane)
 - `pipeline/envelopes.py` - `CountryEnvelope`, `PlanetEnvelope`, `ModelHyperparams`
 - `pipeline/hyperparams.yaml` - Static model hyperparameters (loaded once, frozen)
 
-***REMOVED******REMOVED******REMOVED*** Decorator (control plane)
+### Decorator (control plane)
 - `pipeline/task_decorator.py` - `@pipeline_step(step_name, EnvelopeClass, step_index)`
   Factors out the Celery seam: context setup, logging, WS push, serialization.
 
-***REMOVED******REMOVED******REMOVED*** Tasks (thin wrappers)
+### Tasks (thin wrappers)
 All task files in `pipeline/tasks/` are now thin wrappers that:
 1. Reconstruct the envelope from the config dict
 2. Call a service
 3. Return the envelope (serialized via `to_dict()`)
 
-***REMOVED******REMOVED******REMOVED*** Legacy
+### Legacy
 - `pipeline/config.py` - `SubgraphConfig` + `_resolve_country_pbf_path` only; the
   legacy `CountryConfig` class has been deleted. Use `CountryEnvelope` /
   `PlanetEnvelope`.
@@ -167,7 +167,7 @@ All task files in `pipeline/tasks/` are now thin wrappers that:
 - `source_snapshot_id` provenance - Fixed: `region_status_service.py` was using `PbfFile` UUIDs instead of `Snapshot` UUIDs. `EmbeddingService` now resolves the `Snapshot` UUID and passes it through the entire upsert chain (`VectorStorageService` → `BatchCollector` → `spawn_encode_workers`).
 - **Done**: `extraction` and `orchestration` apps consolidated into the `core` app, with planet init converted to a Docker startup step (`init_planet` command). See the "Core app" section above.
 
-***REMOVED******REMOVED******REMOVED*** SnapshotJob (pipeline status tracking)
+### SnapshotJob (pipeline status tracking)
 - `osmsnapshot/models.py` - `SnapshotJob` model (country_code, snapshot_date, status, pipeline_run_id FK)
   (Moved from `orchestration` to `osmsnapshot`. DB table `snapshot_jobs` unchanged.)
 - Pipeline start view gates on SnapshotJob: 409 if RUNNING, `force=true` to re-run COMPLETED
@@ -176,11 +176,11 @@ All task files in `pipeline/tasks/` are now thin wrappers that:
 - `OsmEntity.source_snapshot_id` (UUID) - cross-DB reference to `osmsnapshot.Snapshot`
 - `OsmEntity.snapshot_id` (CharField `YYYY_MM_DD`) scopes entity queries; data endpoints accept `snapshot_date` param
 
-***REMOVED******REMOVED******REMOVED*** Factor-Node Tables (worldkg_nca, vectors DB)
+### Factor-Node Tables (worldkg_nca, vectors DB)
 
-Three flat pgvector tables in the `worldkg_nca` app (routed to `vectors` DB by `VectorDBRouter`, colocated with `OsmEntity` for runtime joins). Batch-written by Steps 5c/5d + `compute_amenity_embeddings`; resolved at runtime by `FactorResolutionService` via SQL + pgvector `<***REMOVED***>`. See `docs/semantic_search/factor_node_runtime_joins.md`.
+Three flat pgvector tables in the `worldkg_nca` app (routed to `vectors` DB by `VectorDBRouter`, colocated with `OsmEntity` for runtime joins). Batch-written by Steps 5c/5d + `compute_amenity_embeddings`; resolved at runtime by `FactorResolutionService` via SQL + pgvector `<#>`. See `docs/semantic_search/factor_node_runtime_joins.md`.
 
-- **`factor_spectral_node_metric`** - One row per `(snapshot_id, country_code, subgraph_slug, osm_id)`. Fields: `fingerprint_id` (UUID, null - the GraphSpectralFingerprint.id whose eigenbasis produced the loadings; Phase 1 coherence check at runtime, mismatch → PostGIS fallback), `eigen_loadings` (VectorField 128D, zero-padded), `fiedler_component`, `louvain_community`, `dirichlet_contrib` (combinatorial Laplacian), `degree`, `clustering_coeff`, `component_id`, `component_size`, `subgraph_slug` (nullable - null for country-level/small territories). Written by `FactorNodeWriter.write_spectral_nodes()` in Step 5c. Unique on `(snapshot_id, country_code, subgraph_slug, osm_id)`. Composite index on `(snapshot_id, country_code, subgraph_slug)` for subgraph-scoped pgvector `<***REMOVED***>` queries.
+- **`factor_spectral_node_metric`** - One row per `(snapshot_id, country_code, subgraph_slug, osm_id)`. Fields: `fingerprint_id` (UUID, null - the GraphSpectralFingerprint.id whose eigenbasis produced the loadings; Phase 1 coherence check at runtime, mismatch → PostGIS fallback), `eigen_loadings` (VectorField 128D, zero-padded), `fiedler_component`, `louvain_community`, `dirichlet_contrib` (combinatorial Laplacian), `degree`, `clustering_coeff`, `component_id`, `component_size`, `subgraph_slug` (nullable - null for country-level/small territories). Written by `FactorNodeWriter.write_spectral_nodes()` in Step 5c. Unique on `(snapshot_id, country_code, subgraph_slug, osm_id)`. Composite index on `(snapshot_id, country_code, subgraph_slug)` for subgraph-scoped pgvector `<#>` queries.
 - **`factor_drift_node_metric`** - One row per `(country_code, snapshot_from_id, snapshot_to_id, osm_id)`. Fields: `fiedler_delta` (sign-aligned), `loading_drift` (cosine distance), `community_changed`, `degree_delta`. Written by `FactorNodeWriter.write_drift_nodes()` in Step 5d. Unique on `(country_code, snapshot_from_id, snapshot_to_id, osm_id)`.
 - **`factor_amenity_embedding`** - One row per amenity vocab term. Fields: `amenity_text` (VarChar 200, unique), `embedding` (VectorField 300D, L2-normalized FastText). 621 rows. Written by `compute_amenity_embeddings` (an `init_planet` step).
 - **`factor_subgraph_transport`** - One row per `(snapshot_id, country_code, subgraph_from, subgraph_to)`. Fields: `transport_matrix` (JSONField, k×k functional map), `k_dim`, `shared_entity_count`, `fit_residual`, `commutativity_residual`. Written by Step 5c Phase B (`SubgraphTransportService`). Used at runtime by `FactorResolutionService.diffusion_rank` for cross-subgraph spectral transport.
@@ -192,7 +192,7 @@ Three flat pgvector tables in the `worldkg_nca` app (routed to `vectors` DB by `
 
 **Test DB extensions**: Both `test_vector_db` and `test_django_db` need `vector` + `postgis` extensions; `test_vector_db` additionally needs `pg_trgm` + `fuzzystrmatch` for the QueryCorrectionService suite (`tests/unit/test_query_correction_service.py`).
 
-***REMOVED******REMOVED******REMOVED*** MCP Agent & Platform LLM layer
+### MCP Agent & Platform LLM layer
 
 - `core/services/llm_service.py` - Provider-abstracted LLM client over
   `requests` (no SDK - backend is Python 3.8). Default `LLM_API_STYLE=native`
@@ -224,7 +224,7 @@ Three flat pgvector tables in the `worldkg_nca` app (routed to `vectors` DB by `
   grounded assemble. KE interviewer chat + structured brief finalize
   (chat_json extraction + deterministic render, `source:
   structured|fallback`). **Small-radius empty escalation (2026-09-19)**:
-  a ***REMOVED***1 question with a radius below `DEFAULT_NEAR_RADIUS_M` (2km) that
+  a #1 question with a radius below `DEFAULT_NEAR_RADIUS_M` (2km) that
   returns zero results is widened to 2km and re-run once
   (`radius_escalated: true`); the decompose prompt scales radii to the
   anchor (city ≥ 2km, never 1km for a city). Demo:
@@ -288,12 +288,12 @@ Three flat pgvector tables in the `worldkg_nca` app (routed to `vectors` DB by `
   SSE/performance, Docker agent stack, LLM capacity envelope) and
   `docs/semantic_search/research_orchestrator_agent_stream.md`.
 
-***REMOVED******REMOVED******REMOVED*** MapQA self-supervised training data
+### MapQA self-supervised training data
 (Part 1 of 2)
 
 - `semantic_search/services/mapqa_question_generator.py` -
   `MapQAQuestionGenerator` generates question-answer pairs for the 5 existing
-  macro-templates (***REMOVED***1, ***REMOVED***2, ***REMOVED***4, ***REMOVED***5, ***REMOVED***8) from `OsmEntity` ground truth in the
+  macro-templates (#1, #2, #4, #5, #8) from `OsmEntity` ground truth in the
   vectors DB. Answers are computed exactly from PostGIS at generation time
   (`ST_DWithin` counts, haversine, nearest-entity ordering, bearing →
   cardinal). Deterministic: pool selection uses `md5(concat(osm_type, ':',
@@ -334,7 +334,7 @@ Three flat pgvector tables in the `worldkg_nca` app (routed to `vectors` DB by `
   `tests/integration/test_mapqa_executor.py::TestSelfSupervisedQuestionsExecute`
   (endpoint 200s for generated questions).
 
-***REMOVED******REMOVED******REMOVED*** Test-fixture data-loss hazard (BZ restore note)
+### Test-fixture data-loss hazard (BZ restore note)
 
 Module-scoped fixtures that write to the DB MUST depend on
 `django_db_setup` (e.g. `def seed(django_db_setup, django_db_blocker)` +
@@ -352,16 +352,16 @@ entities was restored separately via `GvNleTrainingService().run_subgraph`
 per subgraph (pickles pre-existed on disk). Check `pipeline_runs` status
 for BZ before assuming the restore completed.
 
-***REMOVED******REMOVED*** Verification
+## Verification
 
 ```bash
-***REMOVED*** System check (Docker)
+# System check (Docker)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py check
 
-***REMOVED*** Migration consistency
+# Migration consistency
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py makemigrations --check --dry-run
 
-***REMOVED*** Model import + app label verification (core + osmsnapshot)
+# Model import + app label verification (core + osmsnapshot)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py shell -c "
 from core.models import PbfFile, PipelineRun, ProcessingSession, CountryPipelineProfile, OSMWikiDataHierarchy, PartitionRegistry
 from osmsnapshot.models import Snapshot, SnapshotJob, WorldKGClassDrift, WorldKGClassFingerprint, PbfTagDistribution
@@ -377,18 +377,18 @@ assert WorldKGClassDrift._meta.get_field('snapshot_from').remote_field.model is 
 print('OK')
 "
 
-***REMOVED*** Stale import check (should return nothing)
+# Stale import check (should return nothing)
 grep -r "from extraction\|import extraction\|from orchestration\|import orchestration" backend/ --include="*.py" | grep -v "/migrations/"
 grep -r "from analysis\|import analysis" backend/ --include="*.py" | grep -v "/migrations/"
 grep -r "TemporalSnapshot\|AssetBundle" backend/ --include="*.py" | grep -v "/migrations/"
 
-***REMOVED*** init_planet command is registered
+# init_planet command is registered
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py init_planet --help
 
-***REMOVED*** Worker starts cleanly with only Steps 1-6 + 5c/5d registered (no planet init tasks)
+# Worker starts cleanly with only Steps 1-6 + 5c/5d registered (no planet init tasks)
 docker compose -f docker-compose.yml -f compose.override.yml logs worker --since 30s | grep -E "step_[0-9]" | grep -v "step_1\|step_2\|step_3\|step_4\|step_5\|step_5c\|step_5d\|step_6"
 
-***REMOVED*** Syntax check all modified files
+# Syntax check all modified files
 cd backend && python -c "
 import ast, glob
 for f in glob.glob('**/*.py', recursive=True):
@@ -397,7 +397,7 @@ for f in glob.glob('**/*.py', recursive=True):
 print('OK')
 "
 
-***REMOVED*** Factor-node table verification (vectors DB)
+# Factor-node table verification (vectors DB)
 docker compose -f docker-compose.yml -f compose.override.yml exec postgres-vectors \
   psql -U vector_user -d vector_db -c "
 SELECT 'spectral' AS tbl, count(*) FROM factor_spectral_node_metric
@@ -405,7 +405,7 @@ UNION ALL SELECT 'drift', count(*) FROM factor_drift_node_metric
 UNION ALL SELECT 'amenity', count(*) FROM factor_amenity_embedding;
 "
 
-***REMOVED*** Factor-node + MapQA regression (88 tests)
+# Factor-node + MapQA regression (88 tests)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python -m pytest \
   tests/unit/test_mapqa_parser.py \
   tests/integration/test_mapqa_executor.py \
@@ -416,15 +416,15 @@ docker compose -f docker-compose.yml -f compose.override.yml exec backend python
   tests/unit/test_factor_node_tables.py \
   -v --reuse-db
 
-***REMOVED*** Romanizer unit tests (45 tests, no DB needed)
+# Romanizer unit tests (45 tests, no DB needed)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python -m pytest \
   tests/unit/test_romanizers.py -v
 
-***REMOVED*** Romanize names (cross-script name matching - run after migrate + init_planet)
+# Romanize names (cross-script name matching - run after migrate + init_planet)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py romanize_names
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py romanize_names --country-code KR --dry-run
 
-***REMOVED*** Verify romanized names in the vectors DB
+# Verify romanized names in the vectors DB
 docker compose -f docker-compose.yml -f compose.override.yml exec postgres-vectors \
   psql -U vector_user -d vector_db -c "
 SELECT country_code, COUNT(*) FILTER (WHERE name_romanized IS NOT NULL) AS romanized,
@@ -433,7 +433,7 @@ FROM semantic_search_osmentity WHERE tags ? 'name'
 GROUP BY country_code ORDER BY romanized DESC LIMIT 10;"
 ```
 
-***REMOVED******REMOVED*** Self-hosted deployment (2026-09-13)
+## Self-hosted deployment (2026-09-13)
 
 The frontend is self-hosted, not on Netlify.
 
@@ -452,7 +452,7 @@ The frontend is self-hosted, not on Netlify.
 Fixed by adding `@pipeline_task(bind=True, base=PipelineTask, name=..., max_retries=1,
 default_retry_delay=60)` above `@pipeline_step` (matches step_5c).
 
-***REMOVED******REMOVED*** Decision recipes (2026-10-11)
+## Decision recipes (2026-10-11)
 
 `backend/pipeline/recipes/` holds project-memory recipes (beside
 `hyperparams.yaml`): one recipe = one load-bearing decision or invariant
@@ -469,7 +469,7 @@ report recipes (FOOD_REPORT); those are named report plans, these are
 numbered decision units. Seeded from the 2026-10-11 orchestration design
 review (DEC-001..007, INV-001).
 
-***REMOVED******REMOVED*** Research intent chain + 0m anchor bug (2026-10-11)
+## Research intent chain + 0m anchor bug (2026-10-11)
 
 The Ireland bubble-tea runs exposed a four-layer failure, all fixed:
 (1) **Subject loss at brief extraction** - FINALIZE_SYSTEM_PROMPT had no
@@ -493,19 +493,19 @@ within 3km of ANY amenity=public entity" (co-located pairs at 0m ranked
 first; 649/3689 IE cafes also carry POINT(NaN NaN) geom - NaN is truthy
 in Python, so the writer's `if lat and lon` guard passed it; 7.2M IE
 rows total). Fixes: `_anchor_is_category` (exact tiers only, no fuzzy
-correction, for anchors), isfinite anchor guard in the ***REMOVED***1 executor,
+correction, for anchors), isfinite anchor guard in the #1 executor,
 isfinite geom guard in the writer (`vector_storage_service.py`). The
 7.2M-row NaN cleanup (`UPDATE ... SET geom = NULL WHERE ST_X/ST_Y =
 'NaN'`) is still pending, off-peak, maintainer-gated.
 (4) **Continuation guards** - the widened-radius re-ask fires only for
-radius questions (a ***REMOVED***4 compare has no radius to widen; the garbled
+radius questions (a #4 compare has no radius to widen; the garbled
 "within 6 km of Belfast in Dublin" re-ask cannot recur), and
 `_anchor_from_question` strips a trailing capitalized "in <X>"
 qualifier.
 Tests: test_research_subject_brief.py, test_tag_phrase_gate.py,
 test_research_continuation_anchor.py (107 with the research suite).
 
-***REMOVED******REMOVED*** Doppelganger reorganization (2026-10-11)
+## Doppelganger reorganization (2026-10-11)
 
 The researcher now answers "find similar entities to X" (the
 recommender/doppelganger use case) instead of falling back to a
@@ -527,7 +527,7 @@ proximity census:
   The subject constraint line now splits: a class subject carries as the
   class; an entity subject anchors and plans around the evidence.
 - **`DOPPELGANGER_REPORT` recipe** (`research_recipes.py`): slots
-  twins/context (derived from the tool evidence) + spread (***REMOVED***2 distance
+  twins/context (derived from the tool evidence) + spread (#2 distance
   questions between the seed and the twins); router pattern
   ("similar to/entities", "doppelganger", "twins of").
 Verified live: the Friars Tavern demo (research_demo) - the agent chose
@@ -557,7 +557,7 @@ planner (reading the not-found seed line) decomposed nothing. Verified
 live: the name resolves to IE, the seed resolves to The Friars Tavern
 (osm_id 9842380892), the brief carries "Seed: The Friars Tavern (pub)".
 
-***REMOVED******REMOVED*** Doppelganger intake: live seed + drift-aware context (ISSUE-48, 2026-10-17)
+## Doppelganger intake: live seed + drift-aware context (ISSUE-48, 2026-10-17)
 
 The intake is informed and confirmable (branch
 `48-doppelganger-intake-live-seed`):

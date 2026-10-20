@@ -250,7 +250,7 @@ class PlanetSnapshot(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    ***REMOVED*** ── Phase 1: Temporal sharding support ──
+    # ── Phase 1: Temporal sharding support ──
     snapshot_date_str = models.CharField(
         max_length=10,
         null=True,
@@ -272,7 +272,7 @@ class PlanetSnapshot(models.Model):
         help_text="PbfFile row representing the planet PBF in HOT storage.",
     )
 
-    ***REMOVED*** Osmium fileinfo metrics (pre-computed during pre-build)
+    # Osmium fileinfo metrics (pre-computed during pre-build)
     node_count = models.BigIntegerField(null=True, blank=True, help_text="OSM nodes in planet")
     way_count = models.BigIntegerField(null=True, blank=True, help_text="OSM ways in planet")
     relation_count = models.BigIntegerField(null=True, blank=True, help_text="OSM relations in planet")
@@ -313,15 +313,15 @@ class CountrySearchProcessing(models.Model):
         blank=True,
         related_name='country_region'
     )
-    ***REMOVED*** Processing status
+    # Processing status
     is_processed = models.BooleanField(default=False, db_index=True)
     processing_started_at = models.DateTimeField(null=True, blank=True)
     processing_completed_at = models.DateTimeField(null=True, blank=True)
-    ***REMOVED*** Extraction counts
+    # Extraction counts
     yearly_extracts_count = models.IntegerField(default=0)
     monthly_extracts_count = models.IntegerField(default=0)
     asset_bundles_count = models.IntegerField(default=0)
-    ***REMOVED*** Temporal range
+    # Temporal range
     temporal_start = models.DateField(null=True, blank=True)
     temporal_end = models.DateField(null=True, blank=True)
     processing_session = models.ForeignKey(

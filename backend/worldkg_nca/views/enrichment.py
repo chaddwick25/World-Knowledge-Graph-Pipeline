@@ -48,7 +48,7 @@ def worldkg_enrich_entity(request):
     osm_type = request.data.get('osm_type')
     osm_id = request.data.get('osm_id')
     use_sparql = request.data.get('use_sparql', False)
-    ***REMOVED*** Phase 6: scope to snapshot partition (falls back to latest for monolith)
+    # Phase 6: scope to snapshot partition (falls back to latest for monolith)
     snapshot_id = request.data.get('snapshot_id') or get_latest_snapshot_id()
 
     if not osm_type or not osm_id:
@@ -80,7 +80,7 @@ def worldkg_enrich_entity(request):
             status=status.HTTP_422_UNPROCESSABLE_ENTITY
         )
     
-    ***REMOVED*** Update entity
+    # Update entity
     entity.wkg_class = result['wkg_class']
     entity.wkg_superclasses = result['wkg_superclasses']
     entity.wikidata_uri = result.get('wikidata_uri')
@@ -94,8 +94,8 @@ def worldkg_enrich_entity(request):
     })
 
 
-***REMOVED*** Cap on the entities endpoint limit — the deck.gl label view fetches up to
-***REMOVED*** 5000 entities per class (DECKGL_VISUALIZATION_INTEGRATION_PLAN_V2.md §3.2.7).
+# Cap on the entities endpoint limit — the deck.gl label view fetches up to
+# 5000 entities per class (DECKGL_VISUALIZATION_INTEGRATION_PLAN_V2.md §3.2.7).
 ENTITIES_LIMIT_MAX = 5000
 
 
@@ -133,8 +133,8 @@ def worldkg_entities_by_class(request):
     country_code = request.GET.get('country_code')
     snapshot_date = request.GET.get('snapshot_date')
     if not snapshot_date:
-        ***REMOVED*** Mirror class-centroids: missing snapshot means latest, not all
-        ***REMOVED*** partitions — otherwise each entity returns once per snapshot.
+        # Mirror class-centroids: missing snapshot means latest, not all
+        # partitions — otherwise each entity returns once per snapshot.
         snapshot_date = get_latest_snapshot_id()
     
     if not class_name:
@@ -144,7 +144,7 @@ def worldkg_entities_by_class(request):
         )
     
     if country_code:
-        ***REMOVED*** Normalize to ISO first (override-aware), mirroring factor_availability.
+        # Normalize to ISO first (override-aware), mirroring factor_availability.
         try:
             resolved = resolve_iso_code(country_code)
             if resolved:
@@ -205,7 +205,7 @@ def worldkg_entity_detail(request, osm_type, osm_id):
             "has_nle": bool
         }
     """
-    ***REMOVED*** Phase 6: scope to snapshot partition (falls back to latest for monolith)
+    # Phase 6: scope to snapshot partition (falls back to latest for monolith)
     snapshot_id = request.query_params.get('snapshot_id') or get_latest_snapshot_id()
     try:
         qs = OsmEntity.objects.using('vectors').filter(

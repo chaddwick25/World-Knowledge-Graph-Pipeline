@@ -1,9 +1,9 @@
-***REMOVED*** MCP sidecar — standalone Streamable HTTP host for the vendored
-***REMOVED*** frontend-v3/src/mcp tool surface.
-***REMOVED***
-***REMOVED*** Build stage bundles the TypeScript sources into one ESM file with the
-***REMOVED*** project lockfile's own esbuild (vite dep) — the runtime image carries
-***REMOVED*** no node_modules.
+# MCP sidecar — standalone Streamable HTTP host for the vendored
+# frontend-v3/src/mcp tool surface.
+#
+# Build stage bundles the TypeScript sources into one ESM file with the
+# project lockfile's own esbuild (vite dep) — the runtime image carries
+# no node_modules.
 
 FROM node:22-alpine AS build
 WORKDIR /app

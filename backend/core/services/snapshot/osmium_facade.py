@@ -18,15 +18,15 @@ class OsmiumFacade:
 
         import re
         tag_distribution = {}
-        ***REMOVED*** Regex to handle optional quotes around the tag and capture the count
-        ***REMOVED*** It matches either a quoted string or a non-space string for the tag
+        # Regex to handle optional quotes around the tag and capture the count
+        # It matches either a quoted string or a non-space string for the tag
         line_regex = re.compile(r'^(".*?"|\S+)\s+(\d+)$')
 
         for line in result.stdout.strip().split('\n'):
             match = line_regex.match(line)
             if match:
                 tag, count = match.groups()
-                ***REMOVED*** Remove quotes from the tag if they exist
+                # Remove quotes from the tag if they exist
                 if tag.startswith('"') and tag.endswith('"'):
                     tag = tag[1:-1]
                 tag_distribution[tag] = int(count)
@@ -50,10 +50,10 @@ class OsmiumFacade:
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0 or not result.stdout.strip():
             return None
-        ***REMOVED*** Output format: "minlon,minlat,maxlon,maxlat"
+        # Output format: "minlon,minlat,maxlon,maxlat"
         try:
             parts = result.stdout.strip().split(',')
-            return [float(p) for p in parts]  ***REMOVED*** [minlon, minlat, maxlon, maxlat]
+            return [float(p) for p in parts]  # [minlon, minlat, maxlon, maxlat]
         except (ValueError, IndexError):
             return None
 
@@ -82,7 +82,7 @@ class OsmiumFacade:
             input_file
         ]
         
-        ***REMOVED*** Add timestamp(s)
+        # Add timestamp(s)
         cmd.append(str(timestamp))
         if end_timestamp:
             cmd.append(str(end_timestamp))
@@ -138,17 +138,17 @@ class OsmiumFacade:
         try:
             cmd = [self.OSMIUM_EXECUTABLE, 'tags-filter', '--progress', input_file]
             
-            ***REMOVED*** Add expressions
+            # Add expressions
             cmd.extend(expressions)
             
-            ***REMOVED*** Add output
+            # Add output
             cmd.extend(['-o', output_file])
             
-            ***REMOVED*** Invert match if requested
+            # Invert match if requested
             if invert_match:
                 cmd.append('--invert-match')
             
-            ***REMOVED*** Overwrite output file if exists
+            # Overwrite output file if exists
             cmd.append('--overwrite')
             
             logger.info(f"Running osmium tags-filter: {' '.join(cmd)}")
@@ -158,7 +158,7 @@ class OsmiumFacade:
                 stdout=subprocess.PIPE,
                 stderr=None,
                 text=True,
-                timeout=3600  ***REMOVED*** 1 hour timeout
+                timeout=3600  # 1 hour timeout
             )
             
             if result.returncode != 0:

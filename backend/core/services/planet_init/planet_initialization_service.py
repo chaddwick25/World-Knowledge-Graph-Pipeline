@@ -12,7 +12,7 @@ from core.services.snapshot.extraction_service import ExtractionService
 from core.services.snapshot.regional_path_service import normalize_country_slug, normalize_continent_slug
 from core.services.snapshot.country_override_service import get_country_slug
 
-***REMOVED*** TODO: the code is solid but the syntax and format is really weird and hard to read
+# TODO: the code is solid but the syntax and format is really weird and hard to read
 
 class PlanetInitializationService:
     """Foundation service that creates file structure, Wikidata alignment, and OSMWikiData primitives."""
@@ -25,31 +25,31 @@ class PlanetInitializationService:
         """Execute planet initialization stages."""
         self.logger.info("Starting planet initialization")
         
-        ***REMOVED*** Try to send WebSocket updates if pipeline_run_id is available
+        # Try to send WebSocket updates if pipeline_run_id is available
         pipeline_run_id = self._get_pipeline_run_id()
 
         self._push_update(pipeline_run_id, "planet_init", "in_progress",
                           "Creating file structure...", 5)
 
-        ***REMOVED*** 1. Create file structure
+        # 1. Create file structure
         self.create_file_structure()
         
         self._push_update(pipeline_run_id, "planet_init", "in_progress",
                           "Verifying planet PBF...", 15)
 
-        ***REMOVED*** 2. Verify planet PBF
+        # 2. Verify planet PBF
         planet_pbf = self.prepare_planet_pbf()
         
         self._push_update(pipeline_run_id, "planet_init", "in_progress",
                           "Generating planetary metrics...", 25)
 
-        ***REMOVED*** 3. Generate planetary metrics (natural primitives)
+        # 3. Generate planetary metrics (natural primitives)
         metrics = self.generate_planetary_metrics(planet_pbf)
 
         self._push_update(pipeline_run_id, "planet_init", "in_progress",
                           "Creating planet snapshot...", 35)
 
-        ***REMOVED*** 4. Create or get PlanetSnapshot for this planet PBF
+        # 4. Create or get PlanetSnapshot for this planet PBF
         snapshot_date = metrics.generated_at.date() if metrics else timezone.now().date()
         planet_snapshot, _ = PlanetSnapshot.objects.get_or_create(
             snapshot_date=snapshot_date,
@@ -63,34 +63,34 @@ class PlanetInitializationService:
         self._push_update(pipeline_run_id, "planet_init", "in_progress",
                           "Creating planet hierarchy...", 45)
 
-        ***REMOVED*** 5. Create planet OSMWikiDataHierarchy entry
+        # 5. Create planet OSMWikiDataHierarchy entry
         planet_hierarchy = self.create_planet_hierarchy(planet_pbf, metrics)
 
         self._push_update(pipeline_run_id, "planet_init", "in_progress",
                           "Syncing country relations...", 55)
 
-        ***REMOVED*** 6. Sync country relations (automatic - ensures fresh data)
+        # 6. Sync country relations (automatic - ensures fresh data)
         self.sync_country_relations()
 
         self._push_update(pipeline_run_id, "planet_init", "in_progress",
                           "Initializing OSM/Wikidata alignment...", 65)
 
-        ***REMOVED*** 7. Initialize OSMWikiDataHierarchy alignment from country_relations.json
+        # 7. Initialize OSMWikiDataHierarchy alignment from country_relations.json
         self.initialize_osm_wikidata_alignment()
 
         self._push_update(pipeline_run_id, "planet_init", "in_progress",
                           "Snapshotting country relations...", 75)
 
-        ***REMOVED*** 8. Snapshot country_relations.json into CountryRelationSnapshot rows
+        # 8. Snapshot country_relations.json into CountryRelationSnapshot rows
         self.snapshot_country_relations(planet_snapshot)
 
-        ***REMOVED*** 9. Extract continents (if enabled in policy)
+        # 9. Extract continents (if enabled in policy)
         if self.policy['parameters'].get('extract_continents', False):
             self._push_update(pipeline_run_id, "planet_init", "in_progress",
                               "Extracting continent PBFs...", 85)
             self._extract_continents_simple()
 
-        ***REMOVED*** 10. Sync GeoVectors metadata so frontend can determine clickable countries
+        # 10. Sync GeoVectors metadata so frontend can determine clickable countries
         self._push_update(pipeline_run_id, "planet_init", "in_progress",
                           "Syncing GeoVectors metadata...", 92)
         try:
@@ -134,7 +134,7 @@ class PlanetInitializationService:
                 pct=pct,
             )
         except Exception:
-            pass  ***REMOVED*** Non-critical — updates are best-effort
+            pass  # Non-critical — updates are best-effort
     
     def create_file_structure(self):
         """Create the directory structure for the entire pipeline."""
@@ -145,7 +145,7 @@ class PlanetInitializationService:
             full_path.mkdir(parents=True, exist_ok=True)
             self.logger.info(f"Created directory: {full_path}")
         
-        ***REMOVED*** Create categorized logging directories
+        # Create categorized logging directories
         logs_dir = base_dir / "logs"
         for log_type in ['gv-nle', 'pipeline', 'tests', 'uslp', 'tests/nca_alignment_validation']:
             (logs_dir / log_type).mkdir(parents=True, exist_ok=True)
@@ -191,16 +191,16 @@ class PlanetInitializationService:
         info = result.get('info') or {}
         data = info.get('data') or {}
 
-        ***REMOVED*** Counts (nodes / ways / relations) — available under data.count.* when
-        ***REMOVED*** osmium is run with --extended/-e. Fall back to 0 if missing so that
-        ***REMOVED*** initialization can still complete on older osmium versions.
+        # Counts (nodes / ways / relations) — available under data.count.* when
+        # osmium is run with --extended/-e. Fall back to 0 if missing so that
+        # initialization can still complete on older osmium versions.
         counts = data.get('count') or {}
         nodes = int(counts.get('nodes') or 0)
         ways = int(counts.get('ways') or 0)
         relations = int(counts.get('relations') or 0)
 
-        ***REMOVED*** Bounding box: data.bbox is [minlon, minlat, maxlon, maxlat]. If not
-        ***REMOVED*** present (when --extended is not used), fall back to OsmiumFacade.get_bbox.
+        # Bounding box: data.bbox is [minlon, minlat, maxlon, maxlat]. If not
+        # present (when --extended is not used), fall back to OsmiumFacade.get_bbox.
         bbox_arr = data.get('bbox') or []
         min_lon = min_lat = max_lon = max_lat = 0.0
         if len(bbox_arr) == 4:
@@ -217,10 +217,10 @@ class PlanetInitializationService:
                 except (TypeError, ValueError):
                     pass
 
-        ***REMOVED*** Area and tag stats: these are not directly available from osmium
-        ***REMOVED*** without additional passes. For now, use safe defaults so that the
-        ***REMOVED*** initialization pipeline can complete even if detailed stats are
-        ***REMOVED*** missing.
+        # Area and tag stats: these are not directly available from osmium
+        # without additional passes. For now, use safe defaults so that the
+        # initialization pipeline can complete even if detailed stats are
+        # missing.
         metrics_data = {
             'nodes': nodes,
             'ways': ways,
@@ -285,9 +285,9 @@ class PlanetInitializationService:
         """
         self.logger.info("Syncing country relations (Wikidata SPARQL + Geofabrik Index)")
         
-        ***REMOVED*** Canonical output path: <BASE_DATA_DIR>/country_relations.json
-        ***REMOVED***   Host:    {BASE_DATA_DIR}/country_relations.json
-        ***REMOVED***   Container: /app/data/country_relations.json
+        # Canonical output path: <BASE_DATA_DIR>/country_relations.json
+        #   Host:    {BASE_DATA_DIR}/country_relations.json
+        #   Container: /app/data/country_relations.json
         output_path = Path(settings.BASE_DATA_DIR) / 'country_relations.json'
         resolver = CountryRelationResolver(output_path=str(output_path))
 
@@ -297,7 +297,7 @@ class PlanetInitializationService:
             return merged_data
         except Exception as e:
             self.logger.error(f"Failed to sync country relations: {e}")
-            ***REMOVED*** Continue with existing data if available
+            # Continue with existing data if available
             json_path = output_path
             if json_path.exists():
                 self.logger.warning("Continuing with existing country_relations.json")
@@ -322,10 +322,10 @@ class PlanetInitializationService:
         skipped_count = 0
         
         for iso_code, country_data in country_relations.items():
-            ***REMOVED*** Add ISO code to country_data for override lookup
+            # Add ISO code to country_data for override lookup
             country_data['iso_code'] = iso_code
             
-            ***REMOVED*** Validate pickle generation capability before creating entry
+            # Validate pickle generation capability before creating entry
             can_pickle = self.validate_pickle_generation(country_data)
             
             if not can_pickle:
@@ -358,7 +358,7 @@ class PlanetInitializationService:
                     hierarchy.region_hierarchy = region
                     hierarchy.save()
             else:
-                ***REMOVED*** Update existing entry with pickle validation status
+                # Update existing entry with pickle validation status
                 hierarchy.can_generate_pickle = True
                 hierarchy.pickle_generation_validated_at = timezone.now()
                 hierarchy.save()
@@ -430,19 +430,19 @@ class PlanetInitializationService:
     
     def validate_pickle_generation(self, country_data):
         """Validate that a country/subgraph can successfully generate a pickle file."""
-        ***REMOVED*** Check if PBF URL exists and is accessible
+        # Check if PBF URL exists and is accessible
         pbf_url = country_data.get('pbf_url')
         if not pbf_url:
             return False
         
-        ***REMOVED*** Check if polyfile exists or can be generated from PBF snapshot
+        # Check if polyfile exists or can be generated from PBF snapshot
         polyfile_path = self.get_polyfile_path(country_data)
         if not polyfile_path or not Path(polyfile_path).exists():
-            ***REMOVED*** Try to generate polyfile from PBF snapshot
+            # Try to generate polyfile from PBF snapshot
             if not self.generate_polyfile_from_pbf(country_data, pbf_url):
                 return False
         
-        ***REMOVED*** Test pickle generation (dry run)
+        # Test pickle generation (dry run)
         if not self.test_pickle_generation(country_data):
             return False
         
@@ -468,18 +468,18 @@ class PlanetInitializationService:
     
     def generate_polyfile_from_pbf(self, country_data, pbf_url):
         """Generate polyfile from PBF snapshot using osmium."""
-        ***REMOVED*** Implementation would use osmium extract to generate polyfile
-        ***REMOVED*** This is a placeholder - actual implementation would:
-        ***REMOVED*** 1. Download PBF if not exists
-        ***REMOVED*** 2. Use osmium extract with relation boundary to generate polyfile
-        ***REMOVED*** 3. Save to appropriate location
-        return True  ***REMOVED*** Placeholder
+        # Implementation would use osmium extract to generate polyfile
+        # This is a placeholder - actual implementation would:
+        # 1. Download PBF if not exists
+        # 2. Use osmium extract with relation boundary to generate polyfile
+        # 3. Save to appropriate location
+        return True  # Placeholder
     
     def test_pickle_generation(self, country_data):
         """Test if pickle file can be generated for this region."""
-        ***REMOVED*** Implementation would attempt to generate a small test pickle
-        ***REMOVED*** This validates that the region structure supports pickle serialization
-        return True  ***REMOVED*** Placeholder
+        # Implementation would attempt to generate a small test pickle
+        # This validates that the region structure supports pickle serialization
+        return True  # Placeholder
     
     def get_country_policy(self):
         """Get default country policy."""
@@ -487,12 +487,12 @@ class PlanetInitializationService:
     
     def estimate_processing_time(self, metrics_data):
         """Estimate processing time based on node count."""
-        ***REMOVED*** Simple heuristic: ~20k nodes/min
+        # Simple heuristic: ~20k nodes/min
         return int(metrics_data['nodes'] / 20000 * 60)
     
     def calculate_batch_size(self, metrics_data):
         """Calculate recommended batch size."""
-        ***REMOVED*** 20k entities per batch
+        # 20k entities per batch
         return 20000
     
     def extract_continents(self):
@@ -503,8 +503,8 @@ class PlanetInitializationService:
         """
         self.logger.info("Starting continent extraction")
         
-        ***REMOVED*** Set runtime params for continental extraction (read by the
-        ***REMOVED*** call_command'd extraction commands below).
+        # Set runtime params for continental extraction (read by the
+        # call_command'd extraction commands below).
         base_data_dir = Path(self.policy['file_structure']['base_dir'])
 
         if not getattr(settings, 'SOURCE_PBF_PATH', None):
@@ -513,22 +513,22 @@ class PlanetInitializationService:
             settings.OUTPUT_BASE_DIR = str(base_data_dir / 'OSM-PBF-FILES' / 'osm_wikidata_extractions' / 'continents')
         
         try:
-            ***REMOVED*** Phase 1: Sync Polygon Regions
+            # Phase 1: Sync Polygon Regions
             self.logger.info("Phase 1: Syncing Polygon Regions...")
             call_command('sync_poly_regions')
             self.logger.info("✓ Polygon regions synced")
             
-            ***REMOVED*** Phase 2: Generate Continental PBFs
+            # Phase 2: Generate Continental PBFs
             self.logger.info("Phase 2: Generating Continental PBFs...")
             call_command('generate_continental_pbfs')
             self.logger.info("✓ Continental PBFs generated")
             
-            ***REMOVED*** Phase 3: Link Continent PBFs
+            # Phase 3: Link Continent PBFs
             self.logger.info("Phase 3: Linking Continent PBFs...")
             call_command('link_continent_pbfs')
             self.logger.info("✓ Continent PBFs linked to hierarchy")
             
-            ***REMOVED*** Phase 4: Sync GeoVectors Metadata
+            # Phase 4: Sync GeoVectors Metadata
             self.logger.info("Phase 4: Syncing GeoVectors Metadata...")
             call_command('sync_geovectors_metadata', save=True)
             self.logger.info("✓ GeoVectors metadata synced")
@@ -541,8 +541,8 @@ class PlanetInitializationService:
     
     def calculate_workers(self, metrics_data):
         """Calculate recommended worker count."""
-        ***REMOVED*** Cap at 26 workers
-        return min(26, 4)  ***REMOVED*** Conservative default
+        # Cap at 26 workers
+        return min(26, 4)  # Conservative default
     
     def _generate_continent_poly_from_relation(self, continent: OSMWikiDataHierarchy, output_dir: Path) -> Path:
         """Generate poly file from OSM relation ID using osmium.
@@ -576,7 +576,7 @@ class PlanetInitializationService:
         self.logger.info(f"Output directory: {output_dir}")
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        ***REMOVED*** Query RegionHierarchy for continent entries
+        # Query RegionHierarchy for continent entries
         from api.models import RegionHierarchy
         self.logger.info("Querying RegionHierarchy for continent entries...")
         continents = RegionHierarchy.objects.filter(region_type=RegionHierarchy.RegionType.CONTINENT)
@@ -604,7 +604,7 @@ class PlanetInitializationService:
                     f"not found {stats['not_found']}, errors {stats['errors']}"
                 )
                 if stats['downloaded'] > 0 or stats['not_found'] == 0:
-                    ***REMOVED*** Re-run sync now that files exist
+                    # Re-run sync now that files exist
                     call_command('sync_poly_regions')
                     continents = RegionHierarchy.objects.filter(
                         region_type=RegionHierarchy.RegionType.CONTINENT
@@ -625,7 +625,7 @@ class PlanetInitializationService:
         planet_pbf_path = self.policy['parameters']['planet_pbf_path']
         self.logger.info(f"Planet PBF path: {planet_pbf_path}")
         
-        ***REMOVED*** Get or create planet PBF file record
+        # Get or create planet PBF file record
         self.logger.info("Getting or creating planet PBF file record...")
         planet_pbf, created = PbfFile.objects.get_or_create(
             path=planet_pbf_path,
@@ -641,7 +641,7 @@ class PlanetInitializationService:
                 self.logger.info(f"Processing continent: {continent.name}")
                 self.logger.info(f"Continent poly_file_path: {continent.poly_file_path}")
                 
-                ***REMOVED*** Use poly file from RegionHierarchy
+                # Use poly file from RegionHierarchy
                 if not continent.poly_file_path:
                     self.logger.warning(f"No poly_file_path for continent {continent.name}, skipping")
                     continue
@@ -652,13 +652,13 @@ class PlanetInitializationService:
                     self.logger.warning(f"Poly file not found at {poly_path}, skipping {continent.name}")
                     continue
                 
-                ***REMOVED*** Extract continent PBF
+                # Extract continent PBF
                 output_pbf_path = output_dir / f"{continent.name}.pbf"
                 self.logger.info(f"Output PBF path: {output_pbf_path}")
                 
                 if output_pbf_path.exists():
                     self.logger.info(f"Continent PBF already exists: {output_pbf_path}")
-                    ***REMOVED*** Create or update PbfFile entry
+                    # Create or update PbfFile entry
                     pbf_file, created = PbfFile.objects.get_or_create(
                         path=str(output_pbf_path),
                         defaults={
@@ -667,7 +667,7 @@ class PlanetInitializationService:
                             'parent_pbf': planet_pbf
                         }
                     )
-                    ***REMOVED*** Link to RegionHierarchy
+                    # Link to RegionHierarchy
                     if continent.corresponding_pbf_id != pbf_file.id:
                         continent.corresponding_pbf = pbf_file
                         continent.save(update_fields=['corresponding_pbf'])
@@ -688,7 +688,7 @@ class PlanetInitializationService:
                 if result and result.get('success'):
                     self.logger.info(f"✓ Extracted {continent.name}")
                     
-                    ***REMOVED*** Create PbfFile entry
+                    # Create PbfFile entry
                     pbf_file, created = PbfFile.objects.get_or_create(
                         path=str(output_pbf_path),
                         defaults={
@@ -698,7 +698,7 @@ class PlanetInitializationService:
                         }
                     )
                     
-                    ***REMOVED*** Link to RegionHierarchy
+                    # Link to RegionHierarchy
                     continent.corresponding_pbf = pbf_file
                     continent.save(update_fields=['corresponding_pbf'])
                     

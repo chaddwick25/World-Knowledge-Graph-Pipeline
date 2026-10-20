@@ -1,4 +1,4 @@
-***REMOVED*** Frontend Flow Chart: Component Tree and State Diffusions
+# Frontend Flow Chart: Component Tree and State Diffusions
 
 > Current architecture after the two-card redesign (ISSUE-46: URL-gated
 > leaf surfaces) and the doppelganger intake (ISSUE-48: live seed
@@ -10,7 +10,7 @@
 > longer exist; it was rewritten 2026-10-17 when the dead code was
 > removed.
 
-***REMOVED******REMOVED*** 1. Component Tree
+## 1. Component Tree
 
 Three layers max (view, unit, leaf). Props flow down, events flow up.
 Store access via `setup()` in Options API components only (rule 1.3).
@@ -71,7 +71,7 @@ the map's overlay props and exposes `setSearchResults`,
 the slot. Data flows panel -> shell state -> map props; gestures flow
 store -> panel (the map writes stores directly).
 
-***REMOVED******REMOVED*** 2. Stores (Pinia Options stores unless noted)
+## 2. Stores (Pinia Options stores unless noted)
 
 | Store | State slice | Writers | Readers |
 |---|---|---|---|
@@ -85,9 +85,9 @@ The pipeline store and its WebSocket machinery were removed with the
 two-card redesign (2026-10-17): the pipeline panels left the app with
 the redesign and nothing in it consumed the run state.
 
-***REMOVED******REMOVED*** 3. Data Flow Summary (end to end)
+## 3. Data Flow Summary (end to end)
 
-***REMOVED******REMOVED******REMOVED*** 3.1 The doppelganger interview + seed flow (ISSUE-48)
+### 3.1 The doppelganger interview + seed flow (ISSUE-48)
 
 ```
   Backend                     Frontend state              Presentation
@@ -124,21 +124,21 @@ the redesign and nothing in it consumed the run state.
     _code=<iso>                                            use a real entity
 ```
 
-***REMOVED******REMOVED******REMOVED*** 3.2 The geo-semantic search flow (/tools)
+### 3.2 The geo-semantic search flow (/tools)
 
 | Backend API | Component state | Computed | Template |
 |---|---|---|---|
 | `/nca/semantic-triplet-search/` results[], scores{...} | `SemanticSearchPanel` data: `.results` (raw), `.map(normalizeResult)` at the fetch boundary | `displayResults`: `.slice(0, topKClamped)` | results table, 10 columns |
 | (emit) search-results / query-graph / template-visualization | `SurfaceShell` slot setters -> shell state | - | `WorldKGMap` props -> deck layers (`buildSearchResultLayer`, `buildQueryGraphLayers`, `buildTemplateDeckLayers`) |
 
-***REMOVED******REMOVED******REMOVED*** 3.3 Shared hydration
+### 3.3 Shared hydration
 
 | Backend API | Owner | Consumers |
 |---|---|---|
 | `/api/system/status/` (ready, snapshot dates, processed countries) | `SurfaceShell.checkSystem` (+ the map's own fetch, whichever lands first) | the init gate, SnapshotCalendar, country eligibility |
 | `/recipes/regions-map-data/` countries[] | `WorldKGMap.loadCountries` | the map's country layer, `SurfaceShell` country resolution (via `countries-loaded`) |
 
-***REMOVED******REMOVED*** 4. Core Concepts (functional roles in the diffusion)
+## 4. Core Concepts (functional roles in the diffusion)
 
 | Concept | Functional role |
 |---|---|

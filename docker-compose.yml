@@ -12,8 +12,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ***REMOVED*** Loopback-only: LAN exposure of Postgres with the .env password is
-    ***REMOVED*** unnecessary — other containers reach it via the compose network.
+    # Loopback-only: LAN exposure of Postgres with the .env password is
+    # unnecessary — other containers reach it via the compose network.
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -30,9 +30,9 @@ services:
       context: .
       dockerfile: postgres-vectors.Dockerfile
     container_name: postgres-vectors
-    ***REMOVED*** /dev/shm must be large enough for maintenance_work_mem (16GB) used by
-    ***REMOVED*** parallel HNSW index builds + shared_buffers DSM overhead. The former
-    ***REMOVED*** 1g cap caused "No space left on device" during CREATE INDEX ... USING hnsw.
+    # /dev/shm must be large enough for maintenance_work_mem (16GB) used by
+    # parallel HNSW index builds + shared_buffers DSM overhead. The former
+    # 1g cap caused "No space left on device" during CREATE INDEX ... USING hnsw.
     shm_size: 48g
     command: ["postgres", "-c", "synchronous_commit=off", "-c", "maintenance_work_mem=32GB", "-c", "max_wal_size=32GB", "-c", "checkpoint_timeout=1h", "-c", "shared_buffers=32GB", "-c", "work_mem=256MB", "-c", "effective_cache_size=96GB", "-c", "random_page_cost=1.1", "-c", "effective_io_concurrency=200", "-c", "max_parallel_maintenance_workers=8", "-c", "max_parallel_workers=12", "-c", "max_parallel_workers_per_gather=4", "-c", "max_worker_processes=16", "-c", "max_connections=100"]
     env_file:
@@ -55,8 +55,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: eda-redis
-    ***REMOVED*** requirepass: fail closed at compose parse time when REDIS_PASSWORD is
-    ***REMOVED*** missing. Loopback-only binding — no LAN exposure of the broker/cache.
+    # requirepass: fail closed at compose parse time when REDIS_PASSWORD is
+    # missing. Loopback-only binding — no LAN exposure of the broker/cache.
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}"]
     ports:
       - "127.0.0.1:6379:6379"
@@ -79,12 +79,12 @@ services:
       - .env
     environment:
       - DJANGO_SETTINGS_MODULE=backend.settings
-      ***REMOVED*** No fallback secret: a missing key must fail the deploy, not silently
-      ***REMOVED*** drop to a public string (session/CSRF forgery).
+      # No fallback secret: a missing key must fail the deploy, not silently
+      # drop to a public string (session/CSRF forgery).
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set in .env}
-      ***REMOVED*** Fail-closed like the other secrets: the funnel's only gated path
-      ***REMOVED*** (the pipeline trigger) is key-gated on every surface, so a missing
-      ***REMOVED*** key must fail the deploy, not fall open.
+      # Fail-closed like the other secrets: the funnel's only gated path
+      # (the pipeline trigger) is key-gated on every surface, so a missing
+      # key must fail the deploy, not fall open.
       - PIPELINE_TRIGGER_KEY=${PIPELINE_TRIGGER_KEY:?PIPELINE_TRIGGER_KEY must be set in .env}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-false}
       - POSTGRES_HOST=postgres-default
@@ -92,10 +92,10 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
-      ***REMOVED*** Storage roots only — per-leaf paths (planet PBF, polygon dir, ontology
-      ***REMOVED*** TTL, embeddings, overrides.json, ...) are derived from these two in
-      ***REMOVED*** settings.py.  Pipeline GPU/parallel tuning lives in
-      ***REMOVED*** pipeline/hyperparams.yaml (gv_nle / parallel_upsert sections).
+      # Storage roots only — per-leaf paths (planet PBF, polygon dir, ontology
+      # TTL, embeddings, overrides.json, ...) are derived from these two in
+      # settings.py.  Pipeline GPU/parallel tuning lives in
+      # pipeline/hyperparams.yaml (gv_nle / parallel_upsert sections).
       - BASE_DATA_DIR=/app/data
       - OSMIUM_EXECUTABLE=/usr/bin/osmium
       - OSMIUM_BINARY_PATH=/usr/bin/osmium
@@ -104,23 +104,23 @@ services:
       - RUN_INIT_PLANET=true
       - LLM_BASE_URL=http://ollama:11434/v1
       - LLM_MODEL=qwen3:8b
-      ***REMOVED*** Research orchestrator LLM (batch path) — the RTX 2070 instance.
-      ***REMOVED*** Unset → the research loop falls back to the platform LLM (the 4070).
+      # Research orchestrator LLM (batch path) — the RTX 2070 instance.
+      # Unset → the research loop falls back to the platform LLM (the 4070).
       - RESEARCH_LLM_BASE_URL=${RESEARCH_LLM_BASE_URL:-http://ollama-research:11435/v1}
       - RESEARCH_LLM_MODEL=${RESEARCH_LLM_MODEL:-qwen3:8b}
       - RESEARCH_LLM_TIMEOUT=${RESEARCH_LLM_TIMEOUT:-120}
       - RESEARCH_FOLLOWUP_TOOLS=${RESEARCH_FOLLOWUP_TOOLS:-1}
-    ***REMOVED*** Loopback-only: the funnel reaches the app through nginx, not this port;
-    ***REMOVED*** direct LAN hits on :8000 would bypass nginx and the Host-header gates.
+    # Loopback-only: the funnel reaches the app through nginx, not this port;
+    # direct LAN hits on :8000 would bypass nginx and the Host-header gates.
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
       - ./backend:/app
       - backend_venv:/app/.venv
       - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
-      ***REMOVED*** Nested under the OSM-PBF-FILES mount so the settings.py derivation
-      ***REMOVED*** (BASE_DATA_DIR/OSM-PBF-FILES/osm_polygon_files) resolves; shadows the
-      ***REMOVED*** outer mount's subdir when POLYGON_FILES_DIR lives outside the root.
+      # Nested under the OSM-PBF-FILES mount so the settings.py derivation
+      # (BASE_DATA_DIR/OSM-PBF-FILES/osm_polygon_files) resolves; shadows the
+      # outer mount's subdir when POLYGON_FILES_DIR lives outside the root.
       - ${POLYGON_FILES_DIR}:/app/data/OSM-PBF-FILES/osm_polygon_files
       - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
       - ${MAPQA_DATASET_DIR}:/app/data/mapqa_parser/raw/MapQA-dataset-main:ro
@@ -133,20 +133,20 @@ services:
     restart: unless-stopped
     command: python manage.py runserver 0.0.0.0:8000
 
-  ***REMOVED*** Self-hosted SPA frontend — serves frontend-v3/dist statically and
-  ***REMOVED*** proxies /api + /ws to the backend. The Tailscale Funnel targets this
-  ***REMOVED*** service (host port 80) instead of the backend directly. Funnel traffic
-  ***REMOVED*** arrives via tailscaled → 127.0.0.1:80, so loopback binding keeps the
-  ***REMOVED*** funnel working while closing the LAN-facing port 80.
+  # Self-hosted SPA frontend — serves frontend-v3/dist statically and
+  # proxies /api + /ws to the backend. The Tailscale Funnel targets this
+  # service (host port 80) instead of the backend directly. Funnel traffic
+  # arrives via tailscaled → 127.0.0.1:80, so loopback binding keeps the
+  # funnel working while closing the LAN-facing port 80.
   nginx:
     image: nginx:alpine
     container_name: eda-nginx
     ports:
       - "127.0.0.1:80:80"
-      ***REMOVED*** Tailnet operator surface — host loopback only; reached via
-      ***REMOVED*** `tailscale serve --https=8443 http://127.0.0.1:8081` (identity
-      ***REMOVED*** headers injected by tailscaled) or a local process. Never exposed
-      ***REMOVED*** to the LAN or the funnel.
+      # Tailnet operator surface — host loopback only; reached via
+      # `tailscale serve --https=8443 http://127.0.0.1:8081` (identity
+      # headers injected by tailscaled) or a local process. Never exposed
+      # to the LAN or the funnel.
       - "127.0.0.1:8081:8081"
     volumes:
       - ./frontend-v3/dist:/usr/share/nginx/html:ro
@@ -156,14 +156,14 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  ***REMOVED*** Optional: Worker service for background tasks
+  # Optional: Worker service for background tasks
   worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: eda-worker
     runtime: nvidia
-    ***REMOVED*** Live stack dumps for wedged steps (py-spy).
+    # Live stack dumps for wedged steps (py-spy).
     cap_add:
       - SYS_PTRACE
     env_file:
@@ -174,18 +174,18 @@ services:
       - PGVECTOR_HOST=postgres-vectors
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      ***REMOVED*** Storage roots only — per-leaf paths (planet PBF, polygon dir, ontology
-      ***REMOVED*** TTL, embeddings, overrides.json, ...) are derived from these two in
-      ***REMOVED*** settings.py.  Pipeline GPU/parallel tuning lives in
-      ***REMOVED*** pipeline/hyperparams.yaml (gv_nle / parallel_upsert sections).
+      # Storage roots only — per-leaf paths (planet PBF, polygon dir, ontology
+      # TTL, embeddings, overrides.json, ...) are derived from these two in
+      # settings.py.  Pipeline GPU/parallel tuning lives in
+      # pipeline/hyperparams.yaml (gv_nle / parallel_upsert sections).
       - BASE_DATA_DIR=/app/data
       - OSMIUM_EXECUTABLE=/usr/bin/osmium
       - OSMIUM_BINARY_PATH=/usr/bin/osmium
       - COLD_STORAGE_BASE_DIR=${COLD_STORAGE_BASE_DIR}
-      ***REMOVED*** GPU 1 = RTX 4070 Ti SUPER (16 GB) — the pipeline's compute card
-      ***REMOVED*** (GV-NLE / USLP / spectral). Shared with ollama's resident model;
-      ***REMOVED*** cuda:0 inside the container remaps to physical GPU 1.  GPU device
-      ***REMOVED*** scheduling is set in pipeline/hyperparams.yaml (gv_nle section).
+      # GPU 1 = RTX 4070 Ti SUPER (16 GB) — the pipeline's compute card
+      # (GV-NLE / USLP / spectral). Shared with ollama's resident model;
+      # cuda:0 inside the container remaps to physical GPU 1.  GPU device
+      # scheduling is set in pipeline/hyperparams.yaml (gv_nle section).
       - NVIDIA_VISIBLE_DEVICES=1
       - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
       - RUN_MIGRATIONS=false
@@ -196,9 +196,9 @@ services:
       - ./backend:/app
       - backend_venv:/app/.venv
       - ${OSM_PBF_FILES_ROOT}:/app/data/OSM-PBF-FILES
-      ***REMOVED*** Nested under the OSM-PBF-FILES mount so the settings.py derivation
-      ***REMOVED*** (BASE_DATA_DIR/OSM-PBF-FILES/osm_polygon_files) resolves; shadows the
-      ***REMOVED*** outer mount's subdir when POLYGON_FILES_DIR lives outside the root.
+      # Nested under the OSM-PBF-FILES mount so the settings.py derivation
+      # (BASE_DATA_DIR/OSM-PBF-FILES/osm_polygon_files) resolves; shadows the
+      # outer mount's subdir when POLYGON_FILES_DIR lives outside the root.
       - ${POLYGON_FILES_DIR}:/app/data/OSM-PBF-FILES/osm_polygon_files
       - ${COLD_STORAGE_BASE_DIR}:${COLD_STORAGE_BASE_DIR}:ro
       - ${MAPQA_DATASET_DIR}:/app/data/mapqa_parser/raw/MapQA-dataset-main:ro
@@ -213,31 +213,31 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    ***REMOVED*** --max-tasks-per-child=1: recycle each prefork process after one task so
-    ***REMOVED*** the OS reclaims ALL GPU memory (CUDA context, allocated tensors, cached
-    ***REMOVED*** reserved memory) when the process exits.  torch.cuda.empty_cache() only
-    ***REMOVED*** releases *cached* memory — it cannot free the CUDA context (~300-500MB)
-    ***REMOVED*** or memory held by surviving tensor references.  Without this, a worker
-    ***REMOVED*** process that ran a GPU-intensive task (GV-NLE training, spectral
-    ***REMOVED*** analysis LOBPCG) retains VRAM and starves the next pipeline run,
-    ***REMOVED*** causing CUDA OOM on the 8GB RTX 2070.  The ~2-5s process startup
-    ***REMOVED*** overhead per task is negligible vs. the 10-60+ minute pipeline runtime.
-    ***REMOVED*** (--max-memory-per-child removed 2026-10-03: Celery reads it in
-    ***REMOVED*** kilobytes — 8589934592 was ~8 TiB, never 8 GiB — and it is only
-    ***REMOVED*** checked after a task completes, so max-tasks-per-child=1 already
-    ***REMOVED*** made it a no-op.)
+    # --max-tasks-per-child=1: recycle each prefork process after one task so
+    # the OS reclaims ALL GPU memory (CUDA context, allocated tensors, cached
+    # reserved memory) when the process exits.  torch.cuda.empty_cache() only
+    # releases *cached* memory — it cannot free the CUDA context (~300-500MB)
+    # or memory held by surviving tensor references.  Without this, a worker
+    # process that ran a GPU-intensive task (GV-NLE training, spectral
+    # analysis LOBPCG) retains VRAM and starves the next pipeline run,
+    # causing CUDA OOM on the 8GB RTX 2070.  The ~2-5s process startup
+    # overhead per task is negligible vs. the 10-60+ minute pipeline runtime.
+    # (--max-memory-per-child removed 2026-10-03: Celery reads it in
+    # kilobytes — 8589934592 was ~8 TiB, never 8 GiB — and it is only
+    # checked after a task completes, so max-tasks-per-child=1 already
+    # made it a no-op.)
     command: celery -A pipeline.celery_app worker --loglevel=info --pool=prefork --concurrency=4 --max-tasks-per-child=1
 
-  ***REMOVED*** Local LLM server (RTX 4070 Ti) — OpenAI-compatible API on :11434.
-  ***REMOVED*** The MCP agent (goose) uses this for the reasoning model.
+  # Local LLM server (RTX 4070 Ti) — OpenAI-compatible API on :11434.
+  # The MCP agent (goose) uses this for the reasoning model.
   ollama:
     image: ollama/ollama
     container_name: eda-ollama
     runtime: nvidia
     environment:
-      ***REMOVED*** Shares the 4070 Ti SUPER (16 GB) with the pipeline worker — the
-      ***REMOVED*** resident 14B Q4 model (~9 GB) leaves ~7 GB for pipeline compute.
-      ***REMOVED*** IE-scale spectral runs may still need the app idle (see rules §5.7).
+      # Shares the 4070 Ti SUPER (16 GB) with the pipeline worker — the
+      # resident 14B Q4 model (~9 GB) leaves ~7 GB for pipeline compute.
+      # IE-scale spectral runs may still need the app idle (see rules §5.7).
       - NVIDIA_VISIBLE_DEVICES=1
       - OLLAMA_KEEP_ALIVE=-1
       - OLLAMA_NUM_PARALLEL=6
@@ -254,11 +254,11 @@ services:
       timeout: 5s
       retries: 5
 
-  ***REMOVED*** Batch research orchestrator LLM (RTX 2070, 8 GB — idle/spare card).
-  ***REMOVED*** The research loop decomposes big
-  ***REMOVED*** prompts and assembles summaries on this card; the 4070's interactive
-  ***REMOVED*** slots never see research traffic. Separate models volume: two Ollama
-  ***REMOVED*** daemons on one models dir can lock each other's writes.
+  # Batch research orchestrator LLM (RTX 2070, 8 GB — idle/spare card).
+  # The research loop decomposes big
+  # prompts and assembles summaries on this card; the 4070's interactive
+  # slots never see research traffic. Separate models volume: two Ollama
+  # daemons on one models dir can lock each other's writes.
   ollama-research:
     image: ollama/ollama
     container_name: eda-ollama-research
@@ -281,20 +281,20 @@ services:
       timeout: 5s
       retries: 5
 
-  ***REMOVED*** Local MCP agent (Block Goose) — connects to the Vite MCP server at
-  ***REMOVED*** /__mcp and to Ollama. host networking: localhost reaches both the
-  ***REMOVED*** Vite dev server (:5173) and Ollama (:11434) directly on Linux.
-  ***REMOVED***
-  ***REMOVED*** NOTE: this is an ON-DEMAND service, not a daemon — the goose image's
-  ***REMOVED*** default command (`goose --help`) exits immediately, so it must NOT have
-  ***REMOVED*** `restart: unless-stopped` (crash-loop). Use:
-  ***REMOVED***   docker compose run --rm goose session            ***REMOVED*** interactive TUI
-  ***REMOVED***   docker compose run --rm goose run -t "..."       ***REMOVED*** headless
-  ***REMOVED***
-  ***REMOVED*** The config dir is mounted as a DIRECTORY (not a file): goose rewrites
-  ***REMOVED*** config.yaml on session start (telemetry choice, paths), and atomic
-  ***REMOVED*** renames fail against a single-file bind mount ("Device or resource
-  ***REMOVED*** busy").
+  # Local MCP agent (Block Goose) — connects to the Vite MCP server at
+  # /__mcp and to Ollama. host networking: localhost reaches both the
+  # Vite dev server (:5173) and Ollama (:11434) directly on Linux.
+  #
+  # NOTE: this is an ON-DEMAND service, not a daemon — the goose image's
+  # default command (`goose --help`) exits immediately, so it must NOT have
+  # `restart: unless-stopped` (crash-loop). Use:
+  #   docker compose run --rm goose session            # interactive TUI
+  #   docker compose run --rm goose run -t "..."       # headless
+  #
+  # The config dir is mounted as a DIRECTORY (not a file): goose rewrites
+  # config.yaml on session start (telemetry choice, paths), and atomic
+  # renames fail against a single-file bind mount ("Device or resource
+  # busy").
   goose:
     image: ghcr.io/block/goose:latest
     container_name: eda-goose
@@ -315,11 +315,11 @@ services:
         condition: service_started
     restart: "no"
 
-  ***REMOVED*** MCP sidecar — standalone host for the vendored MCP tool surface.
-  ***REMOVED*** Internal only: no published port;
-  ***REMOVED*** agents reach it through the nginx tailnet surface at /mcp/. The
-  ***REMOVED*** bearer token is checked inside the service (fail-closed); browser
-  ***REMOVED*** tools stay registered but fail fast (no HMR channel here).
+  # MCP sidecar — standalone host for the vendored MCP tool surface.
+  # Internal only: no published port;
+  # agents reach it through the nginx tailnet surface at /mcp/. The
+  # bearer token is checked inside the service (fail-closed); browser
+  # tools stay registered but fail fast (no HMR channel here).
   mcp:
     build:
       context: .
@@ -330,11 +330,11 @@ services:
     environment:
       - WORLDKG_BACKEND_URL=http://backend:8000/api
       - MCP_TOKEN=${MCP_TOKEN:?MCP_TOKEN must be set in .env}
-      ***REMOVED*** Host allowlist for the in-process check — set in .env (keep it in
-      ***REMOVED*** sync with the nginx tailnet map). Default is loopback only: no
-      ***REMOVED*** funnel hostname or tailnet IPs baked into the repo file.
+      # Host allowlist for the in-process check — set in .env (keep it in
+      # sync with the nginx tailnet map). Default is loopback only: no
+      # funnel hostname or tailnet IPs baked into the repo file.
       - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1}
-    ***REMOVED*** Least privilege: no capabilities needed, no privilege escalation.
+    # Least privilege: no capabilities needed, no privilege escalation.
     cap_drop:
       - ALL
     security_opt:
@@ -349,11 +349,11 @@ services:
       timeout: 5s
       retries: 3
 
-  ***REMOVED*** Self-hosted Langfuse (LLM trace observability).
-  ***REMOVED*** Not started by default: `docker compose --profile observability up -d`.
-  ***REMOVED*** Backend env for the HTTP sink: TRACE_SINK=langfuse,
-  ***REMOVED*** TRACE_SINK_URL=http://langfuse:3000/api/public, TRACE_SINK_PUBLIC_KEY /
-  ***REMOVED*** TRACE_SINK_SECRET_KEY (project keys from the Langfuse UI).
+  # Self-hosted Langfuse (LLM trace observability).
+  # Not started by default: `docker compose --profile observability up -d`.
+  # Backend env for the HTTP sink: TRACE_SINK=langfuse,
+  # TRACE_SINK_URL=http://langfuse:3000/api/public, TRACE_SINK_PUBLIC_KEY /
+  # TRACE_SINK_SECRET_KEY (project keys from the Langfuse UI).
   langfuse:
     image: langfuse/langfuse:3
     profiles: ["observability"]

@@ -12,9 +12,9 @@ class BaseSourceAdapter:
     A parsed record is a dict with the following keys::
 
         {
-            'attributes': dict,        ***REMOVED*** the actual row data (flexible schema)
-            'geom': GEOSGeometry|None, ***REMOVED*** geometry in EPSG:4326 when derivable
-            'source_id': str,          ***REMOVED*** row ID from the source
+            'attributes': dict,        # the actual row data (flexible schema)
+            'geom': GEOSGeometry|None, # geometry in EPSG:4326 when derivable
+            'source_id': str,          # row ID from the source
             'ingestion_date': date|None,
         }
     """

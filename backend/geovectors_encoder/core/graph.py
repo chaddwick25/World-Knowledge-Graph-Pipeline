@@ -28,11 +28,11 @@ def _damp_and_row_norm(weights, src):
         The normalized data array for the CSR Matrix
     """
 
-    ***REMOVED***damping part
+    #damping part
     weights = np.maximum(weights, 1.1)
     weights = np.maximum(1.0/np.log(weights), np.e)
 
-    ***REMOVED***normalization
+    #normalization
     n_nodes = src.size - 1
     res = np.empty(weights.size, dtype=np.float32)
     for i in numba.prange(n_nodes):
@@ -91,7 +91,7 @@ class WeightedDeepWalkGraph(csrgraph):
         """
 
 
-        ***REMOVED*** Make csr graph
+        # Make csr graph
         if normalize_self:
             self.damp_and_normalize(return_self=True)
             T = self
@@ -101,7 +101,7 @@ class WeightedDeepWalkGraph(csrgraph):
         if start_nodes is None:
             start_nodes = np.arange(n_rows)
         sampling_nodes = np.tile(start_nodes, epochs)
-        ***REMOVED*** Node2Vec Biased walks if parameters specified
+        # Node2Vec Biased walks if parameters specified
 
         walks = _random_walk(T.weights, T.src, T.dst,
                                  sampling_nodes, walklen)
@@ -145,13 +145,13 @@ def _edgelist_to_wdw_graph(elist, nnodes, nodenames=None):
     """
     dst = elist.dst.to_numpy()
     src = np.zeros(nnodes + 1)
-    ***REMOVED*** Now fill indptr array
-    src[0] = 0 ***REMOVED*** each idx points to node start idx
+    # Now fill indptr array
+    src[0] = 0 # each idx points to node start idx
 
-    ***REMOVED*** Use a groupby -> maxvalue to fill indptr
+    # Use a groupby -> maxvalue to fill indptr
     elist['cnt'] = np.ones(elist.shape[0])
     grp = (elist[['cnt', 'src']]
-        ***REMOVED*** Max idx per node
+        # Max idx per node
         .groupby('src')
         .count()
         .reset_index(drop=False)

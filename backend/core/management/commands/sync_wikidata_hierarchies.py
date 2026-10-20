@@ -67,7 +67,7 @@ class Command(BaseCommand):
         if requested_countries:
             isos = [c.strip().upper() for c in requested_countries.split(",") if c.strip()]
         else:
-            ***REMOVED*** Use all ISOs in country_relations, optionally filtered by continent
+            # Use all ISOs in country_relations, optionally filtered by continent
             for iso, entry in country_relations.items():
                 if not isinstance(entry, dict):
                     continue
@@ -87,7 +87,7 @@ class Command(BaseCommand):
             )
         )
 
-        ***REMOVED*** Create ProcessingSession for observability
+        # Create ProcessingSession for observability
         session = ProcessingSession.objects.create(
             session_name=f"Wikidata Hierarchy Sync ({len(isos)} countries)",
             session_type=ProcessingSession.SessionType.GEOGRAPHIC_EXTRACT,
@@ -100,7 +100,7 @@ class Command(BaseCommand):
         )
 
         if options.get("sync"):
-            ***REMOVED*** Run synchronously in this process
+            # Run synchronously in this process
             results = []
             for iso in isos:
                 try:
@@ -120,11 +120,11 @@ class Command(BaseCommand):
             }
             self._print_summary(summary)
 
-            ***REMOVED*** Copy hierarchies to subgraphs directory for successful countries
+            # Copy hierarchies to subgraphs directory for successful countries
             self._copy_to_subgraphs(isos, country_relations)
         else:
-            ***REMOVED*** For async dispatch, just process synchronously since the underlying
-            ***REMOVED*** HierarchyCacheService builds in-memory without long-running tasks.
+            # For async dispatch, just process synchronously since the underlying
+            # HierarchyCacheService builds in-memory without long-running tasks.
             self.stdout.write(
                 self.style.WARNING(
                     "Async dispatch not supported (task function missing). "
@@ -172,10 +172,10 @@ class Command(BaseCommand):
                 skipped += 1
                 continue
 
-            ***REMOVED*** Get country info from country_relations.json (case-insensitive lookup)
+            # Get country info from country_relations.json (case-insensitive lookup)
             entry = country_relations.get(iso.lower())
             if not entry:
-                ***REMOVED*** Try case-insensitive search
+                # Try case-insensitive search
                 for k, v in country_relations.items():
                     if k.upper() == iso:
                         entry = v
@@ -188,7 +188,7 @@ class Command(BaseCommand):
             continent = entry.get("continent_name") or entry.get("parent_slug")
             country_name = entry.get("name")
 
-            ***REMOVED*** Derive country_slug using JSON-based ISO overrides where needed
+            # Derive country_slug using JSON-based ISO overrides where needed
             default_slug = entry.get("slug", normalize_country_slug(country_name))
             country_slug = get_country_slug(iso, default_slug)
 
@@ -198,12 +198,12 @@ class Command(BaseCommand):
                 continue
 
             try:
-                ***REMOVED*** Resolve subgraphs path
+                # Resolve subgraphs path
                 subgraphs_path = regional_path_service.get_subgraph_hierarchy_path(
                     continent, country_slug, iso
                 )
 
-                ***REMOVED*** Copy file
+                # Copy file
                 shutil.copy2(cache_path, subgraphs_path)
                 copied += 1
                 self.stdout.write(f"  [OK] {iso}: copied to {subgraphs_path}")
@@ -233,7 +233,7 @@ class Command(BaseCommand):
             )
         )
 
-        ***REMOVED*** Optional: print a small table of per-country results
+        # Optional: print a small table of per-country results
         for res in summary.get("results", []):
             iso = res.get("iso")
             if res.get("success"):

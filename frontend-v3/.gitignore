@@ -1,4 +1,4 @@
-***REMOVED*** Logs
+# Logs
 logs
 *.log
 npm-debug.log*
@@ -14,7 +14,7 @@ dist-ssr
 yarn.lock
 .vite
 
-***REMOVED*** Editor directories and files
+# Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea

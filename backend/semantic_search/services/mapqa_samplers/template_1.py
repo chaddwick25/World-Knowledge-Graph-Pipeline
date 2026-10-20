@@ -1,4 +1,4 @@
-"""Template ***REMOVED***1 (FILTER-AGGREGATE-MEASURE) sampler mixin.
+"""Template #1 (FILTER-AGGREGATE-MEASURE) sampler mixin.
 
 Extracted from ``mapqa_question_generator.py`` (monolith split, Phase 5 of
 PIPELINE_CONTROL_PLANE_AND_CLEANUP_PLAN).

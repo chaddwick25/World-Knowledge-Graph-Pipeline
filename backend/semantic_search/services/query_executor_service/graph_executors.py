@@ -99,10 +99,10 @@ class GraphExecutorsMixin:
                                  snapshot_date, trace):
         """EVENT-DIFFUSION — heat kernel diffusion from a source entity.
 
-        SQL-only diffusion via stored eigen-loadings (pgvector <***REMOVED***> query).
+        SQL-only diffusion via stored eigen-loadings (pgvector <#> query).
         The on-the-fly NetworkX/SciPy heat kernel path has been removed.
         """
-        ***REMOVED*** SUB_COND: source LOCATION → geocode to an OSM entity
+        # SUB_COND: source LOCATION → geocode to an OSM entity
         source_concept = cls._get_concept(concepts, "LOCATION")
         if not source_concept or not source_concept.get("text"):
             return {"error": "Event diffusion requires a source location"}
@@ -120,16 +120,16 @@ class GraphExecutorsMixin:
                 "osm_id": source_entity.get("osm_id"),
             })
 
-        ***REMOVED*** COND: time window (AMOUNT) → diffusion times
+        # COND: time window (AMOUNT) → diffusion times
         amount = cls._get_concept(concepts, "AMOUNT")
         t_values = [1.0, 5.0, 10.0]
         if amount and amount.get("text"):
             parsed = cls._parse_radius(amount["text"])
             if parsed:
-                ***REMOVED*** Interpret the radius as a diffusion time scale
+                # Interpret the radius as a diffusion time scale
                 t_values = [float(parsed) / 10.0, float(parsed) / 2.0, float(parsed)]
 
-        ***REMOVED*** Factor-table path: SQL-only diffusion via stored eigen-loadings.
+        # Factor-table path: SQL-only diffusion via stored eigen-loadings.
         if country_code:
             table_result = cls._event_diffusion_via_tables(
                 source_entity["osm_id"], t_values, snap, country_code, trace,
@@ -142,4 +142,4 @@ class GraphExecutorsMixin:
 
         return {"error": "No diffusion data available (Step 5c not run)"}
 
-    ***REMOVED*** ── Geo + USLP enrichment ───────────────────────────────────────────────
+    # ── Geo + USLP enrichment ───────────────────────────────────────────────

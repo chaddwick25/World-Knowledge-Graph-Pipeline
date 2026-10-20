@@ -24,38 +24,38 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** ── Rule-based transforms ──────────────────────────────────────────────────
-***REMOVED*** (compiled pattern, replacement). Applied independently to the filled
-***REMOVED*** question; a transform applies only when its pattern matches. Patterns
-***REMOVED*** capture slot-adjacent structure without altering slot values.
+# ── Rule-based transforms ──────────────────────────────────────────────────
+# (compiled pattern, replacement). Applied independently to the filled
+# question; a transform applies only when its pattern matches. Patterns
+# capture slot-adjacent structure without altering slot values.
 _RULE_TRANSFORMS = [
-    ***REMOVED*** radius phrasing (***REMOVED***1)
+    # radius phrasing (#1)
     (re.compile(r"\bwithin\s+(\d+\s*m)\s+of\b", re.I), r"inside \1 of"),
     (re.compile(r"\bwithin\s+(\d+\s*m)\s+of\b", re.I), r"no more than \1 from"),
     (re.compile(r"\bwithin\s+(\d+\s*m)\s+of\b", re.I), r"within \1 from"),
-    ***REMOVED*** nearest ↔ closest (***REMOVED***4b, ***REMOVED***5b)
+    # nearest ↔ closest (#4b, #5b)
     (re.compile(r"\bthe nearest\b", re.I), "the closest"),
     (re.compile(r"\bthe closest\b", re.I), "the nearest"),
-    ***REMOVED*** amenity ↔ facility (***REMOVED***8a)
+    # amenity ↔ facility (#8a)
     (re.compile(r"\bamenity\b", re.I), "facility"),
-    ***REMOVED*** adjacency phrasing (***REMOVED***8b)
+    # adjacency phrasing (#8b)
     (re.compile(r"\bis right by\b", re.I), "is beside"),
     (re.compile(r"\bis beside\b", re.I), "is right by"),
     (re.compile(r"\bis adjacent to\b", re.I), "is next to"),
-    ***REMOVED*** compare-closer (***REMOVED***4a)
+    # compare-closer (#4a)
     (re.compile(r"\bwhich is closer to\b", re.I), "which spot is closer to"),
     (re.compile(r"\bwhich spot is closer to\b", re.I), "which place is closer to"),
-    ***REMOVED*** bearing phrasing (***REMOVED***5a)
+    # bearing phrasing (#5a)
     (re.compile(r"^which direction is\b", re.I), "what direction is"),
     (re.compile(r"^which direction is\b", re.I), "which way is"),
-    ***REMOVED*** distance phrasing (***REMOVED***2)
+    # distance phrasing (#2)
     (re.compile(r"^how far is\s+(.+?)\s+from\s+(.+?)\s*\??$", re.I),
      r"how far apart are \1 and \2?"),
     (re.compile(r"^what is the distance between\s+(.+?)\s+and\s+(.+?)\s*\??$", re.I),
      r"how far apart are \1 and \2?"),
     (re.compile(r"^how far apart are\s+(.+?)\s+and\s+(.+?)\s*\??$", re.I),
      r"what is the distance between \1 and \2?"),
-    ***REMOVED*** aggregate lead-ins (***REMOVED***1)
+    # aggregate lead-ins (#1)
     (re.compile(r"^what are the\b", re.I), "which are the"),
     (re.compile(r"^what are the\b", re.I), "list the"),
 ]
@@ -91,7 +91,7 @@ class MapQAParaphraser:
         self._llm_service = llm_service
         self.llm_max_paraphrases = llm_max_paraphrases
 
-    ***REMOVED*** ── Public API ──────────────────────────────────────────────────────────
+    # ── Public API ──────────────────────────────────────────────────────────
 
     def paraphrase(self, question: str, slots: list) -> list:
         """Return slot-validated paraphrases of ``question``.
@@ -115,7 +115,7 @@ class MapQAParaphraser:
                     seen.add(self._norm(candidate))
         return out
 
-    ***REMOVED*** ── Tiers ──────────────────────────────────────────────────────────────
+    # ── Tiers ──────────────────────────────────────────────────────────────
 
     @classmethod
     def _rule_based(cls, question: str) -> list:
@@ -125,8 +125,8 @@ class MapQAParaphraser:
             m = pattern.search(question)
             if m:
                 variant = pattern.sub(replacement, question, count=1)
-                ***REMOVED*** Preserve sentence capitalization when the transform lowercases
-                ***REMOVED*** the lead-in ("How far is X from Y?" → "How far apart are ...").
+                # Preserve sentence capitalization when the transform lowercases
+                # the lead-in ("How far is X from Y?" → "How far apart are ...").
                 if question and question[0].isupper() and variant and \
                         variant[0].islower():
                     variant = variant[0].upper() + variant[1:]
@@ -162,11 +162,11 @@ class MapQAParaphraser:
                 return []
             return [str(p).strip() for p in paraphrases
                     if isinstance(p, str) and p.strip()][:self.llm_max_paraphrases]
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — LLM tier must never break generation
+        except Exception as exc:  # noqa: BLE001 — LLM tier must never break generation
             logger.warning("LLM paraphrase tier failed; keeping rule-based only: %s", exc)
             return []
 
-    ***REMOVED*** ── Validation ──────────────────────────────────────────────────────────
+    # ── Validation ──────────────────────────────────────────────────────────
 
     @classmethod
     def _accept(cls, candidate: str, original: str, slots: list,

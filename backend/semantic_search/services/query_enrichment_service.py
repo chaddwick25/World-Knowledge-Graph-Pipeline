@@ -30,13 +30,13 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** TODO: dig into this code
+# TODO: dig into this code
 
-***REMOVED*** ── Enriched-answer cache (in-process, TTL) ─────────────────────────────
-***REMOVED*** Repeated demo questions (same question + country + snapshot) return the
-***REMOVED*** cached enriched answer instantly — no LLM calls. In-process only (per
-***REMOVED*** Django process); the data is static per snapshot so a TTL is a safety
-***REMOVED*** valve, not correctness.
+# ── Enriched-answer cache (in-process, TTL) ─────────────────────────────
+# Repeated demo questions (same question + country + snapshot) return the
+# cached enriched answer instantly — no LLM calls. In-process only (per
+# Django process); the data is static per snapshot so a TTL is a safety
+# valve, not correctness.
 _CACHE = {}
 _CACHE_LOCK = threading.Lock()
 _CACHE_DEFAULT_TTL_SECONDS = 1800.0
@@ -79,21 +79,21 @@ def _cache_get(key: str):
 
 def _cache_put(key: str, value: dict) -> None:
     with _CACHE_LOCK:
-        ***REMOVED*** Keep the cache bounded — drop the oldest entry past a soft cap.
+        # Keep the cache bounded — drop the oldest entry past a soft cap.
         if len(_CACHE) > 256:
             oldest = min(_CACHE, key=lambda k: _CACHE[k]["at"])
             _CACHE.pop(oldest, None)
         _CACHE[key] = {"at": time.monotonic(), "value": value}
 
-***REMOVED*** OSM keys that assert an amenity type (used for the default research action).
+# OSM keys that assert an amenity type (used for the default research action).
 AMENITY_KEYS = ("amenity", "shop", "tourism", "leisure", "office", "craft")
 
-***REMOVED*** The research tools the LLM may call — the same endpoints the MCP tools and
-***REMOVED*** the human UI use. JSON-schema manifest: the model receives it as the
-***REMOVED*** Ollama/OpenAI ``tools`` payload, and the executor validates calls against
-***REMOVED*** the same schema (``_validate_tool_calls``). The country code is not an
-***REMOVED*** argument — it comes from the run scope (``_call_search_tool`` payloads
-***REMOVED*** use the service-level country_code).
+# The research tools the LLM may call — the same endpoints the MCP tools and
+# the human UI use. JSON-schema manifest: the model receives it as the
+# Ollama/OpenAI ``tools`` payload, and the executor validates calls against
+# the same schema (``_validate_tool_calls``). The country code is not an
+# argument — it comes from the run scope (``_call_search_tool`` payloads
+# use the service-level country_code).
 RESEARCH_TOOLS = {
     "nameSearch": {
         "description": (
@@ -188,10 +188,10 @@ RESEARCH_TOOLS = {
     },
 }
 
-***REMOVED*** OSM venue types the LLM drops under `cuisine` ("same cuisine" ->
-***REMOVED*** {"cuisine": "fast_food"} — guaranteed empty, the 2026-10-16 Island
-***REMOVED*** Grill run). cuisine holds food types (jerk, regional); these belong to
-***REMOVED*** amenity. Guarded in _call_search_tool's structuredSearch branch.
+# OSM venue types the LLM drops under `cuisine` ("same cuisine" ->
+# {"cuisine": "fast_food"} — guaranteed empty, the 2026-10-16 Island
+# Grill run). cuisine holds food types (jerk, regional); these belong to
+# amenity. Guarded in _call_search_tool's structuredSearch branch.
 _AMENITY_VENUE_VALUES = {
     "restaurant", "fast_food", "cafe", "bar", "pub", "food_court",
     "ice_cream", "biergarten", "nightclub", "marketplace",
@@ -278,7 +278,7 @@ class QueryEnrichmentService:
             }
             _cache_put(key, result)
             return result
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — synthesis must never break execute
+        except Exception as exc:  # noqa: BLE001 — synthesis must never break execute
             logger.warning("Answer synthesis failed; keeping primary answer: %s", exc)
             return None
 
@@ -288,11 +288,11 @@ class QueryEnrichmentService:
         if not event_callback:
             return
         answer = cached.get("enriched_answer") or ""
-        ***REMOVED*** Chunk the cached answer so the client still sees progressive text.
+        # Chunk the cached answer so the client still sees progressive text.
         for i in range(0, len(answer), 32):
             event_callback({"event": "answer_delta", "delta": answer[i:i + 32]})
 
-    ***REMOVED*** ── Helpers ──────────────────────────────────────────────────────────
+    # ── Helpers ──────────────────────────────────────────────────────────
 
     @staticmethod
     def _format_context_for_prompt(context: dict, sources=None) -> str:
@@ -389,10 +389,10 @@ class QueryEnrichmentService:
         lines.append(
             "classes: " + ", ".join(f"{c} ({n})" for c, n in top_classes)
         )
-        ***REMOVED*** Degenerate distances are stripped, not flagged (2026-10-11
-        ***REMOVED*** tavern run): the prompt rule alone did not hold — the assembler
-        ***REMOVED*** still wrote "clustered in the same location" over all-0m rows.
-        ***REMOVED*** Removing the numbers leaves nothing to narrate over.
+        # Degenerate distances are stripped, not flagged (2026-10-11
+        # tavern run): the prompt rule alone did not hold — the assembler
+        # still wrote "clustered in the same location" over all-0m rows.
+        # Removing the numbers leaves nothing to narrate over.
         degenerate = _distances_degenerate(results)
         named = []
         for r in results:
@@ -415,8 +415,8 @@ class QueryEnrichmentService:
         for item in named[:8]:
             d = item.get("distance_m")
             if d is not None:
-                ***REMOVED*** Show km AND meters so the model cannot mis-compare raw
-                ***REMOVED*** meters against a km-scale radius (seen in production).
+                # Show km AND meters so the model cannot mis-compare raw
+                # meters against a km-scale radius (seen in production).
                 if d >= 1000:
                     lines.append(f"- {item['name']} ({d / 1000:.1f}km / {d:.0f}m)")
                 else:
@@ -536,15 +536,15 @@ class QueryEnrichmentService:
         error = None
         output = None
         try:
-            ***REMOVED*** classDrift reads the drift/fingerprint tables directly —
-            ***REMOVED*** there is no public fingerprint read endpoint, and the tool
-            ***REMOVED*** is a scope-level capability check, not a search.
+            # classDrift reads the drift/fingerprint tables directly —
+            # there is no public fingerprint read endpoint, and the tool
+            # is a scope-level capability check, not a search.
             if tool == "classDrift":
                 if not country_code:
                     return None
                 return cls._class_drift_report(country_code, snapshot_date)
-            ***REMOVED*** similarEntities needs no country (scope=all crosses
-            ***REMOVED*** countries; the seed geocode scopes optionally).
+            # similarEntities needs no country (scope=all crosses
+            # countries; the seed geocode scopes optionally).
             if tool == "similarEntities":
                 payload = {
                     "entity": args.get("entity"),
@@ -589,12 +589,12 @@ class QueryEnrichmentService:
                     }
                     for r in data.get("results", [])
                 ]
-                ***REMOVED*** Self/sibling exclusion: for chains the top embedding
-                ***REMOVED*** twins are the seed's own branches (the 2026-10-16
-                ***REMOVED*** Island Grill run returned 5 entities all named
-                ***REMOVED*** "Island Grill" — correct similarity, useless as
-                ***REMOVED*** doppelgangers). Drop same-name results; the seed's own
-                ***REMOVED*** row is covered by the same check.
+                # Self/sibling exclusion: for chains the top embedding
+                # twins are the seed's own branches (the 2026-10-16
+                # Island Grill run returned 5 entities all named
+                # "Island Grill" — correct similarity, useless as
+                # doppelgangers). Drop same-name results; the seed's own
+                # row is covered by the same check.
                 seed_name = (args.get("entity") or "").strip().casefold()
                 if seed_name:
                     rows = [
@@ -613,11 +613,11 @@ class QueryEnrichmentService:
                 }
             elif tool == "structuredSearch":
                 query_tags = dict(args.get("queryTags") or {})
-                ***REMOVED*** Tag-key guard: the LLM puts amenity values under
-                ***REMOVED*** cuisine ("same cuisine" -> {"cuisine": "fast_food"},
-                ***REMOVED*** guaranteed empty — the 2026-10-16 Island Grill run).
-                ***REMOVED*** cuisine values are food types (jerk, regional); venue
-                ***REMOVED*** types (fast_food, restaurant, cafe) belong to amenity.
+                # Tag-key guard: the LLM puts amenity values under
+                # cuisine ("same cuisine" -> {"cuisine": "fast_food"},
+                # guaranteed empty — the 2026-10-16 Island Grill run).
+                # cuisine values are food types (jerk, regional); venue
+                # types (fast_food, restaurant, cafe) belong to amenity.
                 cuisine = query_tags.get("cuisine")
                 if isinstance(cuisine, str):
                     cuisine = cuisine.replace(" ", "_")
@@ -646,10 +646,10 @@ class QueryEnrichmentService:
                 "/api/nca/semantic-triplet-search/",
                 data=json.dumps(payload),
                 content_type="application/json",
-                ***REMOVED*** The test client defaults to host "testserver", which the
-                ***REMOVED*** live backend's ALLOWED_HOSTS rejects (400 HTML response).
-                ***REMOVED*** "localhost" is the same host the browser uses against this
-                ***REMOVED*** endpoint.
+                # The test client defaults to host "testserver", which the
+                # live backend's ALLOWED_HOSTS rejects (400 HTML response).
+                # "localhost" is the same host the browser uses against this
+                # endpoint.
                 HTTP_HOST="localhost",
             )
             try:
@@ -677,7 +677,7 @@ class QueryEnrichmentService:
                 for r in (data.get("results") or [])[:5]
             ]
             return output
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — the caller decides failure handling
+        except Exception as exc:  # noqa: BLE001 — the caller decides failure handling
             error = str(exc)
             raise
         finally:
@@ -709,7 +709,7 @@ class QueryEnrichmentService:
             resolved = resolve_iso_code(country_code)
             if resolved:
                 iso = resolved
-        except Exception:  ***REMOVED*** noqa: BLE001 — fall through to the raw value
+        except Exception:  # noqa: BLE001 — fall through to the raw value
             pass
         iso = (iso or "").upper()
 
@@ -794,11 +794,11 @@ class QueryEnrichmentService:
         has no streaming method (tests / non-Ollama).
         """
         if context is not None:
-            ***REMOVED*** Which context sources were actually fetched? Per-template
-            ***REMOVED*** routing (e.g. LOCATION-BEARING-CLASSIFY fetches only
-            ***REMOVED*** classes) — render unfetched sources as "not applicable to
-            ***REMOVED*** this template", never "none", so the LLM doesn't claim the
-            ***REMOVED*** area lacks community data we never computed.
+            # Which context sources were actually fetched? Per-template
+            # routing (e.g. LOCATION-BEARING-CLASSIFY fetches only
+            # classes) — render unfetched sources as "not applicable to
+            # this template", never "none", so the LLM doesn't claim the
+            # area lacks community data we never computed.
             from semantic_search.services.entity_context_service import (
                 TEMPLATE_CONTEXT_MAP,
             )

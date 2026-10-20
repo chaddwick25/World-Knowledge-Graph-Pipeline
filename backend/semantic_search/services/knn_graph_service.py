@@ -104,14 +104,14 @@ class KNNGraphService:
         Returns:
             Edge weight ≥ e ≈ 2.718 (higher = closer).
         """
-        ***REMOVED*** Clamp distance to minimum 1.1 km (GeoVectors training formula requirement).
-        ***REMOVED*** epsilon guard handles identical-coordinate entities (haversine = 0).
+        # Clamp distance to minimum 1.1 km (GeoVectors training formula requirement).
+        # epsilon guard handles identical-coordinate entities (haversine = 0).
         distance_km = max(distance_km, max(epsilon, 1.1))
 
-        ***REMOVED*** GeoVectors training formula: w' = max(1/ln(d), e)
+        # GeoVectors training formula: w' = max(1/ln(d), e)
         weight = 1.0 / np.log(distance_km)
 
-        ***REMOVED*** Floor at e ≈ 2.718 to ensure all edges have non-zero transition probability.
+        # Floor at e ≈ 2.718 to ensure all edges have non-zero transition probability.
         return max(weight, np.e)
     
     def build_knn_graph(self, entities: List[Dict]) -> Dict[int, List[Tuple[int, float]]]:
@@ -130,7 +130,7 @@ class KNNGraphService:
         
         Example:
             {
-                123: [(456, 5.2), (789, 4.8), ...],  ***REMOVED*** 50 neighbors
+                123: [(456, 5.2), (789, 4.8), ...],  # 50 neighbors
                 456: [(123, 5.2), (789, 3.1), ...],
                 ...
             }
@@ -146,8 +146,8 @@ class KNNGraphService:
         else:
             k = self.k
 
-        ***REMOVED*** Edge case: single entity — no neighbors possible.
-        ***REMOVED*** Return a graph with the node but no edges.
+        # Edge case: single entity — no neighbors possible.
+        # Return a graph with the node but no edges.
         if n == 1:
             logger.warning(f"Only 1 entity provided — returning single-node graph with no edges.")
             osm_id = entities[0]['osm_id']
@@ -155,22 +155,22 @@ class KNNGraphService:
 
         logger.info(f"Building k-NN graph for {n} entities (k={k}) using multi-threaded BallTree...")
 
-        ***REMOVED*** Convert coordinates to radians exactly for scikit-learn Haversine formula
+        # Convert coordinates to radians exactly for scikit-learn Haversine formula
         osm_ids = [entity['osm_id'] for entity in entities]
         coords_rad = np.radians([[e['lat'], e['lon']] for e in entities])
 
         from sklearn.neighbors import NearestNeighbors
         import multiprocessing
 
-        ***REMOVED*** Avoid Loky-backed parallel loop warnings when running inside a child process
-        ***REMOVED*** (e.g., inside a multiprocessing worker or Django management command)
+        # Avoid Loky-backed parallel loop warnings when running inside a child process
+        # (e.g., inside a multiprocessing worker or Django management command)
         current_proc = multiprocessing.current_process()
         is_child = current_proc.name != 'MainProcess' and not current_proc.name.startswith('Process-')
         n_jobs = 1 if is_child else -1
 
-        ***REMOVED*** Build ultra-fast tree indexing mapping
-        ***REMOVED*** k + 1 because the query will return the coordinate mapped strictly to itself at distance 0
-        ***REMOVED*** Cap at n to satisfy sklearn's n_neighbors <= n_samples constraint
+        # Build ultra-fast tree indexing mapping
+        # k + 1 because the query will return the coordinate mapped strictly to itself at distance 0
+        # Cap at n to satisfy sklearn's n_neighbors <= n_samples constraint
         n_neighbors = min(k + 1, n)
         nn = NearestNeighbors(
             n_neighbors=n_neighbors,
@@ -180,10 +180,10 @@ class KNNGraphService:
         )
         nn.fit(coords_rad)
         
-        ***REMOVED*** Parallel nearest neighbor extraction! 
+        # Parallel nearest neighbor extraction! 
         distances_rad, indices = nn.kneighbors(coords_rad)
         
-        ***REMOVED*** Convert radian matrix back uniformly to Kilometers
+        # Convert radian matrix back uniformly to Kilometers
         distances_km = distances_rad * 6371.0  
         
         graph = {}
@@ -194,17 +194,17 @@ class KNNGraphService:
             osm_id = osm_ids[i]
             neighbors = []
             
-            ***REMOVED*** Loop strictly through the k+1 neighbors derived for this specific node
+            # Loop strictly through the k+1 neighbors derived for this specific node
             for j in range(len(indices[i])):
                 neighbor_idx = indices[i][j]
                 if neighbor_idx == i:
-                    continue  ***REMOVED*** Logically skip itself!
+                    continue  # Logically skip itself!
                     
                 dist_km = distances_km[i][j]
                 weight = self.calculate_edge_weight(dist_km)
                 neighbors.append((osm_ids[neighbor_idx], weight))
                 
-                ***REMOVED*** Truncate at k if necessary 
+                # Truncate at k if necessary 
                 if len(neighbors) == k:
                     break
                     
@@ -227,19 +227,19 @@ class KNNGraphService:
         from worldkg_nca.models import OsmEntity
         from django.contrib.gis.geos import Point
         
-        ***REMOVED*** Query entities
+        # Query entities
         queryset = OsmEntity.objects.using('vectors').all()
         
         if region_filter:
             queryset = queryset.filter(**region_filter)
         
-        ***REMOVED*** Extract coordinates
+        # Extract coordinates
         entities = []
         for entity in queryset.iterator():
             if entity.geom:
                 entities.append({
                     'osm_id': entity.osm_id,
-                    'lat': entity.geom.y,  ***REMOVED*** PostGIS Point: x=lon, y=lat
+                    'lat': entity.geom.y,  # PostGIS Point: x=lon, y=lat
                     'lon': entity.geom.x,
                 })
         
@@ -278,7 +278,7 @@ class KNNGraphService:
         num_nodes = len(graph)
         num_edges = sum(len(neighbors) for neighbors in graph.values())
 
-        ***REMOVED*** Weight statistics
+        # Weight statistics
         all_weights = [weight for neighbors in graph.values()
                       for _, weight in neighbors]
 
@@ -292,9 +292,9 @@ class KNNGraphService:
             'weight_max': np.max(all_weights),
         }
 
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
-    ***REMOVED*** NetworkX graph construction (spectral / community analysis substrate)
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # NetworkX graph construction (spectral / community analysis substrate)
+    # ──────────────────────────────────────────────────────────────────────
 
     def build_graph(
         self,
@@ -405,7 +405,7 @@ class KNNGraphService:
 
         adj = self.build_knn_graph(entities)
 
-        ***REMOVED*** Nodes: every osm_id that appears as a source or target
+        # Nodes: every osm_id that appears as a source or target
         all_ids = set(adj.keys())
         for neighbors in adj.values():
             all_ids.update(t for t, _ in neighbors)
@@ -495,7 +495,7 @@ class KNNGraphService:
         if k is None:
             k = self.k
 
-        ***REMOVED*** ── Resolve the subgraph boundary ──
+        # ── Resolve the subgraph boundary ──
         strict_wkt = None
         if poly_path:
             strict_wkt = parse_poly_to_wkt(poly_path)
@@ -525,7 +525,7 @@ class KNNGraphService:
         buffer_geo = strict_geo.buffer(buffer_deg)
         buffer_wkt = buffer_geo.wkt
 
-        ***REMOVED*** ── Load entities in the buffer zone (k-NN graph scope) ──
+        # ── Load entities in the buffer zone (k-NN graph scope) ──
         buffer_geom = GEOSGeometry(buffer_wkt, srid=4326)
         qs = OsmEntity.objects.using('vectors').filter(
             geom__isnull=False,
@@ -536,7 +536,7 @@ class KNNGraphService:
 
         entities = []
         class_map = {}
-        core_ids = set()  ***REMOVED*** entities strictly inside the polygon
+        core_ids = set()  # entities strictly inside the polygon
 
         for entity in qs.iterator():
             if not entity.geom:
@@ -571,16 +571,16 @@ class KNNGraphService:
                 class_map={},
             )
 
-        ***REMOVED*** ── Build k-NN adjacency on all buffer entities ──
+        # ── Build k-NN adjacency on all buffer entities ──
         adj = self.build_knn_graph(entities)
 
         if return_core_ids:
-            ***REMOVED*** Option A (functional maps plan): return the FULL buffered
-            ***REMOVED*** graph (core + buffer entities).  The spectral solve runs on
-            ***REMOVED*** all buffered entities, giving shared buffer entities exact
-            ***REMOVED*** eigen-loadings for transport matrix computation.  The caller
-            ***REMOVED*** prunes to core at factor-write time using the returned
-            ***REMOVED*** ``core_ids`` set.
+            # Option A (functional maps plan): return the FULL buffered
+            # graph (core + buffer entities).  The spectral solve runs on
+            # all buffered entities, giving shared buffer entities exact
+            # eigen-loadings for transport matrix computation.  The caller
+            # prunes to core at factor-write time using the returned
+            # ``core_ids`` set.
             all_ids = set(adj.keys())
             for neighbors in adj.values():
                 all_ids.update(t for t, _ in neighbors)
@@ -613,11 +613,11 @@ class KNNGraphService:
             )
             return sg, core_ids
 
-        ***REMOVED*** ── Prune to core entities only (drop buffer-only nodes) ──
-        ***REMOVED*** Keep edges where BOTH endpoints are core entities.
-        ***REMOVED*** This ensures the spectral graph is the induced subgraph on
-        ***REMOVED*** core entities, with k-NN neighbors computed from the full
-        ***REMOVED*** buffer zone (correct boundary behavior).
+        # ── Prune to core entities only (drop buffer-only nodes) ──
+        # Keep edges where BOTH endpoints are core entities.
+        # This ensures the spectral graph is the induced subgraph on
+        # core entities, with k-NN neighbors computed from the full
+        # buffer zone (correct boundary behavior).
         core_adj = {}
         for source, neighbors in adj.items():
             if source not in core_ids:
@@ -626,7 +626,7 @@ class KNNGraphService:
             if core_neighbors:
                 core_adj[source] = core_neighbors
 
-        ***REMOVED*** Build node_ids from core entities that appear in the adjacency
+        # Build node_ids from core entities that appear in the adjacency
         all_ids = set(core_adj.keys())
         for neighbors in core_adj.values():
             all_ids.update(t for t, _ in neighbors)

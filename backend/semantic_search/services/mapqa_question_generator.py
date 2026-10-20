@@ -2,8 +2,8 @@
 mapqa_question_generator.py — self-supervised MapQA question–answer generation.
 
 Generates training rows for the 5 existing MapQA macro-templates
-(***REMOVED***1 FILTER-AGGREGATE-MEASURE, ***REMOVED***2 OBJECT-FIELD-MEASURE, ***REMOVED***4 GEOCODE-BATCH-COMPARE,
-***REMOVED***5 LOCATION-BEARING-CLASSIFY, ***REMOVED***8 PLACE-ATTRIBUTE-QUERY) from ``OsmEntity``
+(#1 FILTER-AGGREGATE-MEASURE, #2 OBJECT-FIELD-MEASURE, #4 GEOCODE-BATCH-COMPARE,
+#5 LOCATION-BEARING-CLASSIFY, #8 PLACE-ATTRIBUTE-QUERY) from ``OsmEntity``
 ground truth in the vectors DB — no graph/factor-table dependency.
 
 Every answer is computed exactly from PostGIS at generation time
@@ -41,9 +41,9 @@ from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Template constants + question frames live in mapqa_samplers/constants.py
-***REMOVED*** and the per-template sampler mixins in mapqa_samplers/template_{1,2,4,5,8}.py
-***REMOVED*** (monolith split, Phase 5 of PIPELINE_CONTROL_PLANE_AND_CLEANUP_PLAN).
+# Template constants + question frames live in mapqa_samplers/constants.py
+# and the per-template sampler mixins in mapqa_samplers/template_{1,2,4,5,8}.py
+# (monolith split, Phase 5 of PIPELINE_CONTROL_PLANE_AND_CLEANUP_PLAN).
 from semantic_search.services.mapqa_samplers.constants import (
     ADJACENCY_RADIUS_M,
     CARDINALS,
@@ -111,7 +111,7 @@ class MapQAQuestionGenerator(
         self.rng = random.Random(seed)
         self._vocab = None
 
-    ***REMOVED*** ── Public API ──────────────────────────────────────────────────────────
+    # ── Public API ──────────────────────────────────────────────────────────
 
     def generate(self, country_code: str, snapshot_id: str = None,
                  templates: tuple = (1, 2, 4, 5, 8),
@@ -136,8 +136,8 @@ class MapQAQuestionGenerator(
                            country_code, snapshot_id)
             return []
 
-        ***REMOVED*** One RNG per generate() call so repeated calls are identical
-        ***REMOVED*** regardless of prior calls (determinism).
+        # One RNG per generate() call so repeated calls are identical
+        # regardless of prior calls (determinism).
         rng = random.Random(self.seed)
         all_rows = []
         for template_num in templates:
@@ -147,13 +147,13 @@ class MapQAQuestionGenerator(
                 continue
             rows = sampler(country_code, snapshot_id, per_class, rng)
             logger.info(
-                "Generated %d rows for %s template ***REMOVED***%s",
+                "Generated %d rows for %s template #%s",
                 len(rows), country_code, template_num,
             )
             all_rows.extend(rows)
 
-        ***REMOVED*** Dedupe on normalized question text (keep first occurrence), then
-        ***REMOVED*** convert to CSV rows — adding slot-validated paraphrases per seed.
+        # Dedupe on normalized question text (keep first occurrence), then
+        # convert to CSV rows — adding slot-validated paraphrases per seed.
         seen = set()
         out = []
         for row in all_rows:
@@ -201,7 +201,7 @@ class MapQAQuestionGenerator(
                 row["Region"] = "self_supervised_test"
         return rows
 
-    ***REMOVED*** ── Samplers ────────────────────────────────────────────────────────────
+    # ── Samplers ────────────────────────────────────────────────────────────
 
     def _sampler(self, template_num: int):
         samplers = {
@@ -213,7 +213,7 @@ class MapQAQuestionGenerator(
         }
         return samplers.get(template_num)
 
-    ***REMOVED*** ── Data access (vectors DB) ───────────────────────────────────────────
+    # ── Data access (vectors DB) ───────────────────────────────────────────
 
     def _named_pool(self, country_code, snapshot_id, budget) -> list:
         """Deterministic pseudo-random pool of named entities with coords.
@@ -259,7 +259,7 @@ class MapQAQuestionGenerator(
                 continue
             name = sanitize_name(name)
             if not name or any(ch in name for ch in '",\n'):
-                continue  ***REMOVED*** CSV/geocode-hostile name — keep frames resolvable
+                continue  # CSV/geocode-hostile name — keep frames resolvable
             pool.append({
                 "name": name,
                 "lat": float(lat),
@@ -307,7 +307,7 @@ class MapQAQuestionGenerator(
         """[(amenity, count)] grouped by amenity within ``radius_m`` of anchor.
 
         ``named_only=True`` restricts to named entities (answers are entity
-        names); ``named_only=False`` counts every entity (the ***REMOVED***1 answer is a
+        names); ``named_only=False`` counts every entity (the #1 answer is a
         plain count, matching the executor's unfiltered ST_DWithin count).
         Filtered to the parser's amenity vocabulary, ordered by count desc.
         """
@@ -336,7 +336,7 @@ class MapQAQuestionGenerator(
         """Named amenity entities within ``radius_m`` of anchor (excl. self).
 
         Returns dicts {amenity, name, lat, lon, distance_m} ordered by
-        distance — the shared pool for ***REMOVED***4b/***REMOVED***5b/***REMOVED***8b anchor-relative sampling.
+        distance — the shared pool for #4b/#5b/#8b anchor-relative sampling.
         """
         with connections["vectors"].cursor() as cur:
             cur.execute(
@@ -400,7 +400,7 @@ class MapQAQuestionGenerator(
         self._vocab = vocab
         return vocab
 
-    ***REMOVED*** ── Ground truth (PostGIS) ─────────────────────────────────────────────
+    # ── Ground truth (PostGIS) ─────────────────────────────────────────────
 
     def _count_within(self, anchor, amenity, radius_m, country_code,
                       snapshot_id) -> int:
@@ -492,7 +492,7 @@ class MapQAQuestionGenerator(
                     best, best_dist = name, d
         return best
 
-    ***REMOVED*** ── Row helpers ─────────────────────────────────────────────────────────
+    # ── Row helpers ─────────────────────────────────────────────────────────
 
     def _to_csv_row(self, row, country_code, snapshot_id,
                     pipeline_run_id) -> dict:
@@ -524,12 +524,12 @@ class MapQAQuestionGenerator(
     def _same_entity(a, b) -> bool:
         return a["osm_id"] == b["osm_id"] and a["osm_type"] == b["osm_type"]
 
-    ***REMOVED*** ── Geo helpers (match the executor's formulas) ─────────────────────────
+    # ── Geo helpers (match the executor's formulas) ─────────────────────────
 
     @staticmethod
     def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Haversine distance in km (identical to QueryExecutorService)."""
-        R = 6371  ***REMOVED*** Earth's mean radius in km
+        R = 6371  # Earth's mean radius in km
         phi1, lam1 = math.radians(lat1), math.radians(lon1)
         phi2, lam2 = math.radians(lat2), math.radians(lon2)
         dphi = phi2 - phi1

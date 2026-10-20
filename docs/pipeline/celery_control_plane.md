@@ -1,4 +1,4 @@
-***REMOVED*** Celery as the Control Plane: Canvas, Chords, and the Decorator Seam
+# Celery as the Control Plane: Canvas, Chords, and the Decorator Seam
 
 > **Focus:** how Celery acts as the **control plane** for the country
 > pipeline. The chain + chord canvas, the `PatchedDatabaseBackend` that fixes
@@ -13,7 +13,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Country Pipeline Canvas
+## 1. The Country Pipeline Canvas
 
 The country pipeline is a single Celery **chain** with three **chords**
 embedded in it. Chords are the synchronization primitive for subgraph
@@ -32,8 +32,8 @@ chain(
   chord( [sub_run_subgraph_uslp.si(sg) × N], step_4b_finalize.s(cfg) ),
   step_5_train_gv_nle.s(),
   chord( [sub_train_subgraph_gv_nle.si(sg) × N], step_5b_fin.s(cfg) ),
-  step_5c_graph_spectral_analysis.s(),   ***REMOVED*** non-fatal, conditional
-  step_5d_temporal_drift.s(),            ***REMOVED*** non-fatal, conditional, ≥2 snapshots
+  step_5c_graph_spectral_analysis.s(),   # non-fatal, conditional
+  step_5d_temporal_drift.s(),            # non-fatal, conditional, ≥2 snapshots
   step_6_mark_search_ready.s(),
 )
 
@@ -54,11 +54,11 @@ Dispatched once: canvas.apply_async(task_id=cfg.pipeline_run_id)
 
 ---
 
-***REMOVED******REMOVED*** 2. Control Plane vs Data Plane
+## 2. Control Plane vs Data Plane
 
 The pipeline separates concerns into two planes.
 
-***REMOVED******REMOVED******REMOVED*** 2.1 Control Plane (owned by Celery primitives)
+### 2.1 Control Plane (owned by Celery primitives)
 
 | Primitive | Owner | Role |
 |---|---|---|
@@ -70,7 +70,7 @@ The pipeline separates concerns into two planes.
 
 **Source:** <ref_file file="backend/pipeline/celery_app.py" />
 
-***REMOVED******REMOVED******REMOVED*** 2.2 Data Plane (owned by the `@pipeline_step` decorator + services)
+### 2.2 Data Plane (owned by the `@pipeline_step` decorator + services)
 
 **Source:** <ref_file file="backend/pipeline/task_decorator.py" />
 
@@ -86,7 +86,7 @@ only the data-plane boundary:
   direct-call eager path that bypasses Celery's trace)
 - Re-raises exceptions after logging them (Celery marks task as FAILURE)
 
-***REMOVED******REMOVED******REMOVED*** 2.3 Services (pure data plane, no Celery concerns)
+### 2.3 Services (pure data plane, no Celery concerns)
 
 All country pipeline tasks delegate to stateless services:
 
@@ -102,7 +102,7 @@ either the same envelope (mutated) or a result dict. They do NOT handle
 Celery concerns (serialization, WS push, logging); that's the decorator's
 job.
 
-***REMOVED******REMOVED******REMOVED*** 2.4 Tasks Are Thin Wrappers
+### 2.4 Tasks Are Thin Wrappers
 
 All task files in `pipeline/tasks/` are thin wrappers that:
 1. Reconstruct the envelope from the config dict
@@ -124,7 +124,7 @@ The structure per task:
 
 ---
 
-***REMOVED******REMOVED*** 3. Registered Tasks (12 total: Steps 1-6 + 5c/5d)
+## 3. Registered Tasks (12 total: Steps 1-6 + 5c/5d)
 
 Planet init tasks (formerly `step_0_initialize_planet`,
 `step_0b_initialize_continent`, `step_0c`-`step_0m`,
@@ -148,9 +148,9 @@ Planet init tasks (formerly `step_0_initialize_planet`,
 
 ---
 
-***REMOVED******REMOVED*** 4. Chord-in-Chain Dispatch (Verified against Celery 4.4.7)
+## 4. Chord-in-Chain Dispatch (Verified against Celery 4.4.7)
 
-***REMOVED******REMOVED******REMOVED*** 4.1 Client side: `chain.prepare_steps()`
+### 4.1 Client side: `chain.prepare_steps()`
 
 When `canvas.apply_async()` is called, the chain is prepared in **reverse
 order**:
@@ -163,7 +163,7 @@ order**:
    **not** create any backend state.
 4. The remaining tasks travel with each message in the `chain` embed field.
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Worker side: chain continuation
+### 4.2 Worker side: chain continuation
 
 When a chain task succeeds, the worker pops the next signature **before**
 marking the current task done. For a chord signature, `_chsig.apply_async()`
@@ -173,9 +173,9 @@ header:
 ```python
 header_result = header.freeze(group_id=group_id, chord=body, root_id=root_id)
 if len(header_result) > 0:
-    app.backend.apply_chord(          ***REMOVED*** ← called before header dispatch
+    app.backend.apply_chord(          # ← called before header dispatch
         header_result, body,
-        interval=None,                ***REMOVED*** ← explicit None (see §5.2)
+        interval=None,                # ← explicit None (see §5.2)
         countdown=countdown,
         max_retries=max_retries,
     )
@@ -186,14 +186,14 @@ So for the `chain(..., chord(...), ...)` pattern, `apply_chord()` **is**
 invoked, on the worker that ran the preceding chain step, **before** any
 header task is dispatched.
 
-***REMOVED******REMOVED******REMOVED*** 4.3 Header completion path
+### 4.3 Header completion path
 
 ```python
 def mark_as_done(self, task_id, result, request=None, ...):
     if store_result:
-        self.store_result(task_id, result, state, request=request)  ***REMOVED*** ← FIRST
+        self.store_result(task_id, result, state, request=request)  # ← FIRST
     if request and request.chord:
-        self.on_chord_part_return(request, state, result)           ***REMOVED*** ← SECOND
+        self.on_chord_part_return(request, state, result)           # ← SECOND
 ```
 
 **Ordering guarantee:** the `TaskResult` row is written *before*
@@ -201,7 +201,7 @@ def mark_as_done(self, task_id, result, request=None, ...):
 
 ---
 
-***REMOVED******REMOVED*** 5. PatchedDatabaseBackend: Chord Completion via Polling
+## 5. PatchedDatabaseBackend: Chord Completion via Polling
 
 **Source:** <ref_file file="backend/pipeline/celery_results_backend.py" />
 
@@ -240,7 +240,7 @@ Key mechanics:
    deps = GroupResult(group_id,
                       [result_from_tuple(r, app=app) for r in result],
                       app=app)
-   ready = deps.ready()          ***REMOVED*** queries TaskResult rows via the backend
+   ready = deps.ready()          # queries TaskResult rows via the backend
    if not ready: raise self.retry(countdown=interval, max_retries=max_retries)
    ret = deps.join(timeout=result_chord_join_timeout, propagate=True)
    callback.delay(ret)
@@ -252,7 +252,7 @@ Key mechanics:
 
 ---
 
-***REMOVED******REMOVED*** 6. Failure Semantics
+## 6. Failure Semantics
 
 | Event | Behavior |
 |---|---|
@@ -266,7 +266,7 @@ task that fails is rejected without requeue.
 
 ---
 
-***REMOVED******REMOVED*** 7. Subgraph Rehydration (Fresh-DB Fix)
+## 7. Subgraph Rehydration (Fresh-DB Fix)
 
 On a fresh DB, `has_subgraphs=False` at canvas dispatch time because subgraph
 poly files have not been generated yet. The canvas chord for Step 4 (USLP)
@@ -285,7 +285,7 @@ old eager path would double-execute USLP and NLE training.
 
 ---
 
-***REMOVED******REMOVED*** 8. Configuration Surface
+## 8. Configuration Surface
 
 | Setting | Value | Notes |
 |---|---|---|
@@ -295,7 +295,7 @@ old eager path would double-execute USLP and NLE training.
 | Worker pool | `--pool=prefork --concurrency=4` | 4 CPU workers for parallel upserts/IGEA/USLP |
 | GPU tasks | `fcntl.flock` per-GPU slot locks | Prevents CUDA OOM on single-GPU machines |
 
-***REMOVED******REMOVED******REMOVED*** Known defect: `CHORD_UNLOCK_INTERVAL` is ineffective
+### Known defect: `CHORD_UNLOCK_INTERVAL` is ineffective
 
 `chord.run` passes `interval=None` **explicitly**, so
 `kwargs.setdefault("interval", CHORD_UNLOCK_INTERVAL)` in
@@ -306,7 +306,7 @@ Redis churn, not a correctness issue.
 
 ---
 
-***REMOVED******REMOVED*** 9. Dual-Track Logging
+## 9. Dual-Track Logging
 
 The pipeline uses **dual-track logging**: DB-backed structured logs via
 `PipelineLogEntry` for queryable history, plus per-run consolidated `.log`
@@ -328,7 +328,7 @@ files for human/grep workflows. Both tracks are always on.
 
 ---
 
-***REMOVED******REMOVED*** 10. Envelopes: The Celery-Safe Config Contract
+## 10. Envelopes: The Celery-Safe Config Contract
 
 **Source:** <ref_file file="backend/pipeline/envelopes.py" />
 
@@ -346,14 +346,14 @@ env = CountryEnvelope.from_db('BZ', hyperparam_overrides={
     "skip_enrich": True,
     "min_entropy": 0.0,
 })
-config_dict = env.to_dict()  ***REMOVED*** ← passed to Celery task
-***REMOVED*** ... task hop ...
-env = CountryEnvelope.from_dict(config_dict)  ***REMOVED*** ← reconstructed in worker
+config_dict = env.to_dict()  # ← passed to Celery task
+# ... task hop ...
+env = CountryEnvelope.from_dict(config_dict)  # ← reconstructed in worker
 ```
 
 ---
 
-***REMOVED******REMOVED*** 11. Invariants
+## 11. Invariants
 
 - Planet init is NOT a Celery canvas. It is the `init_planet` management
   command. `run_planet_initialization()` / `run_continent_initialization()`

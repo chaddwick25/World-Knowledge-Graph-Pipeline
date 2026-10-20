@@ -1,4 +1,4 @@
-***REMOVED*** BallTree Pickle Generation: PostGIS GiST → k-NN Graph → DeepWalk
+# BallTree Pickle Generation: PostGIS GiST → k-NN Graph → DeepWalk
 
 > **Focus:** how the `wdw.pickle` (DeepWalk model) is generated from
 > GeoVectors TSVs, how the BallTree is used in-memory for k-NN graph
@@ -13,7 +13,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Two Spatial Indexing Layers
+## 1. The Two Spatial Indexing Layers
 
 **Layer 1: Postgres GiST (database level, persistent)**
 - Index: `idx_..._geom ON geom USING gist`
@@ -47,7 +47,7 @@ geographic region (bbox/polygon filter) and for runtime spatial queries
 
 ---
 
-***REMOVED******REMOVED*** 2. The wdw.pickle: What It Is and What It Contains
+## 2. The wdw.pickle: What It Is and What It Contains
 
 The `wdw.pickle` is **not** a BallTree. It is a `WDWStore`, a dict-like
 container mapping `{osm_type}_{osm_id}` → embedding vector, produced by the
@@ -56,7 +56,7 @@ model that `NLEModel.load_indexes()` loads for GV-NLE inference (the
 two-axis Step-1 encoding path that consumed it was removed 2026-09-10 — see
 TICKET_REMOVE_DUAL_ENCODER).
 
-***REMOVED******REMOVED******REMOVED*** 2.1 Pickle Generation from TSVs
+### 2.1 Pickle Generation from TSVs
 
 **Source:** <ref_file file="backend/geovectors_encoder/services/geovectors_service.py" />
 
@@ -96,7 +96,7 @@ The pickle is stored at:
 > by `GeoVectorsEncoderService.generate_subgraph_pickle()`, not by
 > `train()`.
 
-***REMOVED******REMOVED******REMOVED*** 2.2 NLEModel.load_indexes(): Reloading the Pickle
+### 2.2 NLEModel.load_indexes(): Reloading the Pickle
 
 **Source:** <ref_file file="backend/geovectors_encoder/core/models/nle.py" />
 
@@ -106,7 +106,7 @@ The pickle is stored at:
 This is the DeepWalk model. Given an OSM key, `self.wdw.predict(key)`
 returns the 100D GV-NLE embedding for that entity.
 
-***REMOVED******REMOVED******REMOVED*** 2.3 The NLE Encoder Uses PostGIS GiST (Not BallTree) for KNN
+### 2.3 The NLE Encoder Uses PostGIS GiST (Not BallTree) for KNN
 
 When encoding a new entity, `NLEModel.encode_coords()` (line 189) queries
 PostGIS for the 50 nearest neighbors using the GiST KNN operator `<->`:
@@ -124,7 +124,7 @@ LIMIT 50;
 
 Then applies the IDW damped weight formula:
 ```python
-dist = np.log(1 + (1 / (n[1] / 1000)))  ***REMOVED*** n[1] is distance in meters → km
+dist = np.log(1 + (1 / (n[1] / 1000)))  # n[1] is distance in meters → km
 node_enc = self.wdw.predict(other_key)
 vectors.append(node_enc * dist)
 enc = np.sum(vectors, axis=0) / dist_sum
@@ -136,7 +136,7 @@ log-inverse distance weighting.
 
 ---
 
-***REMOVED******REMOVED*** 3. BallTree for k-NN Graph Construction (Step 5 Training)
+## 3. BallTree for k-NN Graph Construction (Step 5 Training)
 
 **Source:** <ref_file file="backend/semantic_search/services/knn_graph_service.py" />
 
@@ -175,23 +175,23 @@ load fast; the BallTree makes the N×k neighbor query fast.
 
 ---
 
-***REMOVED******REMOVED*** 4. The IDW Damped Weight Formula
+## 4. The IDW Damped Weight Formula
 
 The IDW (Inverse Distance Weighting) formula appears in **two distinct
 variants** that serve different mathematical roles and are **not
 interchangeable**.
 
-***REMOVED******REMOVED******REMOVED*** 4.1 Training formula: graph construction (DeepWalk transition matrix)
+### 4.1 Training formula: graph construction (DeepWalk transition matrix)
 
 Used to assign edge weights on the k-NN graph that feeds DeepWalk training.
 The `max(..., e)` floor is essential: no edge has zero weight, so the graph
 stays fully connected and random walks never get trapped.
 
 ```python
-***REMOVED*** WeightedDeepWalkGraph._damp_and_row_norm (Numba JIT path)
-***REMOVED*** Also: knn_graph_service.calculate_edge_weight, inductive_spatial_service._damped_weight
-weights = np.maximum(weights, 1.1)          ***REMOVED*** clamp minimum distance to 1.1 km
-weights = np.maximum(1.0 / np.log(weights), np.e)  ***REMOVED*** w' = max(1/ln(d), e)
+# WeightedDeepWalkGraph._damp_and_row_norm (Numba JIT path)
+# Also: knn_graph_service.calculate_edge_weight, inductive_spatial_service._damped_weight
+weights = np.maximum(weights, 1.1)          # clamp minimum distance to 1.1 km
+weights = np.maximum(1.0 / np.log(weights), np.e)  # w' = max(1/ln(d), e)
 ```
 
 | Location | File | Purpose |
@@ -214,17 +214,17 @@ weights = np.maximum(1.0 / np.log(weights), np.e)  ***REMOVED*** w' = max(1/ln(d
   sum to 1.0, making the transition matrix stochastic for random walk
   sampling.
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Inference formula: NLE encoding (encode_coords)
+### 4.2 Inference formula: NLE encoding (encode_coords)
 
 Used **only** in `NLEModel.encode_coords()` to weight the 50 nearest
 pre-trained neighbor embeddings when encoding a new entity's location. This
 formula is from GeoVectors paper Section 3.4 (the NLE encoding step):
 
 ```python
-***REMOVED*** NLEModel.encode_coords() — PostGIS 50-NN inference path
-***REMOVED*** n[1] is st_distance(..., geography) result = distance in meters → divide by 1000 → km
-dist = np.log(1 + (1 / (n[1] / 1000)))     ***REMOVED*** w = ln(1 + 1/d_km)
-enc = np.sum(vectors, axis=0) / dist_sum   ***REMOVED*** normalized weighted mean
+# NLEModel.encode_coords() — PostGIS 50-NN inference path
+# n[1] is st_distance(..., geography) result = distance in meters → divide by 1000 → km
+dist = np.log(1 + (1 / (n[1] / 1000)))     # w = ln(1 + 1/d_km)
+enc = np.sum(vectors, axis=0) / dist_sum   # normalized weighted mean
 ```
 
 This formula does **not** need a floor because the weighted mean is
@@ -244,7 +244,7 @@ is a direct weighted aggregation).
 | Value at d=1 km | `max(1/ln(1.1), e)` ≈ e | `ln(1+1)` ≈ 0.693 |
 | Value at d=5 km | `max(1/ln(5), e)` ≈ e | `ln(1+0.2)` ≈ 0.182 |
 
-***REMOVED******REMOVED******REMOVED*** 4.3 In-tree inductive path: deliberate design choice
+### 4.3 In-tree inductive path: deliberate design choice
 
 `InductiveSpatialService._damped_weight()` uses the **training formula**
 (§3.2) rather than the paper's §3.4 inference formula. This is a deliberate
@@ -253,7 +253,7 @@ same weight-range distribution as the DeepWalk-trained embedding space. The
 normalized weighted mean cancels the scale difference from the floor. See
 the `inductive_spatial_service.py` module docstring for the full rationale.
 
-***REMOVED******REMOVED******REMOVED*** 4.4 Double-damping guard
+### 4.4 Double-damping guard
 
 `KNNGraphService.calculate_edge_weight()` outputs **pre-damped weights** in
 the range [e, ~10.5]. If these are passed to
@@ -268,7 +268,7 @@ if called with pre-damped input.
 
 ---
 
-***REMOVED******REMOVED*** 5. The Full Pickle Generation Flow (Step 5)
+## 5. The Full Pickle Generation Flow (Step 5)
 
 **Step 5: GV-NLE training**
 
@@ -296,7 +296,7 @@ if called with pre-damped input.
 
 ---
 
-***REMOVED******REMOVED*** 6. Subgraph Fan-Out for BallTree Memory
+## 6. Subgraph Fan-Out for BallTree Memory
 
 k-NN graph construction is O(N²) in memory. The BallTree for a 400M-entity
 country (Australia) would not fit in RAM. The pipeline splits countries into
@@ -317,7 +317,7 @@ for the full fan-out architecture.
 
 ---
 
-***REMOVED******REMOVED*** 7. The Inductive Bridge: BallTree for Unseen Entities
+## 7. The Inductive Bridge: BallTree for Unseen Entities
 
 **Source:** <ref_file file="backend/semantic_search/services/inductive_spatial_service.py" />
 
@@ -351,7 +351,7 @@ for the full inductive encoding schematic.
 
 ---
 
-***REMOVED******REMOVED*** 8. Data Flow Summary
+## 8. Data Flow Summary
 
 ```
 GeoVectors TSV files (pre-trained, per country)
@@ -376,7 +376,7 @@ PostGIS GiST → load trained entities → BallTree(haversine)
   → query k=50 → IDW damped weights → weighted mean → 100D provisional
 ```
 
-***REMOVED******REMOVED******REMOVED*** 8.1 The wdw.pickle Lifecycle: Producers and Consumers
+### 8.1 The wdw.pickle Lifecycle: Producers and Consumers
 
 The pickle is **shared infrastructure**, not the property of any single
 path. Two producers create it; three consumers read it.
@@ -405,7 +405,7 @@ query-time path.
 
 ---
 
-***REMOVED******REMOVED*** 9. Invariants
+## 9. Invariants
 
 - The `wdw.pickle` stores the DeepWalk model (WDWStore), **not** a BallTree.
   The BallTree is always rebuilt in-memory from PostGIS-loaded entities.

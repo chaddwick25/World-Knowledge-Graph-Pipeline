@@ -29,7 +29,7 @@ class OSMWikiDataHierarchy(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
-    ***REMOVED*** OSM identifiers
+    # OSM identifiers
     osm_relation_id = models.BigIntegerField(
         null=True,
         blank=True,
@@ -43,7 +43,7 @@ class OSMWikiDataHierarchy(models.Model):
         help_text="OSM admin_level (2=country, 4=state, 6=municipality, etc.)"
     )
     
-    ***REMOVED*** Wikidata identifiers
+    # Wikidata identifiers
     wikidata_id = models.CharField(
         max_length=20,
         null=True,
@@ -58,23 +58,23 @@ class OSMWikiDataHierarchy(models.Model):
         help_text="Full Wikidata URI (e.g., 'http://www.wikidata.org/entity/Q781')"
     )
     
-    ***REMOVED*** Geospatial hierarchy
+    # Geospatial hierarchy
     name = models.CharField(max_length=255, db_index=True)
     slug = models.CharField(max_length=255, db_index=True)
     parent_slug = models.CharField(max_length=255, null=True, blank=True)
     
-    ***REMOVED*** Continent reference
+    # Continent reference
     continent_name = models.CharField(max_length=100, null=True, blank=True)
     continent_id = models.UUIDField(null=True, blank=True)
     
-    ***REMOVED*** Geofabrik primitive (temporal data source)
+    # Geofabrik primitive (temporal data source)
     pbf_url = models.URLField(max_length=1024, null=True, blank=True)
     
-    ***REMOVED*** Processing state (Django primitive)
+    # Processing state (Django primitive)
     is_processed = models.BooleanField(default=False, db_index=True)
     processed_at = models.DateTimeField(null=True, blank=True)
     
-    ***REMOVED*** Pickle generation capability (constraint for processing eligibility)
+    # Pickle generation capability (constraint for processing eligibility)
     can_generate_pickle = models.BooleanField(
         default=False,
         db_index=True,
@@ -82,7 +82,7 @@ class OSMWikiDataHierarchy(models.Model):
     )
     pickle_generation_validated_at = models.DateTimeField(null=True, blank=True)
     
-    ***REMOVED*** Pipeline configuration
+    # Pipeline configuration
     default_levels = ArrayField(
         models.IntegerField(),
         default=list,
@@ -90,22 +90,22 @@ class OSMWikiDataHierarchy(models.Model):
         help_text="Default admin levels for this region"
     )
     
-    ***REMOVED*** Processing policy schema (aligned with preserving_the_process)
+    # Processing policy schema (aligned with preserving_the_process)
     processing_policy = models.JSONField(
         default=dict,
         help_text="Policy schema defining pipeline stages, parameters, and prerequisites"
     )
     
-    ***REMOVED*** Metadata
+    # Metadata
     source_json_path = models.CharField(max_length=500, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    ***REMOVED*** Hierarchy cache tracking
+    # Hierarchy cache tracking
     hierarchy_synced_at = models.DateTimeField(null=True, blank=True)
     hierarchy_cache_path = models.CharField(max_length=500, null=True, blank=True)
     subgraph_hierarchy_path = models.CharField(max_length=500, null=True, blank=True)
     
-    ***REMOVED*** Links to existing hierarchy
+    # Links to existing hierarchy
     region_hierarchy = models.OneToOneField(
         'RegionHierarchy',
         on_delete=models.SET_NULL,
@@ -145,7 +145,7 @@ class OSMWikiDataHierarchy(models.Model):
         
         base_dir = settings.BASE_DATA_DIR
         project_root = settings.PROJECT_ROOT
-        if self.admin_level is None:  ***REMOVED*** Planet
+        if self.admin_level is None:  # Planet
             return {
                 "stages": {
                     "planet_initialization": {
@@ -173,7 +173,7 @@ class OSMWikiDataHierarchy(models.Model):
                     }
                 }
             }
-        elif self.admin_level == 2:  ***REMOVED*** Country
+        elif self.admin_level == 2:  # Country
             return {
                 "stages": {
                     "preprocessing": {
@@ -216,7 +216,7 @@ class OSMWikiDataHierarchy(models.Model):
                     }
                 }
             }
-        elif self.admin_level == 4:  ***REMOVED*** State/Province (Subgraph)
+        elif self.admin_level == 4:  # State/Province (Subgraph)
             return {
                 "stages": {
                     "preprocessing": {

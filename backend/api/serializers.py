@@ -14,24 +14,24 @@ class RegionHierarchySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'is_available', 'children', 'parent', 'poly_file_path', 'corresponding_pbf']
 
     def get_children(self, obj):
-        ***REMOVED*** Recursively serialize children
+        # Recursively serialize children
         children = obj.children.all()
         serializer = RegionHierarchySerializer(children, many=True, context=self.context)
         return serializer.data
 
     def get_is_available(self, obj):
-        ***REMOVED*** Determine if a region is available for processing
-        ***REMOVED*** A region is available if its corresponding PBF is generated, OR if its parent is available.
+        # Determine if a region is available for processing
+        # A region is available if its corresponding PBF is generated, OR if its parent is available.
         if obj.corresponding_pbf is not None:
             return True
         
-        ***REMOVED*** For top-level nodes (continents), availability depends on the planet file.
+        # For top-level nodes (continents), availability depends on the planet file.
         if obj.parent is None:
             return self.context.get('planet_file_available', False)
             
-        ***REMOVED*** For other nodes, availability is inherited from the parent.
-        ***REMOVED*** This logic is handled by the view, which passes down availability.
-        ***REMOVED*** The serializer just reflects the pre-calculated value.
+        # For other nodes, availability is inherited from the parent.
+        # This logic is handled by the view, which passes down availability.
+        # The serializer just reflects the pre-calculated value.
         return self.context.get(f'is_available_{obj.id}', False)
 
 
@@ -86,9 +86,9 @@ class PbfFileSerializer(serializers.ModelSerializer):
     def get_region(self, obj):
         if obj.source_url:
             try:
-                ***REMOVED*** Extract the filename from the URL
+                # Extract the filename from the URL
                 file_name = os.path.basename(obj.source_url)
-                ***REMOVED*** Clean up the name to get the region
+                # Clean up the name to get the region
                 region_name = file_name.replace('-latest.osm.pbf', '').replace('_', ' ').title()
                 return region_name
             except Exception:

@@ -2,8 +2,8 @@ import logging
 from typing import Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Audit the entire codebase
-***REMOVED*** TODO: Load these from a config file
+# Audit the entire codebase
+# TODO: Load these from a config file
 NCA_REPO_URL = "https://github.com/alishiba14/NCA-OSM-to-KGs"
 NCA_WIKIDATA_THRESHOLD = 0.25
 NCA_DBPEDIA_THRESHOLD = 0.40
@@ -39,7 +39,7 @@ class NCAClassificationService:
         service = NCAClassificationService()
         service.load_model('/path/to/nca_model.pt')
         wikidata_classes = service.predict_wikidata_classes({'amenity': 'restaurant'})
-        ***REMOVED*** Returns: [('http://www.wikidata.org/entity/Q11707', 0.87), ...]
+        # Returns: [('http://www.wikidata.org/entity/Q11707', 0.87), ...]
 
     Status: Model weights must be downloaded from the NCA GitHub repository.
     Until then, the tag-matching heuristic in WorldKGOntologyService is used as fallback.
@@ -109,7 +109,7 @@ class NCAClassificationService:
 
         try:
             import torch
-            ***REMOVED*** NCA uses a simple bag-of-words encoding over tag keys and values
+            # NCA uses a simple bag-of-words encoding over tag keys and values
             tag_tokens = []
             for key, value in tags.items():
                 tag_tokens.extend(key.lower().split(':'))
@@ -118,8 +118,8 @@ class NCAClassificationService:
             if not tag_tokens:
                 return None
 
-            ***REMOVED*** Encode with model's internal embedding layer (vocabulary lookup)
-            ***REMOVED*** Exact implementation depends on NCA model architecture
+            # Encode with model's internal embedding layer (vocabulary lookup)
+            # Exact implementation depends on NCA model architecture
             token_ids = [
                 self._model.vocab.get(t, self._model.vocab.get('<unk>', 0))
                 for t in tag_tokens
@@ -261,13 +261,13 @@ class NCAClassificationService:
         wikidata_predictions = self.predict_wikidata_classes(tags, threshold=threshold)
 
         for wikidata_uri, _score in wikidata_predictions:
-            ***REMOVED*** Find which wkgs: class has this Wikidata equivalent
+            # Find which wkgs: class has this Wikidata equivalent
             for class_name in ontology_service.get_all_classes():
                 equiv = ontology_service.get_wikidata_equivalent(class_name)
                 if equiv == wikidata_uri:
                     return class_name
 
-        ***REMOVED*** NCA found no Wikidata match in our ontology — fall back to tag matching
+        # NCA found no Wikidata match in our ontology — fall back to tag matching
         return ontology_service.predict_class_from_tags(tags)
 
 

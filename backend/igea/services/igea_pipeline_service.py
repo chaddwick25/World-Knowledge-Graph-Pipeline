@@ -62,7 +62,7 @@ class IgeaPipelineService:
             )
             return None
 
-        ***REMOVED*** Backfill missing embeddings via FastText
+        # Backfill missing embeddings via FastText
         ft_service = FastTextEmbeddingService()
         for c in candidates:
             if not c.get('embedding') and c.get('label'):
@@ -73,14 +73,14 @@ class IgeaPipelineService:
 
         igea.load_wikidata_candidates(candidates)
 
-        ***REMOVED*** Resolve poly path
+        # Resolve poly path
         poly_path = cfg.poly_path
         if not poly_path and cfg.snapshot_pbf_path:
             snap_poly = Path(cfg.snapshot_pbf_path).with_suffix('.poly')
             if snap_poly.exists():
                 poly_path = str(snap_poly)
 
-        ***REMOVED*** TODO: Double-check if missing polygon_wkt throws an error
+        # TODO: Double-check if missing polygon_wkt throws an error
         polygon_wkt = None
         if poly_path:
             polygon_wkt = parse_poly_to_wkt(poly_path)

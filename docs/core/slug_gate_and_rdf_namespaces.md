@@ -1,4 +1,4 @@
-***REMOVED*** Slug Gate & RDF Namespace Alignment: the Two "Alignment" Layers of Planet Init
+# Slug Gate & RDF Namespace Alignment: the Two "Alignment" Layers of Planet Init
 
 > **Focus:** how the pipeline aligns *filesystem paths* (planet → continent →
 > country slug resolution) and *RDF namespaces* (WorldKG 1.0 vs the legacy
@@ -17,9 +17,9 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Country Slug Gate (planet → continent → country paths)
+## 1. The Country Slug Gate (planet → continent → country paths)
 
-***REMOVED******REMOVED******REMOVED*** 1.1 The Three Path Families and Their Slug Sources
+### 1.1 The Three Path Families and Their Slug Sources
 
 | Path family | Slug source | Convention | NL example |
 |---|---|---|---|
@@ -27,7 +27,7 @@
 | OSM extraction dirs (`OSM_WIKIDATA_EXTRACTIONS_DIR/...`) | `regional_path_service.get_country_dir()` → **normalizes to underscores** | underscores | `.../europe/netherlands/temporal_snapshots/` |
 | Poly files (`POLYGON_FILES_DIR`) | Geofabrik dir slug | hyphens | `europe/netherlands.poly` |
 
-***REMOVED******REMOVED******REMOVED*** 1.2 How the Gate Is Built (init_planet Chain)
+### 1.2 How the Gate Is Built (init_planet Chain)
 
 1. `country_relation_resolver.sync()`
    (`core/services/planet_init/country_relation_resolver.py`):
@@ -50,7 +50,7 @@
 5. `sync_geovectors_metadata`
    (`geovectors_encoder/.../sync_geovectors_metadata.py`)
 
-***REMOVED******REMOVED******REMOVED*** 1.3 `overrides.json`: the Per-Country Patch List (the Gate's Escape Hatch)
+### 1.3 `overrides.json`: the Per-Country Patch List (the Gate's Escape Hatch)
 
 Location: `settings.OVERRIDES_JSON_PATH` (host:
 `/media/.../OSM/overrides.json`, NOT
@@ -70,7 +70,7 @@ Workflow: `prebuild_country_paths --report` lists profiles with no TSV match
 Module-level cache in `country_override_service` (`clear_cache()` to
 invalidate).
 
-***REMOVED******REMOVED******REMOVED*** 1.4 The NL Incident (2026-08-26): Two Bugs, One Crash
+### 1.4 The NL Incident (2026-08-26): Two Bugs, One Crash
 
 1. **Gate violation**: `CountryEnvelope.from_db` resolved
    `snapshot_pbf_path` from `canonical_slug` (`netherlands`), but
@@ -102,7 +102,7 @@ the DB 2026-08-26). The code fix covers all 44 at once; `overrides.json`
 only patches one at a time. The full list is in `06-notes`
 §6.7.2.
 
-***REMOVED******REMOVED******REMOVED*** 1.5 Geofabrik Index Data Bugs (verified against `/app/data/geofabrik_index.json`)
+### 1.5 Geofabrik Index Data Bugs (verified against `/app/data/geofabrik_index.json`)
 
 `get_iso_to_slug_map()` is **last-write-wins** over duplicate ISO codes:
 
@@ -116,40 +116,40 @@ only patches one at a time. The full list is in `06-notes`
 
 ---
 
-***REMOVED******REMOVED*** 2. RDF Namespace Alignment (WorldKG 1.0 vs GeoVectors v2)
+## 2. RDF Namespace Alignment (WorldKG 1.0 vs GeoVectors v2)
 
-***REMOVED******REMOVED******REMOVED*** 2.1 The Ground Truth
+### 2.1 The Ground Truth
 
 The on-disk WorldKG 1.0 dumps under `settings.WORLDKG_ONTOLOGY_PATH`
 (`/app/data/OSM-PBF-FILES/world_kg_ontology/`) declare:
 
 ```turtle
-***REMOVED*** WorldKG_Ontolgy.ttl
+# WorldKG_Ontolgy.ttl
 @prefix wkgs: <http://www.worldkg.org/schema/> .     ← classes + properties
 @prefix dcterms: <http://purl.org/dc/terms/> .
-@prefix owl: <http://www.w3.org/2002/07/owl***REMOVED***> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema***REMOVED***> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix dbo: <http://dbpedia.org/ontology/> .
 
-***REMOVED*** planet_osm.ttl (instance data)
+# planet_osm.ttl (instance data)
 @prefix wkg: <http://www.worldkg.org/resource/> .    ← entity URIs
 @prefix wkgs: <http://www.worldkg.org/schema/> .
 @prefix osmn: <https://www.openstreetmap.org/node/> .
-@prefix geo: <http://www.opengis.net/ont/geosparql***REMOVED***> .
-@prefix sf: <http://www.opengis.net/ont/sf***REMOVED***> .
+@prefix geo: <http://www.opengis.net/ont/geosparql#> .
+@prefix sf: <http://www.opengis.net/ont/sf#> .
 ```
 
 Verified 2026-08-26: parsing the ontology TTL yields **1171 classes** under
 `http://www.worldkg.org/schema/` and **0** under both
 `http://schema.worldkg.org/` and the GeoVectors v2 namespace.
 
-***REMOVED******REMOVED******REMOVED*** 2.2 Paper Figure 2 (GeoVectors v2, arXiv:2108.13092) vs WorldKG 1.0
+### 2.2 Paper Figure 2 (GeoVectors v2, arXiv:2108.13092) vs WorldKG 1.0
 
 | Prefix | Paper Fig 2 (GeoVectors v2 corpus) | WorldKG 1.0 (this project's data) |
 |---|---|---|
 | resource | `geovec:` `http://geovectors.l3s.uni-hannover.de/resource/` (`geovec:v2_n_240109189`) | `wkg:` `http://www.worldkg.org/resource/` (`wkg:10`) |
 | schema | `geovec-s:` `http://geovectors.l3s.uni-hannover.de/schema/` (`EmbeddedSpatialThing`) | `wkgs:` `http://www.worldkg.org/schema/` (`wkgs:Village`) |
-| geometry | `geo:` `http://www.w3.org/2003/01/geo/wgs84_pos***REMOVED***` (`latitude`/`longitude`) | `geo:` `http://www.opengis.net/ont/geosparql***REMOVED***` (`asWKT` via `wkgs:spatialObject`) |
+| geometry | `geo:` `http://www.w3.org/2003/01/geo/wgs84_pos#` (`latitude`/`longitude`) | `geo:` `http://www.opengis.net/ont/geosparql#` (`asWKT` via `wkgs:spatialObject`) |
 | OSM link | `prov:hadPrimarySource <https://www.openstreetmap.org/node/{id}>` | `wkgs:osmLink osmn:{id}` |
 | node type | `lgd:Node` (LinkedGeoData) | (dropped) |
 | Wikidata | `owl:sameAs` on the entity | `owl:equivalentClass` on the class (NCA) |
@@ -160,7 +160,7 @@ project mirrors the successor **WorldKG 1.0** (Dsouza et al., CIKM 2021).
 The namespace evolution is `geovectors.l3s.uni-hannover.de/...` →
 `www.worldkg.org/...`. Code must follow the **data**, not the paper.
 
-***REMOVED******REMOVED******REMOVED*** 2.3 The `schema.worldkg.org` Bug (fixed 2026-08-26)
+### 2.3 The `schema.worldkg.org` Bug (fixed 2026-08-26)
 
 Two modules hardcoded `WKGS_BASE_URI = "http://schema.worldkg.org/"`, a
 namespace that exists in NEITHER the paper NOR the data:
@@ -190,9 +190,9 @@ parses ≥1000 classes incl. `wkgs:WKGObject`/`wkgs:Amenity`/
 
 ---
 
-***REMOVED******REMOVED*** 3. Sources & URLs (the Canonical Reference List)
+## 3. Sources & URLs (the Canonical Reference List)
 
-***REMOVED******REMOVED******REMOVED*** Datasets / Corpora
+### Datasets / Corpora
 
 | Item | URL |
 |---|---|
@@ -206,10 +206,10 @@ parses ≥1000 classes incl. `wkgs:WKGObject`/`wkgs:Amenity`/
 | Wikidata SPARQL endpoint | https://query.wikidata.org/sparql |
 | LinkedGeoData ontology (paper's `lgd:`) | http://linkedgeodata.org/meta/ |
 | Basic Geo (WGS84) vocabulary (paper's `geo:`) | https://www.w3.org/2003/01/geo/wgs84_pos |
-| PROV ontology (paper's `prov:`) | https://www.w3.org/ns/prov***REMOVED*** |
-| GeoSPARQL ontology (WorldKG 1.0 geometry) | http://www.opengis.net/ont/geosparql***REMOVED*** |
+| PROV ontology (paper's `prov:`) | https://www.w3.org/ns/prov# |
+| GeoSPARQL ontology (WorldKG 1.0 geometry) | http://www.opengis.net/ont/geosparql# |
 
-***REMOVED******REMOVED******REMOVED*** Local Ground Truth (files that must be treated as authoritative)
+### Local Ground Truth (files that must be treated as authoritative)
 
 | Item | Path |
 |---|---|
@@ -220,7 +220,7 @@ parses ≥1000 classes incl. `wkgs:WKGObject`/`wkgs:Amenity`/
 | Geofabrik index cache | `/app/data/geofabrik_index.json` |
 | Country relations (merged Geofabrik + SPARQL) | `/app/data/country_relations.json` |
 
-***REMOVED******REMOVED******REMOVED*** Code Invariants (do not break)
+### Code Invariants (do not break)
 
 1. **Country slug**: every service that needs a country slug for a path MUST
    derive it from `canonical_slug` (via `get_country_slug(iso,

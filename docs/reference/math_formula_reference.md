@@ -1,4 +1,4 @@
-***REMOVED*** Mathematical Formula Reference
+# Mathematical Formula Reference
 
 > **Status**: new (2026-09-19)
 >
@@ -19,7 +19,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Intent (decision in one line)
+## 1. Intent (decision in one line)
 
 Part 1 collects the formulas so the math is checkable in one place. Part 2
 states what stays true at each stage and where that property is checked in
@@ -27,7 +27,7 @@ code or tests.
 
 ---
 
-***REMOVED******REMOVED*** 2. Notation
+## 2. Notation
 
 | Symbol | Meaning |
 |---|---|
@@ -50,15 +50,15 @@ code or tests.
 
 ---
 
-***REMOVED******REMOVED*** 3. Part 1: The Formula Base
+## 3. Part 1: The Formula Base
 
 Every formula below is quoted from its source schematic. Formula text is
 byte-identical to the original; the Source column names the doc and
 section.
 
-***REMOVED******REMOVED******REMOVED*** 3.1 Encoder: `geovectors_encoder/`
+### 3.1 Encoder: `geovectors_encoder/`
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.1.1 GV-Tags: token centroid + L2 normalization
+#### 3.1.1 GV-Tags: token centroid + L2 normalization
 [../geovectors_encoder/two_axis_vs_single_axis_encoding.md §3, §8](../geovectors_encoder/two_axis_vs_single_axis_encoding.md)
 
 | Formula | Meaning |
@@ -68,7 +68,7 @@ section.
 | `static_embedding (400D) = concatenate(gv_tags_embedding(300D), gv_nle_embedding(100D))` | fused embedding, only populated when both axes present |
 | `cosine distance ∈ [0, 2]`, `similarity = 1 − distance` | pgvector cosine semantics |
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.1.2 The two IDW formulas (do not conflate)
+#### 3.1.2 The two IDW formulas (do not conflate)
 [../geovectors_encoder/balltree_pickle_generation.md §4](../geovectors_encoder/balltree_pickle_generation.md)
 
 | Formula | Role |
@@ -78,7 +78,7 @@ section.
 | `enc = np.sum(vectors, axis=0) / dist_sum` | normalized weighted mean of the 50 nearest GV-NLE vectors |
 | `distances_km = distances_rad × 6371.0` | haversine radians → km |
 
-***REMOVED******REMOVED******REMOVED*** 3.2 Postgres
+### 3.2 Postgres
 
 [../geovectors_encoder/vector_storage_partitioning.md](../geovectors_encoder/vector_storage_partitioning.md),
 [../worldkg_nca/gis_vector_metrics.md §3.4](../worldkg_nca/gis_vector_metrics.md)
@@ -89,9 +89,9 @@ section.
 | HNSW `O(log N)` per query, ~150 bytes/row (m=16 pointers) | ANN graph structure, vectors live in the heap |
 | `cosine distance ∈ [0, 2]`, `similarity = 1 − distance` | vector similarity semantics |
 
-***REMOVED******REMOVED******REMOVED*** 3.3 Learned Layer: `semantic_search/`
+### 3.3 Learned Layer: `semantic_search/`
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.3.1 The k-NN graph and its weights
+#### 3.3.1 The k-NN graph and its weights
 [../semantic_search/factor_table_math_reference.md §2](../semantic_search/factor_table_math_reference.md)
 
 | Formula | Meaning |
@@ -101,7 +101,7 @@ section.
 | asymmetric → undirected via max-weight canonicalization | `(i, j)` dedup keeps `max(w_ij, w_ji)` (NetworkX semantics) |
 | k-NN memory: `N × k` edges | `O(N × k)`; 400M entities × 50 = 20B edges ≈ 800 GB, the reason for subdivision fan-out |
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.3.2 Laplacians and eigendecomposition
+#### 3.3.2 Laplacians and eigendecomposition
 [../semantic_search/factor_table_math_reference.md §3](../semantic_search/factor_table_math_reference.md),
 [../semantic_search/graph_spectral_drift.md §2.2](../semantic_search/graph_spectral_drift.md)
 
@@ -114,7 +114,7 @@ section.
 | `λ_K − λ₂` | "spectral gap" (a spread; hardening Phase 7 renames) |
 | `φ₂` = Fiedler vector | the slowest mode, a smooth coordinate over the graph |
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.3.3 Graph signals and diffusion
+#### 3.3.3 Graph signals and diffusion
 [../semantic_search/factor_table_math_reference.md §3.3](../semantic_search/factor_table_math_reference.md),
 [../semantic_search/graph_spectral_drift.md §2.3, §2.4](../semantic_search/graph_spectral_drift.md)
 
@@ -126,7 +126,7 @@ section.
 | `(L + μI)⁻¹ s` | regularized inverse diffusion, `μ > 0` |
 | `u(t) = e^{−tL} · δ_source` | heat kernel diffusion from a source; mass-conserving `Σᵢ u(t)ᵢ = 1` |
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.3.4 The runtime factorization: heat kernel as one pgvector query
+#### 3.3.4 The runtime factorization: heat kernel as one pgvector query
 [../semantic_search/factor_table_math_reference.md §4](../semantic_search/factor_table_math_reference.md)
 
 | Formula | Meaning |
@@ -134,7 +134,7 @@ section.
 | `e^{−tL} = Φ · e^{−tΛ} · Φᵀ  =  Σ_k e^{−t·λ_k} · φ_k · φ_kᵀ` | eigendecompose the matrix exponential, never build it |
 | `u(t) = Σ_k e^{−t·λ_k} · φ_k(anchor) · φ_k` | apply to the anchor delta |
 | `score(node) = Σ_k e^{−t·λ_k} · φ_k(anchor) · φ_k(node)  =  < w, φ(node) >` | per-node score is an inner product |
-| `w_k = e^{−t·λ_k} · φ_k(anchor)` | the weight vector; one pgvector `<***REMOVED***>` (negative inner product), `ORDER BY neg_ip ASC` |
+| `w_k = e^{−t·λ_k} · φ_k(anchor)` | the weight vector; one pgvector `<#>` (negative inner product), `ORDER BY neg_ip ASC` |
 | zero-padding to `EIGEN_LOADING_DIM = 128` | trailing zeros contribute nothing to the inner product |
 
 Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
@@ -142,14 +142,14 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 [0.431, −0.278, 0.389, 0.096]`; candidate A scores 0.368, candidate B scores
 −0.106, A ranks first. The decay `e^{−tλ}` damps high-frequency modes first.
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.3.5 Louvain modularity
+#### 3.3.5 Louvain modularity
 [../semantic_search/factor_table_math_reference.md §5.1](../semantic_search/factor_table_math_reference.md)
 
 | Formula | Meaning |
 |---|---|
 | `Q = (1/2m) Σ_ij [A_ij − d_i d_j / 2m] δ(c_i, c_j)` | greedy modularity maximization; `δ` = 1 when nodes share a community; `Q ∈ [−0.5, 1]` |
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.3.6 Cross-subgraph transport (functional maps)
+#### 3.3.6 Cross-subgraph transport (functional maps)
 [../semantic_search/factor_table_math_reference.md §7](../semantic_search/factor_table_math_reference.md)
 
 | Formula | Meaning |
@@ -161,7 +161,7 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 | `fit_residual = ‖F_B − F_A Cᵀ‖_F / ‖F_B‖_F` | descriptor quality certificate |
 | `commutativity_residual = ‖CΛ_A − Λ_B C‖_F / ‖Λ_A‖_F` | geometry-respect quality certificate; min 16 shared entities or the pair is skipped |
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.3.7 Temporal drift (Step 5d)
+#### 3.3.7 Temporal drift (Step 5d)
 [../semantic_search/factor_table_math_reference.md §8](../semantic_search/factor_table_math_reference.md),
 [../semantic_search/graph_spectral_drift.md §3.1, §3.2](../semantic_search/graph_spectral_drift.md)
 
@@ -179,7 +179,7 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 | `drift_magnitude`: `low < 0.1 < medium < 0.5 < high < 1.0 < extreme` | classification thresholds |
 | ARIMA(1,1,1), exp-smoothing fallback `α = 0.3`, `1.96σ` intervals, CUSUM | forecast + change-point |
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.3.8 Embedding drift: Sliced Wasserstein Distance + freshness
+#### 3.3.8 Embedding drift: Sliced Wasserstein Distance + freshness
 [../semantic_search/graph_spectral_drift.md §4](../semantic_search/graph_spectral_drift.md)
 
 | Formula | Meaning |
@@ -188,7 +188,7 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 | 1D Wasserstein (Earth Mover's Distance) per projection, averaged | approximates true W₂ in high dimensions |
 | `F = α · exp(-λ_sem · W_sem) + (1-α) · exp(-λ_spat · W_spat)` | freshness score; `α = 0.5`, `λ_sem = λ_spat = 5.0`; `F ∈ [0, 1]`, 1 = identical |
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.3.9 Spectral filtering: Chebyshev vs Lanczos
+#### 3.3.9 Spectral filtering: Chebyshev vs Lanczos
 [../semantic_search/spectral_filtering_chebyshev_vs_lanczos.md §1, §2](../semantic_search/spectral_filtering_chebyshev_vs_lanczos.md)
 
 | Formula | Meaning |
@@ -199,7 +199,7 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 | `T₀(L̃) x = x`, `T₁(L̃) x = L̃ x`, `Tₖ(L̃) x = 2 L̃ T_{k-1}(L̃) x - T_{k-2}(L̃) x` | three-term recursion, sparse mat-vec only |
 | `α = t · λ_max / 2`, `f(λ) = exp(-tλ)` | heat-kernel filter coefficients; `λ_max ≈ 1.30` for IE (not bipartite) |
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.3.10 MapQA geographic scoring and routing
+#### 3.3.10 MapQA geographic scoring and routing
 [../semantic_search/mapqa_geographic_scoring_and_routing.md §1](../semantic_search/mapqa_geographic_scoring_and_routing.md),
 [../semantic_search/mapqa_parser_executor.md §3](../semantic_search/mapqa_parser_executor.md)
 
@@ -209,7 +209,7 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 | `combined_score = diffusion_score + name_score + geo_score + uslp_boost` | re-rank; `name_score` = FastText cosine between the OBJECT span and entity `name` (proper-name queries only, else 0.0); USLP signal boost `+0.5` for predicted link tails (normalized score ≥ 0.7) |
 | tag match boost `+1.0` | exact tag value match ranks above semantic near-match |
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.3.11 Visualization kernels
+#### 3.3.11 Visualization kernels
 [../semantic_search/external_concepts_dag_visualization.md §4](../semantic_search/external_concepts_dag_visualization.md)
 
 | Formula | Meaning |
@@ -218,9 +218,9 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 | `K(x, x') = exp(-||x - x'||² / 2σ²)` | Gaussian RBF kernel |
 | `ρ(x) = Σ_i K(x, x_i)` | RBF density surface over result entity positions |
 
-***REMOVED******REMOVED******REMOVED*** 3.4 IGEA + USLP: `igea/`
+### 3.4 IGEA + USLP: `igea/`
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.4.1 USLP tri-space scoring
+#### 3.4.1 USLP tri-space scoring
 [../igea/uslp_spatial_link_prediction.md §3](../igea/uslp_spatial_link_prediction.md)
 
 | Formula | Meaning |
@@ -232,7 +232,7 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 | `normalized = unnormalized / 3.0` | `[0, 1.0]`; acceptance threshold `0.7` |
 | geohash radius: precision 1 → ~5000 km, 3 → ~156 km, 4 → ~39 km | relation-specific search radius |
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 3.4.2 IGEA alignment
+#### 3.4.2 IGEA alignment
 [../igea/igea_iterative_alignment.md §3, §7](../igea/igea_iterative_alignment.md)
 
 | Formula | Meaning |
@@ -240,7 +240,7 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 | `score = cross_attention_model.predict(osm, wikidata)` | per-country cross-attention BiLSTM; fallback `cosine(gv_tags_embedding, candidate_emb)` |
 | threshold `0.6`, max distance `2500 m`, max 3 iterations | acceptance, pair filter, loop bound |
 
-***REMOVED******REMOVED******REMOVED*** 3.5 Romanizer: `semantic_search/`
+### 3.5 Romanizer: `semantic_search/`
 
 [../semantic_search/deterministic_cross_script_romanization.md §5.1](../semantic_search/deterministic_cross_script_romanization.md)
 
@@ -250,7 +250,7 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 | `S_xscript = n-gram Jaccard similarity("paris bagueete", "paribagetteu")` | pg_trgm trigram similarity, e.g. 0.38 |
 | `S_total = S_name + S_xscript + S_geo + S_class` | combined score, parallel FastText + romanizer paths |
 
-***REMOVED******REMOVED******REMOVED*** 3.6 Agent / MCP / LLM: `platform/`
+### 3.6 Agent / MCP / LLM: `platform/`
 
 [../platform/llm_capacity_envelope.md §2](../platform/llm_capacity_envelope.md)
 
@@ -260,13 +260,13 @@ Worked numeric example (K = 4, from the source doc): `λ = [0.02, 0.11, 0.29,
 
 ---
 
-***REMOVED******REMOVED*** 4. Part 2: What stays true, and what the checks catch
+## 4. Part 2: What stays true, and what the checks catch
 
 Every formula family above survives some change untouched — node
 relabeling, rotation, sign flips. This part says which change, in plain
 terms, and where the check lives in code.
 
-***REMOVED******REMOVED******REMOVED*** 4.1 The master table
+### 4.1 The master table
 
 | Formula family | What stays true | Code home |
 |---|---|---|
@@ -290,7 +290,7 @@ terms, and where the check lives in code.
 | USLP geo score | depends only on geodesic distance | `spatial_link_prediction.py` |
 | MapQA bag-of-words | word order doesn't change TF-IDF statistics | `query_parser_service.py` |
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Why the factor tables work
+### 4.2 Why the factor tables work
 
 The pipeline's deepest property is that eigenvalues don't depend on how
 the nodes are numbered. If `P` is a permutation matrix relabeling the
@@ -312,7 +312,7 @@ numbered. This is also why drift needs no node alignment:
 `‖λ_t − λ_{t−1}‖₂` compares two spectra directly, and both snapshots
 live in the same order-free space.
 
-***REMOVED******REMOVED******REMOVED*** 4.3 Why cross-subgraph transport is checkable
+### 4.3 Why cross-subgraph transport is checkable
 
 The functional-map objective is a spectrum-consistency condition:
 
@@ -333,7 +333,7 @@ The two residuals are the quality certificates: `fit_residual` answers
 answers "does `C` respect the spectra?". Both are stored with the
 transport matrix and both are gates, not vibes.
 
-***REMOVED******REMOVED******REMOVED*** 4.4 Sign alignment before comparison
+### 4.4 Sign alignment before comparison
 
 An eigenvector is defined only up to sign: if `Lφ = λφ` then `L(−φ) =
 λ(−φ)`. Comparing eigenvectors across snapshots without aligning signs
@@ -352,7 +352,7 @@ component; flipping one puts them on the same footing. The hardening plan
 Phase 2 upgrades the per-component sign fix to block-wise orthogonal
 Procrustes, the same move for a whole degenerate block at once.
 
-***REMOVED******REMOVED******REMOVED*** 4.5 Worked example: sign alignment with real numbers
+### 4.5 Worked example: sign alignment with real numbers
 
 Take one loading row from the Factor Table Math Reference's own example,
 `φ_from = [0.44, −0.31, 0.52]`, and a second snapshot's row that is the
@@ -388,7 +388,7 @@ dots_k = 0.44·0.10 + (−0.31)·0.20 + 0.52·(−0.35)
 Real drift of 0.36 survives the sign alignment. Zero stays zero, real
 change stays real: that is what a checkable property buys.
 
-***REMOVED******REMOVED******REMOVED*** 4.6 Which properties are load-bearing
+### 4.6 Which properties are load-bearing
 
 The honest boundary between math the design relies on and math that is
 merely true.
@@ -418,7 +418,7 @@ stops being well-defined (sign comparison, cross-basis transport,
 snapshot drift, cosine ranking). For the incidental column: the formula
 still works.
 
-***REMOVED******REMOVED******REMOVED*** 4.7 What this means for the pipeline
+### 4.7 What this means for the pipeline
 
 - Eigenvalues being order-free is why spectral methods are
   coordinate-free: the factor tables store the summary plus per-node
@@ -430,7 +430,7 @@ still works.
 
 ---
 
-***REMOVED******REMOVED*** 5. Checks to protect
+## 5. Checks to protect
 
 Checkable statements derived from both parts.
 
@@ -438,7 +438,7 @@ Checkable statements derived from both parts.
 Part 1:
   λ ∈ [0, 2], sorted ascending, non-negative            (normalized Laplacian)
   ΦᵀΦ ≈ I                                               (orthonormality)
-  score = <w, φ> computed with <***REMOVED***> (negative IP)        (ORDER BY ASC = rank by score)
+  score = <w, φ> computed with <#> (negative IP)        (ORDER BY ASC = rank by score)
   loading_drift, fiedler_drift ∈ [0, 2]                 (cosine distance)
   modularity Q ∈ [−0.5, 1]
   tr(sᵀLs) ≥ 0; = 0 for constant signal on connected graph
@@ -456,7 +456,7 @@ Part 2:
 
 ---
 
-***REMOVED******REMOVED*** 6. Sources
+## 6. Sources
 
 | Formula base section | Source doc |
 |---|---|

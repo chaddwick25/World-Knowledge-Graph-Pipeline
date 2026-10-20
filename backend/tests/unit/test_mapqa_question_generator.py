@@ -1,9 +1,9 @@
 """Unit tests for the MapQA self-supervised question generator.
 
 Tests generator invariants (coverage-expansion §8):
-  - ***REMOVED***1 count answer equals an independent ST_DWithin recount
-  - ***REMOVED***2 distance answer equals a haversine recompute (±1%)
-  - ***REMOVED***5 bearing answer matches bearing→cardinal recompute
+  - #1 count answer equals an independent ST_DWithin recount
+  - #2 distance answer equals a haversine recompute (±1%)
+  - #5 bearing answer matches bearing→cardinal recompute
   - No empty answers (regression vs the raw dataset's empty-answer rows)
   - Determinism (same seed + same snapshot → identical questions)
   - Idempotency (re-running does not grow the CSV)
@@ -29,11 +29,11 @@ import pytest
 COUNTRY = "BZ"
 SNAPSHOT = "2025_12_31"
 
-***REMOVED*** Controlled entity set around Belize City — clustered so radius/bearing/
-***REMOVED*** adjacency ground truth is computable, plus far-flung entities for the
-***REMOVED*** 0.5–200 km distance gate.
+# Controlled entity set around Belize City — clustered so radius/bearing/
+# adjacency ground truth is computable, plus far-flung entities for the
+# 0.5–200 km distance gate.
 ENTITY_ROWS = [
-    ***REMOVED*** (name, amenity, lat, lon, osm_id)
+    # (name, amenity, lat, lon, osm_id)
     ("Belize Bank", "bank", 17.5045, -88.1856, 100001),
     ("Cafe de Belice", "cafe", 17.5047, -88.1860, 100002),
     ("Belize City Restaurant", "restaurant", 17.5060, -88.1865, 100003),
@@ -108,12 +108,12 @@ class TestGroundTruth:
     """Ground-truth answers must match independent recomputations."""
 
     def test_radius_count_ground_truth(self, generator, seed_entities):
-        """***REMOVED***1 answer equals an independent ST_DWithin recount."""
+        """#1 answer equals an independent ST_DWithin recount."""
         from django.db import connections
         rows = generator._sample_template_1(
             COUNTRY, SNAPSHOT, budget=5, rng=random.Random(1)
         )
-        assert len(rows) > 0, "no ***REMOVED***1 rows generated for seeded BZ"
+        assert len(rows) > 0, "no #1 rows generated for seeded BZ"
         for row in rows:
             meta = row["meta"]
             with connections["vectors"].cursor() as cur:
@@ -138,11 +138,11 @@ class TestGroundTruth:
             assert int(row["answer"]) >= 1
 
     def test_distance_ground_truth(self, generator, seed_entities):
-        """***REMOVED***2 answer equals haversine recompute (±1%)."""
+        """#2 answer equals haversine recompute (±1%)."""
         rows = generator._sample_template_2(
             COUNTRY, SNAPSHOT, budget=5, rng=random.Random(2)
         )
-        assert len(rows) > 0, "no ***REMOVED***2 rows generated for seeded BZ"
+        assert len(rows) > 0, "no #2 rows generated for seeded BZ"
         for row in rows:
             meta = row["meta"]
             recompute = generator.haversine_km(
@@ -154,8 +154,8 @@ class TestGroundTruth:
             )
 
     def test_bearing_cardinal(self, generator, seed_entities):
-        """***REMOVED***5 direction matches bearing→cardinal recompute for known pairs."""
-        ***REMOVED*** Known synthetic pairs (bearing 0° = north, 90° = east, ...)
+        """#5 direction matches bearing→cardinal recompute for known pairs."""
+        # Known synthetic pairs (bearing 0° = north, 90° = east, ...)
         known = [
             (0.0, 0.0, 0.001, 0.0, "north"),
             (0.0, 0.0, 0.0, 0.001, "east"),
@@ -166,11 +166,11 @@ class TestGroundTruth:
             theta = generator.bearing_degrees(lat1, lon1, lat2, lon2)
             assert generator.cardinal_from_bearing(theta) == expected
 
-        ***REMOVED*** Generated rows must match their meta recomputation
+        # Generated rows must match their meta recomputation
         rows = generator._sample_template_5a(
             COUNTRY, SNAPSHOT, budget=5, rng=random.Random(3)
         )
-        assert len(rows) > 0, "no ***REMOVED***5a rows generated for seeded BZ"
+        assert len(rows) > 0, "no #5a rows generated for seeded BZ"
         for row in rows:
             meta = row["meta"]
             theta = generator.bearing_degrees(
@@ -194,7 +194,7 @@ class TestGroundTruth:
             assert row["Answer"] not in (None, "", "None"), (
                 f"empty answer for {row['MapQA question']!r}"
             )
-            ***REMOVED*** Every row has the extended-schema columns populated
+            # Every row has the extended-schema columns populated
             assert row["Source"] == "self_supervised"
             assert row["Snapshot_date"] == SNAPSHOT
             assert row["Country_code"] == COUNTRY
@@ -237,11 +237,11 @@ class TestDeterminismAndIdempotency:
             assert len(second) == len(first), (
                 f"CSV grew on re-run: {len(first)} → {len(second)}"
             )
-            ***REMOVED*** Content is identical (deterministic regeneration)
+            # Content is identical (deterministic regeneration)
             assert sorted(r["MapQA question"] for r in second) == sorted(
                 r["MapQA question"] for r in first
             )
-            ***REMOVED*** Hand-curated rows (Source != self_supervised) are preserved
+            # Hand-curated rows (Source != self_supervised) are preserved
             self._write_legacy_rows(out)
             call_command("generate_mapqa_training_data", **kwargs)
             third = self._read_rows(out)
@@ -263,8 +263,8 @@ class TestDeterminismAndIdempotency:
             "MapQA question,Question type,Region,Answer\n"
         )
         legacy_rows = [
-            "PLACE-ATTRIBUTE-QUERY (***REMOVED***8),transform,metric,italian food near a bus station,natural_language,augmented,restaurant\n",
-            "FILTER-AGGREGATE-MEASURE (***REMOVED***1),transform,metric,cafes near a school,natural_language,augmented,restaurant\n",
+            "PLACE-ATTRIBUTE-QUERY (#8),transform,metric,italian food near a bus station,natural_language,augmented,restaurant\n",
+            "FILTER-AGGREGATE-MEASURE (#1),transform,metric,cafes near a school,natural_language,augmented,restaurant\n",
         ]
         with open(path, "a", encoding="utf-8", newline="") as f:
             f.write(legacy_header)
@@ -312,7 +312,7 @@ class TestTrainSplitAndLoader:
             {"Region": "illinois_test", "Macro-template": "X"},
         ]
         train, test, holdout = Command._split_rows(rows)
-        assert len(train) == 3  ***REMOVED*** california + augmented + self_supervised
+        assert len(train) == 3  # california + augmented + self_supervised
         assert len(test) == 1
         assert len(holdout) == 1
         assert holdout[0]["Region"] == "self_supervised_test"

@@ -18,8 +18,8 @@ from ..models import (
     IngestionState,
 )
 
-***REMOVED*** Factory registry: adapter_type → adapter class. Phases 2–5
-***REMOVED*** add wfs/socrata/direct/rest here.
+# Factory registry: adapter_type → adapter class. Phases 2–5
+# add wfs/socrata/direct/rest here.
 ADAPTER_REGISTRY = {
     'ckan': CkanAdapter,
 }
@@ -63,9 +63,9 @@ class IngestionService:
             )
         return adapter_cls(source)
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Metadata sync
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Metadata sync
+    # ------------------------------------------------------------------
 
     def sync_metadata(self, dataset_ids: Optional[List[str]] = None) -> int:
         """Fetch and persist dataset/resource metadata from the source.
@@ -148,9 +148,9 @@ class IngestionService:
         self.logger.info(f"Synced {synced} resources for {dataset.title}")
         return synced
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Download + ingest
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Download + ingest
+    # ------------------------------------------------------------------
 
     def download_and_ingest(
         self,
@@ -266,9 +266,9 @@ class IngestionService:
         """Per-source date-field mapping, e.g. ``dataset_date_fields``."""
         return self.source.config.get('dataset_date_fields', {}).get(dataset.name)
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Incremental ingestion state helpers
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Incremental ingestion state helpers
+    # ------------------------------------------------------------------
 
     def _should_skip_record(
         self,
@@ -306,9 +306,9 @@ class IngestionService:
             f"count={records_count}, total={ingestion_state.total_records_ingested}"
         )
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Timestamp helper
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Timestamp helper
+    # ------------------------------------------------------------------
 
     def _parse_timestamp(self, timestamp_str: str) -> Any:
         if not timestamp_str:

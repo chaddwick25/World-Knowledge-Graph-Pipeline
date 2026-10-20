@@ -54,9 +54,9 @@ class SpatialSearchMixin:
 
         snapshot_id = cls._get_snapshot_id(snapshot_date)
 
-        ***REMOVED*** ── Step 1: Exact amenity tag match ──
-        ***REMOVED*** `tags__contains` renders `@>` (GIN-accelerated); `tags__amenity=`
-        ***REMOVED*** renders `->>` equality and full-scans the partition.
+        # ── Step 1: Exact amenity tag match ──
+        # `tags__contains` renders `@>` (GIN-accelerated); `tags__amenity=`
+        # renders `->>` equality and full-scans the partition.
         filter_tags = (
             {tag_target[0]: tag_target[1]} if tag_target
             else {"amenity": amenity_type}
@@ -79,9 +79,9 @@ class SpatialSearchMixin:
                               "output_count": len(results)})
             return results
 
-        ***REMOVED*** Precise category (tag_target) → exact-tag tier only; the
-        ***REMOVED*** fallback tiers would return wrong-class entities (same rule as
-        ***REMOVED*** _search_by_amenity_spatial).
+        # Precise category (tag_target) → exact-tag tier only; the
+        # fallback tiers would return wrong-class entities (same rule as
+        # _search_by_amenity_spatial).
         if tag_target:
             if trace is not None:
                 trace.append({
@@ -93,18 +93,18 @@ class SpatialSearchMixin:
                 })
             return []
 
-        ***REMOVED*** ── Step 2: WorldKG ontology class resolution ──
+        # ── Step 2: WorldKG ontology class resolution ──
         ontology_results = cls._search_by_ontology_class(
             amenity_type, country_code, snapshot_date, top_k, trace
         )
         if ontology_results:
             return ontology_results
 
-        ***REMOVED*** ── Step 2b: fuzzy correction (Kuhn's Template correction layer) ──
-        ***REMOVED*** A misspelled phrase ("resturant") fails steps 1-2. Correct it
-        ***REMOVED*** against the snapshot's real tag vocabulary (pg_trgm +
-        ***REMOVED*** fuzzystrmatch) and retry the exact-tag tier with the canonical
-        ***REMOVED*** form so the FastText step never sees a garbage embedding.
+        # ── Step 2b: fuzzy correction (Kuhn's Template correction layer) ──
+        # A misspelled phrase ("resturant") fails steps 1-2. Correct it
+        # against the snapshot's real tag vocabulary (pg_trgm +
+        # fuzzystrmatch) and retry the exact-tag tier with the canonical
+        # form so the FastText step never sees a garbage embedding.
         from semantic_search.services.query_correction_service import (
             QueryCorrectionService,
         )
@@ -134,9 +134,9 @@ class SpatialSearchMixin:
                     })
                 return results
 
-        ***REMOVED*** ── Step 3: generic amenity phrases ("amenities are") → any entity
-        ***REMOVED***    asserting an amenity-type key (GIN-indexed `tags ?|` — no
-        ***REMOVED***    embedding scan).
+        # ── Step 3: generic amenity phrases ("amenities are") → any entity
+        #    asserting an amenity-type key (GIN-indexed `tags ?|` — no
+        #    embedding scan).
         generic_keys = cls._generic_amenity_keys(amenity_type)
         if generic_keys:
             qs = OsmEntity.objects.using("vectors").filter(
@@ -157,7 +157,7 @@ class SpatialSearchMixin:
                 })
             return results
 
-        ***REMOVED*** ── Step 4: FastText semantic search fallback ──
+        # ── Step 4: FastText semantic search fallback ──
         fasttext_results = cls._search_by_fasttext(
             amenity_type, country_code, snapshot_date, top_k, trace
         )
@@ -189,9 +189,9 @@ class SpatialSearchMixin:
         except Exception:
             return []
 
-        ***REMOVED*** DB-driven resolution (rule 6.2 — hardening Phase 5): the
-        ***REMOVED*** factor_amenity_class_mapping table, populated by
-        ***REMOVED*** compute_amenity_class_mappings (data + ontology tiers).
+        # DB-driven resolution (rule 6.2 — hardening Phase 5): the
+        # factor_amenity_class_mapping table, populated by
+        # compute_amenity_class_mappings (data + ontology tiers).
         from semantic_search.services.factor_resolution_service import (
             FactorResolutionService,
         )
@@ -200,7 +200,7 @@ class SpatialSearchMixin:
         if not wkg_class:
             return []
 
-        ***REMOVED*** Get canonical OSM tags for this class
+        # Get canonical OSM tags for this class
         canonical_tags = ontology.get_canonical_tags(wkg_class)
         if not canonical_tags:
             return []
@@ -213,8 +213,8 @@ class SpatialSearchMixin:
             qs = qs.filter(country_code=country_code.upper())
         qs = qs.exclude(geom__isnull=True)
 
-        ***REMOVED*** Filter by each canonical tag. `tags__contains` renders `@>`
-        ***REMOVED*** (GIN-accelerated); `tags__key=value` renders `->>` and scans.
+        # Filter by each canonical tag. `tags__contains` renders `@>`
+        # (GIN-accelerated); `tags__key=value` renders `->>` and scans.
         for tag_key, tag_value in canonical_tags.items():
             if tag_value:
                 qs = qs.filter(tags__contains={tag_key: tag_value})
@@ -273,8 +273,8 @@ class SpatialSearchMixin:
             qs = qs.filter(country_code=country_code.upper())
         qs = qs.exclude(geom__isnull=True)
 
-        ***REMOVED*** Annotate with cosine distance (pgvector <=> operator)
-        ***REMOVED*** The + 0 prevents HNSW index usage (exact search, not approximate)
+        # Annotate with cosine distance (pgvector <=> operator)
+        # The + 0 prevents HNSW index usage (exact search, not approximate)
         qs = qs.annotate(
             embedding_distance=RawSQL(
                 "(gv_tags_embedding <=> %s::vector) + 0",
@@ -302,10 +302,10 @@ class SpatialSearchMixin:
                 r["embedding_distance"] = round(float(e.embedding_distance), 4)
             results.append(r)
 
-        ***REMOVED*** Semantic cutoff — drop pool members whose tags embed is too far
-        ***REMOVED*** from the amenity phrase. The remaining tier logic (radius filter,
-        ***REMOVED*** distance ranking) then operates on a semantically-tight pool
-        ***REMOVED*** instead of whatever the phrase happened to retrieve.
+        # Semantic cutoff — drop pool members whose tags embed is too far
+        # from the amenity phrase. The remaining tier logic (radius filter,
+        # distance ranking) then operates on a semantically-tight pool
+        # instead of whatever the phrase happened to retrieve.
         results = [
             r for r in results
             if r.get("embedding_distance", 0.0) <= _FASTTEXT_AMENITY_DISTANCE_THRESHOLD
@@ -376,13 +376,13 @@ class SpatialSearchMixin:
 
         snapshot_id = cls._get_snapshot_id(snapshot_date)
 
-        ***REMOVED*** ── Step 1: Exact tag match with spatial filter ──
-        ***REMOVED*** `tags__contains` renders `@>` (GIN-accelerated); `tags__amenity=`
-        ***REMOVED*** renders `->>` equality and full-scans the partition.
-        ***REMOVED*** NaN geometries (POINT(NaN NaN) ways — not NULL, so exclude()
-        ***REMOVED*** misses them) must be dropped: ST_Distance on NaN coordinates
-        ***REMOVED*** returns 0, ranking coordinate-less entities as "nearest (0m
-        ***REMOVED*** away)" ahead of real matches.
+        # ── Step 1: Exact tag match with spatial filter ──
+        # `tags__contains` renders `@>` (GIN-accelerated); `tags__amenity=`
+        # renders `->>` equality and full-scans the partition.
+        # NaN geometries (POINT(NaN NaN) ways — not NULL, so exclude()
+        # misses them) must be dropped: ST_Distance on NaN coordinates
+        # returns 0, ranking coordinate-less entities as "nearest (0m
+        # away)" ahead of real matches.
         filter_tags = (
             {tag_target[0]: tag_target[1]} if tag_target
             else {"amenity": amenity_type}
@@ -398,9 +398,9 @@ class SpatialSearchMixin:
             qs = qs.filter(country_code=country_code.upper())
 
         if radius_m is not None:
-            ***REMOVED*** Use ST_DWithin with geography cast — supports meters on
-            ***REMOVED*** geographic (SRID 4326) columns, unlike D(m=) which requires
-            ***REMOVED*** degree units on geographic fields.
+            # Use ST_DWithin with geography cast — supports meters on
+            # geographic (SRID 4326) columns, unlike D(m=) which requires
+            # degree units on geographic fields.
             qs = qs.extra(
                 where=["ST_DWithin(geom::geography, ST_MakePoint(%s, %s)::geography, %s)"],
                 params=[float(anchor_point.x), float(anchor_point.y), float(radius_m)],
@@ -437,14 +437,14 @@ class SpatialSearchMixin:
                 })
             return results
 
-        ***REMOVED*** A resolved tag target is a precise category: the exact-tag tier is
-        ***REMOVED*** the ONLY tier that may answer it. The ontology/FastText fallbacks
-        ***REMOVED*** return wrong-class entities ("Which hotels are within 3km of
-        ***REMOVED*** Kingston?" → healthcare facilities; "beaches" → an attraction
-        ***REMOVED*** named "beach", 2026-09-30), which the loop must then flag as
-        ***REMOVED*** class_mismatch. An honest empty feeds the repair/continuation
-        ***REMOVED*** instead. Unresolved phrases ("italian food") keep the full
-        ***REMOVED*** fallback chain.
+        # A resolved tag target is a precise category: the exact-tag tier is
+        # the ONLY tier that may answer it. The ontology/FastText fallbacks
+        # return wrong-class entities ("Which hotels are within 3km of
+        # Kingston?" → healthcare facilities; "beaches" → an attraction
+        # named "beach", 2026-09-30), which the loop must then flag as
+        # class_mismatch. An honest empty feeds the repair/continuation
+        # instead. Unresolved phrases ("italian food") keep the full
+        # fallback chain.
         if tag_target:
             if trace is not None:
                 trace.append({
@@ -456,7 +456,7 @@ class SpatialSearchMixin:
                 })
             return []
 
-        ***REMOVED*** ── Step 2: Ontology class resolution with spatial filter ──
+        # ── Step 2: Ontology class resolution with spatial filter ──
         ontology_results = cls._search_by_ontology_class_spatial(
             amenity_type, country_code, snapshot_date,
             anchor_point, radius_m, top_k, trace
@@ -464,12 +464,12 @@ class SpatialSearchMixin:
         if ontology_results:
             return ontology_results
 
-        ***REMOVED*** ── Step 3: generic amenity phrases → key-existence + ST_DWithin ──
-        ***REMOVED***    (both GIN/GiST-indexed — no embedding scan). A missing radius
-        ***REMOVED***    defaults to DEFAULT_NEAR_RADIUS_M: the unbounded `?|` pool
-        ***REMOVED***    (535K rows on IE) would otherwise be fully sorted by distance
-        ***REMOVED***    (~9s). The FastText tier below remains the unbounded-nearest
-        ***REMOVED***    fallback (its pool is Python-sorted, capped at ~250).
+        # ── Step 3: generic amenity phrases → key-existence + ST_DWithin ──
+        #    (both GIN/GiST-indexed — no embedding scan). A missing radius
+        #    defaults to DEFAULT_NEAR_RADIUS_M: the unbounded `?|` pool
+        #    (535K rows on IE) would otherwise be fully sorted by distance
+        #    (~9s). The FastText tier below remains the unbounded-nearest
+        #    fallback (its pool is Python-sorted, capped at ~250).
         generic_keys = cls._generic_amenity_keys(amenity_type)
         if generic_keys:
             if radius_m is None:
@@ -494,7 +494,7 @@ class SpatialSearchMixin:
             ).order_by("distance_m")[:top_k]
             try:
                 entities = list(qs)
-            except Exception as exc:  ***REMOVED*** noqa: BLE001 — fall through to FastText
+            except Exception as exc:  # noqa: BLE001 — fall through to FastText
                 logger.warning("Generic amenity spatial query failed: %s", exc)
                 entities = []
             if entities:
@@ -514,9 +514,9 @@ class SpatialSearchMixin:
                     })
                 return results
 
-        ***REMOVED*** ── Step 4: FastText semantic search, then spatial filter in Python ──
-        ***REMOVED*** Can't combine pgvector <=> with ST_DWithin efficiently, so we
-        ***REMOVED*** fetch a larger pool via FastText and filter by distance in Python.
+        # ── Step 4: FastText semantic search, then spatial filter in Python ──
+        # Can't combine pgvector <=> with ST_DWithin efficiently, so we
+        # fetch a larger pool via FastText and filter by distance in Python.
         fasttext_pool = cls._search_by_fasttext(
             amenity_type, country_code, snapshot_date,
             top_k=max(top_k * 5, 200), trace=trace,
@@ -536,7 +536,7 @@ class SpatialSearchMixin:
         if not fasttext_pool:
             return []
 
-        ***REMOVED*** Filter by radius and rank by distance to anchor
+        # Filter by radius and rank by distance to anchor
         filtered = []
         for r in fasttext_pool:
             r_lat = r.get("lat")
@@ -563,7 +563,7 @@ class SpatialSearchMixin:
                 "output_count": len(results),
             })
         return results
-    ***REMOVED*** ── Name tier — proper-name OBJECTs (brands) ────────────────────────────
+    # ── Name tier — proper-name OBJECTs (brands) ────────────────────────────
 
     @classmethod
     def _search_by_name(cls, name: str, country_code: str,
@@ -601,8 +601,8 @@ class SpatialSearchMixin:
             v = variant.lower()
             if not v:
                 continue
-            ***REMOVED*** Trigram tier — `%%` is index-assisted; the >= 0.4 similarity
-            ***REMOVED*** guard and the fragment guard mirror EntityGeocoder.
+            # Trigram tier — `%%` is index-assisted; the >= 0.4 similarity
+            # guard and the fragment guard mirror EntityGeocoder.
             qs_fuzzy = qs.extra(
                 where=[
                     "name_romanized %% %s AND "
@@ -618,7 +618,7 @@ class SpatialSearchMixin:
                 key = (e.osm_type, e.osm_id)
                 if key not in seen:
                     seen[key] = cls._entity_to_result(e)
-            ***REMOVED*** Exact-name tier — catches rows whose name_romanized is missing.
+            # Exact-name tier — catches rows whose name_romanized is missing.
             qs_exact = qs.filter(tags__name__iexact=v)[:top_k]
             for e in qs_exact:
                 key = (e.osm_type, e.osm_id)
@@ -685,8 +685,8 @@ class SpatialSearchMixin:
 
         for tag_key, tag_value in canonical_tags.items():
             if tag_value:
-                ***REMOVED*** `tags__contains` renders `@>` (GIN-accelerated);
-                ***REMOVED*** `tags__key=value` renders `->>` and scans.
+                # `tags__contains` renders `@>` (GIN-accelerated);
+                # `tags__key=value` renders `->>` and scans.
                 qs = qs.filter(tags__contains={tag_key: tag_value})
             else:
                 qs = qs.filter(**{f"tags__has_key": tag_key})
@@ -725,8 +725,8 @@ class SpatialSearchMixin:
             })
         return results
 
-    ***REMOVED*** ── Graph / spectral / community / event templates ──────────────────────
-    ***REMOVED*** These templates use the factor_* tables (SQL + pgvector) at request time.
-    ***REMOVED*** The legacy runtime graph path (GraphML → NetworkX → SciPy) has been
-    ***REMOVED*** removed.  Batch-side services (KNNGraphService, SpectralAnalysisService,
-    ***REMOVED*** CommunityDetectionService, etc.) remain for Step 5c/5d.
+    # ── Graph / spectral / community / event templates ──────────────────────
+    # These templates use the factor_* tables (SQL + pgvector) at request time.
+    # The legacy runtime graph path (GraphML → NetworkX → SciPy) has been
+    # removed.  Batch-side services (KNNGraphService, SpectralAnalysisService,
+    # CommunityDetectionService, etc.) remain for Step 5c/5d.

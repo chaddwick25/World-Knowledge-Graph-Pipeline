@@ -94,7 +94,7 @@ class GraphSignalService:
         L = _combinatorial_laplacian(G)
         if signal.ndim == 1:
             return float(signal.T @ L @ signal)
-        ***REMOVED*** Multi-channel signal (one-hot)
+        # Multi-channel signal (one-hot)
         return float(np.trace(signal.T @ L @ signal))
 
     def diffuse_signal(self, G, signal: np.ndarray, mu: float = 0.1):
@@ -112,9 +112,9 @@ class GraphSignalService:
         return spla.spsolve(A, signal)
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Graph-type helpers — accept networkx.Graph (small/tests) or SparseGraph
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Graph-type helpers — accept networkx.Graph (small/tests) or SparseGraph
+# ---------------------------------------------------------------------------
 
 def _node_list(G):
     """Ordered list of node osm_ids for either graph representation."""

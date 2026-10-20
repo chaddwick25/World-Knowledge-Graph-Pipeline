@@ -1,4 +1,4 @@
-***REMOVED*** Deterministic Cross-Script Name Romanization
+# Deterministic Cross-Script Name Romanization
 
 > **Focus:** how the `romanizing_names` service converts non-Latin and
 > diacritic-bearing OSM names to a Latin phonetic fingerprint for pg_trgm
@@ -14,7 +14,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Why This Exists
+## 1. Why This Exists
 
 FastText `cc.en.300` cannot tokenize Hangul (Korean script). Korean tokens
 are out-of-vocabulary and collapse into weakly meaningful subword
@@ -30,7 +30,7 @@ time.
 
 ---
 
-***REMOVED******REMOVED*** 2. Architecture
+## 2. Architecture
 
 **Romanizing service (in-process, no network):**
 
@@ -45,7 +45,7 @@ time.
 - Dependencies: Python stdlib only (`unicodedata`, `re`)
 - No model file, no training, no weights, no API
 
-***REMOVED******REMOVED******REMOVED*** 2.1 The Three Romanizers
+### 2.1 The Three Romanizers
 
 | Romanizer | File | Lines | Detects | Example |
 |---|---|---|---|---|
@@ -53,7 +53,7 @@ time.
 | Diacritic | `diacritic_romanizer.py` | 120 | Combining marks (Mn category) + precomposed diacritic chars | `café` → `cafe`, `Señor` → `senor` |
 | Identity | `identity_romanizer.py` | 31 | Fallback for plain Latin / other scripts | `Paris Baguette` → `paris baguette` |
 
-***REMOVED******REMOVED******REMOVED*** 2.2 The Registry
+### 2.2 The Registry
 
 `registry.py` (77 lines) auto-detects the script and dispatches to the
 appropriate romanizer. Detection is text-based, no language or country
@@ -70,7 +70,7 @@ class RomanizerRegistry:
         return IdentityRomanizer().romanize(text)
 ```
 
-***REMOVED******REMOVED******REMOVED*** 2.3 File Map
+### 2.3 File Map
 
 ```
 backend/semantic_search/services/romanizing_names/
@@ -86,9 +86,9 @@ Total: 400 lines, 64 KB of source code
 
 ---
 
-***REMOVED******REMOVED*** 3. How Each Romanizer Works
+## 3. How Each Romanizer Works
 
-***REMOVED******REMOVED******REMOVED*** 3.1 HangulRomanizer: Korean
+### 3.1 HangulRomanizer: Korean
 
 Hangul syllables are composed blocks of three parts:
 - **Choseong** (initial consonant): ㄱ ㄴ ㄷ ㄹ ㅁ ㅂ ㅅ ㅇ ㅈ ㅊ ㅋ ㅌ ㅍ ㅎ
@@ -113,7 +113,7 @@ The choseong/jungseong/jongseong mappings cover all modern Hangul
 components. The jongseong (final consonant) table was added after initial
 testing showed `서울` producing `seou` instead of `seoul`.
 
-***REMOVED******REMOVED******REMOVED*** 3.2 DiacriticRomanizer: French, Spanish, Irish, etc.
+### 3.2 DiacriticRomanizer: French, Spanish, Irish, etc.
 
 Uses Unicode NFKD normalization to decompose precomposed characters into
 their base + combining mark form, then strips all combining marks (category
@@ -141,7 +141,7 @@ This covers all Latin-script languages that use diacritical marks: French
 ö, ü, ß), Vietnamese (ă, â, đ, ê, ô, ơ, ư), Portuguese, Italian,
 Scandinavian (å, æ, ø), and more.
 
-***REMOVED******REMOVED******REMOVED*** 3.3 IdentityRomanizer: Fallback
+### 3.3 IdentityRomanizer: Fallback
 
 Lowercases the text, collapses whitespace, and strips non-alphanumeric
 punctuation. The fallback for plain Latin text and any script without a
@@ -154,9 +154,9 @@ O'Brien's      → "o'brien s"
 
 ---
 
-***REMOVED******REMOVED*** 4. Database Integration
+## 4. Database Integration
 
-***REMOVED******REMOVED******REMOVED*** 4.1 The name_romanized Column
+### 4.1 The name_romanized Column
 
 Migration `0017_osmentity_name_romanized` adds:
 
@@ -174,7 +174,7 @@ CREATE INDEX idx_osmentity_name_romanized_trgm
 The column is nullable. Entities that haven't been processed yet have
 `NULL`. The search view gracefully handles `NULL` values.
 
-***REMOVED******REMOVED******REMOVED*** 4.2 The romanize_names Command
+### 4.2 The romanize_names Command
 
 ```
 backend/semantic_search/management/commands/romanize_names.py
@@ -192,7 +192,7 @@ Performance (observed on KR, 1.7M named entities):
 - Steady state: ~1,500 entities/sec (degrades as the index grows)
 - Total: 1,705,121 entities in 1,133 seconds (~19 minutes)
 
-***REMOVED******REMOVED******REMOVED*** 4.3 Storage Cost
+### 4.3 Storage Cost
 
 | Component | Per-entity | KR (1M named) | Full planet (50M named) |
 |---|---|---|---|
@@ -202,7 +202,7 @@ Performance (observed on KR, 1.7M named entities):
 
 The source code itself is 64 KB, smaller than a single photo.
 
-***REMOVED******REMOVED******REMOVED*** 4.4 Reset semantics
+### 4.4 Reset semantics
 
 The jamo mappings (`_CHOSEONG`, `_JUNGSEONG`, `_JONGSEONG`, `_COMPAT`,
 merged in `_ALL_MAP`) are module constants in `hangul_romanizer.py`,
@@ -215,9 +215,9 @@ the script per name; one command run covers every script present.
 
 ---
 
-***REMOVED******REMOVED*** 5. Search Integration
+## 5. Search Integration
 
-***REMOVED******REMOVED******REMOVED*** 5.1 The Two Parallel Matching Paths
+### 5.1 The Two Parallel Matching Paths
 
 When a user searches for a name, the search view runs two matching paths in
 parallel and combines their scores:
@@ -243,7 +243,7 @@ so all Korean text collapses to similar OOV vectors. The romanizer path
 compensates with a deterministic phonetic signal that doesn't depend on a
 neural model.
 
-***REMOVED******REMOVED******REMOVED*** 5.2 Request Flow
+### 5.2 Request Flow
 
 1. **Frontend (browser)**: `POST /api/nca/semantic-triplet-search/`
    `{ "country_code": "South Korea", "natural_query": "paris bagueete",
@@ -279,7 +279,7 @@ neural model.
 
 ---
 
-***REMOVED******REMOVED*** 6. What This Is NOT
+## 6. What This Is NOT
 
 | Task | What it does | Needs AI? | This service? |
 |---|---|---|---|
@@ -294,7 +294,7 @@ deterministic and consistent so that trigram similarity works.
 
 ---
 
-***REMOVED******REMOVED*** 7. Historical Context
+## 7. Historical Context
 
 | Year | Technology | What it did |
 |---|---|---|
@@ -310,9 +310,9 @@ classical computational linguistics.
 
 ---
 
-***REMOVED******REMOVED*** 8. Scope and Future Extensions
+## 8. Scope and Future Extensions
 
-***REMOVED******REMOVED******REMOVED*** 8.1 Currently Supported
+### 8.1 Currently Supported
 
 | Romanizer | Languages | Script |
 |---|---|---|
@@ -320,7 +320,7 @@ classical computational linguistics.
 | Diacritic | French, Spanish, Irish, German, Vietnamese, Portuguese, Italian, Scandinavian | Latin with diacritical marks |
 | Identity | English, plain Latin, fallback | Latin (no diacritics) |
 
-***REMOVED******REMOVED******REMOVED*** 8.2 Deliberately Excluded
+### 8.2 Deliberately Excluded
 
 Chinese Hanzi and Japanese Kanji are **intentionally excluded** from this
 framework. Pinyin/readings do not reliably preserve English phonetic
@@ -329,7 +329,7 @@ romanizes to "bālí" via pinyin, but the phonetic overlap with "paris" is
 weak. For ideographic scripts, a future `name:en` fallback or multilingual
 embeddings would be more appropriate.
 
-***REMOVED******REMOVED******REMOVED*** 8.3 Future Phonetic Romanizers
+### 8.3 Future Phonetic Romanizers
 
 | Romanizer | Languages | Estimated size | Estimated lines |
 |---|---|---|---|
@@ -348,7 +348,7 @@ Smaller than a single FastText model file by a factor of 5,000.
 
 ---
 
-***REMOVED******REMOVED*** 9. Decoupling from Ingestion
+## 9. Decoupling from Ingestion
 
 The romanizer is deliberately decoupled from the country pipeline:
 
@@ -373,7 +373,7 @@ The code is the source of truth; the database is just a cache.
 
 ---
 
-***REMOVED******REMOVED*** 10. File References
+## 10. File References
 
 | Component | Path |
 |---|---|

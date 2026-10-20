@@ -1,15 +1,15 @@
-***REMOVED*** Preserving the USLP Model Architecture
+# Preserving the USLP Model Architecture
 
 How the geographic heuristics from the original [Unsupervised Spatial Link Prediction (USLP)](https://arxiv.org/abs/2304.09503) research paper were integrated into the Django pipeline.
 
 ---
 
-***REMOVED******REMOVED*** 1. The Tri-Space Evaluation Algorithm
+## 1. The Tri-Space Evaluation Algorithm
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The core methodology for predicting unsupervised categorical relationship inferences (e.g. `OSM:Node(amenity=bank) -> isInCounty -> OSM:Relation(boundary=county)`) across large open graphs involves decomposing features across three discrete dimensions: Spatial (Geohash distance), Semantic (Name variations), and Topological Structure (Categorical semantics).
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 To preserve the paper's line-by-line algorithm, the pipeline reconstructs the `USLP` calculation inside the Django pipeline to evaluate relationships on the fly over local PostGIS datasets without requiring CSV matrices.
 * **Mechanism:** `SpatialLinkPredictionService` explicitly defines the Tri-Space.
 * **Transformation:** The total probability heuristic sums `_geo_score` (representing Geohash distance rules), `_name_score` (representing FastText token correlations), and the structurally enforced topological relation constraints. Evaluated distances are threshold-filtered matching the unsupervised extraction algorithm.
@@ -65,8 +65,8 @@ normalized_score   = unnormalized_score / 3.0              ← ÷3 preserves ran
         g = self._geo_score(...)
         n = self._name_score(...)
 
-        ***REMOVED*** TransE explicitly calculates topological validity when available;
-        ***REMOVED*** otherwise the paper's FastText class space is used.
+        # TransE explicitly calculates topological validity when available;
+        # otherwise the paper's FastText class space is used.
         if self.transe_service:
             dist = self.transe_service.score_triple(...)
             c = 1.0 / (1.0 + dist)
@@ -80,12 +80,12 @@ normalized_score   = unnormalized_score / 3.0              ← ÷3 preserves ran
 
 ---
 
-***REMOVED******REMOVED*** 2. Dynamic Spatial Range Resolutions (Geohash)
+## 2. Dynamic Spatial Range Resolutions (Geohash)
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The USLP paper highlights that relying on constant bounding-box calculations for linking features destroys logical clustering since relationships (`addrSuburb` vs `isInCountry`) possess wildly different spatial ranges. It uses Geohash string precision parsing.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline implements an algorithmic geohash encoder/decoder to mirror the paper's bit-level behavior and, in the production path, uses a C-accelerated `geohash2` backend with identical precision.
 
 * **Mechanism:** Geohash-based bounding at relation-specific precision. Shorter geohashes correspond to larger spatial ranges: precision 1 ≈ 5,000 km (country/continent), precision 3 ≈ 156 km (state/county), precision 4 ≈ 39 km (city/suburb/locality). These are the only three tiers used (there is no precision 6–7 in the implementation).
@@ -102,22 +102,22 @@ The pipeline implements an algorithmic geohash encoder/decoder to mirror the pap
         c_h = (float(lat_h_str), float(lon_h_str))
         c_t = (float(lat_t_str), float(lon_t_str))
         dist_km = haversine(c_h, c_t, unit=Unit.KILOMETERS)
-        ***REMOVED*** Per-tail-cluster d_max (reference repo: per-column max of the
-        ***REMOVED*** distance matrix); fallback covers degenerate single-cluster pools.
+        # Per-tail-cluster d_max (reference repo: per-column max of the
+        # distance matrix); fallback covers degenerate single-cluster pools.
         d_max = _D_MAX_PER_CLUSTER.get(precision, {}).get(gh_t) \
             or _FALLBACK_D_MAX.get(precision, 39.0)
         sim = 1.0 - (dist_km / d_max)
-        return max(0.0, min(1.0, sim))  ***REMOVED*** clamp: heads may lie outside the pool's span
+        return max(0.0, min(1.0, sim))  # clamp: heads may lie outside the pool's span
 ```
 
 ---
 
-***REMOVED******REMOVED*** 3. Topologic Semantic Constraints (TransE)
+## 3. Topologic Semantic Constraints (TransE)
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 Attempting to predict directional links like `$head + $relation ≈ $tail` using symmetric adjacency clustering frameworks (like node2vec or DeepWalk) fundamentally destroys relationship directionality. The osm2kg pipeline inherently passes the generated semantic nodes through `OpenKE` to compute explicit `TransE` relational distances.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline synthesizes the `TransEGraphEmbeddingService` in PyTorch to correct this, eliminating `OpenKE` dependencies.
 * **Mechanism:** A `$d = ||h + r - t||_1` Tensor evaluation framework processes the entities, yielding explicit topological bounds.
 * **Transformation:** The pipeline applies the matrix algorithm over the candidate search array. Candidates that technically share spatial bounding boxes but violate the strict translational intent of the structural relationship are correctly filtered out, restoring algorithmic fidelity to the original implementation.
@@ -126,9 +126,9 @@ The pipeline synthesizes the `TransEGraphEmbeddingService` in PyTorch to correct
 
 
 
-***REMOVED******REMOVED*** 4. Class Space Separation (Two-Axis Architecture)
+## 4. Class Space Separation (Two-Axis Architecture)
 
-***REMOVED******REMOVED******REMOVED*** The Intentional Misalignment
+### The Intentional Misalignment
 
 The USLP class space (`_class_score`) uses the **paper's original relation classes** (`isInCountry`, `addrCity`, `addrSuburb`) as defined in:
 
@@ -146,7 +146,7 @@ This is not a bug: it is a **natural separation of concerns**:
 | Semantic | wkgs:Restaurant, wkgs:Highway | WorldKG TTL (Zenodo) | Semantic search, query filtering | 300D GV-Tags |
 | Spatial | isInCountry, addrCity, addrSuburb | USLP paper (Section 3.3) | Link prediction, boundary scoping | 100D GV-NLE |
 
-***REMOVED******REMOVED******REMOVED*** How the paper's class space is preserved
+### How the paper's class space is preserved
 
 The paper's `space3_score` computes:
 ```python
@@ -157,12 +157,12 @@ Where `relation_embedding` and `type_embedding` are both pre-trained FastText ve
 
 The implementation mirrors this exactly: just computed on-the-fly instead of pre-stored:
 ```python
-emb_rel = FastText(RELATION_TO_NATURAL_TEXT[relation])  ***REMOVED*** "country" for isInCountry
-emb_cls = FastText(wkg_class.replace('wkgs:', ''))      ***REMOVED*** "Country" for wkgs:Country
+emb_rel = FastText(RELATION_TO_NATURAL_TEXT[relation])  # "country" for isInCountry
+emb_cls = FastText(wkg_class.replace('wkgs:', ''))      # "Country" for wkgs:Country
 cosine = dot(emb_rel, emb_cls) / (norm(emb_rel) * norm(emb_cls))
 ```
 
-***REMOVED******REMOVED******REMOVED*** The relation vocabulary (paper's 14 preserved, extended to 20)
+### The relation vocabulary (paper's 14 preserved, extended to 20)
 
 From `USLP/USLP_main.py:120-135` in the upstream `SSLPandUSLP-main` repo, the relation-to-precision mapping. The implementation (`RELATION_GEOHASH_PRECISION`) preserves the paper's 14 relations and adds 6 more for OSM tags the paper's dataset did not cover (marked †):
 
@@ -177,7 +177,7 @@ BallTree / GPU spatial pre-filter at scoring time.
 
 **Code Reference:** `backend/igea/services/spatial_link_prediction.py:RELATION_GEOHASH_PRECISION` (20 entries) and `RELATION_TO_NATURAL_TEXT` (19 entries: `country` has no natural-text mapping and falls back to the raw relation name)
 
-***REMOVED******REMOVED******REMOVED*** Cross-reference: where the TTL is used
+### Cross-reference: where the TTL is used
 
 The WorldKG TTL ontology is loaded via:
 ```bash
@@ -188,8 +188,8 @@ python manage.py enrich_worldkg_classes \
 And queried in semantic search (`backend/worldkg_nca/views/search.py`):
 ```python
 ontology = get_worldkg_ontology_service()
-key = ontology.get_canonical_osm_key(wkg_class)        ***REMOVED*** e.g., "amenity"
-val = ontology.get_canonical_osm_value(wkg_class)      ***REMOVED*** e.g., "restaurant"
+key = ontology.get_canonical_osm_key(wkg_class)        # e.g., "amenity"
+val = ontology.get_canonical_osm_value(wkg_class)      # e.g., "restaurant"
 ```
 
 The two never cross. The TTL drives query-time class filtering. The USLP relations drive link-prediction spatial boundary scoping.

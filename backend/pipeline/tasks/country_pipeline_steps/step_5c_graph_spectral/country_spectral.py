@@ -28,7 +28,7 @@ def _run_country_spectral_analysis(env) -> None:
 
     Also writes per-entity ``factor_spectral_node_metric`` rows (the
     authoritative runtime path for MapQA spectral/diffusion/community
-    queries via pgvector ``<***REMOVED***>``) and serializes the k-NN graph to
+    queries via pgvector ``<#>``) and serializes the k-NN graph to
     GraphML as a debug artifact (skipped for large graphs — see
     ``GRAPHML_NODE_THRESHOLD``).
 
@@ -46,7 +46,7 @@ def _run_country_spectral_analysis(env) -> None:
         GraphSignalService,
     )
 
-    ***REMOVED*** ── Report skeleton ──
+    # ── Report skeleton ──
     report = {
         "country": env.iso,
         "snapshot_date": env.snapshot_date,
@@ -75,10 +75,10 @@ def _run_country_spectral_analysis(env) -> None:
         _write_report(report, env)
         return
 
-    ***REMOVED*** Idempotency: replace any existing fingerprint for this (region, snapshot)
+    # Idempotency: replace any existing fingerprint for this (region, snapshot)
     GraphSpectralFingerprint.objects.filter(region=env.iso, snapshot=snapshot).delete()
 
-    ***REMOVED*** ── 5c.pre: Release residual memory from prior steps ──
+    # ── 5c.pre: Release residual memory from prior steps ──
     import gc
     try:
         import torch
@@ -89,7 +89,7 @@ def _run_country_spectral_analysis(env) -> None:
         pass
     gc.collect()
 
-    ***REMOVED*** ── 5c.0: Build k-NN graph ──
+    # ── 5c.0: Build k-NN graph ──
     _log(
         logger,
         "info",
@@ -126,7 +126,7 @@ def _run_country_spectral_analysis(env) -> None:
         _write_report(report, env)
         return
 
-    ***REMOVED*** ── 5c.1: Compute Laplacian eigendecomposition ──
+    # ── 5c.1: Compute Laplacian eigendecomposition ──
     k = (
         LARGE_COUNTRY_K_EIGENVALUES
         if n_nodes >= LARGE_COUNTRY_NODE_THRESHOLD
@@ -159,7 +159,7 @@ def _run_country_spectral_analysis(env) -> None:
         "eigenvalues_last5": features["eigenvalues"][-5:],
     }
 
-    ***REMOVED*** ── 5c.2: Build WorldKG class signal ──
+    # ── 5c.2: Build WorldKG class signal ──
     entity_class_map = G.class_map
     signal = None
     signal_smoothness = 0.0
@@ -173,8 +173,8 @@ def _run_country_spectral_analysis(env) -> None:
         "signal_smoothness": signal_smoothness,
     }
 
-    ***REMOVED*** ── 5c.3: Store GraphSpectralFingerprint ──
-    ***REMOVED*** Truncate the Fiedler vector for storage (keep at most 10k samples)
+    # ── 5c.3: Store GraphSpectralFingerprint ──
+    # Truncate the Fiedler vector for storage (keep at most 10k samples)
     fiedler = features["fiedler_vector"]
     if len(fiedler) > 10_000:
         stride = len(fiedler) // 10_000
@@ -208,7 +208,7 @@ def _run_country_spectral_analysis(env) -> None:
 
     report["stages"]["fingerprint"] = {"status": "stored", "k": k}
 
-    ***REMOVED*** ── 5c.6: Per-node factor tables ──
+    # ── 5c.6: Per-node factor tables ──
     factor_status = "skipped"
     factor_rows = 0
     community_count = 0
@@ -220,7 +220,7 @@ def _run_country_spectral_analysis(env) -> None:
         from semantic_search.services.factor_node_writer import FactorNodeWriter
 
         communities = CommunityDetectionService().detect_communities(G)
-        ***REMOVED*** 0c backfill: persist the community fields on the fingerprint row.
+        # 0c backfill: persist the community fields on the fingerprint row.
         fp.community_count = communities["community_count"]
         fp.modularity = communities["modularity"]
         fp.save(update_fields=["community_count", "modularity"])
@@ -262,7 +262,7 @@ def _run_country_spectral_analysis(env) -> None:
         "modularity": modularity,
     }
 
-    ***REMOVED*** ── 5c.7: GraphML debug artifact ──
+    # ── 5c.7: GraphML debug artifact ──
     graphml_status = "skipped_large"
     if n_nodes < GRAPHML_NODE_THRESHOLD:
         graphml_status = _serialize_graph(G.to_nx(), env.iso, env.snapshot_date)
@@ -277,7 +277,7 @@ def _run_country_spectral_analysis(env) -> None:
         )
     report["stages"]["graphml"] = {"status": graphml_status}
 
-    ***REMOVED*** ── Finalize report ──
+    # ── Finalize report ──
     report["status"] = "completed"
     report["total_time_s"] = round(t_graph + solve_time, 1)
     _write_report(report, env)

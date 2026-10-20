@@ -44,8 +44,8 @@ import os
 import unittest
 from typing import Dict, List, Tuple
 
-***REMOVED*** Django models are imported lazily inside tests so the module can be
-***REMOVED*** imported without Django setup (for collection / syntax checks).
+# Django models are imported lazily inside tests so the module can be
+# imported without Django setup (for collection / syntax checks).
 
 
 def _enabled() -> bool:
@@ -115,8 +115,8 @@ def _run_embed(workers: int, iso: str) -> Dict:
         "skip_enrich": True,
         "min_entropy": 0.0,
     })
-    ***REMOVED*** Use a per-run snapshot_id suffix so parallel and single runs land in
-    ***REMOVED*** different leaves and we can compare counts without cross-contamination.
+    # Use a per-run snapshot_id suffix so parallel and single runs land in
+    # different leaves and we can compare counts without cross-contamination.
     suffix = "p" if workers > 1 else "s"
     env.snapshot_date = f"{env.snapshot_date}_{suffix}"
 
@@ -142,18 +142,18 @@ class ParallelEmbedParityTest(unittest.TestCase):
         from django.core.management import call_command
 
         iso = _country()
-        ***REMOVED*** Build the envelope once to read snapshot_date + has_pretrained_nle.
+        # Build the envelope once to read snapshot_date + has_pretrained_nle.
         from pipeline.envelopes import CountryEnvelope
         probe = CountryEnvelope.from_db(iso)
         base_snapshot = probe.snapshot_date
 
-        ***REMOVED*** --- Run A: single-threaded ---
+        # --- Run A: single-threaded ---
         call_command("create_country_partitions", country=iso, snapshot=f"{base_snapshot}_s", skip_data=True, skip_mv=True)
         _truncate_leaf(f"{base_snapshot}_s", iso)
         result_single = _run_embed(workers=1, iso=iso)
         count_single = _row_count(f"{base_snapshot}_s", iso)
 
-        ***REMOVED*** Sample 50 entity IDs from the single-threaded run for embedding parity.
+        # Sample 50 entity IDs from the single-threaded run for embedding parity.
         from worldkg_nca.models import OsmEntity
         sample_ids = list(
             OsmEntity.objects.filter(
@@ -162,7 +162,7 @@ class ParallelEmbedParityTest(unittest.TestCase):
         )
         sample_single = _embedding_sample("node", sample_ids) if sample_ids else []
 
-        ***REMOVED*** --- Run B: parallel ---
+        # --- Run B: parallel ---
         call_command("create_country_partitions", country=iso, snapshot=f"{base_snapshot}_p", skip_data=True, skip_mv=True)
         _truncate_leaf(f"{base_snapshot}_p", iso)
         conn_before = _pg_stat_activity_count()
@@ -170,21 +170,21 @@ class ParallelEmbedParityTest(unittest.TestCase):
         count_parallel = _row_count(f"{base_snapshot}_p", iso)
         conn_after = _pg_stat_activity_count()
 
-        ***REMOVED*** --- Assertions ---
-        ***REMOVED*** Row counts must match exactly.
+        # --- Assertions ---
+        # Row counts must match exactly.
         self.assertEqual(
             count_single, count_parallel,
             f"row count mismatch: single={count_single} parallel={count_parallel}",
         )
-        ***REMOVED*** entity_count return must match (collector counts all three types;
-        ***REMOVED*** see plan §8.3 — this is an intentional accuracy fix).
+        # entity_count return must match (collector counts all three types;
+        # see plan §8.3 — this is an intentional accuracy fix).
         self.assertEqual(
             result_single["entity_count"], result_parallel["entity_count"],
             f"entity_count mismatch: single={result_single['entity_count']} "
             f"parallel={result_parallel['entity_count']}",
         )
-        ***REMOVED*** Embedding parity for the sampled IDs.  Vectors are L2-normalized
-        ***REMOVED*** floats; allow tiny tolerance for floating-point determinism.
+        # Embedding parity for the sampled IDs.  Vectors are L2-normalized
+        # floats; allow tiny tolerance for floating-point determinism.
         sample_parallel = _embedding_sample("node", sample_ids) if sample_ids else []
         self.assertEqual(len(sample_single), len(sample_parallel))
         single_map = dict(sample_single)
@@ -194,14 +194,14 @@ class ParallelEmbedParityTest(unittest.TestCase):
             v2 = parallel_map.get(osm_id)
             self.assertIsNotNone(v1, f"osm_id={osm_id} missing in single run")
             self.assertIsNotNone(v2, f"osm_id={osm_id} missing in parallel run")
-            ***REMOVED*** pgvector returns lists; compare element-wise with tolerance.
+            # pgvector returns lists; compare element-wise with tolerance.
             for a, b in zip(v1, v2):
                 self.assertAlmostEqual(float(a), float(b), places=5,
                                         msg=f"embedding mismatch for osm_id={osm_id}")
 
-        ***REMOVED*** No connection leak from worker threads.
-        ***REMOVED*** Allow a small delta for transient activity, but the parallel run
-        ***REMOVED*** must not leave extra open connections after workers join.
+        # No connection leak from worker threads.
+        # Allow a small delta for transient activity, but the parallel run
+        # must not leave extra open connections after workers join.
         self.assertLessEqual(
             conn_after, conn_before + 1,
             f"connection leak: before={conn_before} after={conn_after}",

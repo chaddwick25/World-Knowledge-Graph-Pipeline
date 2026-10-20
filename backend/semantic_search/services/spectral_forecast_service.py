@@ -77,13 +77,13 @@ class SpectralForecastService:
                     "ARIMA fit failed for eigenvalue %d — falling back to exp smoothing: %s",
                     i, exc,
                 )
-                ***REMOVED*** Per-column fallback
+                # Per-column fallback
                 fc, ci = self._exponential_smoothing_forecast(series, steps)
                 forecasts.append(float(fc[i]) if i < len(fc) else 0.0)
                 confidences.append(float(ci[i]) if i < len(ci) else 0.0)
 
         forecast = np.array(forecasts)
-        ***REMOVED*** Clamp to non-negative (eigenvalues of a PSD matrix are ≥ 0)
+        # Clamp to non-negative (eigenvalues of a PSD matrix are ≥ 0)
         forecast = np.clip(forecast, 0.0, None)
         return forecast, np.array(confidences)
 
@@ -121,22 +121,22 @@ class SpectralForecastService:
         """
         if not series:
             return np.array([]), np.array([])
-        ***REMOVED*** Align all series to the same length (pad with zeros if needed)
+        # Align all series to the same length (pad with zeros if needed)
         max_len = max(len(s) for s in series)
         aligned = np.array([
             np.pad(s, (0, max_len - len(s))) for s in series
-        ], dtype=float)  ***REMOVED*** shape (T, k)
+        ], dtype=float)  # shape (T, k)
 
-        ***REMOVED*** Weighted average — most recent snapshot gets the most weight
+        # Weighted average — most recent snapshot gets the most weight
         T = aligned.shape[0]
         weights = np.array([alpha * (1 - alpha) ** i for i in range(T)][::-1])
         weights = weights / weights.sum()
         forecast = (weights[:, None] * aligned).sum(axis=0)
-        ***REMOVED*** Confidence: 1.96σ across the series per eigenvalue
+        # Confidence: 1.96σ across the series per eigenvalue
         if T > 1:
             conf = 1.96 * np.std(aligned, axis=0)
         else:
             conf = np.zeros_like(forecast)
-        ***REMOVED*** Clamp forecast to non-negative
+        # Clamp forecast to non-negative
         forecast = np.clip(forecast, 0.0, None)
         return forecast, conf

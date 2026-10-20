@@ -37,29 +37,29 @@ from semantic_search.utils.subdivision_resolver import (
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Radii for generated subdivision questions: venue-scale (200-500m) and
-***REMOVED*** city-scale (1-5km) — the existing MapQA RADII_M stops at 500m, but a
-***REMOVED*** parish-level question needs kilometres to be answerable.
+# Radii for generated subdivision questions: venue-scale (200-500m) and
+# city-scale (1-5km) — the existing MapQA RADII_M stops at 500m, but a
+# parish-level question needs kilometres to be answerable.
 SUBDIVISION_RADII_M = (200, 500, 1000, 2000, 5000)
 
-***REMOVED*** ***REMOVED***1 frame (FILTER-AGGREGATE-MEASURE) — "{amenity} within {r}m of {name}".
+# #1 frame (FILTER-AGGREGATE-MEASURE) — "{amenity} within {r}m of {name}".
 _FILTER_FRAME = FRAMES[TEMPLATE_FILTER_AGGREGATE][1]
-***REMOVED*** ***REMOVED***2 frame (OBJECT-FIELD-MEASURE) — "How far is {a} from {b}?".
+# #2 frame (OBJECT-FIELD-MEASURE) — "How far is {a} from {b}?".
 _DISTANCE_FRAME = FRAMES[TEMPLATE_OBJECT_FIELD][0]
-***REMOVED*** ***REMOVED***4 nearest + ***REMOVED***5 bearing + ***REMOVED***8 attribute frames — the subdivision bank
-***REMOVED*** covers ALL 5 trained templates (criteria 2026-10-01).
+# #4 nearest + #5 bearing + #8 attribute frames — the subdivision bank
+# covers ALL 5 trained templates (criteria 2026-10-01).
 _NEAREST_FRAME = FRAMES[TEMPLATE_GEOCODE_BATCH][2]
 _BEARING_FRAME = FRAMES[TEMPLATE_LOCATION_BEARING][1]
-***REMOVED*** The proven ***REMOVED***8 form (sample_questions.csv "What amenities are around
-***REMOVED*** Caye Caulker?" — the FRAMES library lacks an "around" variant).
+# The proven #8 form (sample_questions.csv "What amenities are around
+# Caye Caulker?" — the FRAMES library lacks an "around" variant).
 _ATTRIBUTE_FRAME = "What amenities are around {name}?"
 
-***REMOVED*** One question per trained template, in this order (criteria 2026-10-01).
-***REMOVED*** The >= 3 results floor rides the question FORM, not the template: a
-***REMOVED*** class-LIST answer ("amenities or shop" — radius, attribute, nearest,
-***REMOVED*** cone-bearing) must verify with MIN_CLASS_RESULTS; a structural answer
-***REMOVED*** (a distance, a compare winner, a direction) is 1-2 results BY DESIGN
-***REMOVED*** and verifies at >= 1. Each builder stamps ``min_results`` on its rows.
+# One question per trained template, in this order (criteria 2026-10-01).
+# The >= 3 results floor rides the question FORM, not the template: a
+# class-LIST answer ("amenities or shop" — radius, attribute, nearest,
+# cone-bearing) must verify with MIN_CLASS_RESULTS; a structural answer
+# (a distance, a compare winner, a direction) is 1-2 results BY DESIGN
+# and verifies at >= 1. Each builder stamps ``min_results`` on its rows.
 SUBDIVISION_TEMPLATE_ORDER = (
     TEMPLATE_FILTER_AGGREGATE, TEMPLATE_OBJECT_FIELD,
     TEMPLATE_GEOCODE_BATCH, TEMPLATE_LOCATION_BEARING,
@@ -67,9 +67,9 @@ SUBDIVISION_TEMPLATE_ORDER = (
 )
 MIN_CLASS_RESULTS = 3
 
-***REMOVED*** Raw OSM amenity values → natural plural nouns for the question text
-***REMOVED*** ("place_of_worship" → "churches" — the executor still resolves the
-***REMOVED*** canonical value either way).
+# Raw OSM amenity values → natural plural nouns for the question text
+# ("place_of_worship" → "churches" — the executor still resolves the
+# canonical value either way).
 _AMENITY_PLURALS = {
     "place_of_worship": "churches", "restaurant": "restaurants",
     "cafe": "cafes", "school": "schools", "bank": "banks",
@@ -89,19 +89,19 @@ def _amenity_label(amenity: str) -> str:
     return _AMENITY_PLURALS.get(amenity, amenity)
 
 
-***REMOVED*** Question-generation recipes (2026-10-01): scope → templates → entity
-***REMOVED*** selection → verification. Every recipe keeps a question on DB evidence
-***REMOVED*** (2026-10-11): the census count that built the candidate IS the result
-***REMOVED*** size the executor's exact-tag tier would return (criterion: each
-***REMOVED*** question has results). The executor deep-check stays for curated loads
-***REMOVED*** and the verify-only sweep.
+# Question-generation recipes (2026-10-01): scope → templates → entity
+# selection → verification. Every recipe keeps a question on DB evidence
+# (2026-10-11): the census count that built the candidate IS the result
+# size the executor's exact-tag tier would return (criterion: each
+# question has results). The executor deep-check stays for curated loads
+# and the verify-only sweep.
 QUESTION_RECIPES = {
     "subdivision": {
         "scope": "subdivision",
         "templates": (
-            "***REMOVED***1 FILTER-AGGREGATE-MEASURE", "***REMOVED***2 OBJECT-FIELD-MEASURE",
-            "***REMOVED***4 GEOCODE-BATCH-COMPARE", "***REMOVED***5 LOCATION-BEARING-CLASSIFY",
-            "***REMOVED***8 PLACE-ATTRIBUTE-QUERY",
+            "#1 FILTER-AGGREGATE-MEASURE", "#2 OBJECT-FIELD-MEASURE",
+            "#4 GEOCODE-BATCH-COMPARE", "#5 LOCATION-BEARING-CLASSIFY",
+            "#8 PLACE-ATTRIBUTE-QUERY",
         ),
         "entity_selection": "named entities geom__within the subdivision polygon; "
                             "amenities ST_DWithin bounded inside",
@@ -110,15 +110,15 @@ QUESTION_RECIPES = {
             "census count that built each candidate IS the evidence (the "
             "executor's exact-tag tier would return exactly those "
             "entities), so class-census templates keep with evidence >= 3 "
-            "and the ***REMOVED***2 distance answer with >= 1 (2026-10-11 — replaces "
+            "and the #2 distance answer with >= 1 (2026-10-11 — replaces "
             "the per-question executor round-trip that cost 1-4 min per "
             "question at 42M-row country scale)",
         ),
     },
     "cross_subdivision": {
         "scope": "country (spans subdivisions)",
-        "templates": ("***REMOVED***2 OBJECT-FIELD-MEASURE", "***REMOVED***4 GEOCODE-BATCH-COMPARE",
-                      "***REMOVED***5 LOCATION-BEARING-CLASSIFY"),
+        "templates": ("#2 OBJECT-FIELD-MEASURE", "#4 GEOCODE-BATCH-COMPARE",
+                      "#5 LOCATION-BEARING-CLASSIFY"),
         "entity_selection": "anchors from DIFFERENT subdivisions of the country",
         "verification": "execute-and-keep",
     },
@@ -128,7 +128,7 @@ QUESTION_RECIPES = {
 class SampleQuestionService:
     """Query and generate the sample-question bank."""
 
-    ***REMOVED*** ── Serving ───────────────────────────────────────────────────────────
+    # ── Serving ───────────────────────────────────────────────────────────
 
     @classmethod
     def list_questions(cls, country_code: str, subdivision_qid: str = None,
@@ -166,7 +166,7 @@ class SampleQuestionService:
             "anchor": r.anchor,
         }
 
-    ***REMOVED*** ── Entity selection (geometry — the existing pattern) ───────────────
+    # ── Entity selection (geometry — the existing pattern) ───────────────
 
     @classmethod
     def _named_entities_in(cls, country_code: str, snapshot_id: str,
@@ -242,7 +242,7 @@ class SampleQuestionService:
                               polygon=None) -> int:
         """Total amenity-typed entities within radius of the anchor.
 
-        The evidence for the ***REMOVED***8 attribute question ("What amenities are
+        The evidence for the #8 attribute question ("What amenities are
         around {name}?") — its result size is the count of entities
         asserting an amenity key in range (the executor's generic-amenity
         tier). One GIN (`tags ?`) + GiST (`ST_DWithin`) query, bounded
@@ -301,7 +301,7 @@ class SampleQuestionService:
             return profile.snapshot_date
         return present[0]
 
-    ***REMOVED*** ── Generation ───────────────────────────────────────────────────────
+    # ── Generation ───────────────────────────────────────────────────────
 
     @classmethod
     def _select_one_per_template(cls, rows: list) -> tuple:
@@ -344,14 +344,14 @@ class SampleQuestionService:
 
         Selects named entities inside the subdivision polygon, then for a
         sample of anchors builds candidates covering ALL 5 trained
-        templates: ***REMOVED***1 radius + ***REMOVED***4 nearest + ***REMOVED***5 bearing + ***REMOVED***8 attribute
+        templates: #1 radius + #4 nearest + #5 bearing + #8 attribute
         from the amenities that actually exist near the anchor (inside
-        the polygon), and ***REMOVED***2 distance between adjacent anchors. Selection
+        the polygon), and #2 distance between adjacent anchors. Selection
         keeps ONE question per template, first candidate whose DB
         evidence clears its floor in template order; class-census
         templates keep with evidence >= 3 (the census count of the
         amenity within the radius — the executor's exact-tag tier returns
-        exactly those entities), the ***REMOVED***2 distance answer with >= 1
+        exactly those entities), the #2 distance answer with >= 1
         (criteria 2026-10-01; evidence-based since 2026-10-11 — no
         per-question executor round-trip). Stores rows
         (``source='generated'``), replacing prior generated rows for the
@@ -365,17 +365,17 @@ class SampleQuestionService:
             return {
                 "error": f"no bbox populated for subdivision {subdivision_qid}",
             }
-        ***REMOVED*** resolve_subdivision_polygon returns an SRID-0 Polygon; the
-        ***REMOVED*** geom__within filter against SRID-4326 entity geoms requires the
-        ***REMOVED*** SRID set (mixed-SRID error observed 2026-09-30).
+        # resolve_subdivision_polygon returns an SRID-0 Polygon; the
+        # geom__within filter against SRID-4326 entity geoms requires the
+        # SRID set (mixed-SRID error observed 2026-09-30).
         polygon.srid = 4326
         snapshot_id = snapshot_date or cls._country_snapshot(country_code)
         entities = cls._named_entities_in(
             country_code, snapshot_id, polygon, pool_size,
         )
         if len(entities) < min_entities:
-            ***REMOVED*** A skipped subdivision is served by the country fallback —
-            ***REMOVED*** clear any prior generated rows so a stale bank is not kept.
+            # A skipped subdivision is served by the country fallback —
+            # clear any prior generated rows so a stale bank is not kept.
             SampleQuestion.objects.filter(
                 country_code=country_code,
                 subdivision_qid=subdivision_qid,
@@ -390,10 +390,10 @@ class SampleQuestionService:
                 ),
             }
 
-        ***REMOVED*** Candidate rows covering ALL 5 trained templates (criteria
-        ***REMOVED*** 2026-10-01): ***REMOVED***1 radius, ***REMOVED***4 nearest, ***REMOVED***5 bearing, and ***REMOVED***8 attribute
-        ***REMOVED*** from each anchor's amenity census; ***REMOVED***2 distance between adjacent
-        ***REMOVED*** anchors.
+        # Candidate rows covering ALL 5 trained templates (criteria
+        # 2026-10-01): #1 radius, #4 nearest, #5 bearing, and #8 attribute
+        # from each anchor's amenity census; #2 distance between adjacent
+        # anchors.
         rows = []
         step = max(1, len(entities) // 8)
         for anchor in entities[::step]:
@@ -447,9 +447,9 @@ class SampleQuestionService:
                     "min_results": MIN_CLASS_RESULTS,
                     "evidence_count": count,
                 })
-        ***REMOVED*** ***REMOVED***2 distance questions: adjacent anchors in the deterministic
-        ***REMOVED*** pool order (both inside the subdivision). Skip identical-name
-        ***REMOVED*** pairs ("How far is San Pablo from San Pablo?" — same anchor name).
+        # #2 distance questions: adjacent anchors in the deterministic
+        # pool order (both inside the subdivision). Skip identical-name
+        # pairs ("How far is San Pablo from San Pablo?" — same anchor name).
         for i in range(0, min(len(entities) - 1, 8), 1):
             a, b = entities[i], entities[i + 1]
             if a["name"].strip().lower() == b["name"].strip().lower():
@@ -458,12 +458,12 @@ class SampleQuestionService:
                 "question": _DISTANCE_FRAME.format(a=a["name"], b=b["name"]),
                 "template": TEMPLATE_OBJECT_FIELD,
                 "anchor": a["name"],
-                "min_results": 1,  ***REMOVED*** a distance is one number by design
-                "evidence_count": 2,  ***REMOVED*** both anchors are named entities in the pool
+                "min_results": 1,  # a distance is one number by design
+                "evidence_count": 2,  # both anchors are named entities in the pool
             })
 
-        ***REMOVED*** Selection: ONE question per trained template, first candidate
-        ***REMOVED*** whose DB evidence clears its floor (each row stamps its own).
+        # Selection: ONE question per trained template, first candidate
+        # whose DB evidence clears its floor (each row stamps its own).
         selected, verified, dropped = cls._select_one_per_template(
             rows,
         )
@@ -480,7 +480,7 @@ class SampleQuestionService:
 
         stored, _, _ = cls._store_rows(
             country_code, subdivision_qid, selected, snapshot_id,
-            verify=False,  ***REMOVED*** selection already verified
+            verify=False,  # selection already verified
         )
         logger.info(
             "Generated %d (one per %d templates; verified %d, dropped %d "
@@ -493,8 +493,8 @@ class SampleQuestionService:
             "dropped": dropped, "snapshot_date": snapshot_id,
         }
 
-    ***REMOVED*** ── Verification (DB evidence for generation; executor deep-check
-    ***REMOVED***    remains for curated/verify-only sweeps) ──────────────────────────
+    # ── Verification (DB evidence for generation; executor deep-check
+    #    remains for curated/verify-only sweeps) ──────────────────────────
 
     @staticmethod
     def _verify_question(question: str, country_code: str,
@@ -533,7 +533,7 @@ class SampleQuestionService:
                 "ok": len(rows) >= min_results,
                 "result_count": len(rows) if isinstance(rows, list) else 0,
             }
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — verification must never raise
+        except Exception as exc:  # noqa: BLE001 — verification must never raise
             return {"ok": False, "result_count": 0, "error": str(exc)}
 
     @classmethod
@@ -584,8 +584,8 @@ class SampleQuestionService:
         ])
         return unique, verified, dropped
 
-    ***REMOVED*** ── Cross-subdivision recipe (country-wide questions spanning
-    ***REMOVED***    subdivisions) ────────────────────────────────────────────────────
+    # ── Cross-subdivision recipe (country-wide questions spanning
+    #    subdivisions) ────────────────────────────────────────────────────
 
     @classmethod
     def generate_cross_subdivision(cls, country_code: str,
@@ -594,12 +594,12 @@ class SampleQuestionService:
         """Country-wide questions that span DIFFERENT subdivisions.
 
         Recipe ``cross_subdivision``: ONE question per trained template
-        (criteria 2026-10-01) — ***REMOVED***1 radius + ***REMOVED***8 attribute from a hub
-        anchor's country-wide amenity census, ***REMOVED***2 distance / ***REMOVED***5 bearing /
-        ***REMOVED***4 compare between anchors from different subdivisions. Class-
+        (criteria 2026-10-01) — #1 radius + #8 attribute from a hub
+        anchor's country-wide amenity census, #2 distance / #5 bearing /
+        #4 compare between anchors from different subdivisions. Class-
         census templates keep with DB evidence >= 3 (the census count —
         the executor's exact-tag tier returns exactly those entities),
-        the ***REMOVED***2 distance answer with >= 1 (evidence-based since
+        the #2 distance answer with >= 1 (evidence-based since
         2026-10-11). Stored as country-level generated rows
         (``subdivision_qid=''``), joined with the curated bank.
         """
@@ -636,9 +636,9 @@ class SampleQuestionService:
             )
             if not anchor_a or not anchor_b:
                 continue
-            ***REMOVED*** ***REMOVED***1 radius + ***REMOVED***8 attribute from the first anchor's country-wide
-            ***REMOVED*** amenity census (polygon=None — country scale, no district
-            ***REMOVED*** bound; radii sized to span subdivisions).
+            # #1 radius + #8 attribute from the first anchor's country-wide
+            # amenity census (polygon=None — country scale, no district
+            # bound; radii sized to span subdivisions).
             if not any(r["template"] == TEMPLATE_FILTER_AGGREGATE for r in rows):
                 for radius_m in (10000, 5000):
                     nearby = cls._amenities_near(
@@ -671,7 +671,7 @@ class SampleQuestionService:
                         ),
                     })
                     break
-            ***REMOVED*** ***REMOVED***2 — distance across subdivisions (structural: 1 answer).
+            # #2 — distance across subdivisions (structural: 1 answer).
             rows.append({
                 "question": _DISTANCE_FRAME.format(
                     a=anchor_a["name"], b=anchor_b["name"],
@@ -679,9 +679,9 @@ class SampleQuestionService:
                 "template": TEMPLATE_OBJECT_FIELD,
                 "anchor": anchor_a["name"],
                 "min_results": 1,
-                "evidence_count": 2,  ***REMOVED*** both anchors exist (DB-resolved)
+                "evidence_count": 2,  # both anchors exist (DB-resolved)
             })
-            ***REMOVED*** ***REMOVED***5 — bearing across subdivisions (structural: 1 direction).
+            # #5 — bearing across subdivisions (structural: 1 direction).
             rows.append({
                 "question": FRAMES[TEMPLATE_LOCATION_BEARING][0].format(
                     x=anchor_b["name"], y=anchor_a["name"],
@@ -689,10 +689,10 @@ class SampleQuestionService:
                 "template": TEMPLATE_LOCATION_BEARING,
                 "anchor": anchor_a["name"],
                 "min_results": 1,
-                "evidence_count": 2,  ***REMOVED*** both anchors exist (DB-resolved)
+                "evidence_count": 2,  # both anchors exist (DB-resolved)
             })
-            ***REMOVED*** ***REMOVED***4 — compare across three subdivisions (structural: 1-2
-            ***REMOVED*** answers by design).
+            # #4 — compare across three subdivisions (structural: 1-2
+            # answers by design).
             c = subs[(i + 2) % len(subs)]
             if c.wikidata_id not in (a.wikidata_id, b.wikidata_id):
                 anchor_c = cls._first_named_entity(
@@ -707,14 +707,14 @@ class SampleQuestionService:
                         "template": TEMPLATE_GEOCODE_BATCH,
                         "anchor": anchor_a["name"],
                         "min_results": 1,
-                        "evidence_count": 3,  ***REMOVED*** all three anchors exist
+                        "evidence_count": 3,  # all three anchors exist
                     })
         if not rows:
             return {"error": "no cross-subdivision questions generated"}
 
-        ***REMOVED*** Selection: ONE question per trained template, first candidate whose
-        ***REMOVED*** DB evidence clears the template's floor (same criteria as the
-        ***REMOVED*** subdivision recipe).
+        # Selection: ONE question per trained template, first candidate whose
+        # DB evidence clears the template's floor (same criteria as the
+        # subdivision recipe).
         selected, verified, dropped = cls._select_one_per_template(
             rows,
         )

@@ -31,13 +31,13 @@ class PlacesEnrichmentService:
     the pipeline. Rate limiting and quota management are handled internally.
     """
 
-    ***REMOVED*** Maximum entities to enrich per invocation (safety limit)
+    # Maximum entities to enrich per invocation (safety limit)
     DEFAULT_MAX_ENTITIES = 1000
 
-    ***REMOVED*** Minimum USLP score below which we attempt Places enrichment
+    # Minimum USLP score below which we attempt Places enrichment
     DEFAULT_MIN_USLP_SCORE = 0.5
 
-    ***REMOVED*** Delay between API calls (ms) to respect rate limits
+    # Delay between API calls (ms) to respect rate limits
     API_CALL_DELAY_MS = 200
 
     def __init__(self, api_key: Optional[str] = None):
@@ -71,8 +71,8 @@ class PlacesEnrichmentService:
         from worldkg_nca.models import OsmEntity
         from igea.models import SpatialTripletScore
 
-        ***REMOVED*** Find entities in this country with no Wikidata QID
-        ***REMOVED*** (primary target for Places enrichment)
+        # Find entities in this country with no Wikidata QID
+        # (primary target for Places enrichment)
         entities = (
             OsmEntity.objects.using("vectors")
             .filter(
@@ -82,7 +82,7 @@ class PlacesEnrichmentService:
             .only("osm_id", "geom", "tags", "wikidata_id")
         )
 
-        ***REMOVED*** Filter by country tag
+        # Filter by country tag
         iso_upper = iso.upper()
         country_entities = []
         for e in entities.iterator(chunk_size=500):
@@ -153,30 +153,30 @@ class PlacesEnrichmentService:
             self._skipped_count += 1
             return
 
-        ***REMOVED*** Placeholder: actual Google Places API call would go here.
-        ***REMOVED*** For now, this is a stub that demonstrates the integration point.
-        ***REMOVED*** When an API key is configured, this would:
-        ***REMOVED***   1. Call Places API Nearby Search with lat/lon + name
-        ***REMOVED***   2. Match the best candidate by name similarity
-        ***REMOVED***   3. Store place_id, types, and rating on the entity
-        ***REMOVED***
-        ***REMOVED*** Example API call:
-        ***REMOVED***   response = requests.get(
-        ***REMOVED***       "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
-        ***REMOVED***       params={
-        ***REMOVED***           "location": f"{lat},{lon}",
-        ***REMOVED***           "radius": 500,
-        ***REMOVED***           "keyword": name,
-        ***REMOVED***           "key": self.api_key,
-        ***REMOVED***       },
-        ***REMOVED***   )
-        ***REMOVED***   results = response.json().get("results", [])
-        ***REMOVED***   if results:
-        ***REMOVED***       best = results[0]
-        ***REMOVED***       entity.google_place_id = best.get("place_id")
-        ***REMOVED***       entity.place_types = best.get("types", [])
-        ***REMOVED***       entity.place_rating = best.get("rating")
-        ***REMOVED***       entity.save(update_fields=["google_place_id", "place_types", "place_rating"])
+        # Placeholder: actual Google Places API call would go here.
+        # For now, this is a stub that demonstrates the integration point.
+        # When an API key is configured, this would:
+        #   1. Call Places API Nearby Search with lat/lon + name
+        #   2. Match the best candidate by name similarity
+        #   3. Store place_id, types, and rating on the entity
+        #
+        # Example API call:
+        #   response = requests.get(
+        #       "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
+        #       params={
+        #           "location": f"{lat},{lon}",
+        #           "radius": 500,
+        #           "keyword": name,
+        #           "key": self.api_key,
+        #       },
+        #   )
+        #   results = response.json().get("results", [])
+        #   if results:
+        #       best = results[0]
+        #       entity.google_place_id = best.get("place_id")
+        #       entity.place_types = best.get("types", [])
+        #       entity.place_rating = best.get("rating")
+        #       entity.save(update_fields=["google_place_id", "place_types", "place_rating"])
 
         self._skipped_count += 1
         logger.debug(
@@ -188,7 +188,7 @@ class PlacesEnrichmentService:
         )
 
 
-***REMOVED*** Singleton accessor
+# Singleton accessor
 _places_service: Optional[PlacesEnrichmentService] = None
 
 

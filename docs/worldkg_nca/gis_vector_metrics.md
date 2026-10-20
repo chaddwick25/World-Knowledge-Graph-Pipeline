@@ -1,4 +1,4 @@
-***REMOVED*** GIS, Vector, and Metrics: The Unified Postgres Stack
+# GIS, Vector, and Metrics: The Unified Postgres Stack
 
 > **Focus:** PostgreSQL serves three roles at once. PostGIS for spatial
 > indexing (GiST), pgvector for embedding storage and ANN search (HNSW,
@@ -12,7 +12,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Three Roles
+## 1. The Three Roles
 
 **Role 1: PostGIS (spatial)**
 - Extension: `postgis-3`
@@ -45,9 +45,9 @@
 
 ---
 
-***REMOVED******REMOVED*** 2. PostGIS: Spatial Indexing
+## 2. PostGIS: Spatial Indexing
 
-***REMOVED******REMOVED******REMOVED*** 2.1 GiST Index on `geom`
+### 2.1 GiST Index on `geom`
 
 ```sql
 CREATE INDEX idx_..._geom ON embeddings_..._cu USING gist (geom);
@@ -62,7 +62,7 @@ The GiST (Generalized Search Tree) index implements an R-tree over the
 | KNN | `ORDER BY geom <-> ST_MakePoint(lon, lat) LIMIT 50` | O(log N + k) | NLE encoder, inductive encoding |
 | Within polygon | `geom__within=polygon` | O(log N) | Subgraph entity loading, subdivision search |
 
-***REMOVED******REMOVED******REMOVED*** 2.2 After Partitioning
+### 2.2 After Partitioning
 
 With per-country leaf partitions, the GiST index on each leaf is stronger.
 Partition pruning means the GiST only scans the relevant country's entities:
@@ -76,7 +76,7 @@ With partitioning:
   GiST scans only 190K rows → fast
 ```
 
-***REMOVED******REMOVED******REMOVED*** 2.3 PostGIS in the NLE Encoder
+### 2.3 PostGIS in the NLE Encoder
 
 The NLE encoder (`NLEModel.encode_coords`) uses the GiST KNN operator `<->`
 to find the 50 nearest entities:
@@ -93,7 +93,7 @@ LIMIT 50;
 This is the database-level equivalent of the BallTree k-NN query. It works
 at runtime without loading entities into memory.
 
-***REMOVED******REMOVED******REMOVED*** 2.4 PostGIS in the MapQA Executor
+### 2.4 PostGIS in the MapQA Executor
 
 The MapQA executor uses PostGIS for spatial operations:
 - `ST_DWithin`, radius-based filtering ("amenities within 50m of X")
@@ -103,7 +103,7 @@ Both use the GiST index for O(log N + k) lookups.
 
 ---
 
-***REMOVED******REMOVED*** 3. pgvector: Embedding Storage + ANN
+## 3. pgvector: Embedding Storage + ANN
 
 > **Status (2026-09-09): the HNSW-on-`static_embedding` index and the
 > query-time ANN flow in §3.2-3.3 are design, not live.** `static_embedding`
@@ -111,7 +111,7 @@ Both use the GiST index for O(log N + k) lookups.
 > `false`. Runtime search is exact (`+ 0`) + USLP re-rank (see
 > HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN).
 
-***REMOVED******REMOVED******REMOVED*** 3.1 Three Vector Columns
+### 3.1 Three Vector Columns
 
 | Column | Dim | Source | Index |
 |---|---|---|---|
@@ -119,7 +119,7 @@ Both use the GiST index for O(log N + k) lookups.
 | `gv_nle_embedding` | 100 | DeepWalk (spatial) | (fused into static_embedding) |
 | `static_embedding` | 400 | concatenate(GV-Tags, GV-NLE) | HNSW planned, not built (2026-09-09) |
 
-***REMOVED******REMOVED******REMOVED*** 3.2 HNSW Index
+### 3.2 HNSW Index
 
 ```sql
 CREATE INDEX ON embeddings_..._cu
@@ -132,7 +132,7 @@ CREATE INDEX ON embeddings_..._cu
 - **Incrementally updatable**, no retraining when data changes
 - **Works at 600M rows**, 90 GB index fits on a 96GB+ machine
 
-***REMOVED******REMOVED******REMOVED*** 3.3 Query-Time ANN
+### 3.3 Query-Time ANN
 
 ```sql
 SELECT osm_id, tags, wkg_class, geom,
@@ -147,7 +147,7 @@ Both indexes serve one query:
 - GiST prunes to the spatial boundary (USLP relation scope)
 - HNSW probes the 400D fused embedding for semantic similarity
 
-***REMOVED******REMOVED******REMOVED*** 3.4 Cosine Distance Semantics
+### 3.4 Cosine Distance Semantics
 
 - Distance range: [0, 2]
 - Similarity = 1 - distance
@@ -156,9 +156,9 @@ Both indexes serve one query:
 
 ---
 
-***REMOVED******REMOVED*** 4. Metrics Tracking: DB-Backed Pipeline Observability
+## 4. Metrics Tracking: DB-Backed Pipeline Observability
 
-***REMOVED******REMOVED******REMOVED*** 4.1 Three Layers
+### 4.1 Three Layers
 
 | Layer | Model | DB | Role |
 |---|---|---|---|
@@ -167,18 +167,18 @@ Both indexes serve one query:
 | Step-level audit | `PipelineLogEntry` | default | Queryable structured log entries per step with `metadata` JSONField |
 | Celery audit | `TaskResult` | default | Celery's internal task state machine. 48h expiry. |
 
-***REMOVED******REMOVED******REMOVED*** 4.2 SnapshotJob: Pipeline Status Gate
+### 4.2 SnapshotJob: Pipeline Status Gate
 
 **Source:** `osmsnapshot/models.py`
 
 ```python
 class SnapshotJob(models.Model):
     country_code = CharField(max_length=3)
-    snapshot_date = CharField(max_length=20)  ***REMOVED*** YYYY_MM_DD
-    status = CharField(...)  ***REMOVED*** PENDING/RUNNING/COMPLETED/FAILED
+    snapshot_date = CharField(max_length=20)  # YYYY_MM_DD
+    status = CharField(...)  # PENDING/RUNNING/COMPLETED/FAILED
     pipeline_run_id = FK(PipelineRun)
     started_at, completed_at, error_message
-    ***REMOVED*** Indexed on (country_code, snapshot_date, status)
+    # Indexed on (country_code, snapshot_date, status)
 ```
 
 - Pipeline start view gates on `SnapshotJob`: 409 if RUNNING, `force=true`
@@ -188,29 +188,29 @@ class SnapshotJob(models.Model):
   `SnapshotJobResultsView` (joins `TaskResult` for step-level detail).
 - Frontend year selector reads `SnapshotJob` records for snapshot date badges.
 
-***REMOVED******REMOVED******REMOVED*** 4.3 PipelineRun: Run-Level State
+### 4.3 PipelineRun: Run-Level State
 
 ```python
 class PipelineRun(models.Model):
-    status = CharField(...)  ***REMOVED*** PENDING/RUNNING/COMPLETED/FAILED
+    status = CharField(...)  # PENDING/RUNNING/COMPLETED/FAILED
     current_stage = CharField(...)
     completed_stages = JSONField(...)
-    stage_metrics = JSONField(...)  ***REMOVED*** counts, durations, quality checks
+    stage_metrics = JSONField(...)  # counts, durations, quality checks
 ```
 
 - `start_stage()` / `complete_stage()` / `mark_failed()` methods
 - `stage_metrics` stores per-stage counts, durations, basic quality checks
 - Consumed by frontend progress panels and dashboard
 
-***REMOVED******REMOVED******REMOVED*** 4.4 PipelineLogEntry: Step-Level Audit
+### 4.4 PipelineLogEntry: Step-Level Audit
 
 ```python
 class PipelineLogEntry(models.Model):
     pipeline_run = FK(PipelineRun, null=True)
-    country_code = CharField(...)  ***REMOVED*** denormalized for shard routing
-    continent = CharField(...)     ***REMOVED*** denormalized for shard routing
+    country_code = CharField(...)  # denormalized for shard routing
+    continent = CharField(...)     # denormalized for shard routing
     step_name = CharField(...)
-    level = CharField(...)  ***REMOVED*** start/complete/warning/error
+    level = CharField(...)  # start/complete/warning/error
     metadata = JSONField(...)
     timestamp = DateTimeField(auto_now_add=True)
 ```
@@ -221,7 +221,7 @@ class PipelineLogEntry(models.Model):
 - Denormalized `country_code` + `continent` for future `ShardRouter` routing
   without a JOIN
 
-***REMOVED******REMOVED******REMOVED*** 4.5 USLP Dashboard: aggregate() + Case/When
+### 4.5 USLP Dashboard: aggregate() + Case/When
 
 **Source:** `api/services/augmented_data_service.py`
 
@@ -241,7 +241,7 @@ result = accepted_qs.aggregate(
         Case(When(topo_score__gt=F('geo_score') + F('name_score'), then=1))
     ),
     b0=Count(Case(When(normalized_score__gte=0.0, normalized_score__lt=0.2, then=1))),
-    ***REMOVED*** ... b1-b4 histogram buckets ...
+    # ... b1-b4 histogram buckets ...
     avg_confidence=Avg('normalized_score'),
 )
 ```
@@ -252,7 +252,7 @@ row.
 
 ---
 
-***REMOVED******REMOVED*** 5. The Unified Query: All Three Roles in One SQL
+## 5. The Unified Query: All Three Roles in One SQL
 
 The hybrid search endpoint demonstrates all three roles working together:
 
@@ -280,7 +280,7 @@ in one pass.
 
 ---
 
-***REMOVED******REMOVED*** 6. Invariants
+## 6. Invariants
 
 - The vectors DB must have both `pgvector` and `PostGIS` extensions.
 - GiST index on `geom` is required for the NLE encoder's KNN query.

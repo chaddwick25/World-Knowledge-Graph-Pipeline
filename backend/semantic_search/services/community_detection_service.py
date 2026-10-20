@@ -92,7 +92,7 @@ class CommunityDetectionService:
 
         return self._detect_nx(G, resolution)
 
-    ***REMOVED*** ── Solvers ────────────────────────────────────────────────────────
+    # ── Solvers ────────────────────────────────────────────────────────
 
     def _detect_sparse(self, G, resolution: float) -> dict:
         """networkit PLM on a SparseGraph (large-graph path)."""
@@ -121,12 +121,12 @@ class CommunityDetectionService:
         except Exception:
             modularity = 0.0
 
-        ***REMOVED*** networkit partition is keyed by internal index → map back to osm_id
+        # networkit partition is keyed by internal index → map back to osm_id
         node_to_community = {}
         for i, osm_id in enumerate(node_ids):
             node_to_community[osm_id] = int(part.subsetOf(i))
 
-        ***REMOVED*** Renumber community IDs densely (0..C-1) and build member lists
+        # Renumber community IDs densely (0..C-1) and build member lists
         remap = {}
         communities = []
         for osm_id in node_ids:

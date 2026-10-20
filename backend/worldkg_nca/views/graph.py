@@ -42,9 +42,9 @@ def _run_template(request, template_name: str) -> Response:
             {"error": "query required"}, status=status.HTTP_400_BAD_REQUEST,
         )
 
-    ***REMOVED*** Parse to extract concepts (the template is forced — we don't rely on
-    ***REMOVED*** the classifier, which would need retraining to recognize the new
-    ***REMOVED*** templates).  Concepts + roles are still useful for the executor.
+    # Parse to extract concepts (the template is forced — we don't rely on
+    # the classifier, which would need retraining to recognize the new
+    # templates).  Concepts + roles are still useful for the executor.
     parser = QueryParserService.get_instance()
     parsed = parser.parse(query_text)
     parsed["template"] = template_name
@@ -69,7 +69,7 @@ def spectral_query(request):
     Body: {"query": "what is the spatial connectivity of this region",
            "country_code": "BZ", "snapshot_date": "2025_12_31"}
     """
-    return _run_template(request, "SPECTRAL-ANALYSIS (***REMOVED***11)")
+    return _run_template(request, "SPECTRAL-ANALYSIS (#11)")
 
 
 @api_view(["POST"])
@@ -80,7 +80,7 @@ def temporal_query(request):
     Body: {"query": "how has this area changed",
            "country_code": "BZ", "snapshot_date": "2025_12_31"}
     """
-    return _run_template(request, "TEMPORAL-DRIFT (***REMOVED***12)")
+    return _run_template(request, "TEMPORAL-DRIFT (#12)")
 
 
 @api_view(["POST"])
@@ -91,7 +91,7 @@ def community_query(request):
     Body: {"query": "where are the clusters of cafes",
            "country_code": "BZ", "snapshot_date": "2025_12_31"}
     """
-    return _run_template(request, "COMMUNITY-DETECT (***REMOVED***13)")
+    return _run_template(request, "COMMUNITY-DETECT (#13)")
 
 
 @api_view(["POST"])
@@ -102,4 +102,4 @@ def event_diffusion_query(request):
     Body: {"query": "what is affected within 30 minutes of the airport",
            "country_code": "BZ", "snapshot_date": "2025_12_31"}
     """
-    return _run_template(request, "EVENT-DIFFUSION (***REMOVED***14)")
+    return _run_template(request, "EVENT-DIFFUSION (#14)")

@@ -1,4 +1,4 @@
-"""Template ***REMOVED***4 (GEOCODE-BATCH-COMPARE) sampler mixin.
+"""Template #4 (GEOCODE-BATCH-COMPARE) sampler mixin.
 
 Extracted from ``mapqa_question_generator.py`` (monolith split, Phase 5 of
 PIPELINE_CONTROL_PLANE_AND_CLEANUP_PLAN).
@@ -49,7 +49,7 @@ class Template4SamplerMixin:
                     z["lat"], z["lon"], y["lat"], y["lon"]
                 ) * 1000
                 if abs(d_x - d_y) < 1.0:
-                    continue  ***REMOVED*** too ambiguous
+                    continue  # too ambiguous
                 winner = x if d_x < d_y else y
                 frame = rng.choice(FRAMES[TEMPLATE_GEOCODE_BATCH][:2])
                 question = frame.format(z=z["name"], x=x["name"], y=y["name"])

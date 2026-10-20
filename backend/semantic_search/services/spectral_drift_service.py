@@ -56,7 +56,7 @@ class SpectralDriftService:
         lambda_from = np.asarray(fp_from["eigenvalues"], dtype=float)
         lambda_to = np.asarray(fp_to["eigenvalues"], dtype=float)
 
-        ***REMOVED*** Pad shorter vector with zeros if k differs
+        # Pad shorter vector with zeros if k differs
         max_k = max(len(lambda_from), len(lambda_to))
         if len(lambda_from) < max_k:
             lambda_from = np.pad(lambda_from, (0, max_k - len(lambda_from)))
@@ -64,13 +64,13 @@ class SpectralDriftService:
             lambda_to = np.pad(lambda_to, (0, max_k - len(lambda_to)))
 
         spectral_distance = float(np.linalg.norm(lambda_to - lambda_from))
-        ***REMOVED*** λ₂ shift (first non-trivial eigenvalue)
+        # λ₂ shift (first non-trivial eigenvalue)
         connectivity_delta = float(lambda_to[0] - lambda_from[0])
         spectral_gap_delta = float(
             (lambda_to[-1] - lambda_to[0]) - (lambda_from[-1] - lambda_from[0])
         )
 
-        ***REMOVED*** Fiedler vector drift (cosine distance) — project onto common node set
+        # Fiedler vector drift (cosine distance) — project onto common node set
         fiedler_from = np.asarray(fp_from.get("fiedler_vector") or [], dtype=float)
         fiedler_to = np.asarray(fp_to.get("fiedler_vector") or [], dtype=float)
         fiedler_drift = self._fiedler_cosine_distance(fiedler_from, fiedler_to)

@@ -32,7 +32,7 @@ def step_6_mark_search_ready(self, env: CountryEnvelope) -> CountryEnvelope:
       2. Finalizes PipelineRun as COMPLETED
       3. Sends pipeline_complete WebSocket message
     """
-    ***REMOVED*** Rehydrate subgraphs from DB to ensure fresh data
+    # Rehydrate subgraphs from DB to ensure fresh data
     if not env.has_subgraphs or not env.subgraphs:
         try:
             fresh = CountryEnvelope.from_db(env.iso, snapshot_date=env.snapshot_date)
@@ -60,9 +60,9 @@ def step_6_mark_search_ready(self, env: CountryEnvelope) -> CountryEnvelope:
                 pipeline_run_id=env.pipeline_run_id,
             )
 
-    ***REMOVED*** Create/refresh the materialized view for this country's leaf partition.
-    ***REMOVED*** The MV is created after Step 5 (GV-NLE training) so all embeddings are
-    ***REMOVED*** finalized.  The MV has its own HNSW index for fast ANN queries.
+    # Create/refresh the materialized view for this country's leaf partition.
+    # The MV is created after Step 5 (GV-NLE training) so all embeddings are
+    # finalized.  The MV has its own HNSW index for fast ANN queries.
     from django.core.management import call_command
     try:
         call_command(
@@ -88,11 +88,11 @@ def step_6_mark_search_ready(self, env: CountryEnvelope) -> CountryEnvelope:
             pipeline_run_id=env.pipeline_run_id,
         )
 
-    ***REMOVED*** Guaranteed per-leaf indexes before the country is marked
-    ***REMOVED*** search-ready. Idempotent: everything already present is skipped,
-    ***REMOVED*** so in practice this builds only the amenity value-vocabulary
-    ***REMOVED*** index (the release slice of the index-builder plan — it removes
-    ***REMOVED*** the DISTINCT tags->>'amenity' heap scan from the query path).
+    # Guaranteed per-leaf indexes before the country is marked
+    # search-ready. Idempotent: everything already present is skipped,
+    # so in practice this builds only the amenity value-vocabulary
+    # index (the release slice of the index-builder plan — it removes
+    # the DISTINCT tags->>'amenity' heap scan from the query path).
     try:
         call_command(
             "create_osmentity_vector_indexes",
@@ -116,13 +116,13 @@ def step_6_mark_search_ready(self, env: CountryEnvelope) -> CountryEnvelope:
             pipeline_run_id=env.pipeline_run_id,
         )
 
-    ***REMOVED*** WorldKG class fingerprint (ISSUE-class-drift-capability): the
-    ***REMOVED*** snapshot-scoped ontology profile — class distribution, Shannon
-    ***REMOVED*** entropy, unique classes, top-5. One aggregate over
-    ***REMOVED*** OsmEntity.wkg_class; non-fatal like 5c. When a previous snapshot
-    ***REMOVED*** exists, the newest pair's JS drift is computed inline (the pair
-    ***REMOVED*** math is dict-level once both fingerprints exist); older pair
-    ***REMOVED*** backfill stays with the compute_class_drift command.
+    # WorldKG class fingerprint (ISSUE-class-drift-capability): the
+    # snapshot-scoped ontology profile — class distribution, Shannon
+    # entropy, unique classes, top-5. One aggregate over
+    # OsmEntity.wkg_class; non-fatal like 5c. When a previous snapshot
+    # exists, the newest pair's JS drift is computed inline (the pair
+    # math is dict-level once both fingerprints exist); older pair
+    # backfill stays with the compute_class_drift command.
     try:
         from osmsnapshot.models import Snapshot
         from semantic_search.services.worldkg_drift_service import (

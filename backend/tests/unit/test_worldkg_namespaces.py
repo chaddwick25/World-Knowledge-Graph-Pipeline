@@ -122,7 +122,7 @@ class TestWorldKGNamespaceAlignment:
         assert triples_service.WKGS_BASE_URI == CANONICAL_WKGS
         assert ONTOLOGY_LOADER_WKGS == CANONICAL_WKGS
 
-        ***REMOVED*** All three modules must agree on the schema namespace.
+        # All three modules must agree on the schema namespace.
         namespaces = {
             worldkg_enrichment_service.WKGS_BASE_URI,
             triples_service.WKGS_BASE_URI,

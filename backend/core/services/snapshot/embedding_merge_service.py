@@ -25,7 +25,7 @@ from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Candidate header.tsv sources (first existing one is copied)
+# Candidate header.tsv sources (first existing one is copied)
 _HEADER_SOURCES = [
     "north-america/us-other-location/header.tsv",
     "north-america/us-south-location/header.tsv",
@@ -56,7 +56,7 @@ class EmbeddingMergeService:
         us_dir = self.embeddings_root / "north-america" / "us"
         us_dir.mkdir(parents=True, exist_ok=True)
 
-        ***REMOVED*** Load merges configuration (US merge is the first entry in "merges")
+        # Load merges configuration (US merge is the first entry in "merges")
         splits_cfg = load_embedding_splits_config()
         merges = splits_cfg.get("merges", [])
         us_merge = None
@@ -72,11 +72,11 @@ class EmbeddingMergeService:
         shards: List[str] = us_merge.get("shards") or []
         output_rel: str = us_merge.get("output") or "us-location.tsv.gz"
 
-        ***REMOVED*** Merge location TSV only; tags TSV merge remains intentionally skipped.
+        # Merge location TSV only; tags TSV merge remains intentionally skipped.
         loc_out = us_dir / output_rel
         self._merge_tsv_atomic(shards, loc_out, "location TSV", t0)
 
-        ***REMOVED*** Copy header.tsv from first available shard directory
+        # Copy header.tsv from first available shard directory
         for hs_rel in _HEADER_SOURCES:
             hs = self.embeddings_root / hs_rel
             if hs.exists():
@@ -109,7 +109,7 @@ class EmbeddingMergeService:
         tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
 
         if output_path.exists():
-            ***REMOVED*** Gzip integrity check before trusting existing file
+            # Gzip integrity check before trusting existing file
             try:
                 with gzip.open(str(output_path), "rt") as f:
                     _ = f.readline()
@@ -121,9 +121,9 @@ class EmbeddingMergeService:
         logger.info("  Merging %s from %d shards (streaming) -> %s",
                     label, len(shard_paths), output_path)
 
-        ***REMOVED*** 16 MB buffer for copyfileobj (reduces syscalls dramatically)
+        # 16 MB buffer for copyfileobj (reduces syscalls dramatically)
         BUF = 16 * 1024 * 1024
-        ***REMOVED*** compresslevel=1 trades ~5% size for ~2x compression speed
+        # compresslevel=1 trades ~5% size for ~2x compression speed
         with gzip.open(str(tmp_path), "wb", compresslevel=1) as out:
             for i, rel_path in enumerate(shard_paths):
                 src = self.embeddings_root / rel_path
@@ -133,8 +133,8 @@ class EmbeddingMergeService:
                     continue
                 with gzip.open(str(src), "rb") as f:
                     if i > 0:
-                        f.readline()  ***REMOVED*** skip header from shards 2..N
-                    ***REMOVED*** copyfileobj is a C-level loop; much faster than Python per-line
+                        f.readline()  # skip header from shards 2..N
+                    # copyfileobj is a C-level loop; much faster than Python per-line
                     shutil.copyfileobj(f, out, BUF)
                 logger.info("    [%d/%d] %s: merged (%.0fs)",
                             i + 1, len(shard_paths), src.name, time.time() - t0)

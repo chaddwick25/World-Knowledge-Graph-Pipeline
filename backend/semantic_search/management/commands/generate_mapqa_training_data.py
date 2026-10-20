@@ -2,7 +2,7 @@
 generate_mapqa_training_data — self-supervised MapQA training-data generation.
 
 Generates question–answer pairs for the 5 existing MapQA macro-templates
-(***REMOVED***1, ***REMOVED***2, ***REMOVED***4, ***REMOVED***5, ***REMOVED***8) from ``OsmEntity`` ground truth in already-processed
+(#1, #2, #4, #5, #8) from ``OsmEntity`` ground truth in already-processed
 countries (no graph/factor-table dependency).
 
 Answers are computed exactly from PostGIS at generation time and appended to
@@ -152,9 +152,9 @@ class Command(BaseCommand):
             ))
             return
 
-        ***REMOVED*** Class-balance guard: cap generated rows per template across countries.
+        # Class-balance guard: cap generated rows per template across countries.
         all_rows = self._cap_per_template(all_rows, max_per_class, opts["seed"])
-        ***REMOVED*** Stratified 20% per-template holdout → self_supervised_test.
+        # Stratified 20% per-template holdout → self_supervised_test.
         generator.split_holdout(all_rows, holdout_frac=0.2)
 
         self._print_summary(all_rows, templates)
@@ -178,7 +178,7 @@ class Command(BaseCommand):
             self.stdout.write("\n=== Retraining parser ===")
             call_command("train_mapqa_parser")
 
-    ***REMOVED*** ── Resolution helpers ─────────────────────────────────────────────────
+    # ── Resolution helpers ─────────────────────────────────────────────────
 
     def _parse_templates(self, raw: str) -> tuple:
         template_nums = []
@@ -192,7 +192,7 @@ class Command(BaseCommand):
                 raise CommandError(f"Invalid template number: {part!r}")
             if num not in TEMPLATE_BY_NUMBER:
                 raise CommandError(
-                    f"Template ***REMOVED***{num} not supported (use 1,2,4,5,8)."
+                    f"Template #{num} not supported (use 1,2,4,5,8)."
                 )
             template_nums.append(num)
         if not template_nums:
@@ -246,7 +246,7 @@ class Command(BaseCommand):
         )
         return str(run.id) if run else ""
 
-    ***REMOVED*** ── Cap + split ────────────────────────────────────────────────────────
+    # ── Cap + split ────────────────────────────────────────────────────────
 
     @staticmethod
     def _cap_per_template(rows: list, max_per_class: int, seed: int) -> list:
@@ -275,7 +275,7 @@ class Command(BaseCommand):
             capped.extend(kept)
         return capped
 
-    ***REMOVED*** ── CSV merge (idempotent + atomic) ────────────────────────────────────
+    # ── CSV merge (idempotent + atomic) ────────────────────────────────────
 
     @classmethod
     def _merge_into_csv(cls, csv_path: Path, new_rows: list) -> None:
@@ -347,7 +347,7 @@ class Command(BaseCommand):
             row["Country_code"] = ""
         return row
 
-    ***REMOVED*** ── Output ─────────────────────────────────────────────────────────────
+    # ── Output ─────────────────────────────────────────────────────────────
 
     def _print_summary(self, rows: list, templates: tuple) -> None:
         by_template = Counter(r["Macro-template"] for r in rows)

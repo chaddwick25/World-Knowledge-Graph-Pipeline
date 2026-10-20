@@ -36,14 +36,14 @@ from semantic_search.utils.sparql_mixin import SPARQLRetryMixin
 logger = logging.getLogger(__name__)
 
 BBOX_PAGE_SIZE = 2_000
-REQUEST_DELAY_S = 1.1  ***REMOVED*** Wikidata rate limit: ~1 req/s for anonymous clients
-SPARQL_TIMEOUT_S = 30  ***REMOVED*** wikibase:box queries on large bboxes can take 60-90s
-SPARQL_MAX_RETRIES = 1  ***REMOVED*** retry on 429/502/503 with exponential backoff
-SPARQL_BACKOFF_BASE_S = 2  ***REMOVED*** base delay: 5s, 10s, 20s
+REQUEST_DELAY_S = 1.1  # Wikidata rate limit: ~1 req/s for anonymous clients
+SPARQL_TIMEOUT_S = 30  # wikibase:box queries on large bboxes can take 60-90s
+SPARQL_MAX_RETRIES = 1  # retry on 429/502/503 with exponential backoff
+SPARQL_BACKOFF_BASE_S = 2  # base delay: 5s, 10s, 20s
 
 
 class WikidataCandidateService(SPARQLRetryMixin):
-    ***REMOVED*** Override mixin defaults with local constants
+    # Override mixin defaults with local constants
     sparql_timeout = SPARQL_TIMEOUT_S
     sparql_max_retries = SPARQL_MAX_RETRIES
     sparql_backoff_base = SPARQL_BACKOFF_BASE_S
@@ -60,8 +60,8 @@ class WikidataCandidateService(SPARQLRetryMixin):
         'lat': 48.137,
         'lon': 11.576,
         'label': 'Marienplatz',
-        'wkg_class': 'wkgs:Square',    ***REMOVED*** None if no NCA reverse mapping found
-        'embedding': None,             ***REMOVED*** caller may populate via FastText later
+        'wkg_class': 'wkgs:Square',    # None if no NCA reverse mapping found
+        'embedding': None,             # caller may populate via FastText later
     }
 
     Usage:
@@ -83,11 +83,11 @@ class WikidataCandidateService(SPARQLRetryMixin):
         """
         self.ontology_service = ontology_service
         self.request_delay = request_delay
-        self._wikidata_to_wkg: Dict[str, str] = {}  ***REMOVED*** built lazily on first use
+        self._wikidata_to_wkg: Dict[str, str] = {}  # built lazily on first use
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Public harvest methods
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Public harvest methods
+    # ------------------------------------------------------------------
 
     def harvest_by_bbox(
         self,
@@ -113,7 +113,7 @@ class WikidataCandidateService(SPARQLRetryMixin):
         self._build_reverse_nca_map()
 
         candidates: List[Dict] = []
-        seen_uris: set = set()  ***REMOVED*** deduplicate entities that have multiple P31 values
+        seen_uris: set = set()  # deduplicate entities that have multiple P31 values
         offset = 0
 
         while len(candidates) < limit:
@@ -132,15 +132,15 @@ class WikidataCandidateService(SPARQLRetryMixin):
                     continue
                 uri = cand['wikidata_uri']
                 if uri in seen_uris:
-                    continue  ***REMOVED*** already have this entity (duplicate P31 row)
+                    continue  # already have this entity (duplicate P31 row)
                 if wkg_class_filter and cand.get('wkg_class') != wkg_class_filter:
-                    seen_uris.add(uri)  ***REMOVED*** mark as seen even if filtered
+                    seen_uris.add(uri)  # mark as seen even if filtered
                     continue
                 seen_uris.add(uri)
                 candidates.append(cand)
 
             if len(batch) < page_size:
-                break  ***REMOVED*** last page reached
+                break  # last page reached
 
             offset += page_size
             time.sleep(self.request_delay)
@@ -174,7 +174,7 @@ class WikidataCandidateService(SPARQLRetryMixin):
         Returns:
             List of candidate dicts.
         """
-        ***REMOVED*** Delegate bbox resolution to the shared extraction-level resolver.
+        # Delegate bbox resolution to the shared extraction-level resolver.
         bbox = osm_wikidata_resolver.resolve_country_bbox(country_code, poly_file_path)
         if bbox is None:
             logger.error(
@@ -193,9 +193,9 @@ class WikidataCandidateService(SPARQLRetryMixin):
             limit=limit,
         )
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** SPARQL query (paginated)
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # SPARQL query (paginated)
+    # ------------------------------------------------------------------
 
     def _sparql_bbox_page(
         self,
@@ -216,11 +216,11 @@ class WikidataCandidateService(SPARQLRetryMixin):
         Returns raw SPARQL bindings; ?location is a WKT literal
         'Point(lon lat)' parsed by _row_to_candidate.
         """
-        ***REMOVED*** wikibase:box expects Point(lon lat) — note lon FIRST (GeoSPARQL / WKT order).
-        ***REMOVED*** P31 (instance-of) is intentionally EXCLUDED here: adding it forces a JOIN
-        ***REMOVED*** against Wikidata's ~500M-row statement table on top of the spatial result set,
-        ***REMOVED*** causing a 504 Gateway Timeout on country-sized bboxes.
-        ***REMOVED*** P31 enrichment is done as a separate batched phase (enrich_wkg_class).
+        # wikibase:box expects Point(lon lat) — note lon FIRST (GeoSPARQL / WKT order).
+        # P31 (instance-of) is intentionally EXCLUDED here: adding it forces a JOIN
+        # against Wikidata's ~500M-row statement table on top of the spatial result set,
+        # causing a 504 Gateway Timeout on country-sized bboxes.
+        # P31 enrichment is done as a separate batched phase (enrich_wkg_class).
         query = f"""
 SELECT ?entity ?entityLabel ?location WHERE {{
   SERVICE wikibase:box {{
@@ -246,9 +246,9 @@ OFFSET {offset}
             logger.error(f"WikidataCandidate: SPARQL request error: {exc}")
             return []
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Row → candidate dict conversion
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Row → candidate dict conversion
+    # ------------------------------------------------------------------
 
     def _row_to_candidate(self, row: Dict) -> Optional[Dict]:
         """
@@ -259,12 +259,12 @@ OFFSET {offset}
         """
         entity_uri   = row.get("entity", {}).get("value")
         label        = row.get("entityLabel", {}).get("value", "")
-        location_str = row.get("location", {}).get("value")  ***REMOVED*** 'Point(lon lat)'
+        location_str = row.get("location", {}).get("value")  # 'Point(lon lat)'
 
         if not entity_uri or not location_str:
             return None
 
-        ***REMOVED*** Keep only proper Q-entities (skip property/lexeme items)
+        # Keep only proper Q-entities (skip property/lexeme items)
         if "wikidata.org/entity/Q" not in entity_uri:
             return None
 
@@ -277,13 +277,13 @@ OFFSET {offset}
             "lat": lat,
             "lon": lon,
             "label": label,
-            "wkg_class": None,  ***REMOVED*** populated by enrich_wkg_class() if needed
+            "wkg_class": None,  # populated by enrich_wkg_class() if needed
             "embedding": None,
         }
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Phase-2: batched P31 → wkg_class enrichment
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Phase-2: batched P31 → wkg_class enrichment
+    # ------------------------------------------------------------------
 
     def enrich_wkg_class(
         self,
@@ -316,8 +316,8 @@ OFFSET {offset}
             logger.warning("enrich_wkg_class: NCA map empty, skipping enrichment.")
             return candidates
 
-        ***REMOVED*** Build the target-type VALUES clause from the NCA reverse map keys.
-        ***REMOVED*** This restricts P279* traversal to only our known ontology types.
+        # Build the target-type VALUES clause from the NCA reverse map keys.
+        # This restricts P279* traversal to only our known ontology types.
         type_values_clause = self._build_type_values_clause()
         if not type_values_clause:
             logger.warning("enrich_wkg_class: no valid type URIs in NCA map.")
@@ -328,7 +328,7 @@ OFFSET {offset}
             f"enriching {len(candidates)} candidates in batches of {batch_size}"
         )
 
-        ***REMOVED*** Index candidates by URI for fast lookup
+        # Index candidates by URI for fast lookup
         uri_to_cands: Dict[str, List[Dict]] = {}
         for c in candidates:
             uri_to_cands.setdefault(c["wikidata_uri"], []).append(c)
@@ -340,7 +340,7 @@ OFFSET {offset}
 
         for i in range(0, len(uris), batch_size):
             batch_uris = uris[i : i + batch_size]
-            ***REMOVED*** Build VALUES clause using Q-ids only (wd:Q12345)
+            # Build VALUES clause using Q-ids only (wd:Q12345)
             values_clause = " ".join(
                 f"wd:{u.rstrip('/').rsplit('/', 1)[-1]}"
                 for u in batch_uris
@@ -349,9 +349,9 @@ OFFSET {offset}
             if not values_clause:
                 continue
 
-            ***REMOVED*** P31/P279* = "instance of, then zero-or-more subclass-of hops".
-            ***REMOVED*** The second VALUES on ?typeUri prunes the traversal to our known
-            ***REMOVED*** ontology types — Wikidata's query planner uses this as a filter.
+            # P31/P279* = "instance of, then zero-or-more subclass-of hops".
+            # The second VALUES on ?typeUri prunes the traversal to our known
+            # ontology types — Wikidata's query planner uses this as a filter.
             query = f"""
 SELECT ?entity ?typeUri WHERE {{
   VALUES ?entity {{ {values_clause} }}
@@ -376,7 +376,7 @@ SELECT ?entity ?typeUri WHERE {{
                         wkg_class  = self._wikidata_to_wkg.get(type_uri)
                         if wkg_class and entity_uri in uri_to_cands:
                             for c in uri_to_cands[entity_uri]:
-                                if c["wkg_class"] is None:  ***REMOVED*** keep first mapping found
+                                if c["wkg_class"] is None:  # keep first mapping found
                                     c["wkg_class"] = wkg_class
                                     total_enriched += 1
             except Exception as exc:
@@ -407,7 +407,7 @@ SELECT ?entity ?typeUri WHERE {{
         for uri in self._wikidata_to_wkg:
             if "/Q" in uri:
                 qid = uri.rstrip("/").rsplit("/", 1)[-1]
-                ***REMOVED*** Guard against corrupted Q-IDs (e.g. non-ASCII characters)
+                # Guard against corrupted Q-IDs (e.g. non-ASCII characters)
                 if qid and qid[0] == "Q" and qid[1:].isdigit():
                     qids.append(f"wd:{qid}")
                 else:
@@ -417,9 +417,9 @@ SELECT ?entity ?typeUri WHERE {{
                     )
         return " ".join(qids)
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** NCA reverse map: Wikidata type URI → wkgs: class
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # NCA reverse map: Wikidata type URI → wkgs: class
+    # ------------------------------------------------------------------
 
     def _build_reverse_nca_map(self) -> None:
         """
@@ -435,7 +435,7 @@ SELECT ?entity ?typeUri WHERE {{
         type back to the WorldKG schema namespace.
         """
         if self._wikidata_to_wkg:
-            return  ***REMOVED*** already built, skip
+            return  # already built, skip
 
         if self.ontology_service is None:
             logger.debug(
@@ -449,9 +449,9 @@ SELECT ?entity ?typeUri WHERE {{
             for cls_name in all_classes:
                 wd_uri = self.ontology_service.get_wikidata_equivalent(cls_name)
                 if wd_uri:
-                    ***REMOVED*** Normalize /wiki/ to /entity/ — Wikidata's SPARQL endpoint
-                    ***REMOVED*** returns entity URIs as http://www.wikidata.org/entity/Q...
-                    ***REMOVED*** but the ontology TTL stores them as /wiki/Q...
+                    # Normalize /wiki/ to /entity/ — Wikidata's SPARQL endpoint
+                    # returns entity URIs as http://www.wikidata.org/entity/Q...
+                    # but the ontology TTL stores them as /wiki/Q...
                     wd_uri = wd_uri.replace(
                         "www.wikidata.org/wiki/", "www.wikidata.org/entity/"
                     )
@@ -463,9 +463,9 @@ SELECT ?entity ?typeUri WHERE {{
         except Exception as exc:
             logger.warning(f"WikidataCandidate: could not build NCA map: {exc}")
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Country bbox resolution
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Country bbox resolution
+    # ------------------------------------------------------------------
 
     def _resolve_country_bbox(
         self,
@@ -479,19 +479,19 @@ SELECT ?entity ?typeUri WHERE {{
         osm_wikidata_resolver.resolve_country_bbox with the same
         resolution order (poly file → DB geometry → static fallback).
         """
-        ***REMOVED***1.Explicitly polyfile
-        ***REMOVED*** if poly_file_path is not None: return parse_poly_bbox(poly_file_path
+        #1.Explicitly polyfile
+        # if poly_file_path is not None: return parse_poly_bbox(poly_file_path
         
-        ***REMOVED*** 2.Country code
-        ***REMOVED*** if country_code is not None:  return osm_wikidata_resolver.resolve_bbox_for_profile(profile_from_country_code(country_code))
+        # 2.Country code
+        # if country_code is not None:  return osm_wikidata_resolver.resolve_bbox_for_profile(profile_from_country_code(country_code))
 
-        ***REMOVED*** 3. Default
+        # 3. Default
         return osm_wikidata_resolver.resolve_country_bbox(country_code, poly_file_path)
 
 
-***REMOVED*** ------------------------------------------------------------------
-***REMOVED*** Module-level helpers (importable by train_gv_nle and other consumers)
-***REMOVED*** ------------------------------------------------------------------
+# ------------------------------------------------------------------
+# Module-level helpers (importable by train_gv_nle and other consumers)
+# ------------------------------------------------------------------
 
 def parse_poly_bbox(poly_path: str) -> Optional[Tuple[float, float, float, float]]:
     """
@@ -547,12 +547,12 @@ def parse_poly_to_wkt(poly_path: str) -> Optional[str]:
                     continue
                 if stripped == "END":
                     if reading_outer and coords:
-                        break  ***REMOVED*** end of first (outer) ring — stop here
+                        break  # end of first (outer) ring — stop here
                     reading_outer = False
                     continue
                 parts = stripped.split()
                 if len(parts) == 1:
-                    ***REMOVED*** Ring number line: positive = outer ring, '!' prefix = hole
+                    # Ring number line: positive = outer ring, '!' prefix = hole
                     reading_outer = not stripped.startswith("!")
                     continue
                 if reading_outer and len(parts) == 2:
@@ -564,7 +564,7 @@ def parse_poly_to_wkt(poly_path: str) -> Optional[str]:
         if len(coords) < 3:
             return None
 
-        ***REMOVED*** Close the ring if open
+        # Close the ring if open
         if coords[0] != coords[-1]:
             coords.append(coords[0])
 

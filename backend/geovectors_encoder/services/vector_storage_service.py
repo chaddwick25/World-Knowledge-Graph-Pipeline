@@ -38,24 +38,24 @@ class VectorStorageService:
     def __init__(self, batch_size=20000, model_type='tags', version=None,
                  snapshot_id=None, country_code=None, source_snapshot_id=None):
         self.batch_size = batch_size
-        self.model_type = model_type ***REMOVED*** 'tags' or 'nle'
+        self.model_type = model_type # 'tags' or 'nle'
         self.version = version or '1.0'
         self.buffer = []
-        ***REMOVED*** Phase 6 partition keys — propagated into every upserted row.
-        ***REMOVED*** Nullable on the monolith; required after cutover.
+        # Phase 6 partition keys — propagated into every upserted row.
+        # Nullable on the monolith; required after cutover.
         self.snapshot_id = snapshot_id
         self.country_code = country_code
-        ***REMOVED*** UUID of the osmsnapshot.Snapshot row (default DB) that produced
-        ***REMOVED*** the entities being upserted.  Stored on OsmEntity.source_snapshot_id
-        ***REMOVED*** for cross-database provenance.
+        # UUID of the osmsnapshot.Snapshot row (default DB) that produced
+        # the entities being upserted.  Stored on OsmEntity.source_snapshot_id
+        # for cross-database provenance.
         self.source_snapshot_id = source_snapshot_id
-        ***REMOVED*** Cache the resolved leaf partition name after the first lookup so we
-        ***REMOVED*** don't issue a pg_tables catalog query on every single flush call.
+        # Cache the resolved leaf partition name after the first lookup so we
+        # don't issue a pg_tables catalog query on every single flush call.
         self._cached_leaf_partition: str | None = None
         self._leaf_partition_resolved: bool = False
-        ***REMOVED*** Reusable staging table — created lazily on first flush, TRUNCATE'd
-        ***REMOVED*** between batches, dropped on cleanup.  Eliminates per-batch
-        ***REMOVED*** CREATE/DROP catalog overhead (~50-200ms each × 486 batches).
+        # Reusable staging table — created lazily on first flush, TRUNCATE'd
+        # between batches, dropped on cleanup.  Eliminates per-batch
+        # CREATE/DROP catalog overhead (~50-200ms each × 486 batches).
         self._staging_table: str | None = None
         self._staging_indexed: bool = False
 
@@ -70,8 +70,8 @@ class VectorStorageService:
         if self._staging_table is not None:
             return self._staging_table
 
-        ***REMOVED*** Use a stable name based on model_type + object id so the table
-        ***REMOVED*** can be reused across batches but is unique per storage instance.
+        # Use a stable name based on model_type + object id so the table
+        # can be reused across batches but is unique per storage instance.
         staging_name = f"temp_stage_{self.model_type}_{id(self)}"
 
         cursor.execute(f"""
@@ -120,14 +120,14 @@ class VectorStorageService:
         """
         raw_data is a list: [id, type, tags, (lat, lon optional)]
         """
-        ***REMOVED*** Handle variable length records (Nodes have 5, Ways/Relations have 3 in first pass)
+        # Handle variable length records (Nodes have 5, Ways/Relations have 3 in first pass)
         osm_id = int(raw_data[0])
         osm_type_code = raw_data[1]
         tags = raw_data[2]
         lat = raw_data[3] if len(raw_data) > 3 else None
         lon = raw_data[4] if len(raw_data) > 4 else None
         
-        ***REMOVED*** Map code to name (handle both short 'n' and full 'node' formats)
+        # Map code to name (handle both short 'n' and full 'node' formats)
         type_map = {
             'n': 'node', 'node': 'node',
             'w': 'way',  'way': 'way',
@@ -135,13 +135,13 @@ class VectorStorageService:
         }
         osm_type = type_map.get(str(osm_type_code).lower(), 'node')
         
-        ***REMOVED*** Prepare entity data.
-        ***REMOVED*** Finite-coordinate guard (2026-10-11): NaN is truthy in Python, so
-        ***REMOVED*** `if lat and lon` passed NaN coordinates and wrote POINT(NaN NaN)
-        ***REMOVED*** (7.2M rows in the IE snapshot) — those entities then matched a
-        ***REMOVED*** NaN geocode anchor at ST_Distance = 0. Finite coordinates only;
-        ***REMOVED*** 0.0 is a legitimate coordinate and must not be dropped by
-        ***REMOVED*** truthiness either.
+        # Prepare entity data.
+        # Finite-coordinate guard (2026-10-11): NaN is truthy in Python, so
+        # `if lat and lon` passed NaN coordinates and wrote POINT(NaN NaN)
+        # (7.2M rows in the IE snapshot) — those entities then matched a
+        # NaN geocode anchor at ST_Distance = 0. Finite coordinates only;
+        # 0.0 is a legitimate coordinate and must not be dropped by
+        # truthiness either.
         geom = None
         if lat is not None and lon is not None:
             try:
@@ -173,8 +173,8 @@ class VectorStorageService:
 
         logger.info(f"Upserting {len(self.buffer)} entities into OsmEntity table...")
 
-        ***REMOVED*** Use a manual upsert query or Django's update_or_create (slow)
-        ***REMOVED*** For performance, we'll use a raw SQL bulk upsert
+        # Use a manual upsert query or Django's update_or_create (slow)
+        # For performance, we'll use a raw SQL bulk upsert
         self._bulk_upsert()
 
         self.buffer = []
@@ -199,25 +199,25 @@ class VectorStorageService:
 
         start_time = time.time()
         with connections['vectors'].cursor() as cursor:
-            ***REMOVED*** Opt 2: Relax commit durability for this transaction only.
-            ***REMOVED*** Batches are replayable (re-running Step 1 from the same PBF
-            ***REMOVED*** produces identical vectors), so losing the last unflushed
-            ***REMOVED*** batch on a crash is acceptable — it will be re-ingested.
-            ***REMOVED*** SET LOCAL is transaction-scoped and resets after commit.
+            # Opt 2: Relax commit durability for this transaction only.
+            # Batches are replayable (re-running Step 1 from the same PBF
+            # produces identical vectors), so losing the last unflushed
+            # batch on a crash is acceptable — it will be re-ingested.
+            # SET LOCAL is transaction-scoped and resets after commit.
             cursor.execute("SET LOCAL synchronous_commit = off;")
 
-            ***REMOVED*** Deduplicate buffer by (osm_type, osm_id) to prevent ON CONFLICT errors
+            # Deduplicate buffer by (osm_type, osm_id) to prevent ON CONFLICT errors
             unique_items = {}
             for item in self.buffer:
                 unique_items[(item['osm_type'], item['osm_id'])] = item
 
-            ***REMOVED*** Build the CSV body as one joined string.  Manual '\t'.join is
-            ***REMOVED*** used instead of csv.writer (see docstring); fields are emitted
-            ***REMOVED*** in the staging table's column order.
+            # Build the CSV body as one joined string.  Manual '\t'.join is
+            # used instead of csv.writer (see docstring); fields are emitted
+            # in the staging table's column order.
             col_name = "gv_tags_embedding" if self.model_type == 'tags' else "gv_nle_embedding"
 
-            ***REMOVED*** Phase 6 partition keys (NULL on monolith until backfilled) —
-            ***REMOVED*** constant for the whole batch, hoisted out of the row loop.
+            # Phase 6 partition keys (NULL on monolith until backfilled) —
+            # constant for the whole batch, hoisted out of the row loop.
             version = self.version
             snap_id = self.snapshot_id if self.snapshot_id else "\\N"
             cc = self.country_code if self.country_code else "\\N"
@@ -228,10 +228,10 @@ class VectorStorageService:
             for item in unique_items.values():
                 tags_dict = {str(k): str(v) for k, v in item['tags']}
                 tags_json = json.dumps(tags_dict)
-                ***REMOVED*** tags_json always contains double quotes (JSON keys/values),
-                ***REMOVED*** so it must be CSV-quoted (wrap + double inner quotes) or the
-                ***REMOVED*** COPY csv-format parser would strip them (csv.writer did this
-                ***REMOVED*** implicitly under QUOTE_MINIMAL).
+                # tags_json always contains double quotes (JSON keys/values),
+                # so it must be CSV-quoted (wrap + double inner quotes) or the
+                # COPY csv-format parser would strip them (csv.writer did this
+                # implicitly under QUOTE_MINIMAL).
                 tags_csv = '"' + tags_json.replace('"', '""') + '"'
                 geom_wkt = f"SRID=4326;POINT({item['geom'].x} {item['geom'].y})" if item['geom'] else "\\N"
 
@@ -256,35 +256,35 @@ class VectorStorageService:
 
             csv_buffer = io.StringIO("".join(csv_parts))
 
-            ***REMOVED*** Opt 3: Reuse staging table across batches.
-            ***REMOVED*** The table is created once (lazily), TRUNCATE'd before each
-            ***REMOVED*** batch, and only dropped on cleanup().  This eliminates
-            ***REMOVED*** per-batch CREATE/DROP catalog overhead (~50-200ms each).
+            # Opt 3: Reuse staging table across batches.
+            # The table is created once (lazily), TRUNCATE'd before each
+            # batch, and only dropped on cleanup().  This eliminates
+            # per-batch CREATE/DROP catalog overhead (~50-200ms each).
             staging_table = self._ensure_staging_table(cursor)
             try:
-                ***REMOVED*** Clear previous batch's data.  TRUNCATE is near-instant
-                ***REMOVED*** on an UNLOGGED table (no WAL, no per-row deletion).
+                # Clear previous batch's data.  TRUNCATE is near-instant
+                # on an UNLOGGED table (no WAL, no per-row deletion).
                 cursor.execute(f"TRUNCATE {staging_table};")
 
-                ***REMOVED*** COPY into the staging table.
+                # COPY into the staging table.
                 psycopg_cursor = cursor.cursor if hasattr(cursor, 'cursor') else cursor.connection.cursor()
                 psycopg_cursor.copy_expert(f"""
                     COPY {staging_table} (osm_type, osm_id, tags, geom, embedding, gv_tags_version, gv_nle_trained, snapshot_id, country_code, source_snapshot_id)
                     FROM STDIN WITH (FORMAT csv, DELIMITER '\t', NULL '\\N')
                 """, csv_buffer)
 
-                ***REMOVED*** Create the (osm_type, osm_id) index only once.  PostgreSQL
-                ***REMOVED*** indexes survive TRUNCATE — the index is emptied along with
-                ***REMOVED*** the table but remains valid for subsequent batches.
+                # Create the (osm_type, osm_id) index only once.  PostgreSQL
+                # indexes survive TRUNCATE — the index is emptied along with
+                # the table but remains valid for subsequent batches.
                 if not self._staging_indexed:
                     cursor.execute(f"CREATE INDEX ON {staging_table} (osm_type, osm_id);")
                     self._staging_indexed = True
 
-                ***REMOVED*** INSERT directly into the leaf partition when it exists.
-                ***REMOVED*** This bypasses partition routing overhead (~3-5s per 20K batch).
+                # INSERT directly into the leaf partition when it exists.
+                # This bypasses partition routing overhead (~3-5s per 20K batch).
                 target_table = "semantic_search_osmentity"
                 if self.snapshot_id and self.country_code:
-                    ***REMOVED*** Use cached leaf to avoid a pg_tables round-trip per batch.
+                    # Use cached leaf to avoid a pg_tables round-trip per batch.
                     if not self._leaf_partition_resolved:
                         self._cached_leaf_partition = _resolve_leaf_partition(
                             cursor, self.snapshot_id, self.country_code
@@ -293,13 +293,13 @@ class VectorStorageService:
                     if self._cached_leaf_partition:
                         target_table = self._cached_leaf_partition
 
-                ***REMOVED*** Runtime partition-aware ON CONFLICT target selection.
-                ***REMOVED*** The partitioned table has a 5-column unique constraint
-                ***REMOVED*** (osm_type, osm_id, gv_tags_version, snapshot_id, country_code)
-                ***REMOVED*** while the monolith has a 3-column unique constraint
-                ***REMOVED*** (osm_type, osm_id, gv_tags_version). Check pg_partitioned_table
-                ***REMOVED*** once and cache the result — the table doesn't change shape
-                ***REMOVED*** mid-run.
+                # Runtime partition-aware ON CONFLICT target selection.
+                # The partitioned table has a 5-column unique constraint
+                # (osm_type, osm_id, gv_tags_version, snapshot_id, country_code)
+                # while the monolith has a 3-column unique constraint
+                # (osm_type, osm_id, gv_tags_version). Check pg_partitioned_table
+                # once and cache the result — the table doesn't change shape
+                # mid-run.
                 if not hasattr(self, '_is_partitioned_checked'):
                     cursor.execute("""
                         SELECT EXISTS (
@@ -320,12 +320,12 @@ class VectorStorageService:
                         "(osm_type, osm_id, gv_tags_version)"
                     )
 
-                ***REMOVED*** When inserting directly into a leaf, the conflict target
-                ***REMOVED*** references the leaf's unique index, so the table alias in
-                ***REMOVED*** the DO UPDATE SET must match the target table name.
+                # When inserting directly into a leaf, the conflict target
+                # references the leaf's unique index, so the table alias in
+                # the DO UPDATE SET must match the target table name.
                 conflict_table_alias = target_table
-                ***REMOVED*** Opt 1: ORDER BY gives every merge the same lock-acquisition
-                ***REMOVED*** order — the single most effective deadlock defense.
+                # Opt 1: ORDER BY gives every merge the same lock-acquisition
+                # order — the single most effective deadlock defense.
                 cursor.execute(f"""
                     INSERT INTO {target_table} (
                         osm_type, osm_id, tags, geom, {col_name},
@@ -357,10 +357,10 @@ class VectorStorageService:
                 logger.error(f"  [SQL ERROR] Failed to execute bulk COPY upsert: {e}", exc_info=True)
                 raise e
             finally:
-                ***REMOVED*** No DROP — the staging table is reused across batches.
-                ***REMOVED*** Explicitly commit to release the transaction snapshot.
-                ***REMOVED*** Without this, the connection holds an open transaction
-                ***REMOVED*** after the merge, accumulating MVCC snapshot overhead.
+                # No DROP — the staging table is reused across batches.
+                # Explicitly commit to release the transaction snapshot.
+                # Without this, the connection holds an open transaction
+                # after the merge, accumulating MVCC snapshot overhead.
                 try:
                     from django.db import transaction
                     transaction.commit(using='vectors')

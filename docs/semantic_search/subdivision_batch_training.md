@@ -1,4 +1,4 @@
-***REMOVED*** Subdivision Batch Training: Admin Boundaries as Parallel Work Units
+# Subdivision Batch Training: Admin Boundaries as Parallel Work Units
 
 > **Focus:** how administrative subdivisions are used as boundaries for
 > batch training the GV-NLE model in Step 5, why the split exists (k-NN
@@ -13,7 +13,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Problem: k-NN Graph Memory
+## 1. The Problem: k-NN Graph Memory
 
 ```
 k-NN graph construction:
@@ -34,7 +34,7 @@ during graph construction.
 
 ---
 
-***REMOVED******REMOVED*** 2. The Solution: Admin Boundary Split
+## 2. The Solution: Admin Boundary Split
 
 Australia (400M entities, continuous geographic space), one subgraph per
 admin region, each with its own BallTree(k=50) → DeepWalk → vectors:
@@ -51,7 +51,7 @@ Why subdivisions? k-NN graph construction is O(N²) in memory. Splitting by
 admin boundary keeps each BallTree small enough to fit in RAM while
 preserving local geographic structure.
 
-***REMOVED******REMOVED******REMOVED*** 2.1 Why Admin Boundaries (Not Grid Cells)
+### 2.1 Why Admin Boundaries (Not Grid Cells)
 
 - **Preserves local geographic structure**: entities within a subdivision
   are geographically clustered, so the k-NN graph captures meaningful
@@ -68,7 +68,7 @@ preserving local geographic structure.
 
 ---
 
-***REMOVED******REMOVED*** 3. Subdivisions vs Storage Partitions: Critical Distinction
+## 3. Subdivisions vs Storage Partitions: Critical Distinction
 
 | | Storage partitioning (Postgres) | Training fan-out (Celery) |
 |---|---|---|
@@ -90,7 +90,7 @@ They are orthogonal concepts.
 
 ---
 
-***REMOVED******REMOVED*** 4. Step 5: The GV-NLE Training Flow
+## 4. Step 5: The GV-NLE Training Flow
 
 **`train_gv_nle` (Celery task):**
 
@@ -127,7 +127,7 @@ They are orthogonal concepts.
 
 ---
 
-***REMOVED******REMOVED*** 5. GPU Slot Locks
+## 5. GPU Slot Locks
 
 GV-NLE training (DeepWalk) is GPU-accelerated via PyTorch. With 4 prefork
 workers, all 4 could load PyTorch models onto the GPU concurrently, causing
@@ -139,7 +139,7 @@ CUDA OOM on a 16 GB GPU.
 - Others block until the lock is released
 - `GpuSlotLock` queues subgraphs when the GPU is busy
 
-***REMOVED******REMOVED******REMOVED*** 5.1 GPU Configuration
+### 5.1 GPU Configuration
 
 | Env Var | Default | Purpose |
 |---|---|---|
@@ -152,7 +152,7 @@ cause CUDA OOM at concurrency=2 on a 16 GB GPU.
 
 ---
 
-***REMOVED******REMOVED*** 6. Celery Chord Synchronization
+## 6. Celery Chord Synchronization
 
 Step 5 uses a **chord** to synchronize subgraph fan-out:
 
@@ -173,7 +173,7 @@ chord(
 See [Celery Control Plane](../pipeline/celery_control_plane.md) for the
 full chord mechanics and `PatchedDatabaseBackend` polling.
 
-***REMOVED******REMOVED******REMOVED*** 6.1 Subgraph Rehydration (Fresh-DB Fix)
+### 6.1 Subgraph Rehydration (Fresh-DB Fix)
 
 On a fresh DB, `has_subgraphs=False` at canvas dispatch time because subgraph
 poly files have not been generated yet. Step 5 now **rehydrates subgraphs
@@ -183,7 +183,7 @@ inline** instead of relying on the canvas chord.
 
 ---
 
-***REMOVED******REMOVED*** 7. The Relationship to Semantic Search
+## 7. The Relationship to Semantic Search
 
 Step 5 trains GV-NLE (100D spatial embeddings). These are concatenated with
 GV-Tags (300D semantic) to form the 400D `static_embedding` used for ANN
@@ -208,7 +208,7 @@ search actually queries.
 
 ---
 
-***REMOVED******REMOVED*** 8. Invariants
+## 8. Invariants
 
 - Subdivisions are **training work units**, not storage partitions.
 - Storage partitioning (per-country leaf) and training fan-out

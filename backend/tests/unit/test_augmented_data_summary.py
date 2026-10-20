@@ -84,7 +84,7 @@ def seed_summary_data(django_db_setup, django_db_blocker):
                 geom=Point(lon, lat, srid=4326),
             )
 
-        ***REMOVED*** Leak trap: another country on the same snapshot date.
+        # Leak trap: another country on the same snapshot date.
         OsmEntity.objects.using("vectors").create(
             osm_type="node",
             osm_id=201,
@@ -94,7 +94,7 @@ def seed_summary_data(django_db_setup, django_db_blocker):
             geom=Point(9.0, 9.0, srid=4326),
         )
 
-        ***REMOVED*** One accepted link per head entity.
+        # One accepted link per head entity.
         for i, head in enumerate([101, 102, 103, 104]):
             SpatialTripletScore.objects.create(
                 head_osm_type="node",
@@ -110,7 +110,7 @@ def seed_summary_data(django_db_setup, django_db_blocker):
                 predicted=True,
             )
 
-        ***REMOVED*** One rejected link with head in the overlap (rejected double-count trap).
+        # One rejected link with head in the overlap (rejected double-count trap).
         SpatialTripletScoreRejected.objects.create(
             head_osm_type="node",
             head_osm_id=102,
@@ -131,15 +131,15 @@ def test_total_accepted_partitions_without_double_counting(seed_summary_data):
 
     summary = AugmentedDataService().get_summary("Testzania", "2025_12_31")
 
-    ***REMOVED*** 4 distinct accepted links + 1 rejected — regardless of which bbox
-    ***REMOVED*** wins the first-match assignment, the partition must be exact.
+    # 4 distinct accepted links + 1 rejected — regardless of which bbox
+    # wins the first-match assignment, the partition must be exact.
     assert summary.total_accepted == 4
     assert summary.total_rejected == 1
     assert sum(g["accepted_count"] for g in summary.subgraph_groups) == 4
     assert sum(g["rejected_count"] for g in summary.subgraph_groups) == 1
 
-    ***REMOVED*** The out-of-bbox link (head 104) must land in a residual
-    ***REMOVED*** country-level group so the total covers the full link set.
+    # The out-of-bbox link (head 104) must land in a residual
+    # country-level group so the total covers the full link set.
     residual = [g for g in summary.subgraph_groups if g["subgraph_slug"] == "country-level"]
     assert len(residual) == 1
     assert residual[0]["accepted_count"] == 1
@@ -150,8 +150,8 @@ def test_count_entities_is_country_scoped(seed_summary_data):
     from api.services.augmented_data_service import AugmentedDataService
 
     counts = AugmentedDataService()._count_entities("Testzania", "TZ", "2025_12_31")
-    ***REMOVED*** TZ has 4 entities; TX has 1 on the same snapshot — the old code
-    ***REMOVED*** would have returned total=5 (cross-country leak).
+    # TZ has 4 entities; TX has 1 on the same snapshot — the old code
+    # would have returned total=5 (cross-country leak).
     assert counts == {"total": 4, "with_wkg_class": 0}
 
 

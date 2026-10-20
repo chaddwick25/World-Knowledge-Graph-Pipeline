@@ -21,8 +21,8 @@ export default {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: ***REMOVED***0f172a;
-  color: ***REMOVED***e5e7eb;
+  background: #0f172a;
+  color: #e5e7eb;
   overflow: hidden;
 }
 

@@ -136,7 +136,7 @@ class Command(BaseCommand):
             self.stdout.write(json.dumps(data, indent=2))
             return
 
-        ***REMOVED*** Pretty-print
+        # Pretty-print
         self.stdout.write('')
         self.stdout.write('=' * 60)
         self.stdout.write(f'  Pipeline Run Status')

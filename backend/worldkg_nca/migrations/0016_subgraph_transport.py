@@ -1,4 +1,4 @@
-***REMOVED*** Generated for SUBGRAPH_FUNCTIONAL_MAPS_PLAN_v2 Phase 1
+# Generated for SUBGRAPH_FUNCTIONAL_MAPS_PLAN_v2 Phase 1
 
 from django.db import migrations, models
 

@@ -105,7 +105,7 @@ class Command(BaseCommand):
         all_valid = True
         warnings = 0
 
-        ***REMOVED*** Paths that should be treated as directories we are allowed to auto-create
+        # Paths that should be treated as directories we are allowed to auto-create
         auto_create_dirs = {
             'POLYGON_FILES_DIR',
             'PBF_CACHE_DIR',
@@ -115,7 +115,7 @@ class Command(BaseCommand):
             'OSM_WIKIDATA_TEMP_DIR',
             'PREPROCESSED_DIR',
             'FASTTEXT_TUNED_DIR',
-            ***REMOVED*** Cold storage roots/derived directories
+            # Cold storage roots/derived directories
             'COLD_STORAGE_BASE_DIR',
             'CORPUS_DIR',
             'GRAPH_ASSETS_DIR',
@@ -147,7 +147,7 @@ class Command(BaseCommand):
                     self.stdout.write(
                         self.style.SUCCESS(f'  ✓ {name}: {path_val}')
                     )
-                    ***REMOVED*** Check if executable
+                    # Check if executable
                     if os.access(str(path_obj), os.X_OK):
                         self.stdout.write(
                             self.style.SUCCESS(f'    └─ Executable: YES')
@@ -180,7 +180,7 @@ class Command(BaseCommand):
                         self.style.SUCCESS(f'    └─ Size: {size_mb:.1f} MB')
                     )
             else:
-                ***REMOVED*** Attempt to auto-create directories for known directory settings
+                # Attempt to auto-create directories for known directory settings
                 if name in auto_create_dirs:
                     try:
                         path_obj.mkdir(parents=True, exist_ok=True)
@@ -207,7 +207,7 @@ class Command(BaseCommand):
         self.stdout.write('')
         self.stdout.write('-' * 65)
 
-        ***REMOVED*** Database connectivity check
+        # Database connectivity check
         self.stdout.write('')
         self.stdout.write('  Database Connectivity:')
         db_ok = True
@@ -235,19 +235,19 @@ class Command(BaseCommand):
                 db_ok = False
                 all_valid = False
 
-        ***REMOVED*** Overrides (overrides.json) validation — fail-fast on misconfigured
-        ***REMOVED*** cold storage: every file referenced by the override config must
-        ***REMOVED*** exist, so a broken overrides.json is caught at boot, not mid-pipeline.
+        # Overrides (overrides.json) validation — fail-fast on misconfigured
+        # cold storage: every file referenced by the override config must
+        # exist, so a broken overrides.json is caught at boot, not mid-pipeline.
         self.stdout.write('')
         self.stdout.write('-' * 65)
         overrides_errors, overrides_warnings = self._check_overrides(strict)
         all_valid = all_valid and overrides_errors == 0
         warnings += overrides_warnings
 
-        ***REMOVED*** Subdivision bboxes — every subdivision must have a bbox, stamped
-        ***REMOVED*** with its provenance (bbox_source: sparql | osm_boundary |
-        ***REMOVED*** nominatim | none). A 'none' gap blocks subdivision-scoped search;
-        ***REMOVED*** close it with `backfill_subdivision_bboxes` (check-only here).
+        # Subdivision bboxes — every subdivision must have a bbox, stamped
+        # with its provenance (bbox_source: sparql | osm_boundary |
+        # nominatim | none). A 'none' gap blocks subdivision-scoped search;
+        # close it with `backfill_subdivision_bboxes` (check-only here).
         self.stdout.write('')
         self.stdout.write('-' * 65)
         self.stdout.write('  Subdivision bboxes (SubgraphProfile)')
@@ -291,7 +291,7 @@ class Command(BaseCommand):
         )
         all_valid = all_valid and subdiv_errors == 0
 
-        ***REMOVED*** Strict mode auto-fix: polygons + country profiles
+        # Strict mode auto-fix: polygons + country profiles
         if strict and all_valid:
             self.stdout.write('')
             self.stdout.write('  Strict mode: running auto-fix steps (polygons + country profiles)...')
@@ -507,10 +507,10 @@ class Command(BaseCommand):
                     )
                     warnings += 1
 
-                ***REMOVED*** Outputs are written by the split service; validate the parent
-                ***REMOVED*** directory is creatable/existing
-                ***REMOVED*** (EMBEDDINGS_ROOT/<continent>/<slug>) and auto-create it like
-                ***REMOVED*** the existing auto_create_dirs behaviour.
+                # Outputs are written by the split service; validate the parent
+                # directory is creatable/existing
+                # (EMBEDDINGS_ROOT/<continent>/<slug>) and auto-create it like
+                # the existing auto_create_dirs behaviour.
                 if output and continent and embeddings_root:
                     out_dir = Path(embeddings_root) / continent / label
                     try:
@@ -562,7 +562,7 @@ class Command(BaseCommand):
                 existing_poly_files = list(path_obj.rglob('*.poly'))
 
             if not existing_poly_files:
-                ***REMOVED*** Reset directory to ensure a clean, consistent polygon tree
+                # Reset directory to ensure a clean, consistent polygon tree
                 if path_obj.exists():
                     shutil.rmtree(path_obj, ignore_errors=False)
 
@@ -579,16 +579,16 @@ class Command(BaseCommand):
                     f"{stats.get('not_found', 0)} not found, "
                     f"{stats.get('errors', 0)} errors"
                 )
-                ***REMOVED*** If we attempted a fresh bootstrap and everything failed, treat this
-                ***REMOVED*** as a strict-mode error so the user can investigate.
+                # If we attempted a fresh bootstrap and everything failed, treat this
+                # as a strict-mode error so the user can investigate.
                 if stats.get('downloaded', 0) == 0 and stats.get('errors', 0) > 0:
                     self.stdout.write(self.style.ERROR(msg))
                     raise RuntimeError('Polygon download failed: see logs above for details')
                 else:
                     self.stdout.write(self.style.SUCCESS(msg))
 
-            ***REMOVED*** Warn about mixed hyphen/underscore continent names that can
-            ***REMOVED*** confuse RegionHierarchy and planet initialization.
+            # Warn about mixed hyphen/underscore continent names that can
+            # confuse RegionHierarchy and planet initialization.
             if path_obj.exists():
                 top_level_polys = {p.stem for p in path_obj.glob('*.poly')}
 
@@ -618,7 +618,7 @@ class Command(BaseCommand):
                 self.style.WARNING('  ⚠ POLYGON_FILES_DIR is not configured; skipping polygon download.')
             )
 
-        ***REMOVED*** Country pipeline profile sync (non-destructive, idempotent)
+        # Country pipeline profile sync (non-destructive, idempotent)
         try:
             self.stdout.write('')
             self.stdout.write('  Running country pipeline profile sync...')

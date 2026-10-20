@@ -79,16 +79,16 @@ def _run_subgraph_spectral_analysis(env) -> None:
     total_solve_time = 0.0
     failed_subgraphs = 0
 
-    ***REMOVED*** Phase A: per-subgraph solves.
-    ***REMOVED*** Retain eigenvectors + node_ids for Phase B (transport matrices).
-    subgraph_solve_data = {}  ***REMOVED*** slug → {eigenvalues, eigenvectors, node_ids}
+    # Phase A: per-subgraph solves.
+    # Retain eigenvectors + node_ids for Phase B (transport matrices).
+    subgraph_solve_data = {}  # slug → {eigenvalues, eigenvectors, node_ids}
 
     for sg in env.subgraphs:
         sg_slug = sg.slug
         sg_report = {"subgraph": sg_slug, "name": sg.name, "status": "running"}
 
         try:
-            ***REMOVED*** ── Build subgraph-scoped k-NN graph (Option A: full buffered) ──
+            # ── Build subgraph-scoped k-NN graph (Option A: full buffered) ──
             _log(logger, "info",
                  "Step 5c: Building subgraph k-NN graph (Option A — buffered)",
                  country=env.iso, subgraph=sg_slug,
@@ -102,7 +102,7 @@ def _run_subgraph_spectral_analysis(env) -> None:
                 poly_path=sg.poly_path,
                 bbox=(sg.bbox_min_lon, sg.bbox_min_lat,
                       sg.bbox_max_lon, sg.bbox_max_lat) if sg.bbox_min_lon else None,
-                return_core_ids=True,  ***REMOVED*** Option A: full buffered graph
+                return_core_ids=True,  # Option A: full buffered graph
             )
             t_graph = time.time() - t0
             n_nodes = G.n_nodes
@@ -122,10 +122,10 @@ def _run_subgraph_spectral_analysis(env) -> None:
                 report["subgraphs"].append(sg_report)
                 continue
 
-            ***REMOVED*** ── k clamp: min(k, n//20) per the subdivision plan ──
+            # ── k clamp: min(k, n//20) per the subdivision plan ──
             k = min(DEFAULT_K_EIGENVALUES, max(16, n_nodes // 20))
 
-            ***REMOVED*** ── Eigendecomposition (GPU LOBPCG — subgraphs fit in VRAM) ──
+            # ── Eigendecomposition (GPU LOBPCG — subgraphs fit in VRAM) ──
             _log(logger, "info",
                  "Step 5c: Computing eigendecomposition for subgraph",
                  country=env.iso, subgraph=sg_slug,
@@ -144,7 +144,7 @@ def _run_subgraph_spectral_analysis(env) -> None:
             sg_report["algebraic_connectivity"] = features["algebraic_connectivity"]
             sg_report["spectral_gap"] = features["spectral_gap"]
 
-            ***REMOVED*** ── Graph signal ──
+            # ── Graph signal ──
             entity_class_map = G.class_map
             signal = None
             signal_smoothness = 0.0
@@ -154,7 +154,7 @@ def _run_subgraph_spectral_analysis(env) -> None:
                 signal_smoothness = gss.signal_smoothness(G, signal)
             sg_report["signal_smoothness"] = signal_smoothness
 
-            ***REMOVED*** ── Store fingerprint (region=subgraph_slug) ──
+            # ── Store fingerprint (region=subgraph_slug) ──
             GraphSpectralFingerprint.objects.filter(
                 region=sg_slug, snapshot=snapshot,
             ).delete()
@@ -177,11 +177,11 @@ def _run_subgraph_spectral_analysis(env) -> None:
                 k_eigenvalues=k,
             )
 
-            ***REMOVED*** ── Community detection + factor rows ──
-            ***REMOVED*** core_ids prunes buffer-only entities at write time (Option A).
-            ***REMOVED*** fingerprint_id links the loadings to THIS eigenbasis (Phase 1
-            ***REMOVED*** coherence check at runtime).  The fingerprint row gets the
-            ***REMOVED*** community fields persisted (0c backfill).
+            # ── Community detection + factor rows ──
+            # core_ids prunes buffer-only entities at write time (Option A).
+            # fingerprint_id links the loadings to THIS eigenbasis (Phase 1
+            # coherence check at runtime).  The fingerprint row gets the
+            # community fields persisted (0c backfill).
             communities = CommunityDetectionService().detect_communities(G)
             fp.community_count = communities["community_count"]
             fp.modularity = communities["modularity"]
@@ -201,7 +201,7 @@ def _run_subgraph_spectral_analysis(env) -> None:
             sg_report["modularity"] = communities["modularity"]
             sg_report["status"] = "completed"
 
-            ***REMOVED*** Retain for Phase B (transport matrix computation)
+            # Retain for Phase B (transport matrix computation)
             subgraph_solve_data[sg_slug] = {
                 "eigenvalues": np.asarray(features["eigenvalues"], dtype=float),
                 "eigenvectors": np.asarray(features["eigenvectors"], dtype=float),
@@ -226,24 +226,24 @@ def _run_subgraph_spectral_analysis(env) -> None:
 
         report["subgraphs"].append(sg_report)
 
-        ***REMOVED*** Release memory between subgraphs (aggressive — prevents VRAM
-        ***REMOVED*** fragmentation accumulation across 30+ sequential GPU solves).
-        ***REMOVED*** USLP avoids this by running each subgraph in a separate
-        ***REMOVED*** call_command process; Step 5c runs all in one process so we
-        ***REMOVED*** must manually flush the GPU cache and Python refs.
+        # Release memory between subgraphs (aggressive — prevents VRAM
+        # fragmentation accumulation across 30+ sequential GPU solves).
+        # USLP avoids this by running each subgraph in a separate
+        # call_command process; Step 5c runs all in one process so we
+        # must manually flush the GPU cache and Python refs.
         try:
             import torch
             if torch.cuda.is_available() and torch.cuda.is_initialized():
                 torch.cuda.synchronize()
                 torch.cuda.empty_cache()
-                torch.cuda.empty_cache()  ***REMOVED*** twice: first frees cached
-                                           ***REMOVED*** blocks, second defrags
+                torch.cuda.empty_cache()  # twice: first frees cached
+                                           # blocks, second defrags
             del torch
         except ImportError:
             pass
         gc.collect()
 
-    ***REMOVED*** ── Phase B: Transport matrix computation (functional maps) ──
+    # ── Phase B: Transport matrix computation (functional maps) ──
     transport_report = _compute_transport_matrices(env, subgraph_solve_data)
     report["transport"] = transport_report
 

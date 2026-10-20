@@ -43,10 +43,10 @@ from haversine import haversine, Unit
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
-***REMOVED*** TODO: add to yaml file
-ALIGNMENT_THRESHOLD = 0.5   ***REMOVED*** tha in IGEA paper (Fig. 5: optimal across all countries)
-MAX_DISTANCE_M = 2500.0     ***REMOVED*** meters — IGEA Section 3.2 validated value
-MAX_ITERATIONS = 3           ***REMOVED*** IGEA Fig. 3: performance peaks at iteration 3
+# TODO: add to yaml file
+ALIGNMENT_THRESHOLD = 0.5   # tha in IGEA paper (Fig. 5: optimal across all countries)
+MAX_DISTANCE_M = 2500.0     # meters — IGEA Section 3.2 validated value
+MAX_ITERATIONS = 3           # IGEA Fig. 3: performance peaks at iteration 3
 
 
 def _lazy_import_torch_stack():
@@ -56,13 +56,13 @@ def _lazy_import_torch_stack():
     that Celery worker startup does not fail if the GPU stack is incomplete.
     """
     try:
-        import torch  ***REMOVED*** type: ignore
-        import torch.optim as optim  ***REMOVED*** type: ignore
-        import torch.nn as nn  ***REMOVED*** type: ignore
-        from igea.services.cross_attention_model import CrossAttentionIGEA  ***REMOVED*** type: ignore
-        from igea.services.nca_model import NCAClassificationService  ***REMOVED*** type: ignore
+        import torch  # type: ignore
+        import torch.optim as optim  # type: ignore
+        import torch.nn as nn  # type: ignore
+        from igea.services.cross_attention_model import CrossAttentionIGEA  # type: ignore
+        from igea.services.nca_model import NCAClassificationService  # type: ignore
         return torch, optim, nn, CrossAttentionIGEA, NCAClassificationService
-    except Exception as e:  ***REMOVED*** ImportError or lower-level CUDA errors
+    except Exception as e:  # ImportError or lower-level CUDA errors
         logger.error(
             "IGEA: Failed to import PyTorch/CUDA stack; NCA and cross-attention "
             "will be disabled. Error: %s",
@@ -127,7 +127,7 @@ class IterativeEntityAlignmentService:
         self._NCAServiceClass = NCAServiceCls
 
         if torch_mod is None:
-            ***REMOVED*** Disable neural components completely when torch/CUDA is unavailable
+            # Disable neural components completely when torch/CUDA is unavailable
             self.enable_nca = False
             self.enable_cross_attention_training = False
             self.nca_service = None
@@ -152,9 +152,9 @@ class IterativeEntityAlignmentService:
                 logger.error(f"Failed to load Cross-Attention model: {e}")
                 self.cross_attention_model = None
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Wikidata candidate pool
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Wikidata candidate pool
+    # ------------------------------------------------------------------
 
     def load_wikidata_candidates(self, candidates: List[Dict]) -> int:
         """
@@ -226,9 +226,9 @@ class IterativeEntityAlignmentService:
             })
         return self.load_wikidata_candidates(candidates)
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** NCA: Neural Class Alignment (IGEA Section 3.1)
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # NCA: Neural Class Alignment (IGEA Section 3.1)
+    # ------------------------------------------------------------------
 
     def _run_nca(
         self,
@@ -254,8 +254,8 @@ class IterativeEntityAlignmentService:
         if not self.enable_nca or self.nca_service is None:
             return 0
 
-        ***REMOVED*** Collect linked entities and attach their wikidata_uri so that
-        ***REMOVED*** NCA can build class vocabularies correctly.
+        # Collect linked entities and attach their wikidata_uri so that
+        # NCA can build class vocabularies correctly.
         linked: List[Dict] = []
         for e in osm_entities:
             osm_id = e.get('osm_id')
@@ -280,9 +280,9 @@ class IterativeEntityAlignmentService:
             logger.error(f"NCA training failed: {e}")
             return 0
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Cross-attention training (IGEA Section 3.3)
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Cross-attention training (IGEA Section 3.3)
+    # ------------------------------------------------------------------
 
     def _train_cross_attention(
         self,
@@ -383,9 +383,9 @@ class IterativeEntityAlignmentService:
         self.cross_attention_model.eval()
         logger.info("Cross-attention training complete")
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Blocking (IGEA Section 3.2)
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Blocking (IGEA Section 3.2)
+    # ------------------------------------------------------------------
 
     def _get_seed_alignment(self, country_code: Optional[str] = None,
                             polygon_wkt: Optional[str] = None,
@@ -408,19 +408,19 @@ class IterativeEntityAlignmentService:
             geom__isnull=False,
         ).exclude(tags__wikidata__isnull=True)
 
-        ***REMOVED*** Phase 6: partition key filters for pruning
+        # Phase 6: partition key filters for pruning
         if snapshot_id:
             qs = qs.filter(snapshot_id=snapshot_id)
         if country_code:
             qs = qs.filter(country_code=country_code)
 
-        ***REMOVED*** Apply polygon filter if provided (more accurate than country tag)
+        # Apply polygon filter if provided (more accurate than country tag)
         if polygon_wkt:
             from django.contrib.gis.geos import GEOSGeometry
             poly = GEOSGeometry(polygon_wkt, srid=4326)
             qs = qs.filter(geom__within=poly)
 
-        ***REMOVED*** Apply country tag filter if provided (legacy addr:country approach)
+        # Apply country tag filter if provided (legacy addr:country approach)
         country_filter_needed = False
         if country_code:
             qs = qs.filter(tags__has_key='addr:country')
@@ -429,7 +429,7 @@ class IterativeEntityAlignmentService:
         for e in qs.iterator(chunk_size=10_000):
             tags = e.tags or {}
 
-            ***REMOVED*** Apply country filter in Python if needed
+            # Apply country filter in Python if needed
             if country_filter_needed:
                 if tags.get('addr:country') != country_code:
                     continue
@@ -460,11 +460,11 @@ class IterativeEntityAlignmentService:
         if not unseen or not self._wikidata_pool:
             return []
 
-        ***REMOVED*** Build spatial index for Wikidata candidates by class
+        # Build spatial index for Wikidata candidates by class
         from sklearn.neighbors import BallTree
         import numpy as np
         
-        ***REMOVED*** Group Wikidata candidates by class for faster lookup
+        # Group Wikidata candidates by class for faster lookup
         wd_by_class = {}
         for wd in self._wikidata_pool:
             cls = wd.get('wkg_class')
@@ -472,7 +472,7 @@ class IterativeEntityAlignmentService:
                 wd_by_class[cls] = []
             wd_by_class[cls].append(wd)
         
-        ***REMOVED*** Build BallTree for each class
+        # Build BallTree for each class
         trees = {}
         for cls, candidates in wd_by_class.items():
             if not candidates:
@@ -480,12 +480,12 @@ class IterativeEntityAlignmentService:
             coords = np.radians([[c['lat'], c['lon']] for c in candidates])
             trees[cls] = (BallTree(coords, metric='haversine'), candidates)
         
-        ***REMOVED*** Build global BallTree for all candidates (fallback for entities without class)
+        # Build global BallTree for all candidates (fallback for entities without class)
         all_coords = np.radians([[c['lat'], c['lon']] for c in self._wikidata_pool])
         global_tree = BallTree(all_coords, metric='haversine')
         
         pairs: List[Tuple[Dict, Dict]] = []
-        max_pairs_per_iteration = 50_000  ***REMOVED*** Limit pairs to prevent memory explosion
+        max_pairs_per_iteration = 50_000  # Limit pairs to prevent memory explosion
         
         for osm_ent in unseen:
             if len(pairs) >= max_pairs_per_iteration:
@@ -498,20 +498,20 @@ class IterativeEntityAlignmentService:
             if osm_lat is None or osm_lon is None:
                 continue
             
-            ***REMOVED*** Use spatial index for same class
+            # Use spatial index for same class
             if osm_class and osm_class in trees:
                 tree, candidates = trees[osm_class]
                 query_point = np.radians([[osm_lat, osm_lon]])
                 
-                ***REMOVED*** Query within max_distance radius
-                radius_rad = self.max_distance_m / 6371000.0  ***REMOVED*** Earth radius in meters
+                # Query within max_distance radius
+                radius_rad = self.max_distance_m / 6371000.0  # Earth radius in meters
                 indices = tree.query_radius(query_point, r=radius_rad)[0]
                 
                 for idx in indices:
                     pairs.append((osm_ent, candidates[idx]))
             else:
-                ***REMOVED*** Fallback: entity has no class or class not in Wikidata pool
-                ***REMOVED*** Use global BallTree to find all candidates within distance
+                # Fallback: entity has no class or class not in Wikidata pool
+                # Use global BallTree to find all candidates within distance
                 query_point = np.radians([[osm_lat, osm_lon]])
                 radius_rad = self.max_distance_m / 6371000.0
                 indices = global_tree.query_radius(query_point, r=radius_rad)[0]
@@ -522,9 +522,9 @@ class IterativeEntityAlignmentService:
         logger.info(f"IGEA blocking: {len(pairs):,} candidate pairs from {len(unseen):,} unseen entities")
         return pairs
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Scoring (IGEA Section 3.3 — OSM2KG-FT variant)
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Scoring (IGEA Section 3.3 — OSM2KG-FT variant)
+    # ------------------------------------------------------------------
 
     def _score_pair(self, osm_ent: Dict, wd_cand: Dict) -> float:
         """
@@ -538,9 +538,9 @@ class IterativeEntityAlignmentService:
             
         if self.cross_attention_model is not None and self._torch is not None:
             torch = self._torch
-            ***REMOVED*** Neural prediction using BiLSTM architecture
-            ***REMOVED*** Shapes required by module: (batch, seq_len, emb_dim)
-            ***REMOVED*** Currently wrapping single embedding as seq_len=1
+            # Neural prediction using BiLSTM architecture
+            # Shapes required by module: (batch, seq_len, emb_dim)
+            # Currently wrapping single embedding as seq_len=1
             t_osm = torch.tensor(emb_osm, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
             t_wd = torch.tensor(emb_wd, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
             
@@ -548,14 +548,14 @@ class IterativeEntityAlignmentService:
                 prob = self.cross_attention_model(t_osm, t_wd)
             return float(prob.item())
 
-        ***REMOVED*** Validation baseline: OSM2KG-FT cosine logic (IGEA Table 3)
+        # Validation baseline: OSM2KG-FT cosine logic (IGEA Table 3)
         a = np.array(emb_osm, dtype=np.float32)
         b = np.array(emb_wd, dtype=np.float32)
         return _cosine(a, b)
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Write-back
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Write-back
+    # ------------------------------------------------------------------
 
     def _write_accepted_pairs(self, accepted: List[Tuple[int, str]],
                               country_code: Optional[str] = None,
@@ -585,9 +585,9 @@ class IterativeEntityAlignmentService:
             updated += count
         return updated
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Main iterative loop (Algorithm 1 from IGEA)
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Main iterative loop (Algorithm 1 from IGEA)
+    # ------------------------------------------------------------------
 
     def run(
         self,
@@ -627,35 +627,35 @@ class IterativeEntityAlignmentService:
         """
         from worldkg_nca.models import OsmEntity
 
-        ***REMOVED*** Phase 6: filter by partition keys (snapshot_id + country_code) to
-        ***REMOVED*** enable partition pruning on the partitioned table.  The old
-        ***REMOVED*** hardcoded `gv_tags_version__startswith='2025_12_31'` is replaced
-        ***REMOVED*** by the snapshot_id partition key.  If snapshot_id is not provided,
-        ***REMOVED*** fall back to the old behaviour for backward compatibility.
+        # Phase 6: filter by partition keys (snapshot_id + country_code) to
+        # enable partition pruning on the partitioned table.  The old
+        # hardcoded `gv_tags_version__startswith='2025_12_31'` is replaced
+        # by the snapshot_id partition key.  If snapshot_id is not provided,
+        # fall back to the old behaviour for backward compatibility.
         qs = OsmEntity.objects.using('vectors').filter(
             geom__isnull=False,
         )
         if snapshot_id:
             qs = qs.filter(snapshot_id=snapshot_id)
         else:
-            ***REMOVED*** Backward-compatible fallback: filter by gv_tags_version prefix
+            # Backward-compatible fallback: filter by gv_tags_version prefix
             qs = qs.filter(gv_tags_version__startswith='2025_12_31')
 
-        ***REMOVED*** Phase 6: add country_code partition key filter for pruning
+        # Phase 6: add country_code partition key filter for pruning
         if country_code:
             qs = qs.filter(country_code=country_code)
 
         country_filter_needed = False
 
-        ***REMOVED*** If a polygon is provided, use it to spatially restrict the working set.
+        # If a polygon is provided, use it to spatially restrict the working set.
         if polygon_wkt:
             from django.contrib.gis.geos import GEOSGeometry
             poly = GEOSGeometry(polygon_wkt, srid=4326)
             qs = qs.filter(geom__within=poly)
 
-        ***REMOVED*** If a country code is provided, further restrict to entities that declare
-        ***REMOVED*** an addr:country tag. We still apply an in-Python check below to match
-        ***REMOVED*** the seed alignment behaviour.
+        # If a country code is provided, further restrict to entities that declare
+        # an addr:country tag. We still apply an in-Python check below to match
+        # the seed alignment behaviour.
         if country_code:
             qs = qs.filter(tags__has_key='addr:country')
             country_filter_needed = True
@@ -676,7 +676,7 @@ class IterativeEntityAlignmentService:
                 'tags': tags,
             })
             
-            ***REMOVED*** Safety limit: stop at 200k entities to prevent OOM
+            # Safety limit: stop at 200k entities to prevent OOM
             if len(osm_entities) >= 200_000:
                 logger.warning(f"IGEA: Limiting to 200k entities (found {qs.count():,} total)")
                 break
@@ -700,13 +700,13 @@ class IterativeEntityAlignmentService:
             f"geofenced={'polygon' if polygon_wkt else 'no'})"
         )
 
-        ***REMOVED*** Seed alignment (filtered by polygon or country if provided)
+        # Seed alignment (filtered by polygon or country if provided)
         seed_map = self._get_seed_alignment(
             country_code, polygon_wkt, snapshot_id=snapshot_id,
-        )      ***REMOVED*** osm_id → wikidata_uri
+        )      # osm_id → wikidata_uri
         seed_ids: Set[int] = set(seed_map.keys())
 
-        ***REMOVED*** Run NCA to learn tag→class mappings from seed entities
+        # Run NCA to learn tag→class mappings from seed entities
         if self.enable_nca:
             nca_assigned = self._run_nca(osm_entities, seed_map)
             logger.info(f"NCA assigned classes to {nca_assigned} entities")
@@ -718,17 +718,17 @@ class IterativeEntityAlignmentService:
             logger.info(f"IGEA iteration {iteration}/{self.max_iterations} "
                         f"| seed size: {len(seed_ids)}")
 
-            ***REMOVED*** Generate candidate pairs (blocking)
+            # Generate candidate pairs (blocking)
             pairs = self._candidate_pairs(osm_entities, seed_ids)
             if not pairs:
                 logger.info(f"IGEA: no new candidates in iteration {iteration}, stopping")
                 break
 
-            ***REMOVED*** Train cross-attention model on this iteration's pairs
+            # Train cross-attention model on this iteration's pairs
             if self.enable_cross_attention_training:
                 self._train_cross_attention(pairs, seed_map)
 
-            ***REMOVED*** Score and filter
+            # Score and filter
             accepted_this_iter: List[Tuple[int, str]] = []
             scores = []
             for osm_ent, wd_cand in pairs:
@@ -737,7 +737,7 @@ class IterativeEntityAlignmentService:
                 if score >= self.threshold:
                     accepted_this_iter.append((osm_ent['osm_id'], wd_cand['wikidata_uri']))
             
-            ***REMOVED*** Log score distribution for debugging
+            # Log score distribution for debugging
             if scores:
                 import numpy as np
                 scores_arr = np.array(scores)
@@ -748,21 +748,21 @@ class IterativeEntityAlignmentService:
                     f"threshold={self.threshold}"
                 )
 
-            ***REMOVED*** Deduplicate (highest score wins per OSM entity)
+            # Deduplicate (highest score wins per OSM entity)
             seen_osm: Dict[int, Tuple[int, str]] = {}
             for osm_id, wd_uri in accepted_this_iter:
                 if osm_id not in seen_osm:
                     seen_osm[osm_id] = (osm_id, wd_uri)
             deduped = list(seen_osm.values())
 
-            ***REMOVED*** Write to DB
+            # Write to DB
             written = self._write_accepted_pairs(
                 deduped, country_code=country_code, snapshot_id=snapshot_id,
             )
             per_iter_counts.append(written)
             logger.info(f"IGEA iteration {iteration}: accepted {written} new links")
 
-            ***REMOVED*** Expand seed set (GT ← GT ∪ accepted)
+            # Expand seed set (GT ← GT ∪ accepted)
             for osm_id, wd_uri in deduped:
                 seed_ids.add(osm_id)
                 seed_map[osm_id] = wd_uri

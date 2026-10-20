@@ -1,10 +1,10 @@
-***REMOVED*** IGEA App — Iterative Geographic Entity Alignment & Spatial Link Prediction
+# IGEA App — Iterative Geographic Entity Alignment & Spatial Link Prediction
 
 Django app implementing IGEA and USLP algorithms for OSM-Wikidata entity alignment and spatial link prediction.
 
 ---
 
-***REMOVED******REMOVED*** Overview
+## Overview
 
 This app houses the implementation of two research papers:
 
@@ -13,9 +13,9 @@ This app houses the implementation of two research papers:
 
 ---
 
-***REMOVED******REMOVED*** Models
+## Models
 
-***REMOVED******REMOVED******REMOVED*** `EntityAlignment`
+### `EntityAlignment`
 Tracks OSM → Wikidata entity alignments.
 
 **Key Fields**:
@@ -25,7 +25,7 @@ Tracks OSM → Wikidata entity alignments.
 - `confidence` - Alignment score (0.0-1.0)
 - `iteration` - IGEA iteration number
 
-***REMOVED******REMOVED******REMOVED*** `SpatialTripletScore`
+### `SpatialTripletScore`
 USLP tri-space scores for (head, relation, tail) triplets.
 
 **Key Fields**:
@@ -38,9 +38,9 @@ USLP tri-space scores for (head, relation, tail) triplets.
 
 ---
 
-***REMOVED******REMOVED*** Services
+## Services
 
-***REMOVED******REMOVED******REMOVED*** `IterativeEntityAlignmentService`
+### `IterativeEntityAlignmentService`
 Simplified IGEA implementation with dual methods:
 
 **Cosine Baseline**:
@@ -66,7 +66,7 @@ service.load_wikidata_candidates_from_db(limit=100_000)
 stats = service.run(country_code='DE')
 ```
 
-***REMOVED******REMOVED******REMOVED*** `SpatialLinkPredictionService`
+### `SpatialLinkPredictionService`
 USLP tri-space evaluation algorithm.
 
 **Tri-Space Scoring**:
@@ -91,7 +91,7 @@ links = service.predict_links(
 )
 ```
 
-***REMOVED******REMOVED******REMOVED*** `CrossAttentionIGEA`
+### `CrossAttentionIGEA`
 BiLSTM cross-attention neural model.
 
 **Architecture**:
@@ -107,11 +107,11 @@ model = CrossAttentionIGEA(emb_dim=300, hidden_dim=150)
 model.load_weights('/path/to/weights.pt')
 model.eval()
 
-***REMOVED*** Forward pass
-score = model(osm_seq, wd_seq)  ***REMOVED*** Returns alignment probability
+# Forward pass
+score = model(osm_seq, wd_seq)  # Returns alignment probability
 ```
 
-***REMOVED******REMOVED******REMOVED*** `TransEGraphEmbeddingService`
+### `TransEGraphEmbeddingService`
 Native PyTorch TransE implementation.
 
 **Formula**:
@@ -134,17 +134,17 @@ score = service.score_triple(
 
 ---
 
-***REMOVED******REMOVED*** Management Commands
+## Management Commands
 
-***REMOVED******REMOVED******REMOVED*** `run_igea_alignment`
+### `run_igea_alignment`
 Run IGEA iterative entity alignment.
 
 **Usage**:
 ```bash
-***REMOVED*** Basic usage
+# Basic usage
 python manage.py run_igea_alignment
 
-***REMOVED*** With options
+# With options
 python manage.py run_igea_alignment \
     --country DE \
     --method cosine \
@@ -161,15 +161,15 @@ python manage.py run_igea_alignment \
 - `--max-distance` - Max spatial distance in meters (default: 2500)
 - `--dry-run` - Preview without writing to database
 
-***REMOVED******REMOVED******REMOVED*** `predict_spatial_links`
+### `predict_spatial_links`
 Predict spatial entity links using USLP.
 
 **Usage**:
 ```bash
-***REMOVED*** Basic usage
+# Basic usage
 python manage.py predict_spatial_links
 
-***REMOVED*** With options
+# With options
 python manage.py predict_spatial_links \
     --threshold 0.7 \
     --top-k 10 \
@@ -186,11 +186,11 @@ python manage.py predict_spatial_links \
 
 ---
 
-***REMOVED******REMOVED*** API Endpoints
+## API Endpoints
 
 All endpoints mounted at `/api/igea/`:
 
-***REMOVED******REMOVED******REMOVED*** IGEA Alignment
+### IGEA Alignment
 
 **POST `/api/igea/align/`**
 Run IGEA alignment.
@@ -212,7 +212,7 @@ Get alignment statistics.
 **GET `/api/igea/align/results/?osm_id=123&osm_type=node`**
 Query alignment results.
 
-***REMOVED******REMOVED******REMOVED*** USLP Triplet Scoring
+### USLP Triplet Scoring
 
 **POST `/api/igea/triplets/predict/`**
 Run USLP prediction.
@@ -255,9 +255,9 @@ Validate triplet using TransE.
 
 ---
 
-***REMOVED******REMOVED*** Testing
+## Testing
 
-***REMOVED******REMOVED******REMOVED*** Mathematical Invariant Tests
+### Mathematical Invariant Tests
 
 Run comprehensive mathematical property tests:
 
@@ -277,14 +277,14 @@ pytest igea/tests/test_invariants.py -v
 
 ---
 
-***REMOVED******REMOVED*** Mathematical Foundations
+## Mathematical Foundations
 
-***REMOVED******REMOVED******REMOVED*** IGEA Parameters (from paper)
+### IGEA Parameters (from paper)
 - **Alignment threshold**: 0.6 (Fig. 5: optimal across countries)
 - **Max distance**: 2500m (Section 3.2: validated value)
 - **Max iterations**: 3 (Fig. 3: performance peaks)
 
-***REMOVED******REMOVED******REMOVED*** USLP Parameters (from paper)
+### USLP Parameters (from paper)
 - **Acceptance threshold**: 0.6 (Section 3.3)
 - **Geohash precision**: Dynamic by relation (Table 1)
   - Continent: 3
@@ -293,7 +293,7 @@ pytest igea/tests/test_invariants.py -v
   - City: 6
   - Suburb: 7
 
-***REMOVED******REMOVED******REMOVED*** TransE Formula
+### TransE Formula
 ```
 d = ||h + r - t||_1  (L1 norm)
 c = 1.0 / (1.0 + d)  (score conversion)
@@ -301,7 +301,7 @@ c = 1.0 / (1.0 + d)  (score conversion)
 
 ---
 
-***REMOVED******REMOVED*** Database Routing
+## Database Routing
 
 Models in this app route to the **vectors** database (PostgreSQL with pgvector + PostGIS).
 
@@ -315,7 +315,7 @@ route_app_labels = {
 
 ---
 
-***REMOVED******REMOVED*** Dependencies
+## Dependencies
 
 This app uses existing project dependencies:
 - **PyTorch** - Neural models (CrossAttentionIGEA, TransE)
@@ -327,7 +327,7 @@ No additional packages required.
 
 ---
 
-***REMOVED******REMOVED*** References
+## References
 
 1. Dsouza, A., Yu, R., Windoffer, N., & Demidova, E. (2023). *Iterative Geographic Entity Alignment with Cross-Attention*. ISWC 2023. https://arxiv.org/abs/2105.00847
 
@@ -335,7 +335,7 @@ No additional packages required.
 
 ---
 
-***REMOVED******REMOVED*** Related Apps
+## Related Apps
 
 - **worldkg_nca** - Entity storage, WorldKG ontology, NCA classification
 - **geovectors_encoder** - Embedding generation (GV-Tags, GV-NLE)
@@ -343,6 +343,6 @@ No additional packages required.
 
 ---
 
-***REMOVED******REMOVED*** License
+## License
 
 Same as parent project.

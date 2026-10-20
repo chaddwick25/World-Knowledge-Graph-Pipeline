@@ -24,8 +24,8 @@ class AbstractRomanizer:
 
     language_code: str = ""
 
-    ***REMOVED*** Characters to strip during normalization (punctuation, symbols)
-    ***REMOVED*** Hyphens and apostrophes are kept — they appear in names like "O'Brien"
+    # Characters to strip during normalization (punctuation, symbols)
+    # Hyphens and apostrophes are kept — they appear in names like "O'Brien"
     _STRIP_RE = re.compile(r"[^\w\s'\-]", re.UNICODE)
 
     @classmethod
@@ -43,10 +43,10 @@ class AbstractRomanizer:
         """Common post-processing: lowercase, strip non-word chars, collapse spaces."""
         if not text:
             return ""
-        ***REMOVED*** Lowercase
+        # Lowercase
         result = text.lower()
-        ***REMOVED*** Strip punctuation (keep word chars, spaces, hyphens, apostrophes)
+        # Strip punctuation (keep word chars, spaces, hyphens, apostrophes)
         result = cls._STRIP_RE.sub(" ", result)
-        ***REMOVED*** Collapse multiple spaces
+        # Collapse multiple spaces
         result = re.sub(r"\s+", " ", result).strip()
         return result

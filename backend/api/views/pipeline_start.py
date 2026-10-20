@@ -49,20 +49,20 @@ class WorldKGPipelineV2StartView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        ***REMOVED*** Resolve ISO code for the country.
-        ***REMOVED*** Order: CountryPipelineProfile → resolve_iso_code → EligibleCountry
+        # Resolve ISO code for the country.
+        # Order: CountryPipelineProfile → resolve_iso_code → EligibleCountry
         profile = CountryPipelineProfile.objects.filter(
             canonical_name__iexact=country_name
         ).first()
         iso = profile.iso2 if profile else None
 
         if not iso:
-            ***REMOVED*** Try the resolver (also checks non-sovereign synthetic ISOs)
+            # Try the resolver (also checks non-sovereign synthetic ISOs)
             iso = resolve_iso_code(country_name)
 
         if not iso:
-            ***REMOVED*** Fallback: check EligibleCountry (covers split territories like Wales,
-            ***REMOVED*** Scotland, England that have no real ISO code)
+            # Fallback: check EligibleCountry (covers split territories like Wales,
+            # Scotland, England that have no real ISO code)
             eligible = EligibleCountry.objects.filter(
                 country_name__iexact=country_name
             ).first()
@@ -85,7 +85,7 @@ class WorldKGPipelineV2StartView(APIView):
             settings, 'SINGLE_SNAPSHOT_DATE', '2025_12_31'
         )
 
-        ***REMOVED*** ── SnapshotJob gate (atomic — prevents concurrent start races) ──
+        # ── SnapshotJob gate (atomic — prevents concurrent start races) ──
         from django.db import transaction
         with transaction.atomic():
             existing = SnapshotJob.objects.select_for_update().filter(
@@ -102,8 +102,8 @@ class WorldKGPipelineV2StartView(APIView):
                         },
                         status=status.HTTP_409_CONFLICT,
                     )
-                ***REMOVED*** COMPLETED with force=True → delete + re-run
-                ***REMOVED*** FAILED / stale PENDING → always allow re-run
+                # COMPLETED with force=True → delete + re-run
+                # FAILED / stale PENDING → always allow re-run
                 existing.delete()
 
             job = SnapshotJob.objects.create(
@@ -130,7 +130,7 @@ class WorldKGPipelineV2StartView(APIView):
             job.mark_failed(str(e))
             raise
 
-        ***REMOVED*** Link the SnapshotJob to the PipelineRun and transition to RUNNING
+        # Link the SnapshotJob to the PipelineRun and transition to RUNNING
         try:
             run = PipelineRun.objects.get(id=run_id)
             job.pipeline_run = run
@@ -155,10 +155,10 @@ class WorldKGPipelineV2StartView(APIView):
         }, status=status.HTTP_202_ACCEPTED)
 
 
-***REMOVED*** NOTE: Planet initialization (formerly steps 0a–0m) is a Docker startup
-***REMOVED*** step — ``python manage.py init_planet`` via docker-entrypoint.sh. The
-***REMOVED*** legacy POST /planet/initialize/ and GET /planet/status/<uuid>/ facades
-***REMOVED*** were removed; readiness is served by GET /api/system/status/
-***REMOVED*** (SystemStatusView) and derived from the latest finalized PlanetSnapshot.
+# NOTE: Planet initialization (formerly steps 0a–0m) is a Docker startup
+# step — ``python manage.py init_planet`` via docker-entrypoint.sh. The
+# legacy POST /planet/initialize/ and GET /planet/status/<uuid>/ facades
+# were removed; readiness is served by GET /api/system/status/
+# (SystemStatusView) and derived from the latest finalized PlanetSnapshot.
 
 

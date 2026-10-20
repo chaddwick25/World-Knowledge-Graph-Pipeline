@@ -124,7 +124,7 @@ def _run_spectral_analysis(env: CountryEnvelope) -> None:
     A JSON run report is written to ``{SPECTRAL_REPORT_DIR}/``.
     """
 
-    ***REMOVED*** Rehydrate subgraphs from DB (same pattern as Step 5)
+    # Rehydrate subgraphs from DB (same pattern as Step 5)
     if not env.has_subgraphs or not env.subgraphs:
         try:
             fresh = CountryEnvelope.from_db(env.iso, snapshot_date=env.snapshot_date)
@@ -137,9 +137,9 @@ def _run_spectral_analysis(env: CountryEnvelope) -> None:
         except Exception:
             pass
 
-    ***REMOVED*** ── Node-count-based routing ──
-    ***REMOVED*** Count OsmEntity rows for this country/snapshot to decide whether
-    ***REMOVED*** to use the country-level GPU path or the subdivision path.
+    # ── Node-count-based routing ──
+    # Count OsmEntity rows for this country/snapshot to decide whether
+    # to use the country-level GPU path or the subdivision path.
     node_count = _count_country_nodes(env.iso, env.snapshot_date)
 
     if node_count is not None and node_count < SUBDIVISION_NODE_THRESHOLD:
@@ -172,8 +172,8 @@ def _run_spectral_analysis(env: CountryEnvelope) -> None:
                  threshold=SUBDIVISION_NODE_THRESHOLD,
                  pipeline_run_id=env.pipeline_run_id)
 
-    ***REMOVED*** Fallback: if node count couldn't be determined, use the legacy
-    ***REMOVED*** has_subgraphs routing
+    # Fallback: if node count couldn't be determined, use the legacy
+    # has_subgraphs routing
     if env.has_subgraphs and env.subgraphs:
         _run_subgraph_spectral_analysis(env)
     else:

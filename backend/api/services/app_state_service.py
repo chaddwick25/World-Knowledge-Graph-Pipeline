@@ -27,7 +27,7 @@ from core.services.snapshot.regional_path_service import normalize_country_slug
 logger = logging.getLogger(__name__)
 
 
-***REMOVED*** ── Data Classes ──────────────────────────────────────────────────────────
+# ── Data Classes ──────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -76,7 +76,7 @@ class CountryState:
     capabilities: dict
 
 
-***REMOVED*** ── Step labels and ordering ──────────────────────────────────────────────
+# ── Step labels and ordering ──────────────────────────────────────────────
 
 
 STEP_LABELS = {
@@ -110,7 +110,7 @@ STEPS_ORDER = {
 }
 
 
-***REMOVED*** ── Service ────────────────────────────────────────────────────────────────
+# ── Service ────────────────────────────────────────────────────────────────
 
 
 class AppStateService:
@@ -130,7 +130,7 @@ class AppStateService:
             capabilities=capabilities,
         )
 
-    ***REMOVED*** ── Pipeline State ────────────────────────────────────────────────
+    # ── Pipeline State ────────────────────────────────────────────────
 
     def _build_pipeline_state(
         self, country_name: str, iso: Optional[str]
@@ -267,7 +267,7 @@ class AppStateService:
                 "subgraphs": [],
             })
 
-        ***REMOVED*** Attach subgraph states to relevant steps
+        # Attach subgraph states to relevant steps
         if pipeline_state and pipeline_state.subgraphs:
             subgraph_steps = {"predict_spatial_links", "embed_osm_entities", "train_gv_nle"}
             for step in steps:
@@ -285,7 +285,7 @@ class AppStateService:
 
         return steps
 
-    ***REMOVED*** ── Search State ──────────────────────────────────────────────────
+    # ── Search State ──────────────────────────────────────────────────
 
     @staticmethod
     def _build_search_state(country_name: str, iso: Optional[str]) -> SearchState:
@@ -326,7 +326,7 @@ class AppStateService:
             has_db_embeddings=has_db_embeddings,
         )
 
-    ***REMOVED*** ── Capabilities ──────────────────────────────────────────────────
+    # ── Capabilities ──────────────────────────────────────────────────
 
     @staticmethod
     def _build_capabilities(pipeline: Optional[PipelineState], search: SearchState) -> dict:
@@ -351,7 +351,7 @@ class AppStateService:
             "reasons_blocked": reasons_blocked,
         }
 
-    ***REMOVED*** ── Resolution Helpers ────────────────────────────────────────────
+    # ── Resolution Helpers ────────────────────────────────────────────
 
     @staticmethod
     def _resolve_iso(country_name: str) -> Optional[str]:

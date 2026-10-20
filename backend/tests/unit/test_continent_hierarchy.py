@@ -46,7 +46,7 @@ class TestContinentTaxonomyShape:
             assert isinstance(continent, ContinentDefinition)
             assert continent.slug
             assert continent.name
-            assert continent.aliases  ***REMOVED*** each canonical slug is its own alias
+            assert continent.aliases  # each canonical slug is its own alias
             assert continent.slug in continent.aliases
 
 
@@ -57,30 +57,30 @@ class TestNormalizeContinent:
     @pytest.mark.parametrize(
         "raw,expected",
         [
-            ***REMOVED*** Canonical passthrough
+            # Canonical passthrough
             ("africa", "africa"),
             ("europe", "europe"),
             ("asia", "asia"),
             ("north-america", "north-america"),
             ("south-america", "south-america"),
-            ***REMOVED*** Geofabrik subregions that leaked as continents (observed in DB)
+            # Geofabrik subregions that leaked as continents (observed in DB)
             ("china", "asia"),
             ("france", "europe"),
             ("united_kingdom", "europe"),
             ("great-britain", "europe"),
             ("australia", "oceania"),
             ("central-america", "north-america"),
-            ***REMOVED*** Naming variants
+            # Naming variants
             ("australia-oceania", "oceania"),
             ("australia_oceania", "oceania"),
             ("north_america", "north-america"),
             ("central_america", "north-america"),
             ("south_america", "south-america"),
             ("great_britain", "europe"),
-            ***REMOVED*** Case / whitespace
+            # Case / whitespace
             ("North America", "north-america"),
             ("  EUROPE  ", "europe"),
-            ***REMOVED*** Unclassified
+            # Unclassified
             (None, "other"),
             ("", "other"),
             ("unknown-region", "other"),
@@ -90,7 +90,7 @@ class TestNormalizeContinent:
         assert normalize_continent(raw) == expected
 
     def test_alias_index_derived_from_dataclasses(self):
-        ***REMOVED*** The alias index is built from the dataclasses — no second source.
+        # The alias index is built from the dataclasses — no second source.
         for continent in CONTINENTS:
             for alias in continent.aliases:
                 assert normalize_continent(alias) == continent.slug
@@ -98,7 +98,7 @@ class TestNormalizeContinent:
     def test_continent_name_display(self):
         assert continent_name("oceania") == "Oceania"
         assert continent_name("north-america") == "North America"
-        assert continent_name("other") == "other"  ***REMOVED*** fallback bucket
+        assert continent_name("other") == "other"  # fallback bucket
 
 
 @pytest.mark.unit
@@ -108,7 +108,7 @@ class TestSummaryAggregationFoldsAliases:
     continents only — no raw subregions in the output."""
 
     SEED = [
-        ***REMOVED*** (hierarchy slug, raw parent_slug, iso2)
+        # (hierarchy slug, raw parent_slug, iso2)
         ("zz_hier_mc", "france", "Z1"),
         ("zz_hier_hk", "china", "Z2"),
         ("zz_hier_au_region", "australia", "Z3"),
@@ -150,17 +150,17 @@ class TestSummaryAggregationFoldsAliases:
 
         names = {b["name"] for b in result["by_continent"]}
 
-        ***REMOVED*** No raw Geofabrik subregion or naming variant may surface.
+        # No raw Geofabrik subregion or naming variant may surface.
         assert not (names & {"france", "china", "australia", "united_kingdom"})
         assert not (names & {"australia-oceania", "australia_oceania", "central-america"})
 
-        ***REMOVED*** Every bucket is a canonical continent name or the "other" fallback.
+        # Every bucket is a canonical continent name or the "other" fallback.
         canonical_names = {continent_name(s) for s in CANONICAL_SLUGS}
         assert names <= canonical_names | {"other"}
 
-        ***REMOVED*** Seeded aliases folded into their canonical buckets.
+        # Seeded aliases folded into their canonical buckets.
         by_name = {b["name"]: b for b in result["by_continent"]}
-        assert by_name["Oceania"]["total"] >= 2       ***REMOVED*** australia + australia-oceania
-        assert by_name["Asia"]["total"] >= 1          ***REMOVED*** china
-        assert by_name["Europe"]["total"] >= 2        ***REMOVED*** france + united_kingdom
-        assert by_name["North America"]["total"] >= 1 ***REMOVED*** central-america
+        assert by_name["Oceania"]["total"] >= 2       # australia + australia-oceania
+        assert by_name["Asia"]["total"] >= 1          # china
+        assert by_name["Europe"]["total"] >= 2        # france + united_kingdom
+        assert by_name["North America"]["total"] >= 1 # central-america

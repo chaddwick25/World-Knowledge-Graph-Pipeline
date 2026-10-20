@@ -27,7 +27,7 @@ def resolve_subdivision_bbox(
 
     qid = subdivision_qid.strip().upper()
     if not qid.startswith("Q"):
-        ***REMOVED*** Allow callers to pass a bare numeric ID
+        # Allow callers to pass a bare numeric ID
         qid = f"Q{qid}"
 
     try:

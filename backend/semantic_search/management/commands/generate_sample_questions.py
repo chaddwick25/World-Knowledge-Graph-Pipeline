@@ -7,14 +7,14 @@ a given snapshot/DB state, so generation is stable across runs.
 
 Modes::
 
-    ***REMOVED*** One subdivision
+    # One subdivision
     python manage.py generate_sample_questions --country JM --subdivision Q875881
-    ***REMOVED*** All subdivisions of a country (with a populated bbox) + the
-    ***REMOVED*** country-wide set
+    # All subdivisions of a country (with a populated bbox) + the
+    # country-wide set
     python manage.py generate_sample_questions --country BZ
-    ***REMOVED*** Every subdivision with a bbox across all countries (idempotent)
+    # Every subdivision with a bbox across all countries (idempotent)
     python manage.py generate_sample_questions --all
-    ***REMOVED*** Only the country-wide set (already included in --country/--all)
+    # Only the country-wide set (already included in --country/--all)
     python manage.py generate_sample_questions --cross-subdivision --country BZ
 
 A batch run (--country/--all) generates BOTH the per-subdivision rows
@@ -96,7 +96,7 @@ class Command(BaseCommand):
             return
         self._generate_batch(options)
 
-    ***REMOVED*** ── Cross-subdivision (country-wide, spans subdivisions) ─────────────
+    # ── Cross-subdivision (country-wide, spans subdivisions) ─────────────
 
     def _generate_cross_subdivision(self, options):
         countries = [options["country"].upper()] if options["country"] else None
@@ -138,7 +138,7 @@ class Command(BaseCommand):
         if errors:
             sys.exit(1)
 
-    ***REMOVED*** ── Verify-only sweep (execute-and-keep enforcement) ─────────────────
+    # ── Verify-only sweep (execute-and-keep enforcement) ─────────────────
 
     def _verify_only(self, options):
         from semantic_search.models import SampleQuestion
@@ -170,7 +170,7 @@ class Command(BaseCommand):
                 )
             ))
 
-    ***REMOVED*** ── Single subdivision ───────────────────────────────────────────────
+    # ── Single subdivision ───────────────────────────────────────────────
 
     def _generate_one(self, country, qid, options):
         result = SampleQuestionService.generate_subdivision(
@@ -194,7 +194,7 @@ class Command(BaseCommand):
             f"{country}/{qid} (snapshot {result['snapshot_date'] or 'latest'})"
         ))
 
-    ***REMOVED*** ── Batch ────────────────────────────────────────────────────────────
+    # ── Batch ────────────────────────────────────────────────────────────
 
     def _generate_batch(self, options):
         qs = SubgraphProfile.objects.filter(
@@ -202,7 +202,7 @@ class Command(BaseCommand):
         ).exclude(wikidata_id='')
         if options["country"]:
             qs = qs.filter(country_profile__iso2__iexact=options["country"])
-        ***REMOVED*** Only subdivisions whose bbox can scope a search.
+        # Only subdivisions whose bbox can scope a search.
         from django.db.models import Q as _Q
         qs = qs.filter(
             _Q(bbox_min_lon__isnull=False) & _Q(bbox_max_lat__isnull=False),
@@ -228,7 +228,7 @@ class Command(BaseCommand):
                     per_anchor=options["per_anchor"],
                     min_entities=options["min_entities"],
                 )
-            except Exception as exc:  ***REMOVED*** noqa: BLE001 — one bad subdivision must not kill the batch
+            except Exception as exc:  # noqa: BLE001 — one bad subdivision must not kill the batch
                 result = {"error": str(exc)}
             if result.get("error"):
                 errors.append((sg.name, iso, result["error"]))
@@ -245,7 +245,7 @@ class Command(BaseCommand):
             else:
                 bucket["generated"] += 1
 
-        ***REMOVED*** Coverage report
+        # Coverage report
         self.stdout.write("")
         self.stdout.write(self.style.MIGRATE_HEADING("COVERAGE"))
         total_generated = 0
@@ -260,10 +260,10 @@ class Command(BaseCommand):
             f"Subdivisions with generated questions: {total_generated}/{len(rows)}"
         ))
 
-        ***REMOVED*** The country-wide set gets the same treatment — a batch run
-        ***REMOVED*** produces complete coverage (subdivisions + cross-subdivision)
-        ***REMOVED*** in one invocation; --cross-subdivision alone refreshes only
-        ***REMOVED*** the country-wide rows.
+        # The country-wide set gets the same treatment — a batch run
+        # produces complete coverage (subdivisions + cross-subdivision)
+        # in one invocation; --cross-subdivision alone refreshes only
+        # the country-wide rows.
         self.stdout.write("")
         self.stdout.write(self.style.MIGRATE_HEADING("COUNTRY-WIDE"))
         for iso in sorted(per_country):

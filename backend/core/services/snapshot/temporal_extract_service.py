@@ -83,11 +83,11 @@ class TemporalExtractService:
                 f"{year}.pbf"
             )
             
-            ***REMOVED*** Ensure output directory exists
+            # Ensure output directory exists
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            ***REMOVED*** Run osmium time-filter
-            ***REMOVED*** Note: osmium_facade needs to be checked for correct method signature
+            # Run osmium time-filter
+            # Note: osmium_facade needs to be checked for correct method signature
             result = self.osmium.time_filter(
                 source_pbf.path,
                 min_timestamp,
@@ -96,7 +96,7 @@ class TemporalExtractService:
             )
             
             if result.get('success', False):
-                ***REMOVED*** Create or update PbfFile record
+                # Create or update PbfFile record
                 yearly_extract, created = PbfFile.objects.get_or_create(
                     path=output_path,
                     defaults={
@@ -109,7 +109,7 @@ class TemporalExtractService:
                     }
                 )
                 
-                ***REMOVED*** Update existing record if not created
+                # Update existing record if not created
                 if not created:
                     yearly_extract.min_timestamp = min_timestamp
                     yearly_extract.max_timestamp = max_timestamp
@@ -117,13 +117,13 @@ class TemporalExtractService:
                     yearly_extract.save()
                 
                 extract_ids.append(str(yearly_extract.id))
-                total_size += os.path.getsize(output_path) / (1024 * 1024)  ***REMOVED*** MB
+                total_size += os.path.getsize(output_path) / (1024 * 1024)  # MB
                 
                 logger.info(f"Created yearly extract: {output_path}")
         
         processing_time = (datetime.now() - start_time).total_seconds()
         
-        ***REMOVED*** Mark yearly extracts as complete on source PBF
+        # Mark yearly extracts as complete on source PBF
         if len(extract_ids) > 0:
             from django.utils import timezone
             source_pbf.yearly_extracts_generated = True
@@ -148,7 +148,7 @@ class TemporalExtractService:
         IMPORTANT: Monthly extracts can ONLY be created from yearly extracts.
         This enforces the hierarchical constraint: Region → Yearly → Monthly
         """
-        ***REMOVED*** Validate that source is a yearly extract
+        # Validate that source is a yearly extract
         if source_pbf.extraction_level != 'REGION_YEARLY':
             return {
                 'success': False,
@@ -168,7 +168,7 @@ class TemporalExtractService:
         
         for year in range(start_year, end_year + 1):
             for month in range(1, 13):
-                ***REMOVED*** Calculate last day of month
+                # Calculate last day of month
                 if month == 12:
                     next_month = 1
                     next_year = year + 1
@@ -187,10 +187,10 @@ class TemporalExtractService:
                     f"{year}_{month:02d}.pbf"
                 )
                 
-                ***REMOVED*** Ensure output directory exists
+                # Ensure output directory exists
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
                 
-                ***REMOVED*** Run osmium time-filter
+                # Run osmium time-filter
                 result = self.osmium.time_filter(
                     source_pbf.path,
                     min_timestamp,
@@ -199,7 +199,7 @@ class TemporalExtractService:
                 )
                 
                 if result.get('success', False):
-                    ***REMOVED*** Create or update PbfFile record
+                    # Create or update PbfFile record
                     monthly_extract, created = PbfFile.objects.get_or_create(
                         path=output_path,
                         defaults={
@@ -212,7 +212,7 @@ class TemporalExtractService:
                         }
                     )
                     
-                    ***REMOVED*** Update existing record if not created
+                    # Update existing record if not created
                     if not created:
                         monthly_extract.min_timestamp = min_timestamp
                         monthly_extract.max_timestamp = max_timestamp
@@ -220,13 +220,13 @@ class TemporalExtractService:
                         monthly_extract.save()
                     
                     extract_ids.append(str(monthly_extract.id))
-                    total_size += os.path.getsize(output_path) / (1024 * 1024)  ***REMOVED*** MB
+                    total_size += os.path.getsize(output_path) / (1024 * 1024)  # MB
                     
                     logger.info(f"Created monthly extract: {output_path}")
         
         processing_time = (datetime.now() - start_time).total_seconds()
         
-        ***REMOVED*** Mark monthly extracts as complete on source PBF (yearly extract)
+        # Mark monthly extracts as complete on source PBF (yearly extract)
         if len(extract_ids) > 0:
             from django.utils import timezone
             source_pbf.monthly_extracts_generated = True
@@ -236,16 +236,16 @@ class TemporalExtractService:
             source_pbf.save()
             logger.info(f"Marked monthly extracts complete for {source_pbf.path}: {len(extract_ids)} extracts ({start_year}-{end_year})")
             
-            ***REMOVED*** Also update the parent PBF (original region extract) if it exists
+            # Also update the parent PBF (original region extract) if it exists
             if source_pbf.parent_pbf:
                 parent_pbf = source_pbf.parent_pbf
-                ***REMOVED*** Count all monthly extracts across all yearly extracts for this parent
+                # Count all monthly extracts across all yearly extracts for this parent
                 total_monthly_count = PbfFile.objects.filter(
                     parent_pbf__parent_pbf=parent_pbf,
                     extraction_level='REGION_MONTHLY'
                 ).count()
                 
-                ***REMOVED*** Get the year range from all yearly extracts
+                # Get the year range from all yearly extracts
                 yearly_extracts = PbfFile.objects.filter(
                     parent_pbf=parent_pbf,
                     extraction_level='REGION_YEARLY'

@@ -15,7 +15,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Default constants (can be overridden by subclasses)
+# Default constants (can be overridden by subclasses)
 WIKIDATA_SPARQL_ENDPOINT = "https://query.wikidata.org/sparql"
 WIKIDATA_USER_AGENT = "EDAVectorSearchToolkit/1.0 (WorldKG-IGEA; contact via GitHub)"
 SPARQL_TIMEOUT_S = 10
@@ -36,13 +36,13 @@ class SPARQLRetryMixin:
     
     Usage:
         class MyService(SPARQLRetryMixin):
-            sparql_timeout = 30  ***REMOVED*** override default 10s
+            sparql_timeout = 30  # override default 10s
             
             def do_query(self):
                 data = self._sparql_request_with_retry("SELECT ...", use_post=False)
     """
     
-    ***REMOVED*** Class attributes — override in subclass if needed
+    # Class attributes — override in subclass if needed
     sparql_endpoint: str = WIKIDATA_SPARQL_ENDPOINT
     sparql_user_agent: str = WIKIDATA_USER_AGENT
     sparql_timeout: float = SPARQL_TIMEOUT_S
@@ -94,7 +94,7 @@ class SPARQLRetryMixin:
                 return response.json()
             except requests.exceptions.HTTPError as exc:
                 status_code = exc.response.status_code if exc.response is not None else 0
-                ***REMOVED*** Retry only on transient server errors / rate limiting
+                # Retry only on transient server errors / rate limiting
                 if status_code in (429, 502, 503) and attempt < max_retries:
                     delay = backoff_base * (2 ** attempt)
                     logger.warning(

@@ -1,12 +1,12 @@
-***REMOVED*** Preserving Kuhn's Core Concepts of Spatial Information
+# Preserving Kuhn's Core Concepts of Spatial Information
 
 How the theoretical framework from [Core Concepts of Spatial Information for Transdisciplinary Research](https://papers/WernerKuhn/Core-concepts-of-spatial-information-for-transdisciplinary-research.pdf) (Kuhn) was integrated into the MapQA parser and the pipeline's concept extraction layer.
 
 ---
 
-***REMOVED******REMOVED*** 1. Kuhn's Five Core Concepts
+## 1. Kuhn's Five Core Concepts
 
-***REMOVED******REMOVED******REMOVED*** The Original Framework
+### The Original Framework
 Kuhn's paper defines five core concepts of spatial information that form a transdisciplinary vocabulary for geographic reasoning:
 
 | Concept | Definition | Spatial Question Answered |
@@ -21,12 +21,12 @@ These concepts are designed to be language-independent and discipline-agnostic, 
 
 ---
 
-***REMOVED******REMOVED*** 2. How MapQA Uses Kuhn's Concepts
+## 2. How MapQA Uses Kuhn's Concepts
 
-***REMOVED******REMOVED******REMOVED*** The Paper's Approach
+### The Paper's Approach
 The MapQA paper uses Kuhn's core concepts as the feature space for concept extraction. Each natural-language question is decomposed into typed concept slots drawn from Kuhn's framework. The template skeleton defines which concept types are expected, and the concept extractor fills those slots with concrete values from the question text.
 
-***REMOVED******REMOVED******REMOVED*** The Implementation's Adaptation
+### The Implementation's Adaptation
 The pipeline's concept vocabulary is derived from the MapQA/Spatial-Agent template requirements, not a literal Kuhn ontology. The `CONCEPT_TYPES` list in the parser defines 7 labels, of which 4 are active in the 5 trained templates.
 
 **Concept Vocabulary (Implementation):**
@@ -43,18 +43,18 @@ The pipeline's concept vocabulary is derived from the MapQA/Spatial-Agent templa
 
 **Key Gaps:**
 - **No `neighborhood` concept.** Kuhn's Neighborhood (vicinity, surrounding region) is not a distinct concept type. The pipeline handles "near" queries via the `RADIUS` value extracted as part of `AMOUNT` and the spatial `ST_DWithin` operation in the executor, not via a dedicated concept slot.
-- **`NETWORK` is dormant.** Kuhn's Network (connected entities, flow) is in the vocabulary but not active in any of the 5 trained template DAGs. The spectral/graph templates (***REMOVED***11-14) that would use network structure are wired in the executor but not emitted by the parser.
+- **`NETWORK` is dormant.** Kuhn's Network (connected entities, flow) is in the vocabulary but not active in any of the 5 trained template DAGs. The spectral/graph templates (#11-14) that would use network structure are wired in the executor but not emitted by the parser.
 - **`FIELD` is repurposed.** Kuhn's Field (continuous spatial phenomenon) is used in the implementation for generic amenity attributes (e.g., "amenities" as a field-like query), not for true continuous fields like elevation or temperature.
 - **`AMOUNT` and `PROPORTION` are additions.** These are not in Kuhn's 5 concepts but are needed for MapQA template slots (radius, count, proportion queries).
 
 ---
 
-***REMOVED******REMOVED*** 3. Concept Extraction Mechanism
+## 3. Concept Extraction Mechanism
 
-***REMOVED******REMOVED******REMOVED*** The Original Approach
+### The Original Approach
 The paper uses Kuhn's core concepts as a multi-label classification problem: given a question, predict which concept types are present, then extract concrete values for each.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline uses `OneVsRestClassifier(LogisticRegression)` for multi-label concept detection, combined with heuristic regex extraction for concrete values.
 
 **Two-Stage Extraction:**
@@ -85,12 +85,12 @@ def _extract_concepts(self, question: str, template: str) -> list:
 
 ---
 
-***REMOVED******REMOVED*** 4. Concept-to-Role Mapping
+## 4. Concept-to-Role Mapping
 
-***REMOVED******REMOVED******REMOVED*** The Original Approach
+### The Original Approach
 The Spatial-Agent paper assigns functional roles to concepts. Each concept slot in a template is assigned a role (SUB_COND, COND, SUPPORT, MEASURE, EXTENT) that defines its function in the query DAG.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline assigns roles via a multiclass `LogisticRegression` model trained on `question [CONCEPT:TYPE]` strings. The role determines the concept's position in the G2 precedence-validated DAG.
 
 **Concept-to-Role Flow:**
@@ -112,17 +112,17 @@ The pipeline assigns roles via a multiclass `LogisticRegression` model trained o
 
 ---
 
-***REMOVED******REMOVED*** 5. Where Kuhn's Concepts Appear in the Code
+## 5. Where Kuhn's Concepts Appear in the Code
 
-***REMOVED******REMOVED******REMOVED*** Direct References
+### Direct References
 Kuhn's name appears in the codebase only in:
 - `../README.md` (project description referencing the papers)
 - `frontend-v3/src/mcp/mcp-server.ts` line 219: `"Kuhn's-template geospatial question"` (tool description for `templateQuery`)
 
-***REMOVED******REMOVED******REMOVED*** Indirect References
+### Indirect References
 The concept vocabulary in `query_parser_service.py` and `train_mapqa_parser.py` is the primary indirect reference. The labels `LOCATION`, `OBJECT`, `FIELD`, `NETWORK` map to Kuhn's concepts by name, though the implementation's semantics differ (see §2).
 
-***REMOVED******REMOVED******REMOVED*** No Concept Registry
+### No Concept Registry
 There is no separate concept ontology or concept registry in the codebase. The concept vocabulary is hard-coded in:
 - `backend/semantic_search/services/query_parser_service.py` (`CONCEPT_TYPES`)
 - `backend/semantic_search/management/commands/train_mapqa_parser.py` (`CONCEPT_TYPES`)
@@ -131,12 +131,12 @@ The `wkg_class` field on `OsmEntity` provides an ontological class distribution 
 
 ---
 
-***REMOVED******REMOVED*** 6. The Learned Layer as Network Concept Realization
+## 6. The Learned Layer as Network Concept Realization
 
-***REMOVED******REMOVED******REMOVED*** Kuhn's Network Concept
+### Kuhn's Network Concept
 Kuhn's Network concept covers connected entities with flow or relationships. In the MapQA/Spatial-Agent papers, this would manifest as queries about connectivity, paths, or relationships between entities.
 
-***REMOVED******REMOVED******REMOVED*** The Implementation's Partial Realization
+### The Implementation's Partial Realization
 The pipeline's learned layer (Step 5c/5d) materializes network structure into factor tables, but the parser does not emit templates that use them:
 
 **Factor Tables (Materialized Network Structure):**
@@ -152,18 +152,18 @@ The pipeline's learned layer (Step 5c/5d) materializes network structure into fa
 
 | Template | Handler | Factor Table Used | Kuhn Concept |
 |----------|---------|-------------------|-------------|
-| ***REMOVED***11 SPECTRAL-ANALYSIS | `_execute_spectral_analysis` | `factor_spectral_node_metric` | Network |
-| ***REMOVED***12 TEMPORAL-DRIFT | `_execute_temporal_drift` | `factor_drift_node_metric` | Network (temporal) |
-| ***REMOVED***13 COMMUNITY-DETECT | `_execute_community_detect` | `factor_spectral_node_metric` | Network (community) |
-| ***REMOVED***14 EVENT-DIFFUSION | `_execute_event_diffusion` | `factor_spectral_node_metric` | Network (diffusion) |
+| #11 SPECTRAL-ANALYSIS | `_execute_spectral_analysis` | `factor_spectral_node_metric` | Network |
+| #12 TEMPORAL-DRIFT | `_execute_temporal_drift` | `factor_drift_node_metric` | Network (temporal) |
+| #13 COMMUNITY-DETECT | `_execute_community_detect` | `factor_spectral_node_metric` | Network (community) |
+| #14 EVENT-DIFFUSION | `_execute_event_diffusion` | `factor_spectral_node_metric` | Network (diffusion) |
 
-**Paper vs Code:** The learned layer realizes Kuhn's Network concept through spectral graph theory (eigenvalues, heat kernel, community detection, diffusion), but the parser does not currently emit templates ***REMOVED***11-14. These templates are wired in the executor and can be invoked directly, but the classifier does not route natural-language questions to them. The `EntityContextService` does use factor-table communities for answer enrichment on the direct path, providing indirect network context.
+**Paper vs Code:** The learned layer realizes Kuhn's Network concept through spectral graph theory (eigenvalues, heat kernel, community detection, diffusion), but the parser does not currently emit templates #11-14. These templates are wired in the executor and can be invoked directly, but the classifier does not route natural-language questions to them. The `EntityContextService` does use factor-table communities for answer enrichment on the direct path, providing indirect network context.
 
 ---
 
-***REMOVED******REMOVED*** 7. Spectral Analysis as Network Concept Math
+## 7. Spectral Analysis as Network Concept Math
 
-***REMOVED******REMOVED******REMOVED*** The Math
+### The Math
 The learned layer computes spectral features of the k-NN graph built from entity locations:
 
 **Normalized Laplacian:**
@@ -188,7 +188,7 @@ $$\text{fiedler\_drift} = \text{cosine\_distance}(\mathbf{f}_t, \mathbf{f}_{t-1}
 
 ---
 
-***REMOVED******REMOVED*** 8. Summary: Kuhn's Concepts vs Implementation
+## 8. Summary: Kuhn's Concepts vs Implementation
 
 | Kuhn Concept | Implementation Status | Where |
 |--------------|---------------------|-------|
@@ -196,13 +196,13 @@ $$\text{fiedler\_drift} = \text{cosine\_distance}(\mathbf{f}_t, \mathbf{f}_{t-1}
 | **Neighborhood** | Not a distinct concept | Handled via `AMOUNT` (radius) + `ST_DWithin` spatial operation, not a dedicated concept slot |
 | **Field** | Partially active | `FIELD` concept type used for generic amenity attributes, not true continuous fields |
 | **Object** | Active | `OBJECT` concept type, matched via 3-tier amenity fallback (exact tag → ontology → FastText) |
-| **Network** | Dormant in parser, active in learned layer | `NETWORK` concept type defined but not active in 5 trained templates. Spectral factor tables materialize network structure. Templates ***REMOVED***11-14 wired in executor but not parser-emitted. |
+| **Network** | Dormant in parser, active in learned layer | `NETWORK` concept type defined but not active in 5 trained templates. Spectral factor tables materialize network structure. Templates #11-14 wired in executor but not parser-emitted. |
 
 **The core insight:** The implementation preserves Kuhn's Location and Object concepts directly, partially preserves Field (repurposed for amenity attributes), handles Neighborhood implicitly via spatial radius operations, and realizes Network through the spectral learned layer rather than the parser's concept vocabulary.
 
 ---
 
-***REMOVED******REMOVED*** 9. Cross-References
+## 9. Cross-References
 
 | Topic | Document |
 |-------|----------|

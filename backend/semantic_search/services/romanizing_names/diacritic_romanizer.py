@@ -36,17 +36,17 @@ class DiacriticRomanizer(AbstractRomanizer):
 
     language_code = "diacritic"
 
-    ***REMOVED*** Unicode category for combining marks (Mn = Mark, Nonspacing)
-    ***REMOVED*** These are the diacritical marks that NFKD decomposition separates
-    ***REMOVED*** from the base character (e.g., é → e + ◌́ )
-    ***REMOVED***
-    ***REMOVED*** Special cases handled before NFKD:
-    ***REMOVED***   ñ → n (Spanish) — NFKD decomposes to n + combining tilde, stripped
-    ***REMOVED***   ß → ss (German) — NFKD does NOT decompose this, handled explicitly
-    ***REMOVED***   æ → ae (Danish/Norwegian) — NFKD does NOT decompose, handled explicitly
-    ***REMOVED***   ø → o (Danish/Norwegian) — NFKD does NOT decompose, handled explicitly
-    ***REMOVED***   ð → d (Icelandic) — NFKD does NOT decompose, handled explicitly
-    ***REMOVED***   þ → th (Icelandic) — NFKD does NOT decompose, handled explicitly
+    # Unicode category for combining marks (Mn = Mark, Nonspacing)
+    # These are the diacritical marks that NFKD decomposition separates
+    # from the base character (e.g., é → e + ◌́ )
+    #
+    # Special cases handled before NFKD:
+    #   ñ → n (Spanish) — NFKD decomposes to n + combining tilde, stripped
+    #   ß → ss (German) — NFKD does NOT decompose this, handled explicitly
+    #   æ → ae (Danish/Norwegian) — NFKD does NOT decompose, handled explicitly
+    #   ø → o (Danish/Norwegian) — NFKD does NOT decompose, handled explicitly
+    #   ð → d (Icelandic) — NFKD does NOT decompose, handled explicitly
+    #   þ → th (Icelandic) — NFKD does NOT decompose, handled explicitly
     _SPECIAL_DECOMPOSE = {
         'ß': 'ss',
         'æ': 'ae',
@@ -61,9 +61,9 @@ class DiacriticRomanizer(AbstractRomanizer):
         'Œ': 'oe',
     }
 
-    ***REMOVED*** Precomposed Latin characters with diacritics that NFKD handles:
-    ***REMOVED*** U+00C0–U+024F (Latin Extended) — most accented Latin chars
-    ***REMOVED*** We detect these to know if the diacritic romanizer should fire
+    # Precomposed Latin characters with diacritics that NFKD handles:
+    # U+00C0–U+024F (Latin Extended) — most accented Latin chars
+    # We detect these to know if the diacritic romanizer should fire
     _DIACRITIC_RE = re.compile(r'[\u00c0-\u024f]')
 
     @classmethod
@@ -77,10 +77,10 @@ class DiacriticRomanizer(AbstractRomanizer):
         """
         if not text:
             return False
-        ***REMOVED*** Check for precomposed accented Latin chars
+        # Check for precomposed accented Latin chars
         if cls._DIACRITIC_RE.search(text):
             return True
-        ***REMOVED*** Check for special chars that need explicit decomposition
+        # Check for special chars that need explicit decomposition
         for ch in text:
             if ch in cls._SPECIAL_DECOMPOSE:
                 return True
@@ -97,7 +97,7 @@ class DiacriticRomanizer(AbstractRomanizer):
         """
         if not text:
             return ""
-        ***REMOVED*** Step 1: Replace special characters that NFKD doesn't handle
+        # Step 1: Replace special characters that NFKD doesn't handle
         result = []
         for ch in text:
             if ch in cls._SPECIAL_DECOMPOSE:
@@ -106,15 +106,15 @@ class DiacriticRomanizer(AbstractRomanizer):
                 result.append(ch)
         text = ''.join(result)
 
-        ***REMOVED*** Step 2: NFKD decompose
+        # Step 2: NFKD decompose
         decomposed = unicodedata.normalize('NFKD', text)
 
-        ***REMOVED*** Step 3: Strip combining marks (category Mn = Nonspacing Mark)
+        # Step 3: Strip combining marks (category Mn = Nonspacing Mark)
         stripped = []
         for ch in decomposed:
             if unicodedata.category(ch) != 'Mn':
                 stripped.append(ch)
         text = ''.join(stripped)
 
-        ***REMOVED*** Step 4: Normalize
+        # Step 4: Normalize
         return cls._normalize(text)

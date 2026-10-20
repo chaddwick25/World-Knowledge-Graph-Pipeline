@@ -40,24 +40,24 @@ class CountryArtifact(models.Model):
         default=ArtifactStatus.ACTIVE
     )
     
-    ***REMOVED*** Temporal metadata
+    # Temporal metadata
     temporal_start = models.DateField(null=True, blank=True)
     temporal_end = models.DateField(null=True, blank=True)
     
-    ***REMOVED*** File metadata
+    # File metadata
     file_size_mb = models.FloatField(null=True, blank=True)
     file_hash = models.CharField(max_length=64, null=True, blank=True)
     
-    ***REMOVED*** TODO: remove this legacy code
+    # TODO: remove this legacy code
     google_drive_path = models.TextField(null=True, blank=True)
     backup_confirmed = models.BooleanField(default=False)
     
-    ***REMOVED*** Lifecycle metadata
+    # Lifecycle metadata
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     deletion_reason = models.TextField(null=True, blank=True)
     
-    ***REMOVED*** Relationships
+    # Relationships
     parent_artifact = models.ForeignKey(
         'self', 
         on_delete=models.SET_NULL, 
@@ -72,7 +72,7 @@ class CountryArtifact(models.Model):
         blank=True
     )
     
-    ***REMOVED*** Metadata
+    # Metadata
     metadata = models.JSONField(default=dict, help_text="Additional artifact-specific metadata")
     
     class Meta:
@@ -102,17 +102,17 @@ class EmbeddingArtifact(models.Model):
         on_delete=models.CASCADE,
         related_name='embeddings'
     )
-    ***REMOVED*** Embedding metadata
+    # Embedding metadata
     embedding_type = models.CharField(max_length=20, choices=EmbeddingType.choices)
     embedding_dimension = models.IntegerField(default=300)
     total_entities = models.IntegerField()
-    ***REMOVED*** Database reference (pgvector)
+    # Database reference (pgvector)
     table_name = models.CharField(max_length=100)
-    index_type = models.CharField(max_length=20)  ***REMOVED*** ivfflat, hnsw
-    ***REMOVED*** Training metadata
+    index_type = models.CharField(max_length=20)  # ivfflat, hnsw
+    # Training metadata
     trained_at = models.DateTimeField(auto_now_add=True)
     training_config = models.JSONField(default=dict)
-    ***REMOVED*** Performance metrics
+    # Performance metrics
     training_time_seconds = models.FloatField(null=True, blank=True)
     index_build_time_seconds = models.FloatField(null=True, blank=True)
     
@@ -175,7 +175,7 @@ class PartitionRegistry(models.Model):
         help_text="Number of embedding vectors indexed in this partition",
     )
 
-    ***REMOVED*** Temporal tracking
+    # Temporal tracking
     started_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -187,7 +187,7 @@ class PartitionRegistry(models.Model):
         help_text="When processing of this partition completed or failed",
     )
 
-    ***REMOVED*** Error details
+    # Error details
     error_message = models.TextField(
         null=True,
         blank=True,
@@ -390,11 +390,11 @@ class ReasoningStep(models.Model):
         ]
 
     def __str__(self):
-        return f"ReasoningStep({self.workflow_id}, ***REMOVED***{self.step_index}) {self.operator}"
+        return f"ReasoningStep({self.workflow_id}, #{self.step_index}) {self.operator}"
 
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════
-***REMOVED*** SnapshotJob — DB ground truth for "has this country been processed for
-***REMOVED*** this snapshot date?" Replaces the in-memory runsByYear tracking and the
-***REMOVED*** filesystem-based SnapshotDatesView scanning.
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
+# SnapshotJob — DB ground truth for "has this country been processed for
+# this snapshot date?" Replaces the in-memory runsByYear tracking and the
+# filesystem-based SnapshotDatesView scanning.
+# ══════════════════════════════════════════════════════════════════════════

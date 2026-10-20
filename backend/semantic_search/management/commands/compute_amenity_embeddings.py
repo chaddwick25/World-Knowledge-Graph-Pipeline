@@ -66,7 +66,7 @@ class Command(BaseCommand):
         if not isinstance(vocab, list):
             raise ValueError(f"{vocab_path} is not a JSON list")
 
-        ***REMOVED*** Normalize: lowercase + dedupe, preserving order
+        # Normalize: lowercase + dedupe, preserving order
         seen = set()
         entries = []
         for item in vocab:

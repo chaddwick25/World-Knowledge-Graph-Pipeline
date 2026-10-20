@@ -1,29 +1,29 @@
-***REMOVED*** Phase 6 Step 4 — Widen OsmEntity unique constraint for partitioned table
-***REMOVED***
-***REMOVED*** ⚠️  CUTOVER MIGRATION — read this before applying.
-***REMOVED***
-***REMOVED*** This migration changes the unique constraint from:
-***REMOVED***   (osm_type, osm_id, gv_tags_version)
-***REMOVED*** to:
-***REMOVED***   (osm_type, osm_id, gv_tags_version, snapshot_id, country_code)
-***REMOVED***
-***REMOVED*** **When to run:** This migration is SAFE to run at any time — it uses a
-***REMOVED*** guard to check whether ``semantic_search_osmentity`` is partitioned (i.e.
-***REMOVED*** the cutover rename has happened).  If the table is NOT partitioned (still
-***REMOVED*** the monolith), the database operations are a NO-OP — only the Django model
-***REMOVED*** state is updated.  If the table IS partitioned (post-cutover), the old
-***REMOVED*** constraint is dropped and the new widened constraint is created.
-***REMOVED***
-***REMOVED*** **Why the guard:** The monolith has nullable ``snapshot_id`` and
-***REMOVED*** ``country_code``.  A 5-column unique constraint with nullable columns
-***REMOVED*** doesn't prevent duplicates (NULL ≠ NULL in Postgres), so it's useless on
-***REMOVED*** the monolith and would just waste space.  The guard prevents this.
-***REMOVED***
-***REMOVED*** **SeparateDatabaseAndState:** The state operation (AlterUniqueTogether)
-***REMOVED*** always runs so Django's model state stays in sync with the model file.
-***REMOVED*** The database operations are conditional via RunPython.
-***REMOVED***
-***REMOVED*** IMPORTANT: Run with --database=vectors (OsmEntity lives in the vectors DB).
+# Phase 6 Step 4 — Widen OsmEntity unique constraint for partitioned table
+#
+# ⚠️  CUTOVER MIGRATION — read this before applying.
+#
+# This migration changes the unique constraint from:
+#   (osm_type, osm_id, gv_tags_version)
+# to:
+#   (osm_type, osm_id, gv_tags_version, snapshot_id, country_code)
+#
+# **When to run:** This migration is SAFE to run at any time — it uses a
+# guard to check whether ``semantic_search_osmentity`` is partitioned (i.e.
+# the cutover rename has happened).  If the table is NOT partitioned (still
+# the monolith), the database operations are a NO-OP — only the Django model
+# state is updated.  If the table IS partitioned (post-cutover), the old
+# constraint is dropped and the new widened constraint is created.
+#
+# **Why the guard:** The monolith has nullable ``snapshot_id`` and
+# ``country_code``.  A 5-column unique constraint with nullable columns
+# doesn't prevent duplicates (NULL ≠ NULL in Postgres), so it's useless on
+# the monolith and would just waste space.  The guard prevents this.
+#
+# **SeparateDatabaseAndState:** The state operation (AlterUniqueTogether)
+# always runs so Django's model state stays in sync with the model file.
+# The database operations are conditional via RunPython.
+#
+# IMPORTANT: Run with --database=vectors (OsmEntity lives in the vectors DB).
 
 from django.db import migrations, models
 
@@ -67,13 +67,13 @@ def forward(apps, schema_editor):
     conn = schema_editor.connection
     with conn.cursor() as cursor:
         if not _is_partitioned(cursor, 'semantic_search_osmentity'):
-            ***REMOVED*** Pre-cutover: the table is the monolith.  Do NOT touch the
-            ***REMOVED*** constraints — the monolith has nullable partition keys.
-            ***REMOVED*** Also ensure the partitioned table's unique index exists
-            ***REMOVED*** (in case a previous incorrect run dropped it), but only if
-            ***REMOVED*** the partitioned table itself exists (it's created by the
-            ***REMOVED*** create_country_partitions management command, not a migration,
-            ***REMOVED*** so it may not exist yet on a fresh database).
+            # Pre-cutover: the table is the monolith.  Do NOT touch the
+            # constraints — the monolith has nullable partition keys.
+            # Also ensure the partitioned table's unique index exists
+            # (in case a previous incorrect run dropped it), but only if
+            # the partitioned table itself exists (it's created by the
+            # create_country_partitions management command, not a migration,
+            # so it may not exist yet on a fresh database).
             if _table_exists(cursor, 'embeddings_partitioned'):
                 cursor.execute("""
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_partitioned_entity_unique
@@ -84,26 +84,26 @@ def forward(apps, schema_editor):
                   "cutover has not happened. DB operations skipped.")
             return
 
-        ***REMOVED*** Post-cutover: the table is the partitioned one.
-        ***REMOVED*** 1. Drop old monolith constraint (if it somehow still exists).
+        # Post-cutover: the table is the partitioned one.
+        # 1. Drop old monolith constraint (if it somehow still exists).
         cursor.execute("""
             ALTER TABLE semantic_search_osmentity
                 DROP CONSTRAINT IF EXISTS
                 semantic_search_osmentity_osm_type_osm_id_gv_tags_versi_1c24ec52_uniq;
         """)
-        ***REMOVED*** Also try the actual monolith constraint name (different hash).
+        # Also try the actual monolith constraint name (different hash).
         cursor.execute("""
             ALTER TABLE semantic_search_osmentity
                 DROP CONSTRAINT IF EXISTS
                 semantic_search_osmentit_osm_type_osm_id_gv_tags__67c1c7ee_uniq;
         """)
-        ***REMOVED*** 2. Drop the raw-SQL unique index from create_country_partitions.
+        # 2. Drop the raw-SQL unique index from create_country_partitions.
         cursor.execute("""
             DROP INDEX IF EXISTS idx_embeddings_partitioned_entity_unique;
         """)
-        ***REMOVED*** 3. Create the new Django-named unique constraint.
-        ***REMOVED***    PostgreSQL doesn't support ADD CONSTRAINT IF NOT EXISTS, so
-        ***REMOVED***    we drop first (IF EXISTS) then add.
+        # 3. Create the new Django-named unique constraint.
+        #    PostgreSQL doesn't support ADD CONSTRAINT IF NOT EXISTS, so
+        #    we drop first (IF EXISTS) then add.
         cursor.execute("""
             ALTER TABLE semantic_search_osmentity
                 DROP CONSTRAINT IF EXISTS
@@ -131,7 +131,7 @@ def reverse(apps, schema_editor):
     conn = schema_editor.connection
     with conn.cursor() as cursor:
         if _is_partitioned(cursor, 'semantic_search_osmentity'):
-            ***REMOVED*** Post-cutover reverse
+            # Post-cutover reverse
             cursor.execute("""
                 ALTER TABLE semantic_search_osmentity
                     DROP CONSTRAINT IF EXISTS
@@ -144,26 +144,26 @@ def reverse(apps, schema_editor):
             """)
             print("  0009 reverse: Reversed widened unique constraint on partitioned table.")
         else:
-            ***REMOVED*** Pre-cutover reverse (fixes incorrect application to monolith).
-            ***REMOVED*** 1. Drop the 5-column constraint that was incorrectly added.
+            # Pre-cutover reverse (fixes incorrect application to monolith).
+            # 1. Drop the 5-column constraint that was incorrectly added.
             cursor.execute("""
                 ALTER TABLE semantic_search_osmentity
                     DROP CONSTRAINT IF EXISTS
                     semantic_search_osmentity_osm_type_osm_id_gv_tags_versi_0c6b1e14_uniq;
             """)
-            ***REMOVED*** 2. Re-create the partitioned table's unique index (was dropped
-            ***REMOVED***    by the incorrect forward run), but only if the partitioned
-            ***REMOVED***    table exists (it's created by a management command).
+            # 2. Re-create the partitioned table's unique index (was dropped
+            #    by the incorrect forward run), but only if the partitioned
+            #    table exists (it's created by a management command).
             if _table_exists(cursor, 'embeddings_partitioned'):
                 cursor.execute("""
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_partitioned_entity_unique
                     ON embeddings_partitioned
                     (osm_type, osm_id, gv_tags_version, snapshot_id, country_code);
                 """)
-            ***REMOVED*** 3. The 3-column constraint should still exist on the monolith
-            ***REMOVED***    (it was never dropped because the constraint name didn't
-            ***REMOVED***    match).  Ensure it exists — drop first (IF EXISTS) then add
-            ***REMOVED***    since PostgreSQL doesn't support ADD CONSTRAINT IF NOT EXISTS.
+            # 3. The 3-column constraint should still exist on the monolith
+            #    (it was never dropped because the constraint name didn't
+            #    match).  Ensure it exists — drop first (IF EXISTS) then add
+            #    since PostgreSQL doesn't support ADD CONSTRAINT IF NOT EXISTS.
             cursor.execute("""
                 ALTER TABLE semantic_search_osmentity
                     DROP CONSTRAINT IF EXISTS
@@ -186,11 +186,11 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        ***REMOVED*** Use SeparateDatabaseAndState because:
-        ***REMOVED*** - The state operation (AlterUniqueTogether) always runs to keep
-        ***REMOVED***   Django's model state in sync with the model file.
-        ***REMOVED*** - The database operations are conditional via RunPython — they
-        ***REMOVED***   only apply when the table is partitioned (post-cutover).
+        # Use SeparateDatabaseAndState because:
+        # - The state operation (AlterUniqueTogether) always runs to keep
+        #   Django's model state in sync with the model file.
+        # - The database operations are conditional via RunPython — they
+        #   only apply when the table is partitioned (post-cutover).
         migrations.SeparateDatabaseAndState(
             database_operations=[
                 migrations.RunPython(forward, reverse),

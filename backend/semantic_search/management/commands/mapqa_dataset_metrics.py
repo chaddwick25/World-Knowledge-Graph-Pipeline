@@ -21,67 +21,67 @@ from django.core.management.base import BaseCommand
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** ── Template metadata (from README template coverage table) ──────────
+# ── Template metadata (from README template coverage table) ──────────
 TEMPLATE_INFO = {
-    "FILTER-AGGREGATE-MEASURE (***REMOVED***1)": {
+    "FILTER-AGGREGATE-MEASURE (#1)": {
         "core_concept": "Object, Location",
         "execution_path": "PostGIS ST_DWithin + Distance",
     },
-    "GEOCODE-BATCH-COMPARE (***REMOVED***4)": {
+    "GEOCODE-BATCH-COMPARE (#4)": {
         "core_concept": "Object, Neighbourhood",
         "execution_path": "PostGIS distance ordering",
     },
-    "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)": {
+    "PLACE-ATTRIBUTE-QUERY (#8)": {
         "core_concept": "Object, Field",
         "execution_path": "Factor tables (spectral/community) + PostGIS",
     },
-    "LOCATION-BEARING-CLASSIFY (***REMOVED***5)": {
+    "LOCATION-BEARING-CLASSIFY (#5)": {
         "core_concept": "Location, Neighbourhood",
         "execution_path": "PostGIS ST_DWithin + bearing calc",
     },
-    "OBJECT-FIELD-MEASURE (***REMOVED***2)": {
+    "OBJECT-FIELD-MEASURE (#2)": {
         "core_concept": "Object, Field",
         "execution_path": "PostGIS ST_DWithin (optional)",
     },
-    "SPECTRAL-ANALYSIS (***REMOVED***11)": {
+    "SPECTRAL-ANALYSIS (#11)": {
         "core_concept": "Network",
         "execution_path": "Factor tables (eigenvalues, lambda_2, gap)",
     },
-    "TEMPORAL-DRIFT (***REMOVED***12)": {
+    "TEMPORAL-DRIFT (#12)": {
         "core_concept": "Event",
         "execution_path": "Factor tables (drift metrics)",
     },
-    "COMMUNITY-DETECT (***REMOVED***13)": {
+    "COMMUNITY-DETECT (#13)": {
         "core_concept": "Object, Network",
         "execution_path": "Factor tables (Louvain communities)",
     },
-    "EVENT-DIFFUSION (***REMOVED***14)": {
+    "EVENT-DIFFUSION (#14)": {
         "core_concept": "Network, Event",
         "execution_path": "Factor tables (heat kernel via pgvector)",
     },
 }
 
-***REMOVED*** ── MapQA dataset file → macro-template mapping ──────────────────────
-***REMOVED*** Mirrors TEMPLATE_MAP in train_mapqa_parser.py
+# ── MapQA dataset file → macro-template mapping ──────────────────────
+# Mirrors TEMPLATE_MAP in train_mapqa_parser.py
 DATASET_TEMPLATE_MAP = {
-    "amenities_dataset": "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)",
-    "nearest_amenity": "GEOCODE-BATCH-COMPARE (***REMOVED***4)",
-    "amenities_around": "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
-    "amenities-around-specific": "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
-    "adjacent": "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)",
-    "compare-closer": "GEOCODE-BATCH-COMPARE (***REMOVED***4)",
-    "direction_nearest": "LOCATION-BEARING-CLASSIFY (***REMOVED***5)",
-    "distance": "OBJECT-FIELD-MEASURE (***REMOVED***2)",
-    "intersection": "GEOCODE-BATCH-COMPARE (***REMOVED***4)",
+    "amenities_dataset": "PLACE-ATTRIBUTE-QUERY (#8)",
+    "nearest_amenity": "GEOCODE-BATCH-COMPARE (#4)",
+    "amenities_around": "FILTER-AGGREGATE-MEASURE (#1)",
+    "amenities-around-specific": "FILTER-AGGREGATE-MEASURE (#1)",
+    "adjacent": "PLACE-ATTRIBUTE-QUERY (#8)",
+    "compare-closer": "GEOCODE-BATCH-COMPARE (#4)",
+    "direction_nearest": "LOCATION-BEARING-CLASSIFY (#5)",
+    "distance": "OBJECT-FIELD-MEASURE (#2)",
+    "intersection": "GEOCODE-BATCH-COMPARE (#4)",
 }
 
-***REMOVED*** Templates not present in the raw MapQA dataset — only in augmentations
-***REMOVED*** or exposed via dedicated API endpoints
+# Templates not present in the raw MapQA dataset — only in augmentations
+# or exposed via dedicated API endpoints
 AUGMENTED_TEMPLATES = {
-    "SPECTRAL-ANALYSIS (***REMOVED***11)",
-    "TEMPORAL-DRIFT (***REMOVED***12)",
-    "COMMUNITY-DETECT (***REMOVED***13)",
-    "EVENT-DIFFUSION (***REMOVED***14)",
+    "SPECTRAL-ANALYSIS (#11)",
+    "TEMPORAL-DRIFT (#12)",
+    "COMMUNITY-DETECT (#13)",
+    "EVENT-DIFFUSION (#14)",
 }
 
 DATASET_REGIONS = ["california_full", "illinois_test"]
@@ -148,8 +148,8 @@ class Command(BaseCommand):
             self.stderr.write(f"Raw MapQA dataset not found at {raw_dir}")
             return
 
-        ***REMOVED*** ── Collect counts ───────────────────────────────────────────
-        ***REMOVED*** rows: (template, region, source, fmt, count)
+        # ── Collect counts ───────────────────────────────────────────
+        # rows: (template, region, source, fmt, count)
         rows = []
 
         for region in DATASET_REGIONS:
@@ -170,9 +170,9 @@ class Command(BaseCommand):
                 count = _read_json_questions(json_file)
                 rows.append((template, region, "MapQA-llm", "json", count))
 
-        ***REMOVED*** ── Augmentation CSV (hand-curated) ──────────────────────────
+        # ── Augmentation CSV (hand-curated) ──────────────────────────
         aug_csv = Path(mapqa_dir) / "natural_language_qa_pairs.csv"
-        ***REMOVED*** Fall back to the source-controlled copy
+        # Fall back to the source-controlled copy
         if not aug_csv.exists():
             aug_csv = (
                 Path(settings.BASE_DIR)
@@ -190,8 +190,8 @@ class Command(BaseCommand):
         else:
             logger.warning("Augmentation CSV not found at %s", aug_csv)
 
-        ***REMOVED*** ── Aggregate ────────────────────────────────────────────────
-        ***REMOVED*** Key: (template, region, source)
+        # ── Aggregate ────────────────────────────────────────────────
+        # Key: (template, region, source)
         from collections import defaultdict
         agg = defaultdict(int)
         for template, region, source, fmt, count in rows:
@@ -199,12 +199,12 @@ class Command(BaseCommand):
 
         total = sum(agg.values())
 
-        ***REMOVED*** ── Build output records ─────────────────────────────────────
+        # ── Build output records ─────────────────────────────────────
         all_templates = list(TEMPLATE_INFO.keys())
         seen_templates = {k[0] for k in agg}
         for t in all_templates:
             if t not in seen_templates:
-                agg[(t, "—", "—")] = 0  ***REMOVED*** zero-count placeholder
+                agg[(t, "—", "—")] = 0  # zero-count placeholder
 
         records = []
         for (template, region, source), count in sorted(
@@ -227,7 +227,7 @@ class Command(BaseCommand):
                 "Percentage": f"{pct:.1f}%",
             })
 
-        ***REMOVED*** ── Write CSV ────────────────────────────────────────────────
+        # ── Write CSV ────────────────────────────────────────────────
         fieldnames = [
             "Template", "Core Concept", "Execution Path",
             "Region", "Source", "Question Count", "Percentage",
@@ -242,7 +242,7 @@ class Command(BaseCommand):
             f"Wrote {len(records)} rows to {output_path} (total questions: {total})"
         ))
 
-        ***REMOVED*** ── Console summary ──────────────────────────────────────────
+        # ── Console summary ──────────────────────────────────────────
         self.stdout.write("")
         self.stdout.write("=== Template Distribution Summary ===")
         template_totals = defaultdict(int)

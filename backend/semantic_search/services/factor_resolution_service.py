@@ -16,7 +16,7 @@ node decomposes over the eigenbasis as
 
 With per-node eigen-loadings stored in a pgvector column and eigenvalues on
 the GraphSpectralFingerprint row, the whole diffusion is ONE query:
-``ORDER BY (eigen_loadings <***REMOVED***> :w) ASC`` (pgvector <***REMOVED***> is *negative* inner
+``ORDER BY (eigen_loadings <#> :w) ASC`` (pgvector <#> is *negative* inner
 product, so ascending = descending score).
 
 References:
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 class FactorResolutionService:
     """Stateless resolver for materialized factor nodes (vectors DB)."""
 
-    ***REMOVED*** ── G4 data availability ─────────────────────────────────────────────
+    # ── G4 data availability ─────────────────────────────────────────────
 
     def check_availability(
         self, osm_ids, snapshot_id: str, country_code: str,
@@ -76,7 +76,7 @@ class FactorResolutionService:
         )
         return {int(o): (o in present) for o in osm_ids}
 
-    ***REMOVED*** ── Metric joins ─────────────────────────────────────────────────────
+    # ── Metric joins ─────────────────────────────────────────────────────
 
     def resolve_metrics(
         self, osm_ids, snapshot_id: str, country_code: str,
@@ -109,7 +109,7 @@ class FactorResolutionService:
         )
         return {int(r["osm_id"]): r for r in qs}
 
-    ***REMOVED*** ── Heat-kernel diffusion as a pgvector query ────────────────────────
+    # ── Heat-kernel diffusion as a pgvector query ────────────────────────
 
     def diffusion_rank(
         self,
@@ -148,7 +148,7 @@ class FactorResolutionService:
         """
         country_code = country_code.upper()
 
-        ***REMOVED*** ── Look up anchor + its subgraph_slug ──
+        # ── Look up anchor + its subgraph_slug ──
         anchor = (
             SpectralNodeMetric.objects.using("vectors")
             .filter(
@@ -171,9 +171,9 @@ class FactorResolutionService:
 
         subgraph_slug = anchor.get("subgraph_slug")
 
-        ***REMOVED*** ── Get eigenvalues from the right fingerprint ──
-        ***REMOVED*** Subgraph-scoped: region=subgraph_slug
-        ***REMOVED*** Country-level: region=country_code
+        # ── Get eigenvalues from the right fingerprint ──
+        # Subgraph-scoped: region=subgraph_slug
+        # Country-level: region=country_code
         eigenvalues, fingerprint_id = self._get_eigenvalues(
             snapshot_id, country_code, subgraph_slug=subgraph_slug,
         )
@@ -186,11 +186,11 @@ class FactorResolutionService:
                 })
             return None
 
-        ***REMOVED*** ── Phase 1 — eigenbasis coherence (hardening) ──
-        ***REMOVED*** The anchor's loadings must come from the same fingerprint whose
-        ***REMOVED*** eigenvalues we're about to use; otherwise a same-snapshot rerun
-        ***REMOVED*** that failed between the two writes pairs old loadings with a new
-        ***REMOVED*** fingerprint → wrong scores.  Mismatch → None → PostGIS fallback.
+        # ── Phase 1 — eigenbasis coherence (hardening) ──
+        # The anchor's loadings must come from the same fingerprint whose
+        # eigenvalues we're about to use; otherwise a same-snapshot rerun
+        # that failed between the two writes pairs old loadings with a new
+        # fingerprint → wrong scores.  Mismatch → None → PostGIS fallback.
         anchor_fingerprint_id = anchor.get("fingerprint_id")
         if (
             anchor_fingerprint_id is not None
@@ -207,8 +207,8 @@ class FactorResolutionService:
                 })
             return None
         if anchor_fingerprint_id is None:
-            ***REMOVED*** Pre-migration row — lenient by default; strict setting
-            ***REMOVED*** (FACTOR_EIGENBASIS_STRICT) upgrades NULL to a mismatch.
+            # Pre-migration row — lenient by default; strict setting
+            # (FACTOR_EIGENBASIS_STRICT) upgrades NULL to a mismatch.
             if getattr(settings, "FACTOR_EIGENBASIS_STRICT", False):
                 if trace is not None:
                     trace.append({
@@ -227,15 +227,15 @@ class FactorResolutionService:
                               "row) — lenient mode",
                 })
 
-        ***REMOVED*** Coefficient vector w_k = e^{-t·λ_k} · φ_k(anchor), zero-padded to
-        ***REMOVED*** EIGEN_LOADING_DIM (padding matches the stored column padding).
+        # Coefficient vector w_k = e^{-t·λ_k} · φ_k(anchor), zero-padded to
+        # EIGEN_LOADING_DIM (padding matches the stored column padding).
         phi_anchor = np.asarray(anchor["eigen_loadings"], dtype=float)
         k = min(len(eigenvalues), EIGEN_LOADING_DIM)
         lam = np.asarray(eigenvalues[:k], dtype=float)
         w = np.zeros(EIGEN_LOADING_DIM)
         w[:k] = np.exp(-t * lam) * phi_anchor[:k]
 
-        ***REMOVED*** ── Query the anchor's own subgraph (existing behavior) ──
+        # ── Query the anchor's own subgraph (existing behavior) ──
         results = self._query_subgraph(
             snapshot_id=snapshot_id,
             country_code=country_code,
@@ -247,7 +247,7 @@ class FactorResolutionService:
             anchor_osm_id=anchor_osm_id,
         )
 
-        ***REMOVED*** ── Cross-subgraph transport (new) ──
+        # ── Cross-subgraph transport (new) ──
         transport_trace = None
         if (
             cross_subgraph
@@ -270,7 +270,7 @@ class FactorResolutionService:
             )
             if transport_trace:
                 results.extend(transport_trace["results"])
-                ***REMOVED*** Re-rank by score and trim to limit
+                # Re-rank by score and trim to limit
                 results.sort(key=lambda r: r["score"], reverse=True)
                 results = results[:limit]
 
@@ -305,7 +305,7 @@ class FactorResolutionService:
         min_score: float = 1e-6,
         anchor_osm_id: int = None,
     ) -> list:
-        """Run a pgvector <***REMOVED***> query scoped to a single subgraph.
+        """Run a pgvector <#> query scoped to a single subgraph.
 
         Args:
             subgraph_slug: subgraph to query (None for country-level)
@@ -333,7 +333,7 @@ class FactorResolutionService:
 
         qs = qs.annotate(
             neg_ip=RawSQL(
-                "(eigen_loadings <***REMOVED***> %s::vector)",
+                "(eigen_loadings <#> %s::vector)",
                 (w.tolist(),),
                 output_field=FloatField(),
             )
@@ -375,7 +375,7 @@ class FactorResolutionService:
         if no transport matrices exist or no candidates are in other
         subgraphs.
         """
-        ***REMOVED*** Find which subgraphs the candidates are in (excluding anchor's)
+        # Find which subgraphs the candidates are in (excluding anchor's)
         candidate_subgraphs = set(
             SpectralNodeMetric.objects.using("vectors")
             .filter(
@@ -395,7 +395,7 @@ class FactorResolutionService:
         transport_used = []
 
         for target_slug in sorted(candidate_subgraphs):
-            ***REMOVED*** Load the transport matrix anchor→target
+            # Load the transport matrix anchor→target
             C = SubgraphTransportService.load_transport_matrix(
                 snapshot_id=snapshot_id,
                 country_code=country_code,
@@ -405,29 +405,29 @@ class FactorResolutionService:
             if C is None:
                 continue
 
-            ***REMOVED*** Get target subgraph's eigenvalues
+            # Get target subgraph's eigenvalues
             eigenvalues_target, _target_fp_id = self._get_eigenvalues(
                 snapshot_id, country_code, subgraph_slug=target_slug,
             )
             if not eigenvalues_target:
                 continue
 
-            ***REMOVED*** Transport the heat-kernel coefficients to the target basis
-            ***REMOVED*** w_anchor is (EIGEN_LOADING_DIM,) — transport the first k components
+            # Transport the heat-kernel coefficients to the target basis
+            # w_anchor is (EIGEN_LOADING_DIM,) — transport the first k components
             k_target = min(len(eigenvalues_target), EIGEN_LOADING_DIM, C.shape[0])
             w_transport = SubgraphTransportService.transport_loadings(
                 w_anchor[:k_anchor], C,
             )
 
-            ***REMOVED*** Re-apply heat kernel decay with target's eigenvalues
+            # Re-apply heat kernel decay with target's eigenvalues
             lam_target = np.asarray(eigenvalues_target[:k_target], dtype=float)
-            ***REMOVED*** The transport moved the eigen-loading coefficients; now apply
-            ***REMOVED*** the heat kernel decay in the target's eigenvalue space.
-            ***REMOVED*** w_target[k] = e^{-t·λ_k_target} · w_transport[k]
+            # The transport moved the eigen-loading coefficients; now apply
+            # the heat kernel decay in the target's eigenvalue space.
+            # w_target[k] = e^{-t·λ_k_target} · w_transport[k]
             w_target = np.zeros(EIGEN_LOADING_DIM)
             w_target[:k_target] = np.exp(-t * lam_target) * w_transport[:k_target]
 
-            ***REMOVED*** Query the target subgraph
+            # Query the target subgraph
             target_results = self._query_subgraph(
                 snapshot_id=snapshot_id,
                 country_code=country_code,
@@ -461,7 +461,7 @@ class FactorResolutionService:
             },
         }
 
-    ***REMOVED*** ── Community queries ────────────────────────────────────────────────
+    # ── Community queries ────────────────────────────────────────────────
 
     def community_summary(
         self,
@@ -527,7 +527,7 @@ class FactorResolutionService:
             ],
         }
 
-    ***REMOVED*** ── Amenity embeddings (replaces runtime FastText) ───────────────────
+    # ── Amenity embeddings (replaces runtime FastText) ───────────────────
 
     def amenity_embedding(self, amenity_text: str):
         """Look up the precomputed FastText embedding for an amenity string.
@@ -546,7 +546,7 @@ class FactorResolutionService:
             return None
         return np.asarray(row["embedding"], dtype=float)
 
-    ***REMOVED*** ── Amenity → WorldKG class (DB-driven, rule 6.2 — Phase 5) ──────────
+    # ── Amenity → WorldKG class (DB-driven, rule 6.2 — Phase 5) ──────────
 
     def amenity_class(self, amenity_text: str):
         """Resolve an amenity string to a WorldKG class via the DB mapping.
@@ -565,7 +565,7 @@ class FactorResolutionService:
             return None
         return row["wkg_class"]
 
-    ***REMOVED*** ── internals ────────────────────────────────────────────────────────
+    # ── internals ────────────────────────────────────────────────────────
 
     @staticmethod
     def _get_eigenvalues(
@@ -593,7 +593,7 @@ class FactorResolutionService:
         if snapshot is None:
             return None, None
 
-        ***REMOVED*** Try subgraph-scoped fingerprint first
+        # Try subgraph-scoped fingerprint first
         if subgraph_slug is not None:
             fp = (
                 GraphSpectralFingerprint.objects
@@ -604,7 +604,7 @@ class FactorResolutionService:
             if fp is not None:
                 return fp.eigenvalues, fp.id
 
-        ***REMOVED*** Fall back to country-level fingerprint
+        # Fall back to country-level fingerprint
         fp = (
             GraphSpectralFingerprint.objects
             .filter(region__iexact=country_code, snapshot=snapshot)

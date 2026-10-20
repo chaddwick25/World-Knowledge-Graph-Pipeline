@@ -79,9 +79,9 @@ class Command(BaseCommand):
             help="Log intended changes without writing to the database.",
         )
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Entry point
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Entry point
+    # ------------------------------------------------------------------
 
     def handle(self, *args, **options):
         from core.models import CountryPipelineProfile, SubgraphProfile
@@ -111,7 +111,7 @@ class Command(BaseCommand):
                 f"  Subgraphs CSV scope = {len(subgraph_scope)} rows with cluster_2/3 gaps"
             )
 
-        ***REMOVED*** Enrich countries
+        # Enrich countries
         country_stats = self._enrich_countries(
             CountryPipelineProfile,
             iso_filter=iso_filter,
@@ -119,7 +119,7 @@ class Command(BaseCommand):
             dry_run=dry_run,
         )
 
-        ***REMOVED*** Enrich subgraphs
+        # Enrich subgraphs
         subgraph_stats = self._enrich_subgraphs(
             CountryPipelineProfile,
             SubgraphProfile,
@@ -141,9 +141,9 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("\nDRY RUN ONLY — no DB writes were made."))
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Helpers: CSV scopes
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Helpers: CSV scopes
+    # ------------------------------------------------------------------
 
     def _resolve_path(self, path_str: str) -> Path:
         p = Path(path_str)
@@ -221,9 +221,9 @@ class Command(BaseCommand):
                 scope.add((iso, slug))
         return scope
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Country enrichment
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Country enrichment
+    # ------------------------------------------------------------------
 
     def _load_country_relations(self) -> Dict[str, dict]:
         project_root = Path(settings.BASE_DIR).parent
@@ -234,7 +234,7 @@ class Command(BaseCommand):
             with path.open("r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
-            ***REMOVED*** Fallback: use payload snapshots only
+            # Fallback: use payload snapshots only
             return {}
 
     def _enrich_countries(
@@ -258,9 +258,9 @@ class Command(BaseCommand):
                 models.Q(iso2__in=iso_filter) | models.Q(iso3__in=iso_filter)
             )
 
-        ***REMOVED*** country_relations.json is already snapshotted into
-        ***REMOVED*** CountryPipelineProfile.country_relations_payload, so we don't
-        ***REMOVED*** require re-reading the JSON here.
+        # country_relations.json is already snapshotted into
+        # CountryPipelineProfile.country_relations_payload, so we don't
+        # require re-reading the JSON here.
 
         for country in qs.iterator():
             stats["countries_seen"] += 1
@@ -268,7 +268,7 @@ class Command(BaseCommand):
             iso2 = (country.iso2 or "").upper()
             iso3 = (country.iso3 or "").upper()
 
-            ***REMOVED*** CSV scope filter (if provided)
+            # CSV scope filter (if provided)
             if country_scope and not ({iso2, iso3} & country_scope):
                 continue
 
@@ -276,14 +276,14 @@ class Command(BaseCommand):
             original_wikidata_uri = country.wikidata_uri
             original_hierarchy_id = country.osm_wikidata_hierarchy_id
 
-            ***REMOVED*** 1) Try from country_relations_payload
+            # 1) Try from country_relations_payload
             payload = country.country_relations_payload or {}
             wkg_uri = payload.get("wkg_uri") or payload.get("wkgUri")
             payload_qid: Optional[str] = None
             if wkg_uri and isinstance(wkg_uri, str):
                 payload_qid = wkg_uri.rstrip("/").split("/")[-1]
 
-            ***REMOVED*** 2) Try from linked OSMWikiDataHierarchy (admin_level=2)
+            # 2) Try from linked OSMWikiDataHierarchy (admin_level=2)
             hier: Optional[OSMWikiDataHierarchy] = country.osm_wikidata_hierarchy
             if not hier and country.osm_relation_id:
                 hier = (
@@ -311,16 +311,16 @@ class Command(BaseCommand):
                 hier_qid = hier.wikidata_id
                 hier_uri = hier.wikidata_uri
 
-            ***REMOVED*** Decide final QID/URI
+            # Decide final QID/URI
             final_qid = country.wikidata_id or payload_qid or hier_qid
             final_uri = country.wikidata_uri or wkg_uri or hier_uri
             if final_qid and not final_uri:
                 final_uri = f"https://www.wikidata.org/entity/{final_qid}"
 
-            ***REMOVED*** Link hierarchy if we found a row and none is linked yet
+            # Link hierarchy if we found a row and none is linked yet
             link_hierarchy = hier and not original_hierarchy_id
 
-            ***REMOVED*** Determine if anything will change
+            # Determine if anything will change
             will_update = False
             if final_qid and final_qid != original_wikidata_id:
                 will_update = True
@@ -346,7 +346,7 @@ class Command(BaseCommand):
                     stats["hierarchy_linked"] += 1
                 continue
 
-            ***REMOVED*** Apply updates
+            # Apply updates
             changed_fields: List[str] = []
             if final_qid and final_qid != original_wikidata_id:
                 country.wikidata_id = final_qid
@@ -365,9 +365,9 @@ class Command(BaseCommand):
 
         return stats
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Subgraph enrichment
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Subgraph enrichment
+    # ------------------------------------------------------------------
 
     def _enrich_subgraphs(
         self,
@@ -385,7 +385,7 @@ class Command(BaseCommand):
             "hierarchy_linked": 0,
         }
 
-        ***REMOVED*** Determine which countries to include
+        # Determine which countries to include
         country_qs = CountryPipelineProfile.objects.all()
         if iso_filter:
             country_qs = country_qs.filter(
@@ -407,7 +407,7 @@ class Command(BaseCommand):
             iso = iso2 or iso3
             slug = (sg.slug or "").lower()
 
-            ***REMOVED*** CSV scope filter (if provided)
+            # CSV scope filter (if provided)
             if subgraph_scope and (iso, slug) not in subgraph_scope:
                 continue
 
@@ -415,10 +415,10 @@ class Command(BaseCommand):
             original_uri = sg.wikidata_uri
             original_hierarchy = sg.osm_wikidata_hierarchy
 
-            ***REMOVED*** 1) Prefer existing hierarchy link
+            # 1) Prefer existing hierarchy link
             hier: Optional[OSMWikiDataHierarchy] = original_hierarchy
 
-            ***REMOVED*** 2) If missing, try slug+admin_level match
+            # 2) If missing, try slug+admin_level match
             if not hier and sg.admin_level is not None and slug:
                 hier = (
                     OSMWikiDataHierarchy.objects.filter(
@@ -429,7 +429,7 @@ class Command(BaseCommand):
                     .first()
                 )
 
-            ***REMOVED*** 3) As a weaker fallback, try name+admin_level under same continent
+            # 3) As a weaker fallback, try name+admin_level under same continent
             if not hier and sg.admin_level is not None:
                 name = (sg.name or "").strip()
                 continent = country.continent_name or sg.continent_name
@@ -457,7 +457,7 @@ class Command(BaseCommand):
 
             link_hierarchy = hier is not None and original_hierarchy is None
 
-            ***REMOVED*** Also consider backfilling osm_relation_id from hierarchy
+            # Also consider backfilling osm_relation_id from hierarchy
             final_relation = sg.osm_relation_id or hier_relation
 
             will_update = False

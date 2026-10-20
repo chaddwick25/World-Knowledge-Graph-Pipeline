@@ -53,8 +53,8 @@ def download_all_geofabrik_polygons(
     if index_url is None:
         index_url = getattr(settings, "GEOFABRIK_INDEX_URL", None) or geofabrik_index_service.INDEX_URL
 
-    ***REMOVED*** Use the cached Geofabrik index (data/geofabrik_index.json) when available
-    ***REMOVED*** to ensure a stable, reproducible polygon tree that matches previous runs.
+    # Use the cached Geofabrik index (data/geofabrik_index.json) when available
+    # to ensure a stable, reproducible polygon tree that matches previous runs.
     logger.info("Loading Geofabrik index (cache preferred) from %s...", index_url)
     data = geofabrik_index_service.fetch_index(force_refresh=False)
 
@@ -76,12 +76,12 @@ def download_all_geofabrik_polygons(
     for node_id in regions_dict.keys():
         full_id = _get_full_id(node_id, regions_dict)
 
-        ***REMOVED*** Geofabrik URL uses the full path like africa/algeria.poly
+        # Geofabrik URL uses the full path like africa/algeria.poly
         poly_url = f"https://download.geofabrik.de/{full_id}.poly"
 
-        ***REMOVED*** Replace hyphens with underscores for local filesystem naming.
-        ***REMOVED*** This ensures continent poly files (e.g. north-america → north_america)
-        ***REMOVED*** match the DB convention (underscores everywhere).
+        # Replace hyphens with underscores for local filesystem naming.
+        # This ensures continent poly files (e.g. north-america → north_america)
+        # match the DB convention (underscores everywhere).
         sanitized_full_id = full_id.replace("-", "_")
         local_path = base_path / f"{sanitized_full_id}.poly"
 
@@ -118,7 +118,7 @@ def download_all_geofabrik_polygons(
         errors,
     )
 
-    ***REMOVED*** Optionally overlay legacy/custom polygons (e.g., africa/mozambique/*.poly)
+    # Optionally overlay legacy/custom polygons (e.g., africa/mozambique/*.poly)
     if overlay_dir is None:
         overlay_dir = getattr(settings, "LEGACY_POLYGON_FILES_DIR", None)
 

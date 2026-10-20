@@ -40,14 +40,14 @@ BULK_BATCH_SIZE = 5000
 class FactorNodeWriter:
     """Write per-node spectral/structural/drift rows to the factor tables."""
 
-    ***REMOVED*** ── Step 5c: spectral + structural ──────────────────────────────────
+    # ── Step 5c: spectral + structural ──────────────────────────────────
 
-    ***REMOVED*** Above this node count, per-node clustering coefficients are skipped
-    ***REMOVED*** (stored as NULL).  ``nx.clustering`` is O(Σ deg_i²) and requires the
-    ***REMOVED*** NetworkX graph; a sparse A² diagonal computation for k=50 k-NN
-    ***REMOVED*** graphs would need ~6B multiply-adds.  The field is nullable and not
-    ***REMOVED*** used by any runtime ranking query (FactorResolutionService fetches
-    ***REMOVED*** it for display only).
+    # Above this node count, per-node clustering coefficients are skipped
+    # (stored as NULL).  ``nx.clustering`` is O(Σ deg_i²) and requires the
+    # NetworkX graph; a sparse A² diagonal computation for k=50 k-NN
+    # graphs would need ~6B multiply-adds.  The field is nullable and not
+    # used by any runtime ranking query (FactorResolutionService fetches
+    # it for display only).
     CLUSTERING_NODE_THRESHOLD = 200_000
 
     def write_spectral_nodes(
@@ -117,9 +117,9 @@ class FactorNodeWriter:
 
         k_actual = eigenvectors.shape[1] if eigenvectors.ndim == 2 else 0
 
-        ***REMOVED*** Per-node Dirichlet contribution: s_i · (Ls)_i  [GRAPH_REP:Ch3]
-        ***REMOVED*** Uses the combinatorial Laplacian to match
-        ***REMOVED*** GraphSignalService.signal_smoothness (Σᵢ sᵢ·(Ls)ᵢ = sᵀLs).
+        # Per-node Dirichlet contribution: s_i · (Ls)_i  [GRAPH_REP:Ch3]
+        # Uses the combinatorial Laplacian to match
+        # GraphSignalService.signal_smoothness (Σᵢ sᵢ·(Ls)ᵢ = sᵀLs).
         dirichlet = None
         if signal is not None and len(signal) == n:
             if sparse:
@@ -151,7 +151,7 @@ class FactorNodeWriter:
 
         country_code = country_code.upper()
 
-        ***REMOVED*** Idempotency: replace rows for this (snapshot, country, subgraph)
+        # Idempotency: replace rows for this (snapshot, country, subgraph)
         del_filter = dict(
             snapshot_id=snapshot_id, country_code=country_code,
         )
@@ -163,7 +163,7 @@ class FactorNodeWriter:
 
         rows = []
         for i, osm_id in enumerate(node_order):
-            ***REMOVED*** Option A: skip buffer-only entities when core_ids is provided
+            # Option A: skip buffer-only entities when core_ids is provided
             if core_ids is not None and int(osm_id) not in core_ids:
                 continue
             if k_actual:
@@ -208,7 +208,7 @@ class FactorNodeWriter:
         )
         return len(rows)
 
-    ***REMOVED*** ── Step 5d: per-node drift across a snapshot pair ──────────────────
+    # ── Step 5d: per-node drift across a snapshot pair ──────────────────
 
     def write_drift_nodes(
         self,
@@ -254,9 +254,9 @@ class FactorNodeWriter:
         if not shared:
             return 0
 
-        ***REMOVED*** Build aligned loading matrices over shared nodes, truncated to the
-        ***REMOVED*** smaller K of the pair (large countries compute K=64, padded to 128
-        ***REMOVED*** — trailing zeros contribute nothing to dot products).
+        # Build aligned loading matrices over shared nodes, truncated to the
+        # smaller K of the pair (large countries compute K=64, padded to 128
+        # — trailing zeros contribute nothing to dot products).
         def _matrix(rows):
             mats = [
                 np.asarray(rows[o]["eigen_loadings"], dtype=float)
@@ -264,7 +264,7 @@ class FactorNodeWriter:
                 else np.zeros(EIGEN_LOADING_DIM)
                 for o in shared
             ]
-            return np.stack(mats)  ***REMOVED*** (N_shared, 128)
+            return np.stack(mats)  # (N_shared, 128)
 
         phi_from = _matrix(rows_from)
         phi_to = _matrix(rows_to)
@@ -272,17 +272,17 @@ class FactorNodeWriter:
         phi_from = phi_from[:, :k_eff]
         phi_to = phi_to[:, :k_eff]
 
-        ***REMOVED*** Sign alignment: flip component k of the "to" basis when it is
-        ***REMOVED*** anti-correlated with the "from" basis over shared nodes.
-        ***REMOVED*** [COHEN:Ch13] — eigenvector sign indeterminacy
+        # Sign alignment: flip component k of the "to" basis when it is
+        # anti-correlated with the "from" basis over shared nodes.
+        # [COHEN:Ch13] — eigenvector sign indeterminacy
         if k_eff:
-            dots = np.sum(phi_from * phi_to, axis=0)  ***REMOVED*** per-component dot
+            dots = np.sum(phi_from * phi_to, axis=0)  # per-component dot
             signs = np.where(dots < 0, -1.0, 1.0)
             phi_to_aligned = phi_to * signs
         else:
             phi_to_aligned = phi_to
 
-        ***REMOVED*** Idempotency: replace rows for this pair
+        # Idempotency: replace rows for this pair
         DriftNodeMetric.objects.using("vectors").filter(
             country_code=country_code,
             snapshot_from_id=snapshot_from_id,
@@ -339,7 +339,7 @@ class FactorNodeWriter:
         )
         return len(drift_rows)
 
-    ***REMOVED*** ── helpers ──────────────────────────────────────────────────────────
+    # ── helpers ──────────────────────────────────────────────────────────
 
     @staticmethod
     def _components(G: nx.Graph):
@@ -367,6 +367,6 @@ class FactorNodeWriter:
             nonzero_cols = np.any(phi != 0.0, axis=0)
             if not nonzero_cols.any():
                 return 0
-            ***REMOVED*** K = one past the last column that is non-zero for any node
+            # K = one past the last column that is non-zero for any node
             return int(np.max(np.nonzero(nonzero_cols))) + 1
         return min(_k(phi_from), _k(phi_to))

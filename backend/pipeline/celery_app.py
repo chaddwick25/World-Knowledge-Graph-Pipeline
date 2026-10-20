@@ -17,18 +17,18 @@ there is no import guard or availability flag. Task files use the
 from __future__ import annotations
 from pipeline.celery_factory import create_celery_app
 
-***REMOVED*** --- Celery app (parameterized factory call) ---
+# --- Celery app (parameterized factory call) ---
 celery_app, _TaskBase = create_celery_app(
     name="worldkg_pipeline",
     settings_module="backend.settings",
 )
 
-***REMOVED*** Logging helpers live in pipeline_logger.py (single owner of the logging
-***REMOVED*** stack). Imported here only so the task_prerun signal below can call it.
-from pipeline.pipeline_logger import setup_pipeline_run_logger  ***REMOVED*** noqa: E402
+# Logging helpers live in pipeline_logger.py (single owner of the logging
+# stack). Imported here only so the task_prerun signal below can call it.
+from pipeline.pipeline_logger import setup_pipeline_run_logger  # noqa: E402
 
 
-***REMOVED*** --- pipeline_task: thin wrapper around @celery_app.task --------------------
+# --- pipeline_task: thin wrapper around @celery_app.task --------------------
 def pipeline_task(*args, **kwargs):
     """Drop-in replacement for ``@celery_app.task(...)``.
 
@@ -72,10 +72,10 @@ class PipelineTask(_TaskBase):
     second is a no-op.
     """
 
-    ***REMOVED*** Per-invocation state: task_id -> {start, plog, step_name, step_index, run_id, metrics}
+    # Per-invocation state: task_id -> {start, plog, step_name, step_index, run_id, metrics}
     _invocations: dict = {}
 
-    ***REMOVED*** ── Celery lifecycle hooks (control plane) ──────────────────────────
+    # ── Celery lifecycle hooks (control plane) ──────────────────────────
     def on_success(self, retval, task_id, args, kwargs):
         """Step-complete: PipelineLogEntry, PipelineRun stage, WS push.
 
@@ -98,8 +98,8 @@ class PipelineTask(_TaskBase):
             inv["run_id"], inv["step_name"], completed=True,
             metrics=inv.get("metrics"),
         )
-        ***REMOVED*** Phase 1/2: emit PipelineAsset rows for descriptors the task body
-        ***REMOVED*** stashed on the envelope (links task_id via metadata → TaskResult).
+        # Phase 1/2: emit PipelineAsset rows for descriptors the task body
+        # stashed on the envelope (links task_id via metadata → TaskResult).
         _emit_pipeline_assets(inv, task_id)
         _push_update(
             pipeline_run_id=inv["run_id"], name=inv["step_name"],
@@ -132,7 +132,7 @@ class PipelineTask(_TaskBase):
             message=f"Step {inv['step_index']}: {inv['step_name']} failed: {exc}",
             pct=100,
         )
-        ***REMOVED*** Mark linked SnapshotJob as FAILED (DB ground truth)
+        # Mark linked SnapshotJob as FAILED (DB ground truth)
         if inv.get("run_id"):
             try:
                 from core.models import PipelineRun
@@ -149,9 +149,9 @@ class PipelineTask(_TaskBase):
         self._invocations.pop(task_id, None)
 
 
-***REMOVED*** ── Celery signals: logging configuration via primitives ────────────────────
-from celery.signals import setup_logging, task_prerun  ***REMOVED*** noqa: E402
-from pipeline.pipeline_logger import _ensure_console_handler  ***REMOVED*** noqa: E402
+# ── Celery signals: logging configuration via primitives ────────────────────
+from celery.signals import setup_logging, task_prerun  # noqa: E402
+from pipeline.pipeline_logger import _ensure_console_handler  # noqa: E402
 
 
 @setup_logging.connect

@@ -65,7 +65,7 @@ def find_polygon_file(country_name: str) -> Optional[str]:
         if matches:
             return matches[0]
 
-    ***REMOVED*** Try PolygonFile model
+    # Try PolygonFile model
     try:
         from core.models import PolygonFile
         poly_file = PolygonFile.objects.filter(
@@ -86,7 +86,7 @@ class RegionalPathService:
     """
     
     def __init__(self, base_dir: str = None):
-        ***REMOVED*** Use explicitly provided base_dir or configured OSM_WIKIDATA_EXTRACTIONS_DIR
+        # Use explicitly provided base_dir or configured OSM_WIKIDATA_EXTRACTIONS_DIR
         if base_dir:
             self.base_dir = Path(base_dir)
         else:
@@ -101,18 +101,18 @@ class RegionalPathService:
         return path
 
     def get_country_dir(self, continent: str, country: str) -> Path:
-        ***REMOVED*** Normalize both slugs to underscores for filesystem consistency.
-        ***REMOVED*** This prevents mismatches like cape-verde vs cape_verde, and
-        ***REMOVED*** continental mismatches like australia-oceania vs australia_oceania.
+        # Normalize both slugs to underscores for filesystem consistency.
+        # This prevents mismatches like cape-verde vs cape_verde, and
+        # continental mismatches like australia-oceania vs australia_oceania.
         cont_slug = normalize_continent_slug(continent)
         country_slug = normalize_country_slug(country)
         if not cont_slug:
-            cont_slug = continent  ***REMOVED*** fallback if normalization returned empty
+            cont_slug = continent  # fallback if normalization returned empty
         path = self.get_continent_dir(cont_slug) / country_slug
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    ***REMOVED*** ── Continent snapshot paths (Phase 1: temporal sharding) ──────────
+    # ── Continent snapshot paths (Phase 1: temporal sharding) ──────────
 
     def get_continent_snapshot_root(self) -> Path:
         """Root directory for date-specific continent snapshots.
@@ -161,7 +161,7 @@ class RegionalPathService:
         )
         return dates
 
-    ***REMOVED*** ── End continent snapshot paths ───────────────────────────────────
+    # ── End continent snapshot paths ───────────────────────────────────
 
     def get_yearly_dir(self, continent: str, country: str) -> Path:
         path = self.get_country_dir(continent, country) / 'monthly'
@@ -174,9 +174,9 @@ class RegionalPathService:
         return path
 
     def get_continent_pbf_path(self, continent: str) -> Path:
-        ***REMOVED*** Normalize the filename too (not just the dir) — callers pass raw
-        ***REMOVED*** names ("North America", "north-america"); the on-disk convention
-        ***REMOVED*** is underscores everywhere (north_america.pbf).
+        # Normalize the filename too (not just the dir) — callers pass raw
+        # names ("North America", "north-america"); the on-disk convention
+        # is underscores everywhere (north_america.pbf).
         cont_slug = normalize_continent_slug(continent)
         if not cont_slug:
             cont_slug = continent
@@ -272,12 +272,12 @@ class RegionalPathService:
         Returns:
             The first slug that corresponds to an existing directory with subgraphs.
         """
-        ***REMOVED*** NOTE: We check for the subgraphs/ subdirectory WITHOUT creating it,
-        ***REMOVED*** because get_country_dir() has a side effect of mkdir(parents=True,
-        ***REMOVED*** exist_ok=True). Using get_country_dir() here would create the
-        ***REMOVED*** primary_slug directory, making the .exists() check always True and
-        ***REMOVED*** preventing fallback to the correct directory (e.g., 'ireland' vs
-        ***REMOVED*** 'ireland_and_northern_ireland').
+        # NOTE: We check for the subgraphs/ subdirectory WITHOUT creating it,
+        # because get_country_dir() has a side effect of mkdir(parents=True,
+        # exist_ok=True). Using get_country_dir() here would create the
+        # primary_slug directory, making the .exists() check always True and
+        # preventing fallback to the correct directory (e.g., 'ireland' vs
+        # 'ireland_and_northern_ireland').
         cont_slug = normalize_continent_slug(continent) or continent
 
         def _subgraphs_dir_exists(slug: str) -> bool:
@@ -285,17 +285,17 @@ class RegionalPathService:
             sg_dir = self.base_dir / cont_slug / slug / 'subgraphs'
             return sg_dir.exists() and any(sg_dir.iterdir())
 
-        ***REMOVED*** Try primary slug first
+        # Try primary slug first
         if _subgraphs_dir_exists(primary_slug):
             return primary_slug
 
-        ***REMOVED*** Fallback 1: Try simple country name (e.g., 'ireland' instead of 'ireland-and-northern-ireland')
+        # Fallback 1: Try simple country name (e.g., 'ireland' instead of 'ireland-and-northern-ireland')
         simple_slug = country_name.lower().replace(' ', '_').replace('-', '_')
         if simple_slug != primary_slug and _subgraphs_dir_exists(simple_slug):
             logger.info(f"Using alternate slug '{simple_slug}' for {country_name}")
             return simple_slug
 
-        ***REMOVED*** Fallback 2: Try ISO code if available
+        # Fallback 2: Try ISO code if available
         iso_code = country_data.get('iso2') or country_data.get('wikidata_id')
         if iso_code:
             iso_slug = iso_code.lower()
@@ -303,7 +303,7 @@ class RegionalPathService:
                 logger.info(f"Using ISO code slug '{iso_slug}' for {country_name}")
                 return iso_slug
 
-        ***REMOVED*** Return primary slug if no fallback found (will be handled by caller)
+        # Return primary slug if no fallback found (will be handled by caller)
         return primary_slug
 
 regional_path_service = RegionalPathService()

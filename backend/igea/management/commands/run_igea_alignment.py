@@ -18,7 +18,7 @@ Usage:
     python manage.py iterative_entity_alignment --dry-run
 """
 
-***REMOVED*** TODO: Refactor and take notes
+# TODO: Refactor and take notes
 from django.core.management.base import BaseCommand
 from igea.services.iterative_alignment_service import (
     IterativeEntityAlignmentService,
@@ -103,7 +103,7 @@ class Command(BaseCommand):
             max_distance_m=max_distance,
         )
 
-        ***REMOVED*** Load Wikidata candidates
+        # Load Wikidata candidates
         pool_size = 0
         candidate_cache = options.get('candidate_cache')
         
@@ -116,7 +116,7 @@ class Command(BaseCommand):
         
         self.stdout.write(self.style.SUCCESS(f"  ✓ Wikidata pool: {pool_size:,} candidates"))
         
-        ***REMOVED*** Generate embeddings for Wikidata candidates if missing
+        # Generate embeddings for Wikidata candidates if missing
         from semantic_search.services.fasttext_service import FastTextEmbeddingService
         ft_service = FastTextEmbeddingService()
         candidates_without_emb = sum(1 for c in service._wikidata_pool if not c.get('embedding'))
@@ -125,10 +125,10 @@ class Command(BaseCommand):
             self.stdout.write(f"  → Generating embeddings for {candidates_without_emb:,} Wikidata candidates...")
             for candidate in service._wikidata_pool:
                 if not candidate.get('embedding'):
-                    ***REMOVED*** Generate embedding from label (similar to OSM tags)
+                    # Generate embedding from label (similar to OSM tags)
                     label = candidate.get('label', '')
                     if label:
-                        ***REMOVED*** Treat label as a single tag with count=1
+                        # Treat label as a single tag with count=1
                         tag_counts = {label.lower(): 1}
                         embedding = ft_service.calculate_embedding(tag_counts)
                         if embedding is not None:
@@ -153,7 +153,7 @@ class Command(BaseCommand):
             ))
             return
 
-        ***REMOVED*** Resolve polygon WKT if poly_file is provided
+        # Resolve polygon WKT if poly_file is provided
         polygon_wkt = None
         poly_file = options.get('poly_file')
         if poly_file:
@@ -163,12 +163,12 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"Failed to parse .poly file: {poly_file}"))
                 return
 
-        ***REMOVED*** Run iterative alignment
+        # Run iterative alignment
         self.stdout.write(f"[2/2] Running {iterations}-iteration alignment loop...")
         stats = service.run(
             country_code=country,
             polygon_wkt=polygon_wkt,
-            buffer_deg=0.05  ***REMOVED*** Slight buffer to include entities on the border
+            buffer_deg=0.05  # Slight buffer to include entities on the border
         )
 
         self.stdout.write(self.style.SUCCESS(

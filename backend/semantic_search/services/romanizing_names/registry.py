@@ -21,14 +21,14 @@ class RomanizerRegistry:
     before less specific ones (e.g., Hangul before Diacritic before Identity).
     """
 
-    ***REMOVED*** Ordered list of (language_code, romanizer_class) pairs
-    ***REMOVED*** Order matters: first detect() match wins during auto_romanize()
+    # Ordered list of (language_code, romanizer_class) pairs
+    # Order matters: first detect() match wins during auto_romanize()
     _romanizers: list = []
 
     @classmethod
     def register(cls, language_code: str, romanizer_cls):
         """Register a romanizer. More specific romanizers should be registered first."""
-        ***REMOVED*** Remove any existing registration for this language code
+        # Remove any existing registration for this language code
         cls._romanizers = [
             (code, r) for code, r in cls._romanizers if code != language_code
         ]
@@ -67,11 +67,11 @@ class RomanizerRegistry:
         return [code for code, _ in cls._romanizers]
 
 
-***REMOVED*** ── Register romanizers in specificity order ──────────────────────────
-***REMOVED*** Most specific scripts first, identity last (it matches everything).
-***REMOVED*** Hangul is the most specific (only Korean text triggers it).
-***REMOVED*** Diacritic is medium (only Latin text with combining marks triggers it).
-***REMOVED*** Identity is the fallback (matches any remaining Latin text).
+# ── Register romanizers in specificity order ──────────────────────────
+# Most specific scripts first, identity last (it matches everything).
+# Hangul is the most specific (only Korean text triggers it).
+# Diacritic is medium (only Latin text with combining marks triggers it).
+# Identity is the fallback (matches any remaining Latin text).
 RomanizerRegistry.register("ko", HangulRomanizer)
 RomanizerRegistry.register("diacritic", DiacriticRomanizer)
 RomanizerRegistry.register("identity", IdentityRomanizer)

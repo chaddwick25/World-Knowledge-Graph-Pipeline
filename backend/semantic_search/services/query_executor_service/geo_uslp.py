@@ -42,7 +42,7 @@ class GeoUslpMixin:
         if not results:
             return results
 
-        ***REMOVED*** Compute geo_score for each result
+        # Compute geo_score for each result
         anchor_lat = anchor_coords.get("lat") if anchor_coords else None
         anchor_lon = anchor_coords.get("lon") if anchor_coords else None
         has_geo = anchor_lat is not None and anchor_lon is not None
@@ -58,7 +58,7 @@ class GeoUslpMixin:
                             template, radius_m,
                         ), 4
                     )
-                    ***REMOVED*** Also store raw distance for the radius guard
+                    # Also store raw distance for the radius guard
                     r["distance_km"] = round(
                         cls._haversine_km(anchor_lat, anchor_lon, r_lat, r_lon), 3
                     )
@@ -70,9 +70,9 @@ class GeoUslpMixin:
                 r["distance_km"] = None
                 r["geo_score"] = 0.0
 
-        ***REMOVED*** USLP signal boost — entities that appear as predicted link tails
-        ***REMOVED*** from the anchor get a small boost. This connects the link
-        ***REMOVED*** prediction layer to search ranking.
+        # USLP signal boost — entities that appear as predicted link tails
+        # from the anchor get a small boost. This connects the link
+        # prediction layer to search ranking.
         uslp_tail_ids = set()
         if anchor_osm_id and country_code:
             uslp_tail_ids = cls._get_uslp_predicted_tails(
@@ -98,14 +98,14 @@ class GeoUslpMixin:
             for r in results:
                 r["uslp_boost"] = 0.0
 
-        ***REMOVED*** Name alignment — the parser's OBJECT text vs entity names. The
-        ***REMOVED*** amenity tiers resolve tag values, never names; a proper-name
-        ***REMOVED*** query ("island grill") must align against entity `name` fields
-        ***REMOVED*** or the nearest-by-distance entity wins regardless of identity.
+        # Name alignment — the parser's OBJECT text vs entity names. The
+        # amenity tiers resolve tag values, never names; a proper-name
+        # query ("island grill") must align against entity `name` fields
+        # or the nearest-by-distance entity wins regardless of identity.
         if name_query:
             cls._apply_name_scores(results, name_query)
 
-        ***REMOVED*** Re-rank by combined score: diffusion + name + geo + uslp
+        # Re-rank by combined score: diffusion + name + geo + uslp
         for r in results:
             diff = r.get("diffusion_score", 0.0)
             name = r.get("name_score", 0.0)
@@ -175,12 +175,12 @@ class GeoUslpMixin:
                 })
             return set()
 
-    ***REMOVED*** ── Geometric helpers ───────────────────────────────────────────────────
+    # ── Geometric helpers ───────────────────────────────────────────────────
     @staticmethod
     def _haversine_km(lat1: float, lon1: float,
                       lat2: float, lon2: float) -> float:
         """Haversine distance in kilometers."""
-        R = 6371  ***REMOVED*** Earth's mean radius in km
+        R = 6371  # Earth's mean radius in km
         phi1, lam1 = math.radians(lat1), math.radians(lon1)
         phi2, lam2 = math.radians(lat2), math.radians(lon2)
         dphi = phi2 - phi1
@@ -210,32 +210,32 @@ class GeoUslpMixin:
         distance matrix. At runtime without a precomputed pool, we use the
         geohash cell width as the fallback d_max (see USLP_FALLBACK_D_MAX_KM).
         """
-        if template == "OBJECT-FIELD-MEASURE (***REMOVED***2)":
+        if template == "OBJECT-FIELD-MEASURE (#2)":
             return 0.0
 
-        ***REMOVED*** FILTER-AGGREGATE-MEASURE: user specified an exact radius — use it
-        if template == "FILTER-AGGREGATE-MEASURE (***REMOVED***1)" and radius_m:
+        # FILTER-AGGREGATE-MEASURE: user specified an exact radius — use it
+        if template == "FILTER-AGGREGATE-MEASURE (#1)" and radius_m:
             d_max = radius_m / 1000.0
             dist_km = cls._haversine_km(head_lat, head_lon, tail_lat, tail_lon)
             return max(0.0, min(1.0, 1.0 - (dist_km / d_max)))
 
-        ***REMOVED*** All other templates: USLP geohash-based scoring at P4
+        # All other templates: USLP geohash-based scoring at P4
         precision = USLP_GEOHASH_PRECISION
         try:
             import geohash2
             gh_h = geohash2.encode(head_lat, head_lon, precision=precision)
             gh_t = geohash2.encode(tail_lat, tail_lon, precision=precision)
-            ***REMOVED*** Decode to cluster centers
+            # Decode to cluster centers
             lat_h_str, lon_h_str = geohash2.decode(gh_h)
             lat_t_str, lon_t_str = geohash2.decode(gh_t)
             c_h = (float(lat_h_str), float(lon_h_str))
             c_t = (float(lat_t_str), float(lon_t_str))
             dist_km = cls._haversine_km(c_h[0], c_h[1], c_t[0], c_t[1])
         except Exception:
-            ***REMOVED*** Fallback to raw haversine if geohash fails
+            # Fallback to raw haversine if geohash fails
             dist_km = cls._haversine_km(head_lat, head_lon, tail_lat, tail_lon)
 
         d_max = USLP_FALLBACK_D_MAX_KM.get(precision, 39.0)
         return max(0.0, min(1.0, 1.0 - (dist_km / d_max)))
 
-    ***REMOVED*** ── Answer synthesis ────────────────────────────────────────────────────
+    # ── Answer synthesis ────────────────────────────────────────────────────

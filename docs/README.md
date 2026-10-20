@@ -1,4 +1,4 @@
-***REMOVED*** Documentation Overview
+# Documentation Overview
 
 The WorldKG pipeline transforms heterogeneous, noisy, unstructured
 OpenStreetMap data into homogeneous, clean, structured knowledge. It
@@ -23,7 +23,7 @@ how each paper became running code.
 
 ---
 
-***REMOVED******REMOVED*** The foundational papers: three tiers
+## The foundational papers: three tiers
 
 Eleven papers across three subfolders of `docs/papers/` ground the
 system. Each contributes a mathematical idea the pipeline preserves
@@ -32,7 +32,7 @@ are not three sequential pipeline stages. They are three jobs: build
 the clean data, define how it gets interpreted, and supply the math
 that measures the resulting structure.
 
-***REMOVED******REMOVED******REMOVED*** Tier 1: clean the unstructured OSM data (`docs/papers/WorldKG/`)
+### Tier 1: clean the unstructured OSM data (`docs/papers/WorldKG/`)
 
 Six papers define the batch pipeline. Their job is to turn raw OSM into
 a queryable knowledge graph: normalize free-text tags into a schema,
@@ -84,7 +84,7 @@ materialized as the Step 1b SQL ontology join.
 **Attention-Based Vandalism Detection in OpenStreetMap** is referenced
 for its cross-attention architecture. It is not a live pipeline stage.
 
-***REMOVED******REMOVED******REMOVED*** Tier 2: interpret the data (`docs/papers/WernerKuhn/`)
+### Tier 2: interpret the data (`docs/papers/WernerKuhn/`)
 
 Three papers ground the interpretation layer: how the cleaned data
 becomes answerable at request time. They supply a vocabulary for what a
@@ -114,7 +114,7 @@ externalizes the agent's tool palette as an MCP server (9 tools, Goose
 spatial concept transformations, is what the parser produces and the
 executor walks in topological order.
 
-***REMOVED******REMOVED******REMOVED*** Tier 3: domain expertise (`docs/papers/Maps/`)
+### Tier 3: domain expertise (`docs/papers/Maps/`)
 
 Two papers supply the math substrate for the learned layer (Steps 5c
 and 5d) and the cross-subgraph transport that lets large countries run
@@ -137,7 +137,7 @@ runtime without a global solve.
 
 ---
 
-***REMOVED******REMOVED*** The pipeline canvas
+## The pipeline canvas
 
 The pipeline is a Celery canvas (chain + chords) of country-level
 steps. The frontend triggers a country run; Celery orchestrates the
@@ -175,7 +175,7 @@ canvas structure.
 
 ---
 
-***REMOVED******REMOVED*** From batch artifacts to runtime queries
+## From batch artifacts to runtime queries
 
 The key design decision is that all expensive computation happens
 during the pipeline run, not at request time. The spectral
@@ -183,7 +183,7 @@ eigendecomposition, community detection, drift computation, and amenity
 embeddings are batch-written to factor-node tables during Steps 5c, 5d,
 and `init_planet`. At request time the application queries these tables
 via SQL + pgvector. A heat kernel diffusion query becomes a single
-pgvector `<***REMOVED***>` inner-product lookup. A community summary becomes a
+pgvector `<#>` inner-product lookup. A community summary becomes a
 filtered aggregate. A temporal drift query becomes a join between
 snapshot pairs. No graph loading, no eigendecomposition, no SciPy at
 request time.
@@ -215,7 +215,7 @@ pgvector query.
 
 ---
 
-***REMOVED******REMOVED*** Templates as tools
+## Templates as tools
 
 The interpretation layer's output is a template: a structured query
 skeleton with concept slots and roles. Each template is a tool. It
@@ -232,7 +232,7 @@ The tool surface is implemented as an MCP server
 | `proposeQuery`, `getApprovalState`, `getQueryProposal` | Human-in-the-loop loop: push a parsed query to the frontend, read approval state, fetch the proposal. |
 | `renderToolOverlay` | Draw a tool's output on the map as a dedicated overlay. |
 
-***REMOVED******REMOVED******REMOVED*** Template status
+### Template status
 
 Nine numbered templates are implemented. Five are trained and emitted
 by the parser. Four spectral templates are wired in the executor and
@@ -240,40 +240,40 @@ resolve via factor tables, but the parser does not emit them.
 
 **Trained and parser-emitted:**
 
-| ***REMOVED*** | Template | Kuhn concepts | Execution path |
+| # | Template | Kuhn concepts | Execution path |
 |---|---|---|---|
-| ***REMOVED***1 | FILTER-AGGREGATE-MEASURE | Object, Location | PostGIS `ST_DWithin` + count |
-| ***REMOVED***2 | OBJECT-FIELD-MEASURE | Object, Field | Haversine distance |
-| ***REMOVED***4 | GEOCODE-BATCH-COMPARE | Object, Neighborhood | PostGIS distance ordering |
-| ***REMOVED***5 | LOCATION-BEARING-CLASSIFY | Location, Neighborhood | PostGIS bearing calc |
-| ***REMOVED***8 | PLACE-ATTRIBUTE-QUERY | Object, Field | Heat kernel via `factor_spectral_node_metric`, PostGIS fallback |
+| #1 | FILTER-AGGREGATE-MEASURE | Object, Location | PostGIS `ST_DWithin` + count |
+| #2 | OBJECT-FIELD-MEASURE | Object, Field | Haversine distance |
+| #4 | GEOCODE-BATCH-COMPARE | Object, Neighborhood | PostGIS distance ordering |
+| #5 | LOCATION-BEARING-CLASSIFY | Location, Neighborhood | PostGIS bearing calc |
+| #8 | PLACE-ATTRIBUTE-QUERY | Object, Field | Heat kernel via `factor_spectral_node_metric`, PostGIS fallback |
 
 **Sample questions (trained templates):**
 
-| ***REMOVED*** | Template | Description | Sample question |
+| # | Template | Description | Sample question |
 |---|---|---|---|
-| ***REMOVED***1 | FILTER-AGGREGATE-MEASURE | Count of amenity entities within a radius | "Which bars are within 50m of Hollywood Blvd?" |
-| ***REMOVED***2 | OBJECT-FIELD-MEASURE | Distance in kilometers between two entities | "How far is the cafe from the museum?" |
-| ***REMOVED***4 | GEOCODE-BATCH-COMPARE | Closer candidate / nearest entity of a given type | "Which is closer to the park, the cafe or the museum?" |
-| ***REMOVED***5 | LOCATION-BEARING-CLASSIFY | Cardinal direction / nearest entity in a direction cone | "Which direction is the airport from the city centre?" |
-| ***REMOVED***8 | PLACE-ATTRIBUTE-QUERY | Amenity attribute / adjacent entity of a given type | "What amenity is available at the museum?" |
+| #1 | FILTER-AGGREGATE-MEASURE | Count of amenity entities within a radius | "Which bars are within 50m of Hollywood Blvd?" |
+| #2 | OBJECT-FIELD-MEASURE | Distance in kilometers between two entities | "How far is the cafe from the museum?" |
+| #4 | GEOCODE-BATCH-COMPARE | Closer candidate / nearest entity of a given type | "Which is closer to the park, the cafe or the museum?" |
+| #5 | LOCATION-BEARING-CLASSIFY | Cardinal direction / nearest entity in a direction cone | "Which direction is the airport from the city centre?" |
+| #8 | PLACE-ATTRIBUTE-QUERY | Amenity attribute / adjacent entity of a given type | "What amenity is available at the museum?" |
 
 The descriptions are the `TEMPLATE_META` strings; the sample questions
 follow the training-data frames in
 `backend/semantic_search/services/mapqa_samplers/constants.py`
-(`FRAMES`), slots filled with concrete values. The ***REMOVED***1 example is the
+(`FRAMES`), slots filled with concrete values. The #1 example is the
 `templateQuery` tool description verbatim.
 
 **Wired in the executor, not parser-emitted:**
 
-| ***REMOVED*** | Template | Kuhn concepts | Execution path |
+| # | Template | Kuhn concepts | Execution path |
 |---|---|---|---|
-| ***REMOVED***11 | SPECTRAL-ANALYSIS | Network | `factor_spectral_node_metric` |
-| ***REMOVED***12 | TEMPORAL-DRIFT | Network | `factor_drift_node_metric` |
-| ***REMOVED***13 | COMMUNITY-DETECT | Network | communities from `factor_spectral_node_metric` |
-| ***REMOVED***14 | EVENT-DIFFUSION | Network | heat kernel diffusion from `factor_spectral_node_metric` |
+| #11 | SPECTRAL-ANALYSIS | Network | `factor_spectral_node_metric` |
+| #12 | TEMPORAL-DRIFT | Network | `factor_drift_node_metric` |
+| #13 | COMMUNITY-DETECT | Network | communities from `factor_spectral_node_metric` |
+| #14 | EVENT-DIFFUSION | Network | heat kernel diffusion from `factor_spectral_node_metric` |
 
-***REMOVED******REMOVED******REMOVED*** Coverage across Kuhn's concepts
+### Coverage across Kuhn's concepts
 
 | Kuhn concept | Tool status | Where |
 |---|---|---|
@@ -281,9 +281,9 @@ follow the training-data frames in
 | Object | covered | `OBJECT` concept; all 5 trained templates |
 | Field | partial | PLACE-ATTRIBUTE-QUERY, OBJECT-FIELD-MEASURE; used for amenity attributes, not continuous phenomena |
 | Neighborhood | implicit | no dedicated concept slot; radius `AMOUNT` + `ST_DWithin` |
-| Network | dormant | ***REMOVED***11-14 wired in the executor, not parser-emitted |
+| Network | dormant | #11-14 wired in the executor, not parser-emitted |
 
-***REMOVED******REMOVED******REMOVED*** The gap
+### The gap
 
 Two gaps remain in category coverage. The MapQA paper describes a
 10-template library; 5 are trained, the remaining 5 have 0% coverage
@@ -295,7 +295,7 @@ the parser to emit the spectral templates. The tool surface already
 handles either case: `templateQuery` routes any emitted template
 through parser and executor unchanged.
 
-***REMOVED******REMOVED******REMOVED*** Execution: parser to answer
+### Execution: parser to answer
 
 **Parser.** A TF-IDF + MultinomialNB classifier assigns the question to
 one of 5 trained templates. A one-vs-rest Logistic Regression concept
@@ -339,7 +339,7 @@ implementation.
 
 ---
 
-***REMOVED******REMOVED*** How the documentation is organized
+## How the documentation is organized
 
 | Path | What lives here |
 |---|---|
@@ -356,7 +356,7 @@ implementation.
 | `papers/` | The source PDFs, one subfolder per tier: `WorldKG/` (clean), `WernerKuhn/` (interpret), `Maps/` (domain expertise). |
 | `SETUP.md` | Environment setup, Docker, migrations, planet init, romanization, fresh-DB reset, overrides. |
 
-***REMOVED******REMOVED******REMOVED*** By audience
+### By audience
 
 - **Operators** running the system: start at `SETUP.md` for environment
   and commands, then `platform/docker_entrypoint_init.md` for the

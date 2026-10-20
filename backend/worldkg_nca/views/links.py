@@ -28,7 +28,7 @@ def worldkg_link_candidates(request):
     osm_id = request.data.get("osm_id")
     country_code = request.data.get("country_code") or request.data.get("country")
     top_k = request.data.get("top_k", 10)
-    ***REMOVED*** Phase 6: scope to snapshot partition (falls back to latest for monolith)
+    # Phase 6: scope to snapshot partition (falls back to latest for monolith)
     snapshot_id = request.data.get("snapshot_id") or get_latest_snapshot_id()
 
     if not osm_type or osm_id is None:
@@ -121,7 +121,7 @@ def worldkg_apply_link(request):
     wikidata_id = request.data.get("wikidata_id")
     label = request.data.get("label")
     confidence = request.data.get("confidence", 1.0)
-    ***REMOVED*** Phase 6: scope to snapshot partition (falls back to latest for monolith)
+    # Phase 6: scope to snapshot partition (falls back to latest for monolith)
     snapshot_id = request.data.get("snapshot_id") or get_latest_snapshot_id()
 
     if not osm_type or osm_id is None:

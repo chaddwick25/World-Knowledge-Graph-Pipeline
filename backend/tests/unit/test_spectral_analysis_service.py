@@ -29,9 +29,9 @@ from semantic_search.services.spectral_analysis_service import (
 )
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Helpers
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
 
 def _path_graph(n: int) -> nx.Graph:
     """Path graph P_n — analytical eigenvalues are known."""
@@ -43,9 +43,9 @@ def _complete_graph(n: int) -> nx.Graph:
     return nx.complete_graph(n)
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Spectral analysis invariants
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Spectral analysis invariants
+# --------------------------------------------------------------------------- #
 
 def test_eigenvalues_non_negative_and_sorted_ascending():
     """All eigenvalues ≥ 0 and sorted ascending (Phase 0 invariant)."""
@@ -84,7 +84,7 @@ def test_path_graph_eigenvalues_match_analytical():
     G = _path_graph(n)
     features = SpectralAnalysisService().compute_spectral_features(G, k=5)
     ev = np.array(features["eigenvalues"])
-    ***REMOVED*** Analytical (drop λ₀=0 — already dropped by the service)
+    # Analytical (drop λ₀=0 — already dropped by the service)
     expected = np.array([
         1.0 - np.cos(np.pi * k / (n - 1)) for k in range(1, 6)
     ])
@@ -104,10 +104,10 @@ def test_complete_graph_eigenvalues_match_analytical():
 def test_algebraic_connectivity_zero_for_disconnected_graph():
     """λ₂ = 0 for a disconnected graph (Phase 0 invariant)."""
     G = nx.Graph()
-    G.add_edges_from([(0, 1), (1, 2), (2, 0)])  ***REMOVED*** component 1
-    G.add_edges_from([(3, 4), (4, 5), (5, 3)])  ***REMOVED*** component 2
+    G.add_edges_from([(0, 1), (1, 2), (2, 0)])  # component 1
+    G.add_edges_from([(3, 4), (4, 5), (5, 3)])  # component 2
     features = SpectralAnalysisService().compute_spectral_features(G, k=3)
-    ***REMOVED*** First non-trivial eigenvalue should be ~0 (disconnected)
+    # First non-trivial eigenvalue should be ~0 (disconnected)
     assert features["algebraic_connectivity"] < 1e-6
 
 
@@ -136,9 +136,9 @@ def test_directed_graph_is_converted_to_undirected():
     assert features["algebraic_connectivity"] > 0.0
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Heat kernel invariants
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Heat kernel invariants
+# --------------------------------------------------------------------------- #
 
 def test_heat_kernel_mass_conserved():
     """Σᵢ u(t)ᵢ = 1 for all t (Phase 0 invariant)."""
@@ -166,7 +166,7 @@ def test_heat_kernel_identity_at_t_zero():
         G, source_node=3, t_values=[1e-12]
     )
     u = result[1e-12]
-    ***REMOVED*** Source node should have the bulk of the mass
+    # Source node should have the bulk of the mass
     assert u[3] > 0.99
 
 
@@ -187,9 +187,9 @@ def test_heat_kernel_unknown_source_raises():
         SpectralAnalysisService().compute_heat_kernel(G, source_node=999, t_values=[1.0])
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Fix B: shift-invert eigsh (sigma=1e-6, which='LM', bounded ncv)
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Fix B: shift-invert eigsh (sigma=1e-6, which='LM', bounded ncv)
+# --------------------------------------------------------------------------- #
 
 def test_eigenvalues_match_shift_invert_vs_sm():
     """Shift-invert (sigma=1e-6, which='LM') matches which='SM' to 1e-8.
@@ -206,11 +206,11 @@ def test_eigenvalues_match_shift_invert_vs_sm():
 
     L = nx.normalized_laplacian_matrix(G).astype(float)
 
-    ***REMOVED*** Old solver (which='SM')
+    # Old solver (which='SM')
     ev_sm, _ = spla.eigsh(L, k=k_request, which='SM')
     ev_sm = np.sort(ev_sm)
 
-    ***REMOVED*** New solver (shift-invert)
+    # New solver (shift-invert)
     ev_si, _ = spla.eigsh(
         L, k=k_request, sigma=1e-6, which='LM',
         ncv=min(2 * k_request + 1, n),
@@ -240,7 +240,7 @@ def test_trivial_eigenvalue_near_zero_with_shift_invert():
         ncv=min(2 * k_request + 1, n),
     )
     eigenvalues = np.sort(eigenvalues)
-    ***REMOVED*** λ₀ should be ≈ 0 (within ~1e-6), NOT ≈ -1e-6
+    # λ₀ should be ≈ 0 (within ~1e-6), NOT ≈ -1e-6
     assert abs(eigenvalues[0]) < 1e-6, f"λ₀ = {eigenvalues[0]}, expected ≈ 0"
 
 
@@ -254,12 +254,12 @@ def test_ncv_bounds_workspace():
     import scipy.sparse.linalg as spla
 
     k = 5
-    n = 10 * k + 1  ***REMOVED*** 51 nodes — comfortably larger than 2*k+1=11
+    n = 10 * k + 1  # 51 nodes — comfortably larger than 2*k+1=11
     G = _path_graph(n)
     k_request = k + 1
     L = nx.normalized_laplacian_matrix(G).astype(float)
 
-    ***REMOVED*** Should not raise — ncv=2*k+1=11 is a valid Lanczos subspace size
+    # Should not raise — ncv=2*k+1=11 is a valid Lanczos subspace size
     eigenvalues, eigenvectors = spla.eigsh(
         L, k=k_request, sigma=1e-6, which='LM',
         ncv=min(2 * k_request + 1, n),
@@ -279,17 +279,17 @@ def test_shift_invert_preserves_all_invariants():
     ev = np.array(features["eigenvalues"])
     V = np.asarray(features["eigenvectors"])
 
-    ***REMOVED*** Non-negative and sorted ascending
+    # Non-negative and sorted ascending
     assert (ev >= -1e-9).all(), f"Negative eigenvalue: {ev}"
     assert (ev[1:] >= ev[:-1] - 1e-9).all(), f"Not sorted: {ev}"
 
-    ***REMOVED*** ∈ [0, 2] for normalized Laplacian
+    # ∈ [0, 2] for normalized Laplacian
     assert (ev <= 2.0 + 1e-6).all(), f"Eigenvalue > 2: {ev}"
 
-    ***REMOVED*** Orthonormal
+    # Orthonormal
     gram = V.T @ V
     np.testing.assert_allclose(gram, np.eye(10), atol=1e-6)
 
-    ***REMOVED*** Algebraic connectivity > 0 for connected graph
+    # Algebraic connectivity > 0 for connected graph
     assert features["algebraic_connectivity"] > 0.0
 

@@ -20,10 +20,10 @@ import pytest
 
 NGINX_CONF = Path(__file__).resolve().parents[3] / 'deploy' / 'nginx.conf'
 
-***REMOVED*** The real funnel hostname and tailnet IP deliberately live only in the
-***REMOVED*** local (gitignored) config; these tests derive them structurally: the
-***REMOVED*** funnel host is the single public-map entry in the .ts.net form, and the
-***REMOVED*** trusted-local set comes from the middleware's own TRUSTED_LOCAL_HOSTS.
+# The real funnel hostname and tailnet IP deliberately live only in the
+# local (gitignored) config; these tests derive them structurally: the
+# funnel host is the single public-map entry in the .ts.net form, and the
+# trusted-local set comes from the middleware's own TRUSTED_LOCAL_HOSTS.
 
 
 def _extract_block(text, header_pattern):
@@ -86,16 +86,16 @@ def _marker_headers(server_block):
 @pytest.fixture(scope='module')
 def conf_text():
     if not NGINX_CONF.exists():
-        ***REMOVED*** The config is local-only (deploy/ is gitignored); a fresh clone
-        ***REMOVED*** has nothing to parse.
+        # The config is local-only (deploy/ is gitignored); a fresh clone
+        # has nothing to parse.
         pytest.skip('host repo layout (deploy/) not present')
     return NGINX_CONF.read_text()
 
 
 class TestHostAllowlists:
     def test_public_map_allows_only_funnel_hostname(self, conf_text):
-        ***REMOVED*** Exactly one entry, and it is the funnel hostname (the .ts.net
-        ***REMOVED*** form): the public edge is funnel-hostname-only.
+        # Exactly one entry, and it is the funnel hostname (the .ts.net
+        # form): the public edge is funnel-hostname-only.
         entries = _map_entries(_extract_block(
             conf_text, r'map \$host \$host_allowed_public'
         ))
@@ -104,10 +104,10 @@ class TestHostAllowlists:
         assert host.endswith('.ts.net'), host
 
     def test_public_map_has_no_loopback_entries(self, conf_text):
-        ***REMOVED*** Loopback entries on :80 let any client spoof a trusted Host and
-        ***REMOVED*** flip the middleware's is_public_host() — the removed hole. The
-        ***REMOVED*** trusted set is the middleware's own (TRUSTED_LOCAL_HOSTS), so
-        ***REMOVED*** the tailnet IP needs no hardcoding here.
+        # Loopback entries on :80 let any client spoof a trusted Host and
+        # flip the middleware's is_public_host() — the removed hole. The
+        # trusted set is the middleware's own (TRUSTED_LOCAL_HOSTS), so
+        # the tailnet IP needs no hardcoding here.
         from backend.middleware import _LOCAL_HOSTS
         entries = _map_entries(_extract_block(
             conf_text, r'map \$host \$host_allowed_public'
@@ -119,12 +119,12 @@ class TestHostAllowlists:
             conf_text, r'map \$host \$host_allowed_tailnet'
         ))
         assert {'localhost', '127.0.0.1'} <= entries
-        ***REMOVED*** The funnel hostname is servable on the tailnet listener too.
+        # The funnel hostname is servable on the tailnet listener too.
         assert _funnel_host(conf_text) in entries
 
     def test_tailnet_map_covers_trusted_local_hosts(self, conf_text):
-        ***REMOVED*** "Keep the tailnet map in sync with TRUSTED_LOCAL_HOSTS" — every
-        ***REMOVED*** host Django trusts must be servable on the tailnet listener.
+        # "Keep the tailnet map in sync with TRUSTED_LOCAL_HOSTS" — every
+        # host Django trusts must be servable on the tailnet listener.
         from backend.middleware import _LOCAL_HOSTS
         entries = _map_entries(_extract_block(
             conf_text, r'map \$host \$host_allowed_tailnet'

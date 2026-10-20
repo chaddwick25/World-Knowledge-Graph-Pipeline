@@ -27,9 +27,9 @@ from semantic_search.services.community_detection_service import (
 def _two_cluster_graph() -> nx.Graph:
     """Two clearly-separated cliques connected by a single edge."""
     G = nx.Graph()
-    G.add_edges_from([(0, 1), (1, 2), (2, 0), (0, 2)])  ***REMOVED*** clique 1
-    G.add_edges_from([(3, 4), (4, 5), (5, 3), (3, 5)])  ***REMOVED*** clique 2
-    G.add_edge(2, 3)  ***REMOVED*** bridge
+    G.add_edges_from([(0, 1), (1, 2), (2, 0), (0, 2)])  # clique 1
+    G.add_edges_from([(3, 4), (4, 5), (5, 3), (3, 5)])  # clique 2
+    G.add_edge(2, 3)  # bridge
     return G
 
 
@@ -39,13 +39,13 @@ def test_every_node_in_exactly_one_community():
     result = CommunityDetectionService().detect_communities(G)
     node_to_comm = result["node_to_community"]
     assert len(node_to_comm) == G.number_of_nodes()
-    ***REMOVED*** Each node appears exactly once across all communities
+    # Each node appears exactly once across all communities
     flat = [n for comm in result["communities"] for n in comm]
     assert sorted(flat) == sorted(node_to_comm.keys())
 
 
 def test_community_count_leq_node_count():
-    """***REMOVED***communities ≤ ***REMOVED***nodes (Phase 0 invariant)."""
+    """#communities ≤ #nodes (Phase 0 invariant)."""
     G = _two_cluster_graph()
     result = CommunityDetectionService().detect_communities(G)
     assert result["community_count"] <= G.number_of_nodes()
@@ -89,7 +89,7 @@ def test_filter_communities_by_class():
     svc = CommunityDetectionService()
     result = svc.detect_communities(G)
     communities = result["communities"]
-    ***REMOVED*** Class map: clique 1 = Cafe, clique 2 = School
+    # Class map: clique 1 = Cafe, clique 2 = School
     entity_class_map = {0: "wkgs:Cafe", 1: "wkgs:Cafe", 2: "wkgs:Cafe",
                         3: "wkgs:School", 4: "wkgs:School", 5: "wkgs:School"}
     cafe_communities = svc.filter_communities_by_class(
@@ -98,9 +98,9 @@ def test_filter_communities_by_class():
     school_communities = svc.filter_communities_by_class(
         communities, entity_class_map, "wkgs:School"
     )
-    ***REMOVED*** Each class should be dominant in exactly one community
+    # Each class should be dominant in exactly one community
     assert len(cafe_communities) >= 1
     assert len(school_communities) >= 1
-    ***REMOVED*** All returned cafe communities should have wkgs:Cafe as dominant
+    # All returned cafe communities should have wkgs:Cafe as dominant
     for c in cafe_communities:
         assert c["dominant_class"] == "wkgs:Cafe"

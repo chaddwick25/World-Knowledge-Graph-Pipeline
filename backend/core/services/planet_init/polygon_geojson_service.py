@@ -35,10 +35,10 @@ class PolygonGeoJsonService:
             ValueError: If polygon file cannot be parsed
         """
         try:
-            ***REMOVED*** Parse .poly file to GEOS Polygon
+            # Parse .poly file to GEOS Polygon
             geos_polygon = parse_poly_file(poly_path)
             
-            ***REMOVED*** Convert GEOS Polygon to GeoJSON
+            # Convert GEOS Polygon to GeoJSON
             geojson = PolygonGeoJsonService._geos_to_geojson(geos_polygon)
             
             return geojson
@@ -61,7 +61,7 @@ class PolygonGeoJsonService:
             dict: GeoJSON representation (Polygon or MultiPolygon)
         """
         if isinstance(geos_geom, GeosMultiPolygon):
-            ***REMOVED*** Handle MultiPolygon — convert each sub-polygon
+            # Handle MultiPolygon — convert each sub-polygon
             all_coords = []
             for sub_poly in geos_geom:
                 raw_ring = sub_poly.coords[0]
@@ -73,7 +73,7 @@ class PolygonGeoJsonService:
                 "coordinates": all_coords
             }
         else:
-            ***REMOVED*** Handle single Polygon
+            # Handle single Polygon
             raw_coords = geos_geom.coords[0]
             coords = [[round(lon, 5), round(lat, 5)] for lon, lat in raw_coords]
             coords = PolygonGeoJsonService._simplify_ring(coords)
@@ -96,7 +96,7 @@ class PolygonGeoJsonService:
         if len(coords) > 500:
             step = max(1, len(coords) // 400)
             simplified = coords[::step]
-            ***REMOVED*** Ensure the ring is still closed
+            # Ensure the ring is still closed
             if simplified[0] != simplified[-1]:
                 simplified.append(simplified[0])
             return simplified
@@ -113,17 +113,17 @@ class PolygonGeoJsonService:
         Returns:
             dict: GeoJSON representation
         """
-        ***REMOVED*** Check if GeoJSON is already cached
+        # Check if GeoJSON is already cached
         if polygon_file.geojson:
             return polygon_file.geojson
         
-        ***REMOVED*** Generate GeoJSON
+        # Generate GeoJSON
         try:
             geojson = PolygonGeoJsonService.convert_poly_to_geojson(
                 polygon_file.file_path
             )
             
-            ***REMOVED*** Cache in database
+            # Cache in database
             polygon_file.geojson = geojson
             polygon_file.save(update_fields=['geojson', 'geojson_generated_at'])
             
@@ -133,7 +133,7 @@ class PolygonGeoJsonService:
             
         except Exception as e:
             logger.error(f"Failed to generate GeoJSON for {polygon_file.name}: {str(e)}")
-            ***REMOVED*** Return a simple bounding box as fallback
+            # Return a simple bounding box as fallback
             return PolygonGeoJsonService._generate_fallback_geojson(polygon_file)
     
     @staticmethod
@@ -150,7 +150,7 @@ class PolygonGeoJsonService:
         Returns:
             dict: Simple bounding box GeoJSON
         """
-        ***REMOVED*** Very rough continent bounding boxes (for fallback only)
+        # Very rough continent bounding boxes (for fallback only)
         fallback_boxes = {
             'africa': [[-20, -35], [55, -35], [55, 40], [-20, 40], [-20, -35]],
             'asia': [[25, -10], [150, -10], [150, 80], [25, 80], [25, -10]],
@@ -162,7 +162,7 @@ class PolygonGeoJsonService:
             'antarctica': [[-180, -90], [180, -90], [180, -60], [-180, -60], [-180, -90]]
         }
         
-        ***REMOVED*** Try to find a matching bounding box
+        # Try to find a matching bounding box
         name_lower = polygon_file.name.lower()
         for region, coords in fallback_boxes.items():
             if region in name_lower:
@@ -171,7 +171,7 @@ class PolygonGeoJsonService:
                     "coordinates": [coords]
                 }
         
-        ***REMOVED*** Ultimate fallback: small box at 0,0
+        # Ultimate fallback: small box at 0,0
         return {
             "type": "Polygon",
             "coordinates": [[[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]]]

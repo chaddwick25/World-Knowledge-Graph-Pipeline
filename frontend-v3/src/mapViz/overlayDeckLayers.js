@@ -45,16 +45,16 @@ export function buildCountryLayer(features) {
 
 // ── Relation type color map (moved from useMapOverlayLayers.js) ─────────
 export const RELATION_COLORS = {
-  addrCity:        '***REMOVED***8b5cf6',  // violet-500
-  addrPlace:       '***REMOVED***10b981',  // emerald-500
-  addrNeighbour:   '***REMOVED***06b6d4',  // cyan-500
-  addrSuburb:      '***REMOVED***84cc16',  // lime-500
-  addrDistrict:    '***REMOVED***3b82f6',  // blue-500
-  addrState:       '***REMOVED***ef4444',  // red-500
-  addrProvince:    '***REMOVED***ec4899',  // pink-500
-  addrHamlet:      '***REMOVED***f59e0b',  // amber-500
+  addrCity:        '#8b5cf6',  // violet-500
+  addrPlace:       '#10b981',  // emerald-500
+  addrNeighbour:   '#06b6d4',  // cyan-500
+  addrSuburb:      '#84cc16',  // lime-500
+  addrDistrict:    '#3b82f6',  // blue-500
+  addrState:       '#ef4444',  // red-500
+  addrProvince:    '#ec4899',  // pink-500
+  addrHamlet:      '#f59e0b',  // amber-500
 }
-const DEFAULT_RELATION_COLOR = '***REMOVED***6b7280'  // gray-500 for unknown relations
+const DEFAULT_RELATION_COLOR = '#6b7280'  // gray-500 for unknown relations
 
 export function getRelationColor(relation) {
   return RELATION_COLORS[relation] || DEFAULT_RELATION_COLOR
@@ -62,12 +62,12 @@ export function getRelationColor(relation) {
 
 // ── Agent overlay tool colors (moved from useMapOverlayLayers.js) ───────
 const TOOL_COLORS = {
-  structuredSearch: '***REMOVED***3b82f6',  // blue
-  templateQuery: '***REMOVED***10b981',     // green
+  structuredSearch: '#3b82f6',  // blue
+  templateQuery: '#10b981',     // green
 }
 
 function hexToRgb(hex) {
-  const m = /^***REMOVED***?([0-9a-f]{6})$/i.exec(String(hex || ''))
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''))
   if (!m) return [99, 102, 241]
   const v = parseInt(m[1], 16)
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255]
@@ -79,7 +79,7 @@ export function escapeHtml(value) {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
-    .replaceAll("'", '&***REMOVED***39;')
+    .replaceAll("'", '&#39;')
 }
 
 /** Accept either a raw data-tool result or an explicit entities list
@@ -315,7 +315,7 @@ export function buildQueryGraphLayers(graph) {
     }))
   }
 
-  // Edges entity → nearest anchor (old Leaflet: dashed ***REMOVED***a5b4fc 1.5px).
+  // Edges entity → nearest anchor (old Leaflet: dashed #a5b4fc 1.5px).
   const links = (graph.links || [])
     .map((link) => {
       const anchor = graph.anchors?.[link.anchorIdx]
@@ -339,7 +339,7 @@ export function buildQueryGraphLayers(graph) {
   }
 
   // Distance/bearing lines between two anchors (old Leaflet: solid
-  // ***REMOVED***818cf8 + divIcon label — same pattern as the template ***REMOVED***2 lines).
+  // #818cf8 + divIcon label — same pattern as the template #2 lines).
   const lines = (graph.anchorLines || [])
     .map((line, index) => {
       const from = line.from
@@ -508,7 +508,7 @@ export function buildAgentOverlayLayers(overlays) {
   const lineRows = []
 
   for (const overlay of overlays || []) {
-    const color = hexToRgb(overlay.color || TOOL_COLORS[overlay.tool] || '***REMOVED***6366f1')
+    const color = hexToRgb(overlay.color || TOOL_COLORS[overlay.tool] || '#6366f1')
     const kind = overlay.kind || 'markers'
     const entities = normalizeOverlayEntities(overlay)
     const anchor = overlay.anchor || null

@@ -23,10 +23,10 @@ import unicodedata
 
 from .base_romanizer import AbstractRomanizer
 
-***REMOVED*** Hangul Unicode block ranges
-***REMOVED*** U+AC00–U+D7AF: Hangul Syllables (가-힣)
-***REMOVED*** U+1100–U+11FF: Hangul Jamo (modern decomposition targets)
-***REMOVED*** U+3130–U+318F: Hangul Compatibility Jamo
+# Hangul Unicode block ranges
+# U+AC00–U+D7AF: Hangul Syllables (가-힣)
+# U+1100–U+11FF: Hangul Jamo (modern decomposition targets)
+# U+3130–U+318F: Hangul Compatibility Jamo
 _HANGUL_RE = re.compile(r'[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]')
 
 
@@ -39,14 +39,14 @@ class HangulRomanizer(AbstractRomanizer):
 
     language_code = "ko"
 
-    ***REMOVED*** Choseong (initial consonants): U+1100–U+1112
+    # Choseong (initial consonants): U+1100–U+1112
     _CHOSEONG = {
         'ᄀ': 'g', 'ᄁ': 'kk', 'ᄂ': 'n', 'ᄃ': 'd', 'ᄄ': 'tt',
         'ᄅ': 'r', 'ᄆ': 'm', 'ᄇ': 'b', 'ᄈ': 'pp', 'ᄉ': 's',
         'ᄊ': 'ss', 'ᄋ': '', 'ᄌ': 'j', 'ᄍ': 'jj', 'ᄎ': 'ch',
         'ᄏ': 'k', 'ᄐ': 't', 'ᄑ': 'p', 'ᄒ': 'h',
     }
-    ***REMOVED*** Jungseong (vowels): U+1161–U+1175
+    # Jungseong (vowels): U+1161–U+1175
     _JUNGSEONG = {
         'ᅡ': 'a', 'ᅢ': 'ae', 'ᅣ': 'ya', 'ᅤ': 'yae', 'ᅥ': 'eo',
         'ᅦ': 'e', 'ᅧ': 'yeo', 'ᅨ': 'ye', 'ᅩ': 'o', 'ᅪ': 'wa',
@@ -54,10 +54,10 @@ class HangulRomanizer(AbstractRomanizer):
         'ᅰ': 'we', 'ᅱ': 'wi', 'ᅲ': 'yu', 'ᅳ': 'eu', 'ᅴ': 'ui',
         'ᅵ': 'i',
     }
-    ***REMOVED*** Jongseong (final consonants): U+11A8–U+11C2
-    ***REMOVED*** These are the same consonants as choseong but at different Unicode
-    ***REMOVED*** codepoints. NFKD decomposition produces these for syllables with
-    ***REMOVED*** final consonants (e.g., 울 → ᄋ + ᅮ + ᆯ).
+    # Jongseong (final consonants): U+11A8–U+11C2
+    # These are the same consonants as choseong but at different Unicode
+    # codepoints. NFKD decomposition produces these for syllables with
+    # final consonants (e.g., 울 → ᄋ + ᅮ + ᆯ).
     _JONGSEONG = {
         'ᆨ': 'k', 'ᆩ': 'kk', 'ᆪ': 'ks', 'ᆫ': 'n', 'ᆬ': 'nj',
         'ᆭ': 'n', 'ᆮ': 't', 'ᆯ': 'l', 'ᆰ': 'lg', 'ᆱ': 'lm',
@@ -66,7 +66,7 @@ class HangulRomanizer(AbstractRomanizer):
         'ᆼ': 'ng', 'ᆽ': 't', 'ᆾ': 'ch', 'ᆿ': 'k', 'ᇀ': 't',
         'ᇁ': 'p', 'ᇂ': 'h',
     }
-    ***REMOVED*** Compatibility jamo (U+3130–U+318F) for robustness
+    # Compatibility jamo (U+3130–U+318F) for robustness
     _COMPAT = {
         'ㄱ': 'g', 'ㄲ': 'kk', 'ㄴ': 'n', 'ㄷ': 'd', 'ㄸ': 'tt',
         'ㄹ': 'r', 'ㅁ': 'm', 'ㅂ': 'b', 'ㅃ': 'pp', 'ㅅ': 's',
@@ -100,6 +100,6 @@ class HangulRomanizer(AbstractRomanizer):
                 result.append(cls._ALL_MAP[ch])
             elif ch.isascii():
                 result.append(ch.lower())
-            ***REMOVED*** Skip non-ASCII non-Hangul chars (e.g., CJK ideographs)
+            # Skip non-ASCII non-Hangul chars (e.g., CJK ideographs)
         raw = ''.join(result)
         return cls._normalize(raw)

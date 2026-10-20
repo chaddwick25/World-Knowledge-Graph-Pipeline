@@ -21,7 +21,7 @@ from django.conf import settings
 from core.services.llm_service import LLMService
 
 
-***REMOVED*** ── Helpers ──────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────
 
 class FakeResponse:
     def __init__(self, status_code=200, payload=None, text=""):
@@ -76,7 +76,7 @@ class _StubLLM:
         return self._chat_json
 
 
-***REMOVED*** ── LLMService: config ───────────────────────────────────────────────────
+# ── LLMService: config ───────────────────────────────────────────────────
 
 class TestConfig:
     def test_defaults_native(self):
@@ -86,7 +86,7 @@ class TestConfig:
         assert svc.base_url == "http://localhost:11434/v1"
         assert svc.root_url == "http://localhost:11434"
         assert svc.model == "qwen3:8b"
-        assert svc.timeout == 60.0  ***REMOVED*** read timeout — cold model reloads take 5-15s
+        assert svc.timeout == 60.0  # read timeout — cold model reloads take 5-15s
 
     def test_env_overrides(self, monkeypatch):
         monkeypatch.setattr(settings, "LLM_BASE_URL", "http://ollama:11434/v1")
@@ -108,13 +108,13 @@ class TestConfig:
 
     def test_singleton(self):
         first = LLMService.get_instance()
-        assert first is LLMService.get_instance()  ***REMOVED*** same instance on repeat call
+        assert first is LLMService.get_instance()  # same instance on repeat call
         LLMService.reset_instance()
         second = LLMService.get_instance()
-        assert second is not first  ***REMOVED*** reset forces a fresh instance
+        assert second is not first  # reset forces a fresh instance
 
 
-***REMOVED*** ── LLMService: chat ─────────────────────────────────────────────────────
+# ── LLMService: chat ─────────────────────────────────────────────────────
 
 class TestChat:
     def test_native_chat_builds_request(self, monkeypatch):
@@ -131,7 +131,7 @@ class TestChat:
         assert out == "hello world"
         assert calls["url"] == "http://localhost:11434/api/chat"
         assert calls["json"]["model"] == "qwen3:8b"
-        assert calls["json"]["think"] is False       ***REMOVED*** thinking disabled
+        assert calls["json"]["think"] is False       # thinking disabled
         assert calls["json"]["stream"] is False
         assert calls["json"]["options"]["num_predict"] == 512
 
@@ -144,10 +144,10 @@ class TestChat:
 
         monkeypatch.setattr(requests, "post", fake_post)
         svc = LLMService()
-        ***REMOVED*** Per-call Qwen3 hybrid-thinking override (planning steps think).
+        # Per-call Qwen3 hybrid-thinking override (planning steps think).
         svc.chat([{"role": "user", "content": "hi"}], think=True)
         assert calls["json"]["think"] is True
-        ***REMOVED*** Default stays off.
+        # Default stays off.
         svc.chat([{"role": "user", "content": "hi"}])
         assert calls["json"]["think"] is False
 
@@ -212,7 +212,7 @@ class TestChat:
         assert LLMService().chat([{"role": "user", "content": "x"}]) is None
 
 
-***REMOVED*** ── LLMService: chat_stream ──────────────────────────────────────────────
+# ── LLMService: chat_stream ──────────────────────────────────────────────
 
 class TestChatStream:
     def test_native_stream_yields_deltas(self, monkeypatch):
@@ -272,12 +272,12 @@ class TestChatStream:
         assert list(LLMService().chat_stream([{"role": "user", "content": "x"}])) == []
 
 
-***REMOVED*** ── LLMService: JSON extraction ──────────────────────────────────────────
+# ── LLMService: JSON extraction ──────────────────────────────────────────
 
 class TestChatJson:
     def test_native_json_mode(self, monkeypatch):
         calls = {}
-        payload = {"template": "FILTER-AGGREGATE-MEASURE (***REMOVED***1)"}
+        payload = {"template": "FILTER-AGGREGATE-MEASURE (#1)"}
         content = json.dumps(payload)
 
         def fake_post(url, json=None, timeout=None):
@@ -287,7 +287,7 @@ class TestChatJson:
         monkeypatch.setattr(requests, "post", fake_post)
         svc = LLMService()
         assert svc.chat_json([]) == payload
-        assert calls["json"]["format"] == "json"      ***REMOVED*** native JSON mode
+        assert calls["json"]["format"] == "json"      # native JSON mode
         assert calls["json"]["think"] is False
 
     def test_fenced_json(self):
@@ -306,7 +306,7 @@ class TestChatJson:
         assert LLMService._extract_json(None) is None
 
 
-***REMOVED*** ── LLMService: chat_tools (native tool calling) ─────────────────────────
+# ── LLMService: chat_tools (native tool calling) ─────────────────────────
 
 class TestChatTools:
     def test_native_tool_calls_normalized(self, monkeypatch):
@@ -343,14 +343,14 @@ class TestChatTools:
             tools=[{"type": "function", "function": {"name": "nameSearch"}}],
         )
         assert calls["url"] == "http://localhost:11434/api/chat"
-        assert calls["json"]["think"] is False       ***REMOVED*** thinking disabled
+        assert calls["json"]["think"] is False       # thinking disabled
         assert calls["json"]["stream"] is False
         assert calls["json"]["tools"][0]["function"]["name"] == "nameSearch"
         assert content is None
         assert tool_calls == [
             {"id": "call-1", "name": "nameSearch",
              "arguments": {"naturalQuery": "Cafe A", "topK": 5}},
-            ***REMOVED*** Ollama native args arrive as a dict; OpenAI-style string parsed.
+            # Ollama native args arrive as a dict; OpenAI-style string parsed.
             {"id": None, "name": "structuredSearch",
              "arguments": {"queryTags": {"amenity": "cafe"}}},
         ]
@@ -437,7 +437,7 @@ class TestChatTools:
         assert LLMService().chat_tools([], tools=[]) == (None, None)
 
 
-***REMOVED*** ── LLMService: embeddings + availability ────────────────────────────────
+# ── LLMService: embeddings + availability ────────────────────────────────
 
 class TestEmbedAndAvailability:
     def test_native_embed_request(self, monkeypatch):
@@ -472,7 +472,7 @@ class TestEmbedAndAvailability:
         monkeypatch.setattr(requests, "get", fake_get)
         svc = LLMService()
         assert svc.is_available() is True
-        assert svc.is_available() is True  ***REMOVED*** cached — no second request
+        assert svc.is_available() is True  # cached — no second request
         assert calls["n"] == 1
 
     def test_availability_down_not_cached_long(self, monkeypatch):
@@ -483,10 +483,10 @@ class TestEmbedAndAvailability:
         monkeypatch.setattr(settings, "LLM_AVAILABILITY_CACHE_SECONDS", "0")
         svc = LLMService()
         assert svc.is_available() is False
-        assert svc.is_available() is False  ***REMOVED*** re-probed (cache 0)
+        assert svc.is_available() is False  # re-probed (cache 0)
 
 
-***REMOVED*** ── Executor: LLM-grounded answer synthesis ──────────────────────────────
+# ── Executor: LLM-grounded answer synthesis ──────────────────────────────
 
 class TestSynthesizeAnswer:
     def _call(self, template, results, trace=None, concepts=None):
@@ -503,7 +503,7 @@ class TestSynthesizeAnswer:
             lambda: _StubLLM(available=True, answer="Three cafes within 50m."),
         )
         results = [{"name": "A", "distance_m": 40.0}]
-        assert self._call("FILTER-AGGREGATE-MEASURE (***REMOVED***1)", results) == \
+        assert self._call("FILTER-AGGREGATE-MEASURE (#1)", results) == \
             "Three cafes within 50m."
 
     def test_falls_back_when_unavailable(self, monkeypatch):
@@ -512,7 +512,7 @@ class TestSynthesizeAnswer:
             lambda: _StubLLM(available=False),
         )
         results = [{"name": "A"}, {"name": "B"}]
-        answer = self._call("FILTER-AGGREGATE-MEASURE (***REMOVED***1)", results)
+        answer = self._call("FILTER-AGGREGATE-MEASURE (#1)", results)
         assert answer == "Found 2 entities within the specified radius."
 
     def test_llm_empty_answer_falls_back(self, monkeypatch):
@@ -521,8 +521,8 @@ class TestSynthesizeAnswer:
             lambda: _StubLLM(available=True, answer="   "),
         )
         results = [{"name": "A"}]
-        answer = self._call("OBJECT-FIELD-MEASURE (***REMOVED***2)", results)
-        assert answer.startswith("Found 1 results.")  ***REMOVED*** deterministic path
+        answer = self._call("OBJECT-FIELD-MEASURE (#2)", results)
+        assert answer.startswith("Found 1 results.")  # deterministic path
 
     def test_no_llm_when_no_results(self, monkeypatch):
         def should_not_be_called(*args, **kwargs):
@@ -531,7 +531,7 @@ class TestSynthesizeAnswer:
         monkeypatch.setattr(
             "core.services.llm_service.LLMService.get_instance", should_not_be_called,
         )
-        assert self._call("FILTER-AGGREGATE-MEASURE (***REMOVED***1)", []) == \
+        assert self._call("FILTER-AGGREGATE-MEASURE (#1)", []) == \
             "No results found."
 
     def test_no_llm_when_error_result(self, monkeypatch):
@@ -541,7 +541,7 @@ class TestSynthesizeAnswer:
         monkeypatch.setattr(
             "core.services.llm_service.LLMService.get_instance", should_not_be_called,
         )
-        answer = self._call("SPECTRAL-ANALYSIS (***REMOVED***11)", {"error": "no data"})
+        answer = self._call("SPECTRAL-ANALYSIS (#11)", {"error": "no data"})
         assert answer == "no data"
 
     def test_skip_llm_uses_deterministic_path(self, monkeypatch):
@@ -556,12 +556,12 @@ class TestSynthesizeAnswer:
             QueryExecutorService,
         )
         answer = QueryExecutorService._synthesize_answer(
-            "FILTER-AGGREGATE-MEASURE (***REMOVED***1)", [], results, [], skip_llm=True,
+            "FILTER-AGGREGATE-MEASURE (#1)", [], results, [], skip_llm=True,
         )
         assert answer == "Found 2 entities within the specified radius."
 
 
-***REMOVED*** ── Parser: LLM refinement ───────────────────────────────────────────────
+# ── Parser: LLM refinement ───────────────────────────────────────────────
 
 class TestParserRefine:
     @staticmethod
@@ -570,7 +570,7 @@ class TestParserRefine:
         from semantic_search.services.query_parser_service import (
             QueryParserService,
         )
-        svc = QueryParserService.__new__(QueryParserService)  ***REMOVED*** skip model load
+        svc = QueryParserService.__new__(QueryParserService)  # skip model load
         le = LabelEncoder()
         le.fit(templates)
         svc.label_encoder = le
@@ -579,13 +579,13 @@ class TestParserRefine:
     def test_valid_refine_applied(self, monkeypatch):
         from semantic_search.services.query_parser_service import CONCEPT_TYPES
         svc = self._svc_with_labels([
-            "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
-            "OBJECT-FIELD-MEASURE (***REMOVED***2)",
+            "FILTER-AGGREGATE-MEASURE (#1)",
+            "OBJECT-FIELD-MEASURE (#2)",
         ])
         monkeypatch.setattr(
             "core.services.llm_service.LLMService.get_instance",
             lambda: _StubLLM(available=True, chat_json={
-                "template": "OBJECT-FIELD-MEASURE (***REMOVED***2)",
+                "template": "OBJECT-FIELD-MEASURE (#2)",
                 "concepts": [
                     {"type": "LOCATION", "text": "Belize City"},
                     {"type": "OBJECT", "text": "cafe"},
@@ -594,59 +594,59 @@ class TestParserRefine:
         )
         out = svc._llm_refine(
             "How far is the nearest cafe in Belize City?",
-            "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
+            "FILTER-AGGREGATE-MEASURE (#1)",
             [{"type": "LOCATION", "text": "How Belize City"}],
         )
         assert out is not None
         new_template, new_concepts = out
-        assert new_template == "OBJECT-FIELD-MEASURE (***REMOVED***2)"
+        assert new_template == "OBJECT-FIELD-MEASURE (#2)"
         assert new_concepts[0]["type"] == "LOCATION"
         assert new_concepts[0]["text"] == "Belize City"
         assert new_concepts[1]["type"] == "OBJECT"
         assert all(c["type"] in CONCEPT_TYPES for c in new_concepts)
 
     def test_invalid_template_rejected(self, monkeypatch):
-        svc = self._svc_with_labels(["OBJECT-FIELD-MEASURE (***REMOVED***2)"])
+        svc = self._svc_with_labels(["OBJECT-FIELD-MEASURE (#2)"])
         monkeypatch.setattr(
             "core.services.llm_service.LLMService.get_instance",
             lambda: _StubLLM(available=True, chat_json={
-                "template": "NOT-A-REAL-TEMPLATE (***REMOVED***99)",
+                "template": "NOT-A-REAL-TEMPLATE (#99)",
                 "concepts": [{"type": "LOCATION", "text": "x"}],
             }),
         )
-        assert svc._llm_refine("q", "OBJECT-FIELD-MEASURE (***REMOVED***2)", []) is None
+        assert svc._llm_refine("q", "OBJECT-FIELD-MEASURE (#2)", []) is None
 
     def test_invalid_concept_type_rejected(self, monkeypatch):
-        svc = self._svc_with_labels(["OBJECT-FIELD-MEASURE (***REMOVED***2)"])
+        svc = self._svc_with_labels(["OBJECT-FIELD-MEASURE (#2)"])
         monkeypatch.setattr(
             "core.services.llm_service.LLMService.get_instance",
             lambda: _StubLLM(available=True, chat_json={
-                "template": "OBJECT-FIELD-MEASURE (***REMOVED***2)",
+                "template": "OBJECT-FIELD-MEASURE (#2)",
                 "concepts": [
                     {"type": "NOT-A-CONCEPT", "text": "x"},
                     {"type": "LOCATION", "text": "Belize City"},
                 ],
             }),
         )
-        out = svc._llm_refine("q", "OBJECT-FIELD-MEASURE (***REMOVED***2)", [])
+        out = svc._llm_refine("q", "OBJECT-FIELD-MEASURE (#2)", [])
         assert out is not None
         assert all(c["type"] == "LOCATION" for c in out[1])
 
     def test_unavailable_llm_returns_none(self, monkeypatch):
-        svc = self._svc_with_labels(["OBJECT-FIELD-MEASURE (***REMOVED***2)"])
+        svc = self._svc_with_labels(["OBJECT-FIELD-MEASURE (#2)"])
         monkeypatch.setattr(
             "core.services.llm_service.LLMService.get_instance",
             lambda: _StubLLM(available=False),
         )
-        assert svc._llm_refine("q", "OBJECT-FIELD-MEASURE (***REMOVED***2)", []) is None
+        assert svc._llm_refine("q", "OBJECT-FIELD-MEASURE (#2)", []) is None
 
     def test_garbage_llm_output_returns_none(self, monkeypatch):
-        svc = self._svc_with_labels(["OBJECT-FIELD-MEASURE (***REMOVED***2)"])
+        svc = self._svc_with_labels(["OBJECT-FIELD-MEASURE (#2)"])
         monkeypatch.setattr(
             "core.services.llm_service.LLMService.get_instance",
-            lambda: _StubLLM(available=True, chat_json=None),  ***REMOVED*** chat_json → None
+            lambda: _StubLLM(available=True, chat_json=None),  # chat_json → None
         )
-        assert svc._llm_refine("q", "OBJECT-FIELD-MEASURE (***REMOVED***2)", []) is None
+        assert svc._llm_refine("q", "OBJECT-FIELD-MEASURE (#2)", []) is None
 
     def test_threshold_from_env(self, monkeypatch):
         from semantic_search.services.query_parser_service import (

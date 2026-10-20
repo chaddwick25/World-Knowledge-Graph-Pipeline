@@ -38,17 +38,17 @@ _ENTITY_ROWS = [
     ("Moher Cottage", {"amenity": "cafe"}, 52.9530, -9.4211, 700004),
     ("Cliff Coast Coffee", {"amenity": "cafe"}, 53.0126, -9.3839, 700005),
     ("Real Cafe Near Shandon", {"amenity": "cafe"}, 51.9035, -8.4760, 700006),
-    ***REMOVED*** Belfast anchor regression (2026-09-19): the city and a same-name
-    ***REMOVED*** bicycle destination sign both match exactly; the city must win.
+    # Belfast anchor regression (2026-09-19): the city and a same-name
+    # bicycle destination sign both match exactly; the city must win.
     ("Belfast", {"place": "city", "capital": "yes"}, 54.5973, -5.9301, 700010),
     ("Belfast", {"type": "destination_sign", "destination": "Belfast"},
      54.6589, -5.9029, 700011),
 ]
 _SEEDED_OSM_IDS = [row[4] for row in _ENTITY_ROWS]
 
-***REMOVED*** A coordinate-less way encoded as POINT(NaN NaN) — NOT NULL, so the
-***REMOVED*** spatial search's exclude(geom__isnull=True) misses it, and ST_Distance
-***REMOVED*** on NaN returns 0 (the "(0m away)" regression).
+# A coordinate-less way encoded as POINT(NaN NaN) — NOT NULL, so the
+# spatial search's exclude(geom__isnull=True) misses it, and ST_Distance
+# on NaN returns 0 (the "(0m away)" regression).
 NAN_OSM_ID = 700099
 
 
@@ -76,15 +76,15 @@ def seed_entities(django_db_setup, django_db_blocker):
                 snapshot_id=SNAP,
                 country_code="BZ",
                 tags=full_tags,
-                ***REMOVED*** The geocoder's pg_trgm tier searches name_romanized
-                ***REMOVED*** (populated by romanize_names in production) — identity
-                ***REMOVED*** romanization for these English names.
+                # The geocoder's pg_trgm tier searches name_romanized
+                # (populated by romanize_names in production) — identity
+                # romanization for these English names.
                 name_romanized=name.lower(),
                 geom=Point(lon, lat, srid=4326),
             )
-        ***REMOVED*** Coordinate-less way: POINT(NaN NaN) can't be built via the GEOS
-        ***REMOVED*** wrapper — raw SQL, inside the unblock (writes must hit the TEST
-        ***REMOVED*** DBs, never the real ones).
+        # Coordinate-less way: POINT(NaN NaN) can't be built via the GEOS
+        # wrapper — raw SQL, inside the unblock (writes must hit the TEST
+        # DBs, never the real ones).
         import json as _json
         from django.db import connections as _connections
         with _connections["vectors"].cursor() as cur:
@@ -143,7 +143,7 @@ class TestFragmentGuard:
         from semantic_search.services.query_executor_service import (
             QueryExecutorService,
         )
-        anchor = Point(-8.4761616, 51.9032626, srid=4326)  ***REMOVED*** Shandon Bells
+        anchor = Point(-8.4761616, 51.9032626, srid=4326)  # Shandon Bells
         results = QueryExecutorService._search_by_amenity_spatial(
             "cafe", None, SNAP, anchor_point=anchor, top_k=10,
         )

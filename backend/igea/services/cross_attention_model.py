@@ -7,7 +7,7 @@ Per Dsouza et al., ISWC 2023 (https://arxiv.org/abs/2105.00847)
 This replaces basic cosine similarity with advanced neural cross-attention
 for learning cross-cultural semantic variations in entity names.
 """
-***REMOVED***TODO: Review this code
+#TODO: Review this code
 import logging
 import torch
 import torch.nn as nn
@@ -60,25 +60,25 @@ class CrossAttentionIGEA(nn.Module):
         Returns:
             Alignment probability (batch,) in [0, 1]
         """
-        ***REMOVED*** BiLSTM encoding
-        ***REMOVED*** osm_seq, wd_seq shape: (batch, seq_len, emb_dim)
+        # BiLSTM encoding
+        # osm_seq, wd_seq shape: (batch, seq_len, emb_dim)
         osm_context, _ = self.bilstm(osm_seq)
         wd_context, _ = self.bilstm(wd_seq)
         
-        ***REMOVED*** Cross attention
-        ***REMOVED*** A = softmax(osm_context * W * wd_context^T)
+        # Cross attention
+        # A = softmax(osm_context * W * wd_context^T)
         osm_proj = self.attention_weights(osm_context)
         attn_scores = torch.bmm(osm_proj, wd_context.transpose(1, 2))
         attn_weights = F.softmax(attn_scores, dim=-1)
         
-        ***REMOVED*** wd_attended shape: (batch, osm_seq_len, hidden_dim * 2)
+        # wd_attended shape: (batch, osm_seq_len, hidden_dim * 2)
         wd_attended = torch.bmm(attn_weights, wd_context)
         
-        ***REMOVED*** Pool sequences (mean pooling)
+        # Pool sequences (mean pooling)
         osm_pooled = torch.mean(osm_context, dim=1)
         wd_pooled = torch.mean(wd_attended, dim=1)
         
-        ***REMOVED*** Concatenate and classify
+        # Concatenate and classify
         combined = torch.cat([osm_pooled, wd_pooled], dim=1)
         return self.classifier(combined).squeeze()
     

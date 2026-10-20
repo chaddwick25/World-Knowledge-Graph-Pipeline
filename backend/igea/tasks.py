@@ -32,17 +32,17 @@ from igea.services.spatial_link_prediction import (
 
 logger = logging.getLogger(__name__)
 
-try:  ***REMOVED*** pragma: no cover - optional Celery dependency
+try:  # pragma: no cover - optional Celery dependency
     from celery import shared_task
     from celery.utils.log import get_task_logger
 
     logger = get_task_logger(__name__)
-except ImportError:  ***REMOVED*** Fallback so the module still works without Celery
-    def shared_task(*dargs, **dkwargs):  ***REMOVED*** type: ignore
+except ImportError:  # Fallback so the module still works without Celery
+    def shared_task(*dargs, **dkwargs):  # type: ignore
         def decorator(func):
             return func
 
-        ***REMOVED*** When used as @shared_task without params
+        # When used as @shared_task without params
         if dargs and callable(dargs[0]) and not dkwargs:
             return decorator(dargs[0])
         return decorator
@@ -76,7 +76,7 @@ def _push_step_update(
             group_name,
             {
                 "type": "step_update",
-                "step": 8,  ***REMOVED*** Logical step 8: Predict Spatial Links
+                "step": 8,  # Logical step 8: Predict Spatial Links
                 "total": 8,
                 "name": name,
                 "status": status,
@@ -84,7 +84,7 @@ def _push_step_update(
                 "pct": pct,
             },
         )
-    except Exception as exc:  ***REMOVED*** pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover - defensive
         logger.warning("USLP Celery: failed to push websocket update: %s", exc)
 
 
@@ -99,12 +99,12 @@ def _update_session_results(session_id: Optional[str], summary: Dict) -> None:
 
     try:
         session = ProcessingSession.objects.get(id=session_id)
-    except ProcessingSession.DoesNotExist:  ***REMOVED*** pragma: no cover - safety
+    except ProcessingSession.DoesNotExist:  # pragma: no cover - safety
         logger.warning("USLP Celery: ProcessingSession %s not found", session_id)
         return
 
     results = session.results or {}
-    ***REMOVED*** Store under a dedicated key to avoid clobbering existing data
+    # Store under a dedicated key to avoid clobbering existing data
     results["uslp_subgraphs"] = summary
     session.results = results
     session.save(update_fields=["results", "updated_at"])
@@ -136,7 +136,7 @@ def _build_head_entities(qs, max_heads: int) -> List[Dict]:
     for e in qs.iterator(chunk_size=10_000):
         tags = e.tags or {}
 
-        ***REMOVED*** Only include if entity has at least one spatial literal tag
+        # Only include if entity has at least one spatial literal tag
         if not any(k in tags for k in spatial_keys.union(SPATIAL_LITERAL_TAGS)):
             continue
 
@@ -212,11 +212,11 @@ def run_uslp_for_subgraph_batch(
         _push_step_update(session_id, "predict_links", "failed", msg, pct=0)
         return {"success": False, "error": "no_subgraphs"}
 
-    ***REMOVED*** Initialise USLP service (GPU or CPU)
+    # Initialise USLP service (GPU or CPU)
     service: SpatialLinkPredictionService
     if use_gpu:
         try:
-            import torch  ***REMOVED*** type: ignore
+            import torch  # type: ignore
 
             from igea.services.gpu_uslp_service import GPUAcceleratedUSLP
 
@@ -228,7 +228,7 @@ def run_uslp_for_subgraph_batch(
             else:
                 logger.info(f"USLP: Using GPU device {gpu_device} (FP64={use_fp64})")
                 service = GPUAcceleratedUSLP(device=gpu_device, use_fp64=use_fp64)
-        except Exception as exc:  ***REMOVED*** pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - defensive
             logger.warning(
                 "Failed to initialise GPU USLP (%s). Falling back to CPU.", exc
             )
@@ -306,7 +306,7 @@ def run_uslp_for_subgraph_batch(
             )
             continue
 
-        ***REMOVED*** Scope head entities by polygon (and optional snapshot)
+        # Scope head entities by polygon (and optional snapshot)
         qs = OsmEntity.objects.using("vectors").filter(geom__isnull=False)
         if snapshot_id:
             qs = qs.filter(source_snapshot_id=snapshot_id)
@@ -337,7 +337,7 @@ def run_uslp_for_subgraph_batch(
             )
             continue
 
-        ***REMOVED*** Load candidate pool scoped to this subgraph's polygon
+        # Load candidate pool scoped to this subgraph's polygon
         logger.info("USLP: Loading candidate pool for subgraph %s (limit=%d)", name, limit)
         pool_size = service.load_candidate_pool_from_db(limit=limit, polygon_wkt=polygon_wkt)
         logger.info("USLP: Candidate pool size for %s = %d", name, pool_size)
@@ -359,7 +359,7 @@ def run_uslp_for_subgraph_batch(
             )
             continue
 
-        ***REMOVED*** Predict links
+        # Predict links
         links = service.predict_links_batch(head_entities, threshold=threshold, top_k=top_k)
         links_found = len(links)
         logger.info(
@@ -374,11 +374,11 @@ def run_uslp_for_subgraph_batch(
         links_file_path: Optional[Path] = None
 
         if links:
-            ***REMOVED*** Persist to DB (SpatialTripletScore and SpatialTripletScoreRejected)
+            # Persist to DB (SpatialTripletScore and SpatialTripletScoreRejected)
             links_saved = service.persist_links(links, snapshot_id=snapshot_id, country_name=country_name, threshold=threshold)
             total_saved += links_saved
 
-            ***REMOVED*** Also write to JSONL file for redundancy / offline analysis
+            # Also write to JSONL file for redundancy / offline analysis
             subgraph_dir = poly_path.parent
             uslp_dir = subgraph_dir / "uslp"
             timestamp_str = timezone.now().strftime("%Y%m%dT%H%M%S")

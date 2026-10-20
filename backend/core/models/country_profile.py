@@ -24,26 +24,26 @@ class CountryRelationSnapshot(models.Model):
         related_name="country_relations",
     )
 
-    ***REMOVED*** Identity
+    # Identity
     iso_code = models.CharField(max_length=3, db_index=True)
     name = models.CharField(max_length=255)
     slug = models.CharField(max_length=255, db_index=True)
 
-    ***REMOVED*** Hierarchy
+    # Hierarchy
     parent_slug = models.CharField(max_length=255, null=True, blank=True)
     continent_name = models.CharField(max_length=100, null=True, blank=True, db_index=True)
     continent_id = models.UUIDField(null=True, blank=True)
 
-    ***REMOVED*** OSM / Wikidata / Geofabrik
+    # OSM / Wikidata / Geofabrik
     osm_relation_id = models.BigIntegerField(null=True, blank=True, db_index=True)
     wikidata_uri = models.CharField(max_length=200, null=True, blank=True)
     geofabrik_pbf_url = models.URLField(max_length=1024, null=True, blank=True)
 
-    ***REMOVED*** GeoVectors TSV paths (if present in the JSON overlay)
+    # GeoVectors TSV paths (if present in the JSON overlay)
     geovectors_location_tsv = models.CharField(max_length=1024, null=True, blank=True)
     geovectors_tags_tsv = models.CharField(max_length=1024, null=True, blank=True)
 
-    ***REMOVED*** Raw JSON payload for forward-compatibility / auditing
+    # Raw JSON payload for forward-compatibility / auditing
     raw_payload = models.JSONField(default=dict, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -100,7 +100,7 @@ class ContinentProfile(models.Model):
         related_name='continent_profiles',
     )
 
-    ***REMOVED*** Osmium fileinfo metrics (pre-computed during pre-build)
+    # Osmium fileinfo metrics (pre-computed during pre-build)
     node_count = models.BigIntegerField(null=True, blank=True, help_text='OSM nodes in continent extract')
     way_count = models.BigIntegerField(null=True, blank=True, help_text='OSM ways in continent extract')
     relation_count = models.BigIntegerField(null=True, blank=True, help_text='OSM relations in continent extract')
@@ -136,7 +136,7 @@ class CountryPipelineProfile(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    ***REMOVED*** Hierarchy anchors
+    # Hierarchy anchors
     planet_snapshot = models.ForeignKey(
         'core.PlanetSnapshot',
         on_delete=models.SET_NULL,
@@ -152,13 +152,13 @@ class CountryPipelineProfile(models.Model):
         related_name='country_profiles',
     )
 
-    ***REMOVED*** Identity
+    # Identity
     iso2 = models.CharField(max_length=2, null=True, blank=True, db_index=True)
     iso3 = models.CharField(max_length=3, null=True, blank=True, db_index=True)
     canonical_name = models.CharField(max_length=255)
     canonical_slug = models.CharField(max_length=255, db_index=True)
 
-    ***REMOVED*** Embedding side
+    # Embedding side
     embedding_slug = models.CharField(
         max_length=255,
         unique=True,
@@ -170,7 +170,7 @@ class CountryPipelineProfile(models.Model):
     )
     has_embeddings = models.BooleanField(default=True, db_index=True)
 
-    ***REMOVED*** Overrides (from overrides.json)
+    # Overrides (from overrides.json)
     has_override = models.BooleanField(default=False, db_index=True)
     override_country_slug = models.CharField(max_length=255, null=True, blank=True)
     override_poly_slug = models.CharField(max_length=255, null=True, blank=True)
@@ -179,7 +179,7 @@ class CountryPipelineProfile(models.Model):
     overrides_synced_at = models.DateTimeField(null=True, blank=True)
     raw_override_record = models.JSONField(default=dict, blank=True)
 
-    ***REMOVED*** Pre-computed canonical paths (set by prebuild_country_paths command)
+    # Pre-computed canonical paths (set by prebuild_country_paths command)
     embedding_location_tsv_path = models.CharField(
         max_length=2048,
         null=True,
@@ -217,7 +217,7 @@ class CountryPipelineProfile(models.Model):
         help_text="Resolved absolute path to the continent .pbf this country is extracted from",
     )
 
-    ***REMOVED*** OSM / Wikidata / Geofabrik side
+    # OSM / Wikidata / Geofabrik side
     osm_wikidata_hierarchy = models.ForeignKey(
         'core.OSMWikiDataHierarchy',
         on_delete=models.SET_NULL,
@@ -259,7 +259,7 @@ class CountryPipelineProfile(models.Model):
         related_name='country_profiles',
     )
 
-    ***REMOVED*** Osmium fileinfo metrics (pre-computed during pre-build)
+    # Osmium fileinfo metrics (pre-computed during pre-build)
     node_count = models.IntegerField(null=True, blank=True, help_text='OSM nodes in country extract')
     way_count = models.IntegerField(null=True, blank=True, help_text='OSM ways in country extract')
     relation_count = models.IntegerField(null=True, blank=True, help_text='OSM relations in country extract')
@@ -269,9 +269,9 @@ class CountryPipelineProfile(models.Model):
         blank=True,
         help_text="Optional snapshot of legacy country_relations.json entry for this country.",
     )
-    ***REMOVED*** Subgraph gate
+    # Subgraph gate
     has_subgraphs = models.BooleanField(default=False, db_index=True)
-    ***REMOVED*** ── Temporal sharding (Phase 1+: snapshot-aware paths) ──
+    # ── Temporal sharding (Phase 1+: snapshot-aware paths) ──
     snapshot_date = models.CharField(
         max_length=10,
         null=True,
@@ -280,8 +280,8 @@ class CountryPipelineProfile(models.Model):
         help_text="Snapshot date in YYYY_MM_DD format (e.g., '2025_12_31'). "
                   "When set, paths resolve under continents/{snapshot_date}/.",
     )
-    ***REMOVED*** Status / diagnostics
-    ***REMOVED*** TODO: I am going to need  change the shape of this field once we fixed the temporal snapshot issues 
+    # Status / diagnostics
+    # TODO: I am going to need  change the shape of this field once we fixed the temporal snapshot issues 
     metadata_status = models.CharField(
         max_length=32,
         choices=MetadataStatus.choices,
@@ -325,10 +325,10 @@ class SubgraphProfile(models.Model):
         on_delete=models.CASCADE,
         related_name='subgraphs',
     )
-    ***REMOVED*** Identity
+    # Identity
     name = models.CharField(max_length=255)
     slug = models.CharField(max_length=255)
-    ***REMOVED*** Hierarchy / Wikidata
+    # Hierarchy / Wikidata
     osm_wikidata_hierarchy = models.ForeignKey(
         'core.OSMWikiDataHierarchy',
         on_delete=models.SET_NULL,
@@ -342,7 +342,7 @@ class SubgraphProfile(models.Model):
     wikidata_id = models.CharField(max_length=20, null=True, blank=True, db_index=True)
     wikidata_uri = models.CharField(max_length=200, null=True, blank=True)
     continent_name = models.CharField(max_length=100, null=True, blank=True, db_index=True)
-    ***REMOVED*** Polygon / filesystem linkage
+    # Polygon / filesystem linkage
     polygon_file = models.ForeignKey(
         'core.PolygonFile',
         on_delete=models.SET_NULL,
@@ -366,21 +366,21 @@ class SubgraphProfile(models.Model):
     bbox_min_lat = models.FloatField(null=True, blank=True)
     bbox_max_lon = models.FloatField(null=True, blank=True)
     bbox_max_lat = models.FloatField(null=True, blank=True)
-    ***REMOVED*** Bbox provenance (2026-09-30): 'sparql' (pipeline P150/P402 harvest),
-    ***REMOVED*** 'osm_boundary' / 'nominatim' (backfill_subdivision_bboxes), 'none'
-    ***REMOVED*** (gap). verify_paths --strict gates on it at boot.
+    # Bbox provenance (2026-09-30): 'sparql' (pipeline P150/P402 harvest),
+    # 'osm_boundary' / 'nominatim' (backfill_subdivision_bboxes), 'none'
+    # (gap). verify_paths --strict gates on it at boot.
     bbox_source = models.CharField(
         max_length=16, default='none', blank=True, db_index=True,
     )
     bbox_updated_at = models.DateTimeField(null=True, blank=True)
 
-    ***REMOVED*** Osmium fileinfo metrics (pre-computed during pre-build)
+    # Osmium fileinfo metrics (pre-computed during pre-build)
     node_count = models.IntegerField(null=True, blank=True, help_text='OSM nodes in subgraph')
     way_count = models.IntegerField(null=True, blank=True, help_text='OSM ways in subgraph')
     relation_count = models.IntegerField(null=True, blank=True, help_text='OSM relations in subgraph')
     file_size_bytes = models.BigIntegerField(null=True, blank=True, help_text='Subgraph PBF file size')
 
-    ***REMOVED*** Status / diagnostics
+    # Status / diagnostics
     has_subgraph_pbf = models.BooleanField(default=False)
     has_subgraph_poly = models.BooleanField(default=False)
     has_subgraph_pickle = models.BooleanField(default=False)
@@ -410,9 +410,9 @@ class SubgraphProfile(models.Model):
         return f"{self.country_profile.canonical_name} / {self.name}"
 
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════
-***REMOVED*** EligibleCountry (Init Pipeline eligibility & readiness)
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
+# EligibleCountry (Init Pipeline eligibility & readiness)
+# ══════════════════════════════════════════════════════════════════════════
 
 class EligibleCountry(models.Model):
     """Tracks which countries are eligible for the pipeline per snapshot.
@@ -434,28 +434,28 @@ class EligibleCountry(models.Model):
         NO_EMBEDDINGS = 'NO_EMBEDDINGS', 'No Embeddings Found'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    ***REMOVED*** Identity — loosely coupled; no FK to CountryPipelineProfile
-    ***REMOVED*** because countries may be eligible (or pending scan) before a profile exists.
+    # Identity — loosely coupled; no FK to CountryPipelineProfile
+    # because countries may be eligible (or pending scan) before a profile exists.
     country_name = models.CharField(max_length=255, db_index=True)
     iso_code = models.CharField(max_length=10, null=True, blank=True, db_index=True)
     continent = models.CharField(max_length=100)
-    ***REMOVED*** Snapshot context
+    # Snapshot context
     snapshot_date = models.CharField(
         max_length=10, default='2025_12_31', db_index=True,
         help_text='YYYY_MM_DD format snapshot date',
     )
-    ***REMOVED*** Embedding status
+    # Embedding status
     embedding_status = models.CharField(
         max_length=20, choices=EmbeddingStatus.choices,
         default=EmbeddingStatus.PENDING,
     )
 
-    ***REMOVED*** Discovered paths (from scan)
+    # Discovered paths (from scan)
     location_tsv_path = models.CharField(max_length=1024, null=True, blank=True)
     tags_tsv_path = models.CharField(max_length=1024, null=True, blank=True)
     pickle_path = models.CharField(max_length=1024, null=True, blank=True)
 
-    ***REMOVED*** Split/merge metadata — populated only when NEEDS_SPLIT or NEEDS_MERGE
+    # Split/merge metadata — populated only when NEEDS_SPLIT or NEEDS_MERGE
     source_tsv_name = models.CharField(
         max_length=255, null=True, blank=True,
         help_text='If NEEDS_SPLIT, parent multi-country TSV name (e.g. great-britain-location)',
@@ -469,11 +469,11 @@ class EligibleCountry(models.Model):
         help_text='If NEEDS_MERGE, region slugs to concatenate (e.g. [us-midwest, us-northeast, …])',
     )
 
-    ***REMOVED*** Init pipeline state
+    # Init pipeline state
     is_initialized = models.BooleanField(default=False)
     initialized_at = models.DateTimeField(null=True, blank=True)
 
-    ***REMOVED*** Metadata
+    # Metadata
     scanned_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -492,8 +492,8 @@ class EligibleCountry(models.Model):
         return f'{self.country_name} ({self.snapshot_date}) [{self.embedding_status}]'
 
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════
-***REMOVED*** PartitionRegistry (Temporal Sharding Phase 0)
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
+# PartitionRegistry (Temporal Sharding Phase 0)
+# ══════════════════════════════════════════════════════════════════════════
 
 

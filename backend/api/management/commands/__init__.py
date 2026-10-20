@@ -1,3 +1,3 @@
-***REMOVED*** Legacy Management Commands
-***REMOVED*** Commands not currently used in active workflows
-***REMOVED*** Kept for reference and potential future use
+# Legacy Management Commands
+# Commands not currently used in active workflows
+# Kept for reference and potential future use

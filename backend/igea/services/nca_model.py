@@ -23,7 +23,7 @@ Usage:
     nca = NCAModel(latent_dim=64, num_classes=52)
     nca.train(tag_vectors, class_labels, epochs=50)
     mappings = nca.extract_tag_class_mappings(tag_vocab, class_vocab, threshold=0.25)
-    ***REMOVED*** Returns: [('amenity=restaurant', 'wd:Q11707', 0.87), ...]
+    # Returns: [('amenity=restaurant', 'wd:Q11707', 0.87), ...]
 """
 
 import logging
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 NCA_LATENT_DIM = 64
 NCA_EPOCHS = 50
-NCA_PREDICTION_THRESHOLD = 0.25  ***REMOVED*** IGEA paper default for Wikidata
+NCA_PREDICTION_THRESHOLD = 0.25  # IGEA paper default for Wikidata
 
 
 class NCAModel(nn.Module):
@@ -102,9 +102,9 @@ class NCAClassificationService:
         self._class_list: List[str] = []
         self._mappings: List[Tuple[str, str, float]] = []
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Vocabulary building
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Vocabulary building
+    # ------------------------------------------------------------------
 
     def build_vocabularies(self, linked_entities: List[Dict]) -> Tuple[List[str], List[str], List[str]]:
         """
@@ -141,9 +141,9 @@ class NCAClassificationService:
         )
         return self._tag_keys, self._tag_values, self._class_list
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Training data preparation
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Training data preparation
+    # ------------------------------------------------------------------
 
     def _encode_tags(self, tags: Dict[str, str]) -> np.ndarray:
         """
@@ -196,9 +196,9 @@ class NCAClassificationService:
         logger.info(f"NCA training data: {X.shape[0]} examples, {X.shape[1]} features, {y.shape[1]} classes")
         return X, y
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Training
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Training
+    # ------------------------------------------------------------------
 
     def train(
         self,
@@ -234,9 +234,9 @@ class NCAClassificationService:
         logger.info(f"NCA training complete: final loss={loss.item():.4f}")
         return self.model
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Mapping extraction (probe the model)
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Mapping extraction (probe the model)
+    # ------------------------------------------------------------------
 
     def extract_mappings(
         self,
@@ -264,7 +264,7 @@ class NCAClassificationService:
 
         self.model.eval()
         with torch.no_grad():
-            ***REMOVED*** Probe each tag key
+            # Probe each tag key
             for key in self._tag_keys:
                 vec = np.zeros(len(self._tag_keys) + len(self._tag_values), dtype=np.float32)
                 vec[self._tag_keys.index(key)] = 1.0
@@ -275,7 +275,7 @@ class NCAClassificationService:
                     if prob >= threshold:
                         mappings.append((key, self._class_list[cls_idx], float(prob)))
 
-            ***REMOVED*** Probe each tag value
+            # Probe each tag value
             for val in self._tag_values:
                 vec = np.zeros(len(self._tag_keys) + len(self._tag_values), dtype=np.float32)
                 vec[len(self._tag_keys) + self._tag_values.index(val)] = 1.0
@@ -291,9 +291,9 @@ class NCAClassificationService:
         logger.info(f"NCA extracted {len(mappings)} tag→class mappings (threshold={threshold})")
         return mappings
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Apply learned mappings to entities
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Apply learned mappings to entities
+    # ------------------------------------------------------------------
 
     def predict_class(self, tags: Dict[str, str]) -> Optional[str]:
         """
@@ -313,7 +313,7 @@ class NCAClassificationService:
                     return self._class_list[best_idx]
                 return None
 
-        ***REMOVED*** Fallback: use extracted mappings
+        # Fallback: use extracted mappings
         for tag_key, wd_class, conf in self._mappings:
             if tag_key in tags:
                 return wd_class
@@ -339,7 +339,7 @@ class NCAClassificationService:
         for ent in osm_entities:
             tags = ent.get('tags') or {}
             if ent.get('wkg_class'):
-                continue  ***REMOVED*** Already has a class
+                continue  # Already has a class
             predicted = self.predict_class(tags)
             if predicted:
                 ent['wkg_class'] = predicted
@@ -348,9 +348,9 @@ class NCAClassificationService:
         logger.info(f"NCA assigned classes to {assigned}/{len(osm_entities)} entities")
         return assigned
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Persistence
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
 
     def save(self, path: str) -> None:
         """Save model weights and vocabularies."""

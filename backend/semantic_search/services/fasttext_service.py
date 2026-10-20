@@ -31,10 +31,10 @@ class FastTextEmbeddingService:
         """
         tag_counts: Dict[str, int] = {}
         for k, v in (tags or {}).items():
-            ***REMOVED*** Key token
+            # Key token
             tag_counts[k] = tag_counts.get(k, 0) + 1
 
-            ***REMOVED*** Single-token value token
+            # Single-token value token
             if isinstance(v, str):
                 v = v.strip()
                 if v and len(v.split()) == 1:
@@ -70,17 +70,17 @@ class FastTextEmbeddingService:
             weight = count / total_weight
             synthesized_vector += (weight * vec)
 
-        ***REMOVED*** L2 Normalization
+        # L2 Normalization
         norm = np.linalg.norm(synthesized_vector)
         if norm > 0:
             synthesized_vector = synthesized_vector / norm
 
         return synthesized_vector
-    ***REMOVED*** TODO: Remember to replace this with the Concepts to Functional Role implementation
-    ***REMOVED*** Common English stop words that add noise to FastText bag-of-words
-    ***REMOVED*** embeddings of natural-language queries.  These tokens have FastText
-    ***REMOVED*** vectors but carry no OSM-semantic signal (e.g. "find cafes in belize"
-    ***REMOVED*** should embed "cafes", not "find" + "in" + "belize").
+    # TODO: Remember to replace this with the Concepts to Functional Role implementation
+    # Common English stop words that add noise to FastText bag-of-words
+    # embeddings of natural-language queries.  These tokens have FastText
+    # vectors but carry no OSM-semantic signal (e.g. "find cafes in belize"
+    # should embed "cafes", not "find" + "in" + "belize").
     _STOP_WORDS = frozenset({
         "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
         "of", "with", "by", "from", "is", "are", "was", "were", "be", "been",
@@ -110,7 +110,7 @@ class FastTextEmbeddingService:
         if not text:
             return np.zeros(300, dtype=np.float32)
 
-        ***REMOVED*** Simple word-character tokenization, then stop-word removal
+        # Simple word-character tokenization, then stop-word removal
         tokens = [
             t for t in re.findall(r"\w+", text.lower())
             if t and t not in cls._STOP_WORDS
@@ -122,10 +122,10 @@ class FastTextEmbeddingService:
         for token in tokens:
             vec += model.get_word_vector(token)
 
-        ***REMOVED*** Average over tokens
+        # Average over tokens
         vec /= float(len(tokens))
 
-        ***REMOVED*** L2 Normalization
+        # L2 Normalization
         norm = np.linalg.norm(vec)
         if norm > 0:
             vec = vec / norm

@@ -27,12 +27,12 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('= ' * 40))
         self.stdout.write('')
 
-        ***REMOVED*** Phase 1: Sync Polygon Regions
+        # Phase 1: Sync Polygon Regions
         self.stdout.write(self.style.MIGRATE_HEADING('Phase 1: Syncing Polygon Regions...'))
         call_command('sync_poly_regions')
         self.stdout.write('')
 
-        ***REMOVED*** Phase 2: Generate Continental PBFs (using RegionHierarchy-based extraction)
+        # Phase 2: Generate Continental PBFs (using RegionHierarchy-based extraction)
         self.stdout.write(self.style.MIGRATE_HEADING('Phase 2: Generating Continental PBFs...'))
 
         if not getattr(settings, 'FOLDER_PATH', None):
@@ -46,15 +46,15 @@ class Command(BaseCommand):
                 str(Path(settings.OSM_WIKIDATA_EXTRACTIONS_DIR) / 'continents'),
             )
 
-        ***REMOVED*** Use planet initialization service for continent extraction
+        # Use planet initialization service for continent extraction
         from core.services.planet_init.planet_initialization_service import PlanetInitializationService
         from core.models import OSMWikiDataHierarchy
         
-        ***REMOVED*** Get default policy
+        # Get default policy
         planet_hierarchy = OSMWikiDataHierarchy(admin_level=None)
         policy = planet_hierarchy.get_default_policy()
 
-        ***REMOVED*** Debug policy structure and extract_continents flag safely
+        # Debug policy structure and extract_continents flag safely
         self.stdout.write(f"Policy top-level keys: {list(policy.keys())}")
         planet_stage = policy.get('stages', {}).get('planet_initialization')
         if planet_stage:
@@ -63,11 +63,11 @@ class Command(BaseCommand):
         else:
             self.stdout.write("No 'planet_initialization' stage found in policy; using defaults")
         
-        ***REMOVED*** Create planet initialization service
+        # Create planet initialization service
         planet_service = PlanetInitializationService(policy)
         
         try:
-            ***REMOVED*** Call the new simple continent extraction method
+            # Call the new simple continent extraction method
             self.stdout.write(self.style.NOTICE('Calling _extract_continents_simple()...'))
             planet_service._extract_continents_simple()
             self.stdout.write(self.style.SUCCESS('✓ Continental PBFs generated'))
@@ -80,7 +80,7 @@ class Command(BaseCommand):
 
         self.stdout.write('')
 
-        ***REMOVED*** Phase 3: Sync GeoVectors Metadata (Procedural)
+        # Phase 3: Sync GeoVectors Metadata (Procedural)
         self.stdout.write(self.style.MIGRATE_HEADING('Phase 3: Syncing GeoVectors Metadata...'))
         call_command('sync_geovectors_metadata', save=True)
         self.stdout.write('')

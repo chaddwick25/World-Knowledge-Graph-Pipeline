@@ -75,9 +75,9 @@ def dataset_with_resource(ckan_source):
     return dataset, resource
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Metadata sync
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Metadata sync
+# ---------------------------------------------------------------------------
 
 def test_sync_metadata_creates_dataset_and_resources(ckan_source, monkeypatch):
     service = IngestionService(ckan_source)
@@ -104,9 +104,9 @@ def test_sync_metadata_empty_targets_returns_zero(ckan_source):
     assert service.sync_metadata() == 0
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Parsing
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Parsing
+# ---------------------------------------------------------------------------
 
 def test_parse_csv_yields_records_with_geometry(tmp_path, ckan_source):
     csv_file = tmp_path / 'traffic.csv'
@@ -132,7 +132,7 @@ def test_parse_csv_yields_records_with_geometry(tmp_path, ckan_source):
 
 def test_parse_csv_geometry_column(tmp_path, ckan_source):
     csv_file = tmp_path / 'intersections.csv'
-    ***REMOVED*** The geometry JSON is quoted, as in real Toronto Open Data exports.
+    # The geometry JSON is quoted, as in real Toronto Open Data exports.
     csv_file.write_text(
         '_id,INTERSECTION_ID,geometry\n'
         '1,100,"{""type"":""Point"",""coordinates"":[-79.4,43.7]}"\n',
@@ -149,8 +149,8 @@ def test_parse_csv_geometry_column(tmp_path, ckan_source):
 
 
 def test_parse_json_labeled_csv_falls_back(tmp_path, ckan_source):
-    ***REMOVED*** Some CKAN resources are labelled GEOJSON but the datastore dump
-    ***REMOVED*** endpoint returns CSV — the adapter must fall back to row parsing.
+    # Some CKAN resources are labelled GEOJSON but the datastore dump
+    # endpoint returns CSV — the adapter must fall back to row parsing.
     mislabeled = tmp_path / 'neighbourhoods.geojson'
     mislabeled.write_text(
         '_id,AREA_ID,AREA_NAME,geometry\n'
@@ -193,9 +193,9 @@ def test_parse_geojson_yields_records_with_polygon(tmp_path, ckan_source):
     assert records[0]['geom'].geom_type == 'Polygon'
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Download + ingest
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Download + ingest
+# ---------------------------------------------------------------------------
 
 def test_download_and_ingest_creates_records(dataset_with_resource, ckan_source, tmp_path, monkeypatch):
     dataset, resource = dataset_with_resource
@@ -234,11 +234,11 @@ def test_download_and_ingest_incremental_skips_old_records(dataset_with_resource
     service = IngestionService(ckan_source)
     monkeypatch.setattr(service.adapter, 'download_resource', lambda res, force=False: csv_file)
 
-    ***REMOVED*** First run: incremental — creates the ingestion state, ingests everything
+    # First run: incremental — creates the ingestion state, ingests everything
     result = service.download_and_ingest(dataset.name, incremental=True)
     assert result.records_ingested == 2
 
-    ***REMOVED*** Second run: incremental — watermark at 2026-01-02, all records skipped
+    # Second run: incremental — watermark at 2026-01-02, all records skipped
     result = service.download_and_ingest(dataset.name, incremental=True)
     assert result.records_ingested == 0
     assert GeoRecord.objects.filter(resource=resource).count() == 2
@@ -249,9 +249,9 @@ def test_download_and_ingest_incremental_skips_old_records(dataset_with_resource
     assert state.last_ingestion_mode == 'incremental'
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Quality snapshots
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Quality snapshots
+# ---------------------------------------------------------------------------
 
 def test_quality_snapshots_created_from_records(dataset_with_resource, ckan_source, monkeypatch):
     dataset, _ = dataset_with_resource
@@ -281,7 +281,7 @@ def test_quality_snapshots_created_from_records(dataset_with_resource, ckan_sour
     assert snapshot.quality_score_pct == pytest.approx(85.0)
     assert snapshot.freshness == pytest.approx(0.9)
 
-    ***REMOVED*** Re-sync is idempotent per (dataset, qa_recorded_at)
+    # Re-sync is idempotent per (dataset, qa_recorded_at)
     again = quality_service.sync_quality_snapshots(['ttc-subway-delay-data'])
     assert len(again) == 1
     assert DataQualitySnapshot.objects.filter(dataset=dataset).count() == 1
@@ -299,9 +299,9 @@ def test_quality_snapshots_skip_unknown_datasets(ckan_source, monkeypatch):
     assert quality_service.sync_quality_snapshots(['does-not-exist']) == []
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Management commands
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Management commands
+# ---------------------------------------------------------------------------
 
 def test_register_geodata_source_command(db):
     call_command(

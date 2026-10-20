@@ -1,4 +1,4 @@
-***REMOVED*** Graph Spectral Analysis (Step 5c) + Temporal Drift (Step 5d)
+# Graph Spectral Analysis (Step 5c) + Temporal Drift (Step 5d)
 
 > **Focus:** how the pipeline computes Laplacian spectral features on the
 > k-NN graph (Step 5c), uses WorldKG classes as graph signals to measure
@@ -15,7 +15,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Where Steps 5c/5d Sit in the Pipeline
+## 1. Where Steps 5c/5d Sit in the Pipeline
 
 **Step 5: Train GV-NLE** (DeepWalk on the k-NN graph) → 100D spatial
 embeddings per entity.
@@ -51,7 +51,7 @@ fused), `create_static_embedding_hnsw_index`.
 Both steps are **non-fatal** (failures are logged, the pipeline continues).
 Step 5d is **conditional**, only runs when ≥2 snapshots exist.
 
-***REMOVED******REMOVED******REMOVED*** 1.1 Conceptual Grounding: Kuhn's Core Concepts
+### 1.1 Conceptual Grounding: Kuhn's Core Concepts
 
 The graph spectral analysis and temporal drift operations are where the
 pipeline uses the WorldKG Project's artifacts to deliver the geospatial
@@ -72,9 +72,9 @@ subdivision-scoped solves with transport.
 
 ---
 
-***REMOVED******REMOVED*** 2. Step 5c: Graph Spectral Analysis
+## 2. Step 5c: Graph Spectral Analysis
 
-***REMOVED******REMOVED******REMOVED*** 2.1 The Graph Substrate
+### 2.1 The Graph Substrate
 
 **Source:** <ref_file file="backend/semantic_search/services/knn_graph_service.py" />
 
@@ -95,7 +95,7 @@ Two graph builders, selected by Step 5c routing:
   factor rows are written for core entities only. Shared buffer entities
   get exact eigen-loadings for transport matrix computation.
 
-***REMOVED******REMOVED******REMOVED*** 2.2 Laplacian Spectral Features
+### 2.2 Laplacian Spectral Features
 
 **Source:** <ref_file file="backend/semantic_search/services/spectral_analysis_service.py" />
 
@@ -140,7 +140,7 @@ def compute_spectral_features(self, G, k: int = 128) -> dict:
 - `spectral_gap`: λₖ - λ₂
 - `node_count`, `edge_count`
 
-***REMOVED******REMOVED******REMOVED*** 2.3 Graph Signals: WorldKG Classes as Signals
+### 2.3 Graph Signals: WorldKG Classes as Signals
 
 **Source:** <ref_file file="backend/semantic_search/services/graph_signal_service.py" />
 
@@ -168,7 +168,7 @@ E(s) = sᵀ L s = Σ_{(i,j)∈E} w_{ij} (s_i - s_j)²
 This is the **semantic-structural coupling** metric. It tells whether the
 spatial graph structure aligns with the semantic class structure.
 
-***REMOVED******REMOVED******REMOVED*** 2.4 Heat Kernel Diffusion
+### 2.4 Heat Kernel Diffusion
 
 **Source:** `spectral_analysis_service.py` (`compute_heat_kernel`)
 
@@ -184,7 +184,7 @@ Computes heat kernel diffusion: `u(t) = e^{-tL} · δ_source`
   spread?")
 - Mass-conserving: `Σᵢ u(t)ᵢ = 1` for all t
 
-***REMOVED******REMOVED******REMOVED*** 2.5 Community Detection
+### 2.5 Community Detection
 
 **Source:** <ref_file file="backend/semantic_search/services/community_detection_service.py" />
 
@@ -200,20 +200,20 @@ installed (`networkit==10.1`); NetworkX Louvain fallback for small
 - Produces: `communities`, `modularity` (Q score), `node_to_community`
   mapping
 
-***REMOVED******REMOVED******REMOVED*** 2.6 The GraphSpectralFingerprint Model
+### 2.6 The GraphSpectralFingerprint Model
 
 **Source:** `backend/semantic_search/models.py`
 
 ```python
 class GraphSpectralFingerprint(models.Model):
     id = UUIDField(primary_key=True)
-    region = CharField(max_length=10)           ***REMOVED*** ISO country code
+    region = CharField(max_length=10)           # ISO country code
     snapshot = FK to osmsnapshot.Snapshot
-    eigenvalues = JSONField()                    ***REMOVED*** top-k non-trivial eigenvalues
-    fiedler_vector = JSONField()                 ***REMOVED*** truncated to 10k samples
-    algebraic_connectivity = FloatField()        ***REMOVED*** λ₂
-    spectral_gap = FloatField()                  ***REMOVED*** λₖ - λ₂
-    signal_smoothness = FloatField()             ***REMOVED*** Dirichlet energy sᵀLs
+    eigenvalues = JSONField()                    # top-k non-trivial eigenvalues
+    fiedler_vector = JSONField()                 # truncated to 10k samples
+    algebraic_connectivity = FloatField()        # λ₂
+    spectral_gap = FloatField()                  # λₖ - λ₂
+    signal_smoothness = FloatField()             # Dirichlet energy sᵀLs
     node_count = IntegerField()
     edge_count = IntegerField()
     k_eigenvalues = IntegerField(default=128)
@@ -228,9 +228,9 @@ duplicates.
 
 ---
 
-***REMOVED******REMOVED*** 3. Step 5d: Temporal Drift
+## 3. Step 5d: Temporal Drift
 
-***REMOVED******REMOVED******REMOVED*** 3.1 Spectral Drift Metrics
+### 3.1 Spectral Drift Metrics
 
 **Source:** <ref_file file="backend/semantic_search/services/spectral_drift_service.py" />
 
@@ -246,7 +246,7 @@ Comparing `GraphSpectralFingerprint` from two snapshots:
 
 Shorter eigenvalue vectors are zero-padded for comparison.
 
-***REMOVED******REMOVED******REMOVED*** 3.2 Drift Classification
+### 3.2 Drift Classification
 
 ```python
 def classify_drift_magnitude(self, spectral_distance: float) -> str:
@@ -256,7 +256,7 @@ def classify_drift_magnitude(self, spectral_distance: float) -> str:
     return "extreme"
 ```
 
-***REMOVED******REMOVED******REMOVED*** 3.3 ARIMA Forecasting
+### 3.3 ARIMA Forecasting
 
 **Source:** <ref_file file="backend/semantic_search/services/spectral_forecast_service.py" />
 
@@ -271,7 +271,7 @@ def forecast_eigenvalues(self, eigenvalue_series) -> (forecast, confidence):
 - Forecasts clamped to non-negative (eigenvalues of a PSD matrix)
 - Confidence: 1.96σ half-widths per eigenvalue
 
-***REMOVED******REMOVED******REMOVED*** 3.4 CUSUM Change-Point Detection
+### 3.4 CUSUM Change-Point Detection
 
 ```python
 def detect_changepoints(self, spectral_distance_series) -> dict:
@@ -281,7 +281,7 @@ def detect_changepoints(self, spectral_distance_series) -> dict:
 - Returns changepoint index and magnitude
 - Flags structural changes (e.g. a new subdivision added, a border change)
 
-***REMOVED******REMOVED******REMOVED*** 3.5 The GraphSpectralDrift Model
+### 3.5 The GraphSpectralDrift Model
 
 ```python
 class GraphSpectralDrift(models.Model):
@@ -294,9 +294,9 @@ class GraphSpectralDrift(models.Model):
     spectral_gap_delta = FloatField()
     fiedler_drift = FloatField()
     smoothness_delta = FloatField()
-    drift_magnitude = CharField()                ***REMOVED*** low/medium/high/extreme
-    forecast_eigenvalues = JSONField(null=True)  ***REMOVED*** ARIMA forecast
-    forecast_confidence = JSONField(null=True)   ***REMOVED*** 1.96σ intervals
+    drift_magnitude = CharField()                # low/medium/high/extreme
+    forecast_eigenvalues = JSONField(null=True)  # ARIMA forecast
+    forecast_confidence = JSONField(null=True)   # 1.96σ intervals
     changepoint_detected = BooleanField()
     created_at = DateTimeField(auto_now_add=True)
     unique_together = (region, snapshot_from, snapshot_to)
@@ -304,14 +304,14 @@ class GraphSpectralDrift(models.Model):
 
 ---
 
-***REMOVED******REMOVED*** 4. Embedding Drift (Management Command)
+## 4. Embedding Drift (Management Command)
 
 **Source:** <ref_file file="backend/semantic_search/services/embedding_drift_service.py" />
 
 Unlike spectral drift (which compares graph structure), embedding drift
 compares the **distribution of embeddings** between snapshots.
 
-***REMOVED******REMOVED******REMOVED*** 4.1 Sliced Wasserstein Distance (SWD)
+### 4.1 Sliced Wasserstein Distance (SWD)
 
 1. Generate R random projection vectors on the unit sphere
 2. Project high-dimensional embeddings to 1D: `p_r = v_r · x`
@@ -322,7 +322,7 @@ compares the **distribution of embeddings** between snapshots.
 - Approximates the true Wasserstein distance in high dimensions
 - Computed separately for semantic (300D GV-Tags) and spatial (100D GV-NLE)
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Freshness Score
+### 4.2 Freshness Score
 
 ```
 F = α · exp(-λ_sem · W_sem) + (1-α) · exp(-λ_spat · W_spat)
@@ -333,7 +333,7 @@ F = α · exp(-λ_sem · W_sem) + (1-α) · exp(-λ_spat · W_spat)
 - `λ_sem = λ_spat = 5.0` (decay rate)
 - Range: [0, 1] where 1 = identical (no drift)
 
-***REMOVED******REMOVED******REMOVED*** 4.3 Subdivision-Level Drift
+### 4.3 Subdivision-Level Drift
 
 `compute_country_drift()` computes drift at both:
 - **Country level**: all entities in the country
@@ -343,7 +343,7 @@ This reveals **where** drift is concentrated, e.g. a new development in one
 subdivision may cause high drift there while the rest of the country is
 stable.
 
-***REMOVED******REMOVED******REMOVED*** 4.4 Command Interface
+### 4.4 Command Interface
 
 ```bash
 python manage.py compute_embedding_drift \
@@ -351,25 +351,25 @@ python manage.py compute_embedding_drift \
     --snapshot-from 2025_12_31_baseline \
     --snapshot-to 2025_12_31 \
     --num-projections 100 \
-    --mock-missing  ***REMOVED*** generate synthetic embeddings if missing
+    --mock-missing  # generate synthetic embeddings if missing
 ```
 
 ---
 
-***REMOVED******REMOVED*** 5. New MapQA Templates (4 new, 9 total)
+## 5. New MapQA Templates (4 new, 9 total)
 
 **Source:** <ref_file file="backend/worldkg_nca/views/graph.py" />
 
 Four new MapQA templates extend the parser/executor:
 
-| ***REMOVED*** | Template | Endpoint | What it does |
+| # | Template | Endpoint | What it does |
 |---|---|---|---|
 | 11 | SPECTRAL-ANALYSIS | `/api/nca/spectral-query/` | Returns eigenvalues, λ₂, spectral gap, signal smoothness for a region |
 | 12 | TEMPORAL-DRIFT | `/api/nca/temporal-query/` | Returns spectral drift between snapshots |
 | 13 | COMMUNITY-DETECT | `/api/nca/community-query/` | Louvain communities + optional class filtering |
 | 14 | EVENT-DIFFUSION | `/api/nca/event-diffusion-query/` | Heat kernel diffusion from a source entity |
 
-The executor uses the **factor-table path** (SQL + pgvector `<***REMOVED***>`) via
+The executor uses the **factor-table path** (SQL + pgvector `<#>`) via
 `FactorResolutionService`, with no NetworkX/SciPy graph loading at request
 time. The legacy runtime graph path (GraphML → NetworkX → SciPy) has been
 removed. See `factor_node_runtime_joins.md` for the factor-table
@@ -377,16 +377,16 @@ architecture and cross-subgraph transport via functional maps.
 
 ---
 
-***REMOVED******REMOVED*** 6. Canvas Integration
+## 6. Canvas Integration
 
 **Source:** `backend/pipeline/canvas.py`
 
 Steps 5c/5d are wired into the canvas after Step 5/5b and before Step 6:
 
 ```python
-***REMOVED*** Step 5c (graph & spectral analysis) + Step 5d (temporal drift) run
-***REMOVED*** after Step 5/5b and before Step 6.  Both are non-fatal / conditional —
-***REMOVED*** their task bodies log warnings and no-op when prerequisites are missing
+# Step 5c (graph & spectral analysis) + Step 5d (temporal drift) run
+# after Step 5/5b and before Step 6.  Both are non-fatal / conditional —
+# their task bodies log warnings and no-op when prerequisites are missing
 ```
 
 - Step index 5.7 → `step_5c_graph_spectral_analysis`
@@ -396,7 +396,7 @@ Steps 5c/5d are wired into the canvas after Step 5/5b and before Step 6:
 
 ---
 
-***REMOVED******REMOVED*** 7. Testing
+## 7. Testing
 
 49 unit tests across 6 test files (no DB needed):
 
@@ -410,7 +410,7 @@ Steps 5c/5d are wired into the canvas after Step 5/5b and before Step 6:
 | `test_embedding_drift_service.py` | 3 | SWD properties, freshness score |
 
 ```bash
-***REMOVED*** All spectral + drift tests
+# All spectral + drift tests
 docker compose exec backend python -m pytest \
     tests/unit/test_spectral_analysis_service.py \
     tests/unit/test_spectral_drift_service.py \
@@ -423,7 +423,7 @@ docker compose exec backend python -m pytest \
 
 ---
 
-***REMOVED******REMOVED*** 8. Invariants
+## 8. Invariants
 
 - Steps 5c/5d run after Step 5/5b and before Step 6.
 - Both are non-fatal. Failures are logged, the pipeline continues.

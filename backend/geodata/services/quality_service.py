@@ -39,8 +39,8 @@ class QualityService:
             if not dataset_id:
                 continue
 
-            ***REMOVED*** QA data references datasets by slug (name); fall back to
-            ***REMOVED*** the source_dataset_id (UUID) lookup.
+            # QA data references datasets by slug (name); fall back to
+            # the source_dataset_id (UUID) lookup.
             dataset = (
                 GeoDataset.objects.filter(source=self.source, name=dataset_id).first()
                 or GeoDataset.objects.filter(source=self.source, source_dataset_id=dataset_id).first()

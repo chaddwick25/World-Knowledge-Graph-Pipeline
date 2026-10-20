@@ -66,13 +66,13 @@ class NLEModel(BaseModel):
 
             dist_sum = 0
             for n in nearest_neighbors:
-                ***REMOVED***other_key = n.object
+                #other_key = n.object
                 other_key = n[0]
 
                 if key == other_key:
                     continue
 
-                ***REMOVED***use distance in kilometers
+                #use distance in kilometers
                 dist = np.log(1 + (1 / (n[1] / 1000)))
                 dist_sum += dist
 
@@ -124,7 +124,7 @@ class NLEModel(BaseModel):
         with open(self._wdw_path(), 'rb') as fi:
             self.wdw = pickle.load(fi)
 
-        ***REMOVED*** Robust dimension setting: check for n_components attribute or fallback to 100
+        # Robust dimension setting: check for n_components attribute or fallback to 100
         n_comp = getattr(self.wdw, 'n_components', 100)
         super()._set_dimensions(n_comp)
 

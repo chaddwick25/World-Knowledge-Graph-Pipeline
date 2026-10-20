@@ -21,9 +21,9 @@ from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
-***REMOVED*** Path resolution helper
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# Path resolution helper
+# ──────────────────────────────────────────────────────────────────────────
 def _resolve_country_pbf_path(
     path_service, continent_norm: str, candidate_slugs: List[str],
 ) -> Optional[str]:
@@ -41,14 +41,14 @@ def _resolve_country_pbf_path(
                     return str(pbf_path)
         except Exception:
             continue
-    ***REMOVED*** Fallback: return the first candidate path anyway
+    # Fallback: return the first candidate path anyway
     if hasattr(path_service, "get_country_pbf_path"):
         return str(path_service.get_country_pbf_path(continent_norm, candidate_slugs[0]))
     return None
 
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
-***REMOVED*** SubgraphConfig
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# SubgraphConfig
+# ──────────────────────────────────────────────────────────────────────────
 @dataclasses.dataclass(frozen=True)
 class SubgraphConfig:
     """Configuration for a single subgraph (admin region / city).
@@ -64,12 +64,12 @@ class SubgraphConfig:
     wikidata_qid: Optional[str] = None
     admin_level: Optional[int] = None
 
-    ***REMOVED*** Paths (resolved at config-build time)
+    # Paths (resolved at config-build time)
     poly_path: Optional[str] = None
     pbf_path: Optional[str] = None
     pickle_path: Optional[str] = None
 
-    ***REMOVED*** Bounding box (for filtering)
+    # Bounding box (for filtering)
     bbox_min_lon: Optional[float] = None
     bbox_min_lat: Optional[float] = None
     bbox_max_lon: Optional[float] = None

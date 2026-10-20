@@ -41,16 +41,16 @@ class PBFHierarchyResolver:
             - reason_string: Explanation of why this source was chosen
         
         Examples:
-            >>> ***REMOVED*** Extracting australia.poly
-            >>> ***REMOVED*** Hierarchy: planet -> oceania -> australia
-            >>> ***REMOVED*** If oceania.pbf exists with history, use it instead of planet
+            >>> # Extracting australia.poly
+            >>> # Hierarchy: planet -> oceania -> australia
+            >>> # If oceania.pbf exists with history, use it instead of planet
             >>> resolver = PBFHierarchyResolver()
             >>> source, reason = resolver.find_optimal_source_pbf(
             ...     '/path/to/oceania/australia.poly'
             ... )
-            >>> ***REMOVED*** Returns: (oceania.pbf, "Using parent region 'oceania' (1 level up)")
+            >>> # Returns: (oceania.pbf, "Using parent region 'oceania' (1 level up)")
         """
-        ***REMOVED*** Find the target region node
+        # Find the target region node
         from api.models import RegionHierarchy, PbfFile
         target_region = self._find_region_by_poly_path(poly_file_path)
         
@@ -60,16 +60,16 @@ class PBFHierarchyResolver:
                 return fallback_planet_pbf, f"{reason}, using planet file"
             raise ValueError(f"{reason} and no fallback planet file provided")
         
-        ***REMOVED*** Traverse up the hierarchy to find available PBF files
+        # Traverse up the hierarchy to find available PBF files
         current_node = target_region.parent
         levels_up = 1
         
         while current_node:
-            ***REMOVED*** Check if this parent has a corresponding PBF file
+            # Check if this parent has a corresponding PBF file
             if current_node.corresponding_pbf:
                 pbf = current_node.corresponding_pbf
                 
-                ***REMOVED*** Verify the PBF file exists and has history
+                # Verify the PBF file exists and has history
                 if self._is_pbf_valid_for_extraction(pbf):
                     reason = (
                         f"Using parent region '{current_node.name}' "
@@ -78,11 +78,11 @@ class PBFHierarchyResolver:
                     )
                     return pbf, reason
             
-            ***REMOVED*** Move up one level
+            # Move up one level
             current_node = current_node.parent
             levels_up += 1
         
-        ***REMOVED*** No suitable parent found, use planet file
+        # No suitable parent found, use planet file
         if fallback_planet_pbf:
             reason = (
                 f"No parent PBF found for '{target_region.name}', "
@@ -104,13 +104,13 @@ class PBFHierarchyResolver:
         2. Filename match (case-insensitive)
         3. Stem match (without extension)
         """
-        ***REMOVED*** Try exact path match first
+        # Try exact path match first
         from api.models import RegionHierarchy
         region = RegionHierarchy.objects.filter(poly_file_path=poly_file_path).first()
         if region:
             return region
         
-        ***REMOVED*** Try filename match (case-insensitive)
+        # Try filename match (case-insensitive)
         poly_filename = Path(poly_file_path).name
         region = RegionHierarchy.objects.filter(
             poly_file_path__iendswith=poly_filename
@@ -118,7 +118,7 @@ class PBFHierarchyResolver:
         if region:
             return region
         
-        ***REMOVED*** Try stem match (e.g., "australia.poly" -> "australia")
+        # Try stem match (e.g., "australia.poly" -> "australia")
         poly_stem = Path(poly_file_path).stem
         region = RegionHierarchy.objects.filter(
             poly_file_path__icontains=poly_stem
@@ -139,20 +139,20 @@ class PBFHierarchyResolver:
         if not pbf:
             return False
         
-        ***REMOVED*** Check status
+        # Check status
         from api.models import PbfFile
         if pbf.status != PbfFile.PbfStatus.COMPLETED:
             return False
         
-        ***REMOVED*** Check has history
+        # Check has history
         if not pbf.has_history:
             return False
         
-        ***REMOVED*** Check file exists
+        # Check file exists
         if not Path(pbf.path).exists():
             return False
         
-        ***REMOVED*** Check file size
+        # Check file size
         if pbf.size_bytes <= 0:
             return False
         
@@ -205,5 +205,5 @@ class PBFHierarchyResolver:
         return speedup
 
 
-***REMOVED*** Singleton instance
+# Singleton instance
 pbf_hierarchy_resolver = PBFHierarchyResolver()

@@ -44,7 +44,7 @@ from worldkg_nca.models import (
     SpectralNodeMetric,
 )
 
-***REMOVED*** Factor tables live on the vectors DB; fingerprints/Snapshots on default.
+# Factor tables live on the vectors DB; fingerprints/Snapshots on default.
 pytestmark = pytest.mark.django_db(
     transaction=False, databases=["default", "vectors"],
 )
@@ -54,7 +54,7 @@ SNAP_A = "9999_01_01"
 SNAP_B = "9999_02_01"
 
 N_NODES = 15
-K_EIGEN = 10  ***REMOVED*** k_request = 11 < N — keeps eigsh happy on tiny graphs
+K_EIGEN = 10  # k_request = 11 < N — keeps eigsh happy on tiny graphs
 
 
 def _weighted_path_graph(n=N_NODES):
@@ -107,7 +107,7 @@ def seeded_spectral():
     _cleanup()
 
 
-***REMOVED*** ── FactorNodeWriter: spectral rows ──────────────────────────────────────
+# ── FactorNodeWriter: spectral rows ──────────────────────────────────────
 
 
 def test_write_spectral_nodes_match_eigenbasis(seeded_spectral):
@@ -128,13 +128,13 @@ def test_write_spectral_nodes_match_eigenbasis(seeded_spectral):
         row = rows[int(osm_id)]
         loadings = np.asarray(row.eigen_loadings, dtype=float)
         assert loadings.shape == (EIGEN_LOADING_DIM,)
-        ***REMOVED*** First K components equal the eigenvector row
+        # First K components equal the eigenvector row
         np.testing.assert_allclose(
             loadings[:K_EIGEN], eigvecs[i, :K_EIGEN], atol=1e-8,
         )
-        ***REMOVED*** Padding is zero
+        # Padding is zero
         assert (loadings[K_EIGEN:] == 0.0).all()
-        ***REMOVED*** Fiedler component is the first loading
+        # Fiedler component is the first loading
         assert row.fiedler_component == pytest.approx(eigvecs[i, 0], abs=1e-10)
 
 
@@ -147,9 +147,9 @@ def test_write_spectral_nodes_structural_fields(seeded_spectral):
     degree_map = dict(G.degree())
     for row in rows:
         assert row.degree == degree_map[row.osm_id]
-        ***REMOVED*** Path graph: no triangles → clustering is 0
+        # Path graph: no triangles → clustering is 0
         assert row.clustering_coeff == pytest.approx(0.0, abs=1e-9)
-        ***REMOVED*** Connected graph → single component containing all nodes
+        # Connected graph → single component containing all nodes
         assert row.component_id == 0
         assert row.component_size == N_NODES
 
@@ -190,13 +190,13 @@ def test_write_spectral_nodes_dirichlet_contrib():
             .filter(snapshot_id=SNAP_A, country_code=TEST_CC)
             .values("dirichlet_contrib")
         )
-        ***REMOVED*** Σᵢ sᵢ·(Ls)ᵢ = sᵀLs  [GRAPH_REP:Ch3]
+        # Σᵢ sᵢ·(Ls)ᵢ = sᵀLs  [GRAPH_REP:Ch3]
         assert total == pytest.approx(expected_smoothness, rel=1e-6)
     finally:
         _cleanup()
 
 
-***REMOVED*** ── FactorNodeWriter: drift rows (sign alignment) ────────────────────────
+# ── FactorNodeWriter: drift rows (sign alignment) ────────────────────────
 
 
 def _seed_pair(sign_flip=False, G_b=None, communities_b=None):
@@ -211,7 +211,7 @@ def _seed_pair(sign_flip=False, G_b=None, communities_b=None):
     G_b = G_b or G
     fb = _features(G_b)
     if sign_flip:
-        ***REMOVED*** Simulate eigsh sign indeterminacy: flip every eigenvector column
+        # Simulate eigsh sign indeterminacy: flip every eigenvector column
         fb = dict(fb)
         fb["eigenvectors"] = -fb["eigenvectors"]
         fb["fiedler_vector"] = [-x for x in fb["fiedler_vector"]]
@@ -252,9 +252,9 @@ def test_drift_nodes_detects_changes():
     _cleanup()
     try:
         G_b = _weighted_path_graph()
-        G_b.add_edge(0, 14, weight=3.5)  ***REMOVED*** closes the path into a cycle
+        G_b.add_edge(0, 14, weight=3.5)  # closes the path into a cycle
         communities_b = _two_communities(G_b)
-        communities_b[0] = 1  ***REMOVED*** node 0 switches community
+        communities_b[0] = 1  # node 0 switches community
         _seed_pair(G_b=G_b, communities_b=communities_b)
 
         n = FactorNodeWriter().write_drift_nodes(TEST_CC, SNAP_A, SNAP_B)
@@ -268,21 +268,21 @@ def test_drift_nodes_detects_changes():
                 snapshot_to_id=SNAP_B,
             )
         }
-        ***REMOVED*** Node 0 and 14 each gained one edge
+        # Node 0 and 14 each gained one edge
         assert rows[0].degree_delta == 1
         assert rows[14].degree_delta == 1
         assert rows[7].degree_delta == 0
-        ***REMOVED*** Node 0 changed community; node 1 did not
+        # Node 0 changed community; node 1 did not
         assert rows[0].community_changed is True
         assert rows[1].community_changed is False
-        ***REMOVED*** Structural change → nonzero loading drift somewhere
+        # Structural change → nonzero loading drift somewhere
         assert any(r.loading_drift and r.loading_drift > 1e-3
                    for r in rows.values())
     finally:
         _cleanup()
 
 
-***REMOVED*** ── FactorResolutionService ──────────────────────────────────────────────
+# ── FactorResolutionService ──────────────────────────────────────────────
 
 
 def _patch_eigenvalues(features, fingerprint_id=None):
@@ -308,7 +308,7 @@ def test_check_availability(seeded_spectral):
     assert result[999999999] is False
 
 
-***REMOVED*** ── Phase 1 hardening: eigenbasis coherence ──────────────────────────────
+# ── Phase 1 hardening: eigenbasis coherence ──────────────────────────────
 
 
 def test_write_spectral_nodes_stamps_fingerprint_id():
@@ -374,7 +374,7 @@ def test_diffusion_rank_null_fingerprint_lenient_then_strict():
     try:
         G = _weighted_path_graph()
         features = _features(G)
-        ***REMOVED*** Rows written WITHOUT fingerprint_id → NULL (pre-migration style)
+        # Rows written WITHOUT fingerprint_id → NULL (pre-migration style)
         FactorNodeWriter().write_spectral_nodes(
             G, features, TEST_CC, SNAP_A,
             node_to_community=_two_communities(G),
@@ -385,7 +385,7 @@ def test_diffusion_rank_null_fingerprint_lenient_then_strict():
         with _patch_eigenvalues(features, fingerprint_id=uuid.uuid4()):
             trace = []
             ranked = frs.diffusion_rank(anchor, 1.0, SNAP_A, TEST_CC, trace=trace)
-            assert ranked is not None  ***REMOVED*** lenient: NULL proceeds
+            assert ranked is not None  # lenient: NULL proceeds
             assert any(s.get("note") == "unverified_eigenbasis" for s in trace)
 
             with mock.patch.object(settings, "FACTOR_EIGENBASIS_STRICT", True):
@@ -434,18 +434,18 @@ def test_diffusion_rank_matches_eigen_expansion(seeded_spectral):
     anchor = int(node_order[3])
     t = 1.0
 
-    ***REMOVED*** Expected: u = Φ · diag(e^{-tλ}) · Φᵀ · δ_anchor  (same K basis)
+    # Expected: u = Φ · diag(e^{-tλ}) · Φᵀ · δ_anchor  (same K basis)
     anchor_idx = node_order.index(anchor)
     phi_anchor = eigvecs[anchor_idx, :]
-    w = np.exp(-t * lam) * phi_anchor           ***REMOVED*** (K,)
-    expected = eigvecs @ w                       ***REMOVED*** (N,)
+    w = np.exp(-t * lam) * phi_anchor           # (K,)
+    expected = eigvecs @ w                       # (N,)
     expected_order = sorted(
         range(len(node_order)),
         key=lambda i: expected[i],
         reverse=True,
     )
-    ***REMOVED*** Same semantics as diffusion_rank: drop the anchor and scores ≤ 1e-6
-    ***REMOVED*** (a truncated eigen-expansion can produce tiny negative scores).
+    # Same semantics as diffusion_rank: drop the anchor and scores ≤ 1e-6
+    # (a truncated eigen-expansion can produce tiny negative scores).
     expected_ids = [
         int(node_order[i]) for i in expected_order
         if int(node_order[i]) != anchor and expected[i] > 1e-6
@@ -464,7 +464,7 @@ def test_diffusion_rank_matches_eigen_expansion(seeded_spectral):
     for r in ranked:
         i = node_order.index(r["osm_id"])
         assert r["score"] == pytest.approx(float(expected[i]), rel=1e-4)
-    ***REMOVED*** Trace records the factor join
+    # Trace records the factor join
     assert any(s.get("step") == "factor_join" for s in trace)
 
 
@@ -497,7 +497,7 @@ def test_diffusion_rank_missing_anchor_returns_none(seeded_spectral):
     assert any("no factor row" in s.get("warning", "") for s in trace)
 
 
-***REMOVED*** ── AmenityEmbedding + compute_amenity_embeddings ────────────────────────
+# ── AmenityEmbedding + compute_amenity_embeddings ────────────────────────
 
 
 def test_amenity_embedding_lookup():
@@ -508,7 +508,7 @@ def test_amenity_embedding_lookup():
             amenity_text="cafe", defaults={"embedding": vec.tolist()},
         )
         frs = FactorResolutionService()
-        got = frs.amenity_embedding("  Cafe ")  ***REMOVED*** case/whitespace-insensitive
+        got = frs.amenity_embedding("  Cafe ")  # case/whitespace-insensitive
         np.testing.assert_allclose(got, vec, atol=1e-8)
         assert frs.amenity_embedding("not_in_vocab") is None
     finally:
@@ -533,14 +533,14 @@ def test_compute_amenity_embeddings_command(tmp_path):
         rows = AmenityEmbedding.objects.using("vectors").filter(
             amenity_text__in=("cafe", "bar"),
         )
-        ***REMOVED*** deduped + lowercased + blank dropped → 2 rows
+        # deduped + lowercased + blank dropped → 2 rows
         assert rows.count() == 2
         for row in rows:
             np.testing.assert_allclose(
                 np.asarray(row.embedding, dtype=float), fake_vec, atol=1e-8,
             )
 
-        ***REMOVED*** Idempotent: second run upserts, no duplicates
+        # Idempotent: second run upserts, no duplicates
         with mock.patch(
             "semantic_search.services.fasttext_service."
             "FastTextEmbeddingService.calculate_text_embedding",
@@ -556,7 +556,7 @@ def test_compute_amenity_embeddings_command(tmp_path):
         _cleanup()
 
 
-***REMOVED*** ── Executor table path (flag on) ────────────────────────────────────────
+# ── Executor table path (flag on) ────────────────────────────────────────
 
 
 def test_executor_event_diffusion_table_path(seeded_spectral):
@@ -569,7 +569,7 @@ def test_executor_event_diffusion_table_path(seeded_spectral):
     features = seeded_spectral["features"]
     anchor = int(features["node_order"][3])
     parsed = {
-        "template": "EVENT-DIFFUSION (***REMOVED***14)",
+        "template": "EVENT-DIFFUSION (#14)",
         "concepts": [
             {"type": "LOCATION", "text": "Test Source",
              "confidence": 1.0, "resolved_value": None},
@@ -593,7 +593,7 @@ def test_executor_event_diffusion_table_path(seeded_spectral):
     affected = result["results"]["affected"]
     assert set(affected.keys()) == {1.0, 5.0, 10.0}
     assert all(len(v) > 0 for v in affected.values())
-    ***REMOVED*** Table path: factor_join in trace, no graph trace steps
+    # Table path: factor_join in trace, no graph trace steps
     steps = [s.get("step") for s in result["trace"]]
     assert "factor_join" in steps
 
@@ -609,14 +609,14 @@ def test_executor_event_diffusion_no_factor_rows(seeded_spectral):
     features = seeded_spectral["features"]
     anchor = int(features["node_order"][3])
     parsed = {
-        "template": "EVENT-DIFFUSION (***REMOVED***14)",
+        "template": "EVENT-DIFFUSION (#14)",
         "concepts": [
             {"type": "LOCATION", "text": "Test Source",
              "confidence": 1.0, "resolved_value": None},
         ],
     }
 
-    ***REMOVED*** Use a non-existent snapshot so factor rows aren't found
+    # Use a non-existent snapshot so factor rows aren't found
     with mock.patch.object(
                 EntityGeocoder, "geocode",
                 staticmethod(lambda name, country, snap: {
@@ -631,7 +631,7 @@ def test_executor_event_diffusion_no_factor_rows(seeded_spectral):
     assert "error" in result["results"]
 
 
-***REMOVED*** ── 0c: persisted community modularity (Part 2 prerequisite) ─────────────
+# ── 0c: persisted community modularity (Part 2 prerequisite) ─────────────
 
 
 def test_community_detect_reads_persisted_modularity(seeded_spectral):
@@ -670,7 +670,7 @@ def test_community_detect_reads_persisted_modularity(seeded_spectral):
         assert result["community_count"] == 2
         assert result["modularity"] == pytest.approx(0.42)
 
-        ***REMOVED*** No fingerprint row → modularity None, count still answers.
+        # No fingerprint row → modularity None, count still answers.
         fp.delete()
         result2 = QueryExecutorService._community_detect_via_tables(
             [], TEST_CC, SNAP_A, [],
@@ -678,8 +678,8 @@ def test_community_detect_reads_persisted_modularity(seeded_spectral):
         assert result2["modularity"] is None
         assert result2["community_count"] == 2
     finally:
-        ***REMOVED*** fp may already have been deleted above (pk set to None by
-        ***REMOVED*** Django's delete()); re-deleting then raises ValueError.
+        # fp may already have been deleted above (pk set to None by
+        # Django's delete()); re-deleting then raises ValueError.
         if fp.pk is not None:
             fp.delete()
         snapshot.delete()

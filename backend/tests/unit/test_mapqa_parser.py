@@ -28,17 +28,17 @@ def parser():
     return QueryParserService.get_instance()
 
 
-***REMOVED*** ── Template classification ──────────────────────────────────────────
+# ── Template classification ──────────────────────────────────────────
 
 class TestTemplateClassification:
     """Test that the 5 templates are correctly classified."""
 
     @pytest.mark.parametrize("question,expected_template", [
-        ("Which bars are within 50m of Hollywood Blvd?", "FILTER-AGGREGATE-MEASURE (***REMOVED***1)"),
-        ("How far is Union Station from downtown LA?", "OBJECT-FIELD-MEASURE (***REMOVED***2)"),
-        ("What amenity is available at Union Station?", "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)"),
-        ("Which restaurant is nearest to Union Station?", "GEOCODE-BATCH-COMPARE (***REMOVED***4)"),
-        ("What is west of Union Station?", "LOCATION-BEARING-CLASSIFY (***REMOVED***5)"),
+        ("Which bars are within 50m of Hollywood Blvd?", "FILTER-AGGREGATE-MEASURE (#1)"),
+        ("How far is Union Station from downtown LA?", "OBJECT-FIELD-MEASURE (#2)"),
+        ("What amenity is available at Union Station?", "PLACE-ATTRIBUTE-QUERY (#8)"),
+        ("Which restaurant is nearest to Union Station?", "GEOCODE-BATCH-COMPARE (#4)"),
+        ("What is west of Union Station?", "LOCATION-BEARING-CLASSIFY (#5)"),
     ])
     def test_template_classification(self, parser, question, expected_template):
         result = parser.parse(question)
@@ -63,7 +63,7 @@ class TestTemplateClassification:
             )
 
 
-***REMOVED*** ── Concept extraction ───────────────────────────────────────────────
+# ── Concept extraction ───────────────────────────────────────────────
 
 class TestConceptExtraction:
     """Test that concepts are correctly extracted from questions."""
@@ -129,7 +129,7 @@ class TestConceptExtraction:
         assert expected in objects[0]["text"]
 
 
-***REMOVED*** ── DAG validation ───────────────────────────────────────────────────
+# ── DAG validation ───────────────────────────────────────────────────
 
 class TestDagValidation:
     """Test that the DAG is valid (G2 role precedence invariant)."""
@@ -154,7 +154,7 @@ class TestDagValidation:
         result = parser.parse("Which bars are within 50m of Hollywood Blvd?")
         roles = result["roles"]
         if len(roles) >= 2:
-            ***REMOVED*** Check that roles are in non-decreasing order
+            # Check that roles are in non-decreasing order
             from semantic_search.services.query_parser_service import ROLE_ORDER
             order_values = [ROLE_ORDER.get(r["role"], 99) for r in roles]
             for i in range(1, len(order_values)):
@@ -163,7 +163,7 @@ class TestDagValidation:
                 )
 
 
-***REMOVED*** ── Question-word typo tolerance ─────────────────────────────────────
+# ── Question-word typo tolerance ─────────────────────────────────────
 
 class TestQuestionWordTypoTolerance:
     """'Whichs'/'Wich' typos must not defeat compare-closer patterns or
@@ -182,8 +182,8 @@ class TestQuestionWordTypoTolerance:
             "Whichs is closer to Moher Cottage: Cliff Coast Coffee or the "
             "Cliffs of Moher?"
         )
-        ***REMOVED*** "the" is preserved by the compare pattern; EntityGeocoder strips
-        ***REMOVED*** leading articles before resolution.
+        # "the" is preserved by the compare pattern; EntityGeocoder strips
+        # leading articles before resolution.
         assert entities == [
             "Cliff Coast Coffee", "the Cliffs of Moher", "Moher Cottage",
         ]
@@ -193,7 +193,7 @@ class TestQuestionWordTypoTolerance:
             "Whichs is closer to Moher Cottage: Cliff Coast Coffee or the "
             "Cliffs of Moher?"
         )
-        assert result["template"] == "GEOCODE-BATCH-COMPARE (***REMOVED***4)"
+        assert result["template"] == "GEOCODE-BATCH-COMPARE (#4)"
         texts = " ".join(c["text"] or "" for c in result["concepts"])
         assert "Whichs" not in texts
         assert "Moher Cottage" in texts
@@ -216,7 +216,7 @@ class TestQuestionWordTypoTolerance:
         ) == "What is closer to Heavens cafe: Roshan Cafe or Pipels Cafe ?"
 
 
-***REMOVED*** ── Multi-entity extraction ──────────────────────────────────────────
+# ── Multi-entity extraction ──────────────────────────────────────────
 
 class TestMultiEntityExtraction:
     """Test extract_all_entities for multi-entity templates."""
@@ -268,15 +268,15 @@ class TestMultiEntityExtraction:
     def test_single_entity_fallback(self, extractor):
         """Single capitalized entity → [entity]"""
         entities = extractor("What amenity is available at Union Station?")
-        ***REMOVED*** Should extract at least "Union Station"
+        # Should extract at least "Union Station"
         assert "Union Station" in entities
 
-    ***REMOVED*** ── Cardinal direction exclusion (5b cone-search reachability) ──────
-    ***REMOVED*** Regression: capitalized cardinals ("West", "East", etc.) were being
-    ***REMOVED*** extracted as LOCATION entities by the fallback tokenizer, causing the
-    ***REMOVED*** multi-entity supplement to inflate locations to 2 and bypass the 5b
-    ***REMOVED*** cone-search branch in the executor.  See
-    ***REMOVED*** MAPQA_LOCATION_BEARING_5B_CONE_SEARCH_GAP
+    # ── Cardinal direction exclusion (5b cone-search reachability) ──────
+    # Regression: capitalized cardinals ("West", "East", etc.) were being
+    # extracted as LOCATION entities by the fallback tokenizer, causing the
+    # multi-entity supplement to inflate locations to 2 and bypass the 5b
+    # cone-search branch in the executor.  See
+    # MAPQA_LOCATION_BEARING_5B_CONE_SEARCH_GAP
 
     @pytest.mark.parametrize("cardinal", [
         "North", "South", "East", "West",
@@ -303,7 +303,7 @@ class TestMultiEntityExtraction:
         assert "Union Station" in entities
 
 
-***REMOVED*** ── Edge cases ───────────────────────────────────────────────────────
+# ── Edge cases ───────────────────────────────────────────────────────
 
 class TestEdgeCases:
     """Test edge cases and robustness."""
@@ -327,7 +327,7 @@ class TestEdgeCases:
         assert "template" in result
 
 
-***REMOVED*** ── Class-verified OBJECT recovery (Stage 2c) ────────────────────────
+# ── Class-verified OBJECT recovery (Stage 2c) ────────────────────────
 
 class TestObjectRecovery:
     """Stage 2c: recover the OBJECT slot for open-vocabulary brand names.
@@ -352,7 +352,7 @@ class TestObjectRecovery:
         assert len(objects) == 1, result["concepts"]
         assert objects[0]["text"] == "juici patties"
         assert objects[0]["confidence"] == pytest.approx(0.6)
-        ***REMOVED*** Roles and DAG must flow through the recovered concept.
+        # Roles and DAG must flow through the recovered concept.
         assert any(r["concept_type"] == "OBJECT" for r in result["roles"])
         assert any(
             n.get("concept_type") == "OBJECT" and n.get("concept_text") == "juici patties"
@@ -394,7 +394,7 @@ class TestObjectRecovery:
         assert oracle_calls == []
 
     def test_recovery_gated_to_template_1(self, parser):
-        """Recovery fires only for FILTER-AGGREGATE-MEASURE (***REMOVED***1): the oracle
+        """Recovery fires only for FILTER-AGGREGATE-MEASURE (#1): the oracle
         is never consulted for other templates."""
         oracle_calls = []
 
@@ -407,7 +407,7 @@ class TestObjectRecovery:
             country_code="US",
             object_oracle=oracle,
         )
-        assert result["template"] == "OBJECT-FIELD-MEASURE (***REMOVED***2)"
+        assert result["template"] == "OBJECT-FIELD-MEASURE (#2)"
         assert oracle_calls == []
 
 
@@ -433,7 +433,7 @@ class TestIsPoiWkgClass:
         assert not is_poi_wkg_class("wkgs:WKGObject")
 
 
-***REMOVED*** ── Plural→singular normalization (Stage 0) ────────────────────────────
+# ── Plural→singular normalization (Stage 0) ────────────────────────────
 
 class TestPluralNormalization:
     """Regression: "What amenities are around Negril?" returned nothing

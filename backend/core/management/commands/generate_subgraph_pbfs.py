@@ -113,7 +113,7 @@ class Command(BaseCommand):
         snapshot_date = options.get("snapshot_date")
         overwrite = options.get("overwrite", False)
 
-        ***REMOVED*** Load country relations from OSMWikiDataHierarchy instead of JSON
+        # Load country relations from OSMWikiDataHierarchy instead of JSON
         country_relations = get_country_relations_dict()
         
         if not country_relations:
@@ -125,15 +125,15 @@ class Command(BaseCommand):
             )
             return
 
-        ***REMOVED*** Resolve target countries/ISOs
+        # Resolve target countries/ISOs
         target_entries = []
         if isos_str:
-            ***REMOVED*** Filter by ISO codes (case-insensitive lookup)
+            # Filter by ISO codes (case-insensitive lookup)
             isos = [iso.strip().upper() for iso in isos_str.split(",") if iso.strip()]
             for iso in isos:
                 entry = country_relations.get(iso.lower())
                 if not entry:
-                    ***REMOVED*** Try case-insensitive search
+                    # Try case-insensitive search
                     for k, v in country_relations.items():
                         if k.upper() == iso:
                             entry = v
@@ -145,7 +145,7 @@ class Command(BaseCommand):
                         self.style.WARNING(f"ISO {iso} not found in OSMWikiDataHierarchy")
                     )
         elif countries_str:
-            ***REMOVED*** Filter by country names
+            # Filter by country names
             countries = [c.strip() for c in countries_str.split(",") if c.strip()]
             search_terms = [normalize_country_slug(c) for c in countries]
             for iso, entry in country_relations.items():
@@ -169,12 +169,12 @@ class Command(BaseCommand):
             )
         )
 
-        ***REMOVED*** Prepare tasks for multiprocessing
+        # Prepare tasks for multiprocessing
         tasks = []
         for iso, entry in target_entries:
             country_name = entry.get("name")
 
-            ***REMOVED*** Use JSON-based ISO overrides where available, otherwise fall back to slug
+            # Use JSON-based ISO overrides where available, otherwise fall back to slug
             default_slug = entry.get("slug", normalize_country_slug(country_name))
             country_slug = get_country_slug(iso, default_slug)
 
@@ -195,10 +195,10 @@ class Command(BaseCommand):
                 "country_name": country_name,
             })
 
-        ***REMOVED*** Close connections in PARENT before fork
+        # Close connections in PARENT before fork
         connections.close_all()
 
-        ***REMOVED*** Process in parallel
+        # Process in parallel
         start_time = time.time()
 
         with Pool(processes=max_workers) as pool:
@@ -222,7 +222,7 @@ class Command(BaseCommand):
 
         duration = time.time() - start_time
 
-        ***REMOVED*** Analyze results
+        # Analyze results
         total_subgraphs = 0
         total_generated = 0
         total_failed = 0

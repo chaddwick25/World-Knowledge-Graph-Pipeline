@@ -1,4 +1,4 @@
-***REMOVED*** Polyfile Versioning: Border Geometry vs Snapshot Date
+# Polyfile Versioning: Border Geometry vs Snapshot Date
 
 > **Focus:** how polyfiles (`.poly` boundary files) are generated and
 > versioned across the pipeline. The inconsistency between country-level
@@ -16,7 +16,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. What a Polyfile Is
+## 1. What a Polyfile Is
 
 A `.poly` file is an OSM-format polygon file that describes a boundary as a
 list of longitude/latitude coordinates. `osmium extract -p` uses it to clip
@@ -35,7 +35,7 @@ levels:
 
 ---
 
-***REMOVED******REMOVED*** 2. The Snapshot PBF Creation Flow (Correctly Time-Filtered)
+## 2. The Snapshot PBF Creation Flow (Correctly Time-Filtered)
 
 **Source:** <ref_file file="backend/core/services/snapshot/snapshot_extraction_service.py" />
 
@@ -57,7 +57,7 @@ relations) **as it was at that timestamp**. This is correct.
 
 ---
 
-***REMOVED******REMOVED*** 3. Subgraph Polyfiles: Versioned AND Date-Accurate ✓
+## 3. Subgraph Polyfiles: Versioned AND Date-Accurate ✓
 
 **Source:** <ref_file file="backend/core/services/snapshot/subgraph_pbf_service.py" />
 
@@ -80,7 +80,7 @@ PBF). Borders correspond to the snapshot date. ✓
 
 ---
 
-***REMOVED******REMOVED*** 4. Country-Level Polyfiles: Static AND NOT Date-Accurate ✗
+## 4. Country-Level Polyfiles: Static AND NOT Date-Accurate ✗
 
 **Source:** <ref_file file="backend/core/services/snapshot/snapshot_extraction_service.py" />
 
@@ -104,9 +104,9 @@ date. ✗
 
 ---
 
-***REMOVED******REMOVED*** 5. The Design Intent vs Implementation Gap
+## 5. The Design Intent vs Implementation Gap
 
-***REMOVED******REMOVED******REMOVED*** 5.1 `resolve_country_bbox()` Expects Timestamped Polyfiles
+### 5.1 `resolve_country_bbox()` Expects Timestamped Polyfiles
 
 **Source:** `backend/core/services/planet_init/country_bbox.py`
 
@@ -131,7 +131,7 @@ But `SnapshotExtractionService` never writes a polyfile to the
 `CountryPipelineProfile.snapshot_poly_path` exists for this purpose but is
 typically NULL.
 
-***REMOVED******REMOVED******REMOVED*** 5.2 The `snapshot_poly_path` Field
+### 5.2 The `snapshot_poly_path` Field
 
 **Source:** `backend/core/models/country_profile.py`
 
@@ -158,7 +158,7 @@ stays NULL and the fallback never fires.
 
 ---
 
-***REMOVED******REMOVED*** 6. How Geofabrik Handles Polyfile Versioning
+## 6. How Geofabrik Handles Polyfile Versioning
 
 Geofabrik's `.poly` files are **static by design**:
 
@@ -177,7 +177,7 @@ those boundaries **can change between snapshots** when OSM contributors edit
 admin boundaries. So our generated polyfiles should be versioned, even if
 Geofabrik's downloaded ones don't need to be.
 
-***REMOVED******REMOVED******REMOVED*** 6.1 Geofabrik Downloaded Polyfiles (Static, Correct)
+### 6.1 Geofabrik Downloaded Polyfiles (Static, Correct)
 
 **Source:** `backend/core/services/planet_init/geofabrik_poly_service.py`
 
@@ -186,7 +186,7 @@ Geofabrik's downloaded ones don't need to be.
 - Static path: `{sanitized_full_id}.poly` (no timestamp)
 - These are clipping boundaries, not admin boundaries, stable by design
 
-***REMOVED******REMOVED******REMOVED*** 6.2 Generated Polyfiles (Should Be Versioned, Currently Not)
+### 6.2 Generated Polyfiles (Should Be Versioned, Currently Not)
 
 **Source:** `backend/core/services/snapshot/pbf_bounding_box_service.py`
 
@@ -203,7 +203,7 @@ path provided by the caller:
 
 ---
 
-***REMOVED******REMOVED*** 7. The Inconsistency Summary
+## 7. The Inconsistency Summary
 
 | Polyfile Type | Filename Versioned? | Geometry Date-Accurate? | Source PBF |
 |---|---|---|---|
@@ -214,7 +214,7 @@ path provided by the caller:
 
 ---
 
-***REMOVED******REMOVED*** 8. Recommended Fix
+## 8. Recommended Fix
 
 To make country-level polyfiles date-accurate and versioned:
 
@@ -223,13 +223,13 @@ To make country-level polyfiles date-accurate and versioned:
    the planet PBF):
 
    ```python
-   ***REMOVED*** After osmium time-filter produces snapshot_pbf_path:
+   # After osmium time-filter produces snapshot_pbf_path:
    timestamped_poly = (
        Path(snapshot_pbf_path).parent
        / f"{country_slug}_{snapshot_date}.osm.poly"
    )
    pbf_bounding_box_service.generate_high_res_poly(
-       str(snapshot_pbf_path),  ***REMOVED*** ← time-filtered, NOT planet PBF
+       str(snapshot_pbf_path),  # ← time-filtered, NOT planet PBF
        osm_relation_id,
        str(timestamped_poly),
    )
@@ -250,7 +250,7 @@ This would:
 
 ---
 
-***REMOVED******REMOVED*** 9. Why This Matters
+## 9. Why This Matters
 
 Admin boundaries in OSM change over time:
 - Countries redraw provincial/state borders
@@ -273,7 +273,7 @@ same.
 
 ---
 
-***REMOVED******REMOVED*** 10. Invariants
+## 10. Invariants
 
 - Subgraph polyfiles are versioned AND date-accurate (geometry from the
   time-filtered snapshot PBF).

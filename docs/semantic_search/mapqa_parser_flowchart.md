@@ -1,4 +1,4 @@
-***REMOVED*** MapQA Parser Operations Flowchart
+# MapQA Parser Operations Flowchart
 
 > **Focus:** the full MapQA parser lifecycle: Phase A self-supervised
 > training-data generation, Phase B offline training, Phase C runtime query
@@ -12,15 +12,15 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Phase A: Self-Supervised Training-Data Generation
+## 1. Phase A: Self-Supervised Training-Data Generation
 
 **Source:** `semantic_search/services/mapqa_question_generator.py`,
 `semantic_search/services/mapqa_paraphraser.py`,
 `semantic_search/management/commands/generate_mapqa_training_data.py`
 
-***REMOVED******REMOVED******REMOVED*** 1.1 Problems the Expansion Solves
+### 1.1 Problems the Expansion Solves
 
-1. **Small min-class size**: ***REMOVED***2 and ***REMOVED***5 had only 300 examples each, all
+1. **Small min-class size**: #2 and #5 had only 300 examples each, all
    from 2 US regions.
 2. **Geographic OOV**: every training entity name was California or
    Illinois; production queries hit Belize, Jamaica, Ireland, Korea. The
@@ -32,18 +32,18 @@
 4. **Lexical rigidity**: the MapQA-llm paraphrases came from one GPT-3.5
    pass; rule-based + Ollama paraphrase tiers add lexical variation.
 
-***REMOVED******REMOVED******REMOVED*** 1.2 Per-Template Sampling (Anchor-Relative)
+### 1.2 Per-Template Sampling (Anchor-Relative)
 
 All 5 templates are PostGIS-verifiable: the answer is computed exactly at
 generation time and recomputed at test time.
 
 | Template | Sampling / Ground truth / Answer shape |
 |---|---|
-| ***REMOVED***1 FILTER-AGGREGATE-MEASURE | (amenity, named anchor, radius ∈ {50..500}m); `ST_DWithin(geog, anchor, r)` count → int |
-| ***REMOVED***2 OBJECT-FIELD-MEASURE | named pair (A, B) 0.5-200 km apart; haversine → distance_km (float) |
-| ***REMOVED***4 GEOCODE-BATCH-COMPARE | (a) triple (Z,X,Y) → argmin; (b) (amenity, Z); ordered distance, LIMIT 1 → entity name |
-| ***REMOVED***5 LOCATION-BEARING-CLASSIFY | (a) pair → bearing → cardinal; (b) cone ±45°; bearing formula → direction / entity name |
-| ***REMOVED***8 PLACE-ATTRIBUTE-QUERY | (a) named entity → amenity tag; (b) 50 m adjacency; tag lookup / ST_DWithin 50 m → amenity/name |
+| #1 FILTER-AGGREGATE-MEASURE | (amenity, named anchor, radius ∈ {50..500}m); `ST_DWithin(geog, anchor, r)` count → int |
+| #2 OBJECT-FIELD-MEASURE | named pair (A, B) 0.5-200 km apart; haversine → distance_km (float) |
+| #4 GEOCODE-BATCH-COMPARE | (a) triple (Z,X,Y) → argmin; (b) (amenity, Z); ordered distance, LIMIT 1 → entity name |
+| #5 LOCATION-BEARING-CLASSIFY | (a) pair → bearing → cardinal; (b) cone ±45°; bearing formula → direction / entity name |
+| #8 PLACE-ATTRIBUTE-QUERY | (a) named entity → amenity tag; (b) 50 m adjacency; tag lookup / ST_DWithin 50 m → amenity/name |
 
 **Anchor-relative samplers (design deviation from the plan):** each sampler
 picks the anchor first, then the amenity/radius/direction **from the set
@@ -51,9 +51,9 @@ that provably has entities nearby** (grouped `ST_DWithin` query), so
 `count ≥ 1` / a nearest entity / a cone hit are guaranteed **by
 construction**. The plan's "skip empty answers" rule becomes a safety net
 instead of the primary control. Sparse-country yield went from ~0 rows
-(***REMOVED***8b, BZ) to full budget.
+(#8b, BZ) to full budget.
 
-***REMOVED******REMOVED******REMOVED*** 1.3 Paraphrase Tiers
+### 1.3 Paraphrase Tiers
 
 1. Seed question + slot values (entity names, radii, directions).
 2. Two tiers:
@@ -67,18 +67,18 @@ instead of the primary control. Sparse-country yield went from ~0 rows
 4. Output: extra CSV rows with `Question type =
    self_supervised_paraphrase`.
 
-***REMOVED******REMOVED******REMOVED*** 1.4 Class Distribution: Before / After (2026-08-25)
+### 1.4 Class Distribution: Before / After (2026-08-25)
 
 Scale: 1 block = 100 rows.
 
 ```
-Template (***REMOVED***)                    before ---------> after
+Template (#)                    before ---------> after
 ------------------------------------------------------
-***REMOVED***1 FILTER-AGGREGATE-MEASURE       756 ████████-----> 1,511 ███████████████
-***REMOVED***2 OBJECT-FIELD-MEASURE           300 ███----------> 1,500 ███████████████
-***REMOVED***4 GEOCODE-BATCH-COMPARE        1,198 █████████████-> 1,500 ███████████████
-***REMOVED***5 LOCATION-BEARING-CLASSIFY      300 ███----------> 1,500 ███████████████
-***REMOVED***8 PLACE-ATTRIBUTE-QUERY          600 ██████-------> 1,454 ██████████████
+#1 FILTER-AGGREGATE-MEASURE       756 ████████-----> 1,511 ███████████████
+#2 OBJECT-FIELD-MEASURE           300 ███----------> 1,500 ███████████████
+#4 GEOCODE-BATCH-COMPARE        1,198 █████████████-> 1,500 ███████████████
+#5 LOCATION-BEARING-CLASSIFY      300 ███----------> 1,500 ███████████████
+#8 PLACE-ATTRIBUTE-QUERY          600 ██████-------> 1,454 ██████████████
 ------------------------------------------------------
 TOTAL (all training rows)       3,154 ------------> 10,619
 ```
@@ -87,7 +87,7 @@ TOTAL (all training rows)       3,154 ------------> 10,619
 paraphrases; 41 hand-curated rows preserved) from BZ, JM, IE, KR.
 **Min class size gate (≥ 1,000) met for all 5 templates.**
 
-***REMOVED******REMOVED******REMOVED*** 1.5 Train-Split Change (Required for the New Rows to Be Consumed)
+### 1.5 Train-Split Change (Required for the New Rows to Be Consumed)
 
 ```
 train: california_full + augmented + self_supervised   (was: california + augmented)
@@ -100,7 +100,7 @@ The loader tolerates both CSV schemas. Legacy 7-column rows get defaults
 (`Source` derived from `Region`: mapqa-llm / hand-curated /
 self_supervised).
 
-***REMOVED******REMOVED******REMOVED*** 1.6 Evaluation Gates: Actuals
+### 1.6 Evaluation Gates: Actuals
 
 | Metric | Gate | Actual (2026-08-25) |
 |---|---|---|
@@ -110,13 +110,13 @@ self_supervised).
 | Self-supervised holdout | reported (informational) | acc 0.9818, F1-macro 0.9819 (n=1,485) |
 | `parse()` latency | < 50 ms | 1.4 - 3.2 ms |
 
-***REMOVED******REMOVED******REMOVED*** 1.7 Deviations from the Plan
+### 1.7 Deviations from the Plan
 
 - `natural_language_qa_pairs.csv` is **gitignored** (repo runtime-data
   convention). Generated rows live in the canonical mounted data dir but
   are not source-controlled.
-- ***REMOVED***8 seeds fell short of the 250/country budget (712/1,000). The
-  named-with-amenity (***REMOVED***8a) + 50 m adjacency (***REMOVED***8b) constraints are the
+- #8 seeds fell short of the 250/country budget (712/1,000). The
+  named-with-amenity (#8a) + 50 m adjacency (#8b) constraints are the
   tightest; the class-balance cap keeps the class ≥ 1,000 regardless.
 - **Planned follow-up**: USLP-weighted sampling prior. Use USLP
   predicted links as a salience prior for *which* locations to sample
@@ -124,7 +124,7 @@ self_supervised).
 
 ---
 
-***REMOVED******REMOVED*** 2. Phase B: Training (Offline)
+## 2. Phase B: Training (Offline)
 
 Assets produced: pickle + JSON artifacts in `{MAPQA_PARSER_DATA_DIR}/artifacts/`.
 
@@ -160,14 +160,14 @@ Stage 1 predictions run on Illinois + holdout → **ASSET `metrics.json`**:
 
 ---
 
-***REMOVED******REMOVED*** 3. Phase C: Runtime Query Path
+## 3. Phase C: Runtime Query Path
 
 Outputs: parsed spec → execution trace → answer.
 
 1. **User question** arrives.
 2. **`QueryParserService.parse`:**
    1. TF-IDF transform → MultinomialNB → template + confidence
-   2. Deterministic override: "within Xm/km of" → ***REMOVED***1
+   2. Deterministic override: "within Xm/km of" → #1
    3. Concept extraction (trained model + heuristic safety net)
    4. LLM refinement (optional, low-confidence parses only)
    5. Role assignment → DAG composition → G2 validation
@@ -178,14 +178,14 @@ Outputs: parsed spec → execution trace → answer.
    - 3-tier amenity fallback: exact tag → ontology class → FastText
      semantic
    - spatial ops: `ST_DWithin`, distance ordering, factor tables (pgvector
-     `<***REMOVED***>`), `EntityGeocoder` anchors
+     `<#>`), `EntityGeocoder` anchors
 5. **OUT results + execution trace** (+ `latency_ms`), optional LLM
    enrichment → `enriched_answer`.
 6. **Answer.**
 
 ---
 
-***REMOVED******REMOVED*** 4. The Self-Supervision Loop
+## 4. The Self-Supervision Loop
 
 1. `OsmEntity` (vectors) is sampled as anchors / answer entities.
 2. **Generator** (samplers + paraphraser) computes answers exactly from
@@ -216,7 +216,7 @@ Outputs: parsed spec → execution trace → answer.
 
 ---
 
-***REMOVED******REMOVED*** 5. Generated Assets (Complete Inventory)
+## 5. Generated Assets (Complete Inventory)
 
 | Phase | Asset | Location | Producer | Notes |
 |---|---|---|---|---|

@@ -26,9 +26,9 @@ from api.models import (
     Task
 )
 
-***REMOVED*** NOTE: Heavy service imports (osm_wikidata_resolver, regional_path_service,
-***REMOVED*** extraction_service, snapshot_extraction_service, graph_asset_service)
-***REMOVED*** are imported lazily inside methods that use them to avoid slow startup.
+# NOTE: Heavy service imports (osm_wikidata_resolver, regional_path_service,
+# extraction_service, snapshot_extraction_service, graph_asset_service)
+# are imported lazily inside methods that use them to avoid slow startup.
 
 
 logger = logging.getLogger(__name__)
@@ -58,14 +58,14 @@ class CountrySearchStatusView(APIView):
         import calendar
         
         try:
-            ***REMOVED*** Normalize: frontend sends display names ("Ireland And Northern Ireland"),
-            ***REMOVED*** DB stores slugs ("ireland_and_northern_ireland"). normalize_country_slug
-            ***REMOVED*** aligns the two so multi-word countries match.
+            # Normalize: frontend sends display names ("Ireland And Northern Ireland"),
+            # DB stores slugs ("ireland_and_northern_ireland"). normalize_country_slug
+            # aligns the two so multi-word countries match.
             from core.services.snapshot.regional_path_service import normalize_country_slug
             normalized_name = normalize_country_slug(country_name)
 
-            ***REMOVED*** Try the normalized slug first, then fall back to the raw name
-            ***REMOVED*** (covers any DB rows stored with spaces or mixed casing).
+            # Try the normalized slug first, then fall back to the raw name
+            # (covers any DB rows stored with spaces or mixed casing).
             country_processing = (
                 CountrySearchProcessing.objects.filter(country_name__iexact=normalized_name).first()
                 or CountrySearchProcessing.objects.filter(country_name__iexact=country_name).first()
@@ -115,8 +115,8 @@ class CountryPreProcessView(APIView):
     
     def post(self, request):
         country_name = request.data.get('country_name')
-        year_filter = request.data.get('year_filter')  ***REMOVED*** Optional year filter for testing
-        force = request.data.get('force', False)  ***REMOVED*** Force reprocessing
+        year_filter = request.data.get('year_filter')  # Optional year filter for testing
+        force = request.data.get('force', False)  # Force reprocessing
 
         if not country_name:
             return Response(
@@ -125,7 +125,7 @@ class CountryPreProcessView(APIView):
             )
 
         try:
-            ***REMOVED*** Check if country has already been processed
+            # Check if country has already been processed
             from core.models import CountrySearchProcessing
             existing = CountrySearchProcessing.objects.filter(country_name__iexact=country_name).first()
             if existing and existing.is_processed and not force:
@@ -140,14 +140,14 @@ class CountryPreProcessView(APIView):
             logger.info(f"[HEARTBEAT-V2] Starting parallel temporal pre-processing for {country_name}")
             print(f"DEBUG: Starting parallel temporal pre-processing for {country_name}")
             
-            ***REMOVED*** Find continent for the country
+            # Find continent for the country
             region = RegionHierarchy.objects.filter(name__iexact=country_name).first()
             if not region or not region.parent:
                 return Response({'error': f'Continent not found for {country_name} in RegionHierarchy'}, status=status.HTTP_400_BAD_REQUEST)
             
             continent = region.parent.name
 
-            ***REMOVED*** Create a ProcessingSession for websocket tracking
+            # Create a ProcessingSession for websocket tracking
             session = ProcessingSession.objects.create(
                 session_name=f"Country Preprocess: {country_name}",
                 session_type=ProcessingSession.SessionType.TEMPORAL_CORPUS,
@@ -158,7 +158,7 @@ class CountryPreProcessView(APIView):
                 }
             )
 
-            ***REMOVED*** Return immediately with session_id so frontend can connect to websocket
+            # Return immediately with session_id so frontend can connect to websocket
             response_data = {
                 'status': 'started',
                 'country_name': country_name,
@@ -166,7 +166,7 @@ class CountryPreProcessView(APIView):
                 'message': 'Preprocessing started in background'
             }
 
-            ***REMOVED*** Run preprocessing in background thread
+            # Run preprocessing in background thread
             def run_preprocessing_background():
                 try:
                     from core.services.snapshot.snapshot_extraction_service import (
@@ -197,14 +197,14 @@ class CountryPreProcessView(APIView):
                         except Exception:
                             pass
 
-                    ***REMOVED*** Resolve ISO for the country (needed for SnapshotExtractionService)
+                    # Resolve ISO for the country (needed for SnapshotExtractionService)
                     iso = _resolve_iso_from_country_name(country_name)
                     if not iso:
                         logger.error(f"Failed to resolve ISO for country {country_name}")
                         push_complete('failed', 'Failed to resolve ISO')
                         return
 
-                    ***REMOVED*** Resolve OSM relation ID for the country
+                    # Resolve OSM relation ID for the country
                     from core.models import CountryPipelineProfile
                     profile = CountryPipelineProfile.objects.filter(
                         iso2__iexact=iso,
@@ -233,7 +233,7 @@ class CountryPreProcessView(APIView):
                     logger.info(f"Subgraph generation handled by pipeline Phase 3 for {iso}")
                     push_update('subgraph_generation', 'completed', 'Subgraph generation complete', 100)
 
-                    ***REMOVED*** Enqueue step 5 (GeoVectors Encode) for this country and session.
+                    # Enqueue step 5 (GeoVectors Encode) for this country and session.
                     from core.models import Task as OrchestratorTask
                     OrchestratorTask.objects.create(
                         task_type=OrchestratorTask.TaskType.GEOVECTORS_ENCODE,
@@ -254,7 +254,7 @@ class CountryPreProcessView(APIView):
                     push_complete('failed', str(e))
 
 
-            ***REMOVED*** Start background thread
+            # Start background thread
             thread = threading.Thread(target=run_preprocessing_background, daemon=True)
             thread.start()
 
@@ -270,7 +270,7 @@ class CountryPreProcessView(APIView):
     def _delete_yearly_extractions(self, country_name: str):
         """Delete yearly PBF extractions to save disk space after monthly Parquet files are generated."""
         try:
-            ***REMOVED*** Find and delete yearly PBF files for this country
+            # Find and delete yearly PBF files for this country
             yearly_pbfs = PbfFile.objects.filter(
                 path__icontains=country_name.lower(),
                 extraction_level='REGION_YEARLY'
@@ -281,13 +281,13 @@ class CountryPreProcessView(APIView):
             
             for pbf in yearly_pbfs:
                 try:
-                    ***REMOVED*** Get file size before deleting
+                    # Get file size before deleting
                     if pbf.path and Path(pbf.path).exists():
                         size_mb = Path(pbf.path).stat().st_size / (1024 * 1024)
-                        Path(pbf.path).unlink()  ***REMOVED*** Delete the file
+                        Path(pbf.path).unlink()  # Delete the file
                         freed_mb += size_mb
                     
-                    pbf.delete()  ***REMOVED*** Delete the database record
+                    pbf.delete()  # Delete the database record
                     deleted_count += 1
                     logger.info(f"Deleted yearly extraction: {pbf.path}")
                 except Exception as e:

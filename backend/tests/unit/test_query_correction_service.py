@@ -46,7 +46,7 @@ pytestmark = pytest.mark.django_db(
 TEST_CC = "BZ"
 SNAP = "2025_12_31"
 
-***REMOVED*** Own row range (6xxxxx) — distinct from test_mapqa_executor's 100001-100010.
+# Own row range (6xxxxx) — distinct from test_mapqa_executor's 100001-100010.
 _ENTITY_ROWS = [
     ("Correction Test Grill", "restaurant", 17.5000, -88.1800, 600001),
     ("Correction Test Beans", "cafe", 17.5001, -88.1801, 600002),
@@ -91,7 +91,7 @@ def seed_entities(django_db_setup, django_db_blocker):
         ).delete()
 
 
-***REMOVED*** ── Extension requirements ──────────────────────────────────────────
+# ── Extension requirements ──────────────────────────────────────────
 
 class TestExtensions:
     def test_pg_trgm_and_fuzzystrmatch_enabled(self):
@@ -106,7 +106,7 @@ class TestExtensions:
         assert "fuzzystrmatch" in present, "fuzzystrmatch missing on test_vector_db"
 
 
-***REMOVED*** ── Vocabulary ──────────────────────────────────────────────────────
+# ── Vocabulary ──────────────────────────────────────────────────────
 
 class TestVocabulary:
     def test_vocabulary_contains_seeded_tags(self, seed_entities):
@@ -124,20 +124,20 @@ class TestVocabulary:
         assert not QueryCorrectionService._vocab_cache
 
 
-***REMOVED*** ── Correction tiers ────────────────────────────────────────────────
+# ── Correction tiers ────────────────────────────────────────────────
 
 class TestCorrection:
     @pytest.mark.parametrize("phrase,expected,method", [
-        ***REMOVED*** pg_trgm tier — single/double typo in a long word
+        # pg_trgm tier — single/double typo in a long word
         ("resturant", "restaurant", "pg_trgm"),
         ("resstaurant", "restaurant", "pg_trgm"),
         ("supermaket", "supermarket", "pg_trgm"),
-        ***REMOVED*** plural tolerance (executor singularizes upstream; belt and braces)
+        # plural tolerance (executor singularizes upstream; belt and braces)
         ("restaurants", "restaurant", "pg_trgm"),
-        ***REMOVED*** fuzzystrmatch tier — short words defeat trigram overlap
+        # fuzzystrmatch tier — short words defeat trigram overlap
         ("caff", "cafe", "fuzzystrmatch"),
         ("dentistt", "dentist", "pg_trgm"),
-        ***REMOVED*** exact pass — canonical tag is its own correction
+        # exact pass — canonical tag is its own correction
         ("restaurant", "restaurant", "exact"),
         ("bar", "bar", "exact"),
     ])
@@ -154,9 +154,9 @@ class TestCorrection:
         assert MIN_SCORE <= score <= 1.0
 
     @pytest.mark.parametrize("phrase", [
-        "zzqxw",       ***REMOVED*** junk — no tag is close
-        "italian food",  ***REMOVED*** open-vocabulary cuisine phrase — must not be forced
-        "school",      ***REMOVED*** not in the seeded vocabulary → stays None (caller falls through)
+        "zzqxw",       # junk — no tag is close
+        "italian food",  # open-vocabulary cuisine phrase — must not be forced
+        "school",      # not in the seeded vocabulary → stays None (caller falls through)
     ])
     def test_no_false_correction(self, seed_entities, phrase):
         assert QueryCorrectionService.correct_amenity(
@@ -174,7 +174,7 @@ class TestCorrection:
         assert result[0] == "restaurant"
 
 
-***REMOVED*** ── Executor integration (Kuhn's Template) ─────────────────────────
+# ── Executor integration (Kuhn's Template) ─────────────────────────
 
 class TestExecutorIntegration:
     def test_resolve_amenity_tag_corrects_misspelling(self, seed_entities):

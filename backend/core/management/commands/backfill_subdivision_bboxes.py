@@ -91,7 +91,7 @@ class Command(BaseCommand):
                 f"[{bbox[0]}, {bbox[1]}, {bbox[2]}, {bbox[3]}] "
                 f"({source})"
             )
-            time.sleep(1)  ***REMOVED*** Nominatim usage policy (~1 req/s)
+            time.sleep(1)  # Nominatim usage policy (~1 req/s)
 
         self.stdout.write(self.style.SUCCESS(
             f"Backfilled {filled} bbox(es)."
@@ -103,7 +103,7 @@ class Command(BaseCommand):
             ))
             raise SystemExit(1)
 
-    ***REMOVED*** ── Helpers ──────────────────────────────────────────────────────────
+    # ── Helpers ──────────────────────────────────────────────────────────
 
     @staticmethod
     def _missing_bbox_rows() -> list:
@@ -120,17 +120,17 @@ class Command(BaseCommand):
         ``source`` is 'osm_boundary' or 'nominatim' — stamped on the row so
         bbox provenance is first-class (``bbox_source``).
         """
-        ***REMOVED*** 1. Ingested admin boundary by OSM relation id.
+        # 1. Ingested admin boundary by OSM relation id.
         if sg.osm_relation_id:
             boundary = OsmBoundary.objects.filter(
                 osm_id=sg.osm_relation_id,
             ).exclude(bbox__isnull=True).first()
             if boundary and boundary.bbox and len(boundary.bbox) == 4:
-                ***REMOVED*** OsmBoundary.bbox order matches (min_lon, min_lat, ...).
+                # OsmBoundary.bbox order matches (min_lon, min_lat, ...).
                 return (
                     tuple(float(v) for v in boundary.bbox), "osm_boundary",
                 )
-        ***REMOVED*** 2. Nominatim lookup by relation id.
+        # 2. Nominatim lookup by relation id.
         if sg.osm_relation_id:
             bbox = cls._nominatim_bbox(sg.osm_relation_id)
             if bbox:

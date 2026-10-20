@@ -1,6 +1,6 @@
-***REMOVED*** GitLab changelog generator config (M0, 2026-10-19).
-***REMOVED*** Notes are generated from `Changelog:` trailers on squash-merge
-***REMOVED*** messages; the categories map the trailer values to section headings.
+# GitLab changelog generator config (M0, 2026-10-19).
+# Notes are generated from `Changelog:` trailers on squash-merge
+# messages; the categories map the trailer values to section headings.
 date_format: "%Y-%m-%d"
 categories:
   added: "Added"

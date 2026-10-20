@@ -75,7 +75,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-***REMOVED*** ── Data Classes ──────────────────────────────────────────────────────────
+# ── Data Classes ──────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -135,18 +135,18 @@ class AugmentedDataSummary:
     relation_distribution: list
 
 
-***REMOVED*** ── Service ────────────────────────────────────────────────────────────────
+# ── Service ────────────────────────────────────────────────────────────────
 
 
 class AugmentedDataService:
     """Builds augmented data summary for a country."""
 
-    ***REMOVED*** Buckets for normalized score histogram (0.0–1.0 in 0.2 increments)
+    # Buckets for normalized score histogram (0.0–1.0 in 0.2 increments)
     BUCKET_EDGES = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
     BUCKET_LABELS = ['0.0-0.2', '0.2-0.4', '0.4-0.6', '0.6-0.8', '0.8-1.0']
 
-    ***REMOVED*** Thresholds for classifying a link's dominant score type
-    ***REMOVED*** If one score exceeds the sum of the others by this ratio, it's dominant
+    # Thresholds for classifying a link's dominant score type
+    # If one score exceeds the sum of the others by this ratio, it's dominant
     DOMINANCE_RATIO = 0.5
 
     def get_summary(self, country_name: str, snapshot_date: Optional[str] = None) -> AugmentedDataSummary:
@@ -164,13 +164,13 @@ class AugmentedDataService:
         entity_counts = self._count_entities(country_name, iso, snapshot_date)
         augmentation_estimate = self._estimate_augmentation(country_name, iso)
 
-        ***REMOVED*** Aggregate across all subgraphs
+        # Aggregate across all subgraphs
         total_accepted = sum(sg.accepted_count for sg in subgraph_groups)
         total_rejected = sum(sg.rejected_count for sg in subgraph_groups)
         total_links = total_accepted + total_rejected
         acceptance_rate = round(total_accepted / total_links, 3) if total_links > 0 else 0.0
 
-        ***REMOVED*** Aggregate link type breakdown
+        # Aggregate link type breakdown
         agg_breakdown = LinkTypeBreakdown()
         for sg in subgraph_groups:
             agg_breakdown.geo_dominant += sg.link_type_breakdown.geo_dominant
@@ -178,7 +178,7 @@ class AugmentedDataService:
             agg_breakdown.class_dominant += sg.link_type_breakdown.class_dominant
             agg_breakdown.mixed += sg.link_type_breakdown.mixed
 
-        ***REMOVED*** Aggregate score distribution
+        # Aggregate score distribution
         agg_score_counts = Counter()
         for sg in subgraph_groups:
             for bucket, count in zip(sg.score_distribution.buckets, sg.score_distribution.counts):
@@ -188,7 +188,7 @@ class AugmentedDataService:
             counts=[agg_score_counts.get(b, 0) for b in self.BUCKET_LABELS],
         )
 
-        ***REMOVED*** Aggregate relation distribution across all links
+        # Aggregate relation distribution across all links
         relation_dist = self._build_relation_distribution(country_name, iso, snapshot_date)
 
         return AugmentedDataSummary(
@@ -241,7 +241,7 @@ class AugmentedDataService:
             relation_distribution=relation_dist,
         )
 
-    ***REMOVED*** ── Subgraph Groups ────────────────────────────────────────────────
+    # ── Subgraph Groups ────────────────────────────────────────────────
 
     def _build_subgraph_groups(
         self, country_name: str, iso: Optional[str], snapshot_date: Optional[str] = None
@@ -267,13 +267,13 @@ class AugmentedDataService:
         subgraphs = self._get_subgraphs(iso)
         groups = []
 
-        ***REMOVED*** ── Build per-subgraph head-entity scopes ─────────────────────
-        ***REMOVED*** Cross-database constraint: OsmEntity lives in the `vectors` DB
-        ***REMOVED*** while SpatialTripletScore lives in `default`, so we can't use a
-        ***REMOVED*** SQL subquery. We fetch entity IDs first, then map each head
-        ***REMOVED*** entity to its first matching subgraph via a Python dict
-        ***REMOVED*** (frozenset membership lookup per link).
-        subgraph_scopes = []  ***REMOVED*** [(slug, name, frozenset(entity_ids)), ...]
+        # ── Build per-subgraph head-entity scopes ─────────────────────
+        # Cross-database constraint: OsmEntity lives in the `vectors` DB
+        # while SpatialTripletScore lives in `default`, so we can't use a
+        # SQL subquery. We fetch entity IDs first, then map each head
+        # entity to its first matching subgraph via a Python dict
+        # (frozenset membership lookup per link).
+        subgraph_scopes = []  # [(slug, name, frozenset(entity_ids)), ...]
         for sg in subgraphs:
             entity_ids = self._get_subgraph_entity_ids(sg)
             if not entity_ids:
@@ -286,15 +286,15 @@ class AugmentedDataService:
             ))
 
         if subgraph_scopes:
-            ***REMOVED*** head_osm_id → first matching subgraph index (later bboxes
-            ***REMOVED*** only win when the earlier ones don't contain the head).
+            # head_osm_id → first matching subgraph index (later bboxes
+            # only win when the earlier ones don't contain the head).
             head_to_subgraph = {}
             for idx, (_, _, entity_set) in enumerate(subgraph_scopes):
                 for osm_id in entity_set:
                     head_to_subgraph.setdefault(osm_id, idx)
 
-            ***REMOVED*** Load the country+snapshot link set ONCE — this is the ground
-            ***REMOVED*** truth that the per-subgraph buckets must partition exactly.
+            # Load the country+snapshot link set ONCE — this is the ground
+            # truth that the per-subgraph buckets must partition exactly.
             accepted_links = list(
                 SpatialTripletScore.objects
                 .filter(country_filter & Q(predicted=True) & snapshot_filter)
@@ -350,9 +350,9 @@ class AugmentedDataService:
                     avg_confidence=agg['avg_confidence'],
                 ))
 
-            ***REMOVED*** Residual country-level group for links whose head falls
-            ***REMOVED*** outside every subgraph bbox — keeps the partition complete
-            ***REMOVED*** so total_accepted covers the full country+snapshot link set.
+            # Residual country-level group for links whose head falls
+            # outside every subgraph bbox — keeps the partition complete
+            # so total_accepted covers the full country+snapshot link set.
             if unassigned_accepted or unassigned_rejected:
                 accepted_qs = (
                     SpatialTripletScore.objects.filter(pk__in=unassigned_accepted)
@@ -373,8 +373,8 @@ class AugmentedDataService:
                     avg_confidence=agg['avg_confidence'],
                 ))
 
-        ***REMOVED*** No subgraph scopes (no subgraphs, or all bboxes missing) →
-        ***REMOVED*** single country-level group (no spatial filtering needed).
+        # No subgraph scopes (no subgraphs, or all bboxes missing) →
+        # single country-level group (no spatial filtering needed).
         if not groups:
             accepted_qs = SpatialTripletScore.objects.filter(
                 country_filter & Q(predicted=True) & snapshot_filter
@@ -420,22 +420,22 @@ class AugmentedDataService:
         Returns:
             {
                 'breakdown': LinkTypeBreakdown,
-                'score_counts': [int, int, int, int, int],  ***REMOVED*** 5 buckets
+                'score_counts': [int, int, int, int, int],  # 5 buckets
                 'avg_confidence': float,
             }
         """
         from django.db.models import Avg, Case, Count, F, When
 
-        ***REMOVED*** Link type dominance classification:
-        ***REMOVED***   geo_dominant   → geo_score > name_score + topo_score
-        ***REMOVED***   name_dominant  → name_score > geo_score + topo_score
-        ***REMOVED***   class_dominant → topo_score > geo_score + name_score
-        ***REMOVED***   mixed          → none of the above (including all-zero scores)
-        ***REMOVED***
-        ***REMOVED*** The ratio test `geo_score / total > 0.5` is algebraically
-        ***REMOVED*** equivalent to `geo_score > total - geo_score` i.e.
-        ***REMOVED*** `geo_score > name_score + topo_score`. Using F() expressions
-        ***REMOVED*** lets SQL do this arithmetic without loading rows into Python.
+        # Link type dominance classification:
+        #   geo_dominant   → geo_score > name_score + topo_score
+        #   name_dominant  → name_score > geo_score + topo_score
+        #   class_dominant → topo_score > geo_score + name_score
+        #   mixed          → none of the above (including all-zero scores)
+        #
+        # The ratio test `geo_score / total > 0.5` is algebraically
+        # equivalent to `geo_score > total - geo_score` i.e.
+        # `geo_score > name_score + topo_score`. Using F() expressions
+        # lets SQL do this arithmetic without loading rows into Python.
         result = accepted_qs.aggregate(
             total=Count('id'),
             geo_dominant=Count(
@@ -447,9 +447,9 @@ class AugmentedDataService:
             class_dominant=Count(
                 Case(When(topo_score__gt=F('geo_score') + F('name_score'), then=1))
             ),
-            ***REMOVED*** Score distribution histogram — 5 fixed buckets over [0.0, 1.0]
-            ***REMOVED*** The last bucket includes 1.0 (>= 0.8 rather than range 0.8-1.0)
-            ***REMOVED*** to catch the edge case where normalized_score is exactly 1.0.
+            # Score distribution histogram — 5 fixed buckets over [0.0, 1.0]
+            # The last bucket includes 1.0 (>= 0.8 rather than range 0.8-1.0)
+            # to catch the edge case where normalized_score is exactly 1.0.
             b0=Count(Case(When(normalized_score__gte=0.0, normalized_score__lt=0.2, then=1))),
             b1=Count(Case(When(normalized_score__gte=0.2, normalized_score__lt=0.4, then=1))),
             b2=Count(Case(When(normalized_score__gte=0.4, normalized_score__lt=0.6, then=1))),
@@ -462,8 +462,8 @@ class AugmentedDataService:
         geo = result['geo_dominant'] or 0
         name = result['name_dominant'] or 0
         cls = result['class_dominant'] or 0
-        ***REMOVED*** mixed = total - (geo + name + cls) — captures both
-        ***REMOVED*** "no dominant component" and "all scores are zero"
+        # mixed = total - (geo + name + cls) — captures both
+        # "no dominant component" and "all scores are zero"
         mixed = total - geo - name - cls
 
         avg_conf = result['avg_confidence']
@@ -484,7 +484,7 @@ class AugmentedDataService:
             'avg_confidence': round(avg_conf, 4) if avg_conf else 0.0,
         }
 
-    ***REMOVED*** ── Entity Counts ──────────────────────────────────────────────────
+    # ── Entity Counts ──────────────────────────────────────────────────
 
     @staticmethod
     def _count_entities(country_name: str, iso: Optional[str], snapshot_date: Optional[str] = None) -> dict:
@@ -511,8 +511,8 @@ class AugmentedDataService:
 
         try:
             with connections['vectors'].cursor() as cursor:
-                ***REMOVED*** Partitioned table: pruning happens on (snapshot_id,
-                ***REMOVED*** country_code), so both keys keep the count on the leaf.
+                # Partitioned table: pruning happens on (snapshot_id,
+                # country_code), so both keys keep the count on the leaf.
                 country_clause = " AND country_code = %s" if iso else ""
                 country_params = [iso.upper()] if iso else []
 
@@ -546,7 +546,7 @@ class AugmentedDataService:
 
         return result
 
-    ***REMOVED*** ── Relation Distribution ──────────────────────────────────────────
+    # ── Relation Distribution ──────────────────────────────────────────
 
     def _build_relation_distribution(
         self, country_name: str, iso: Optional[str], snapshot_date: Optional[str] = None
@@ -564,8 +564,8 @@ class AugmentedDataService:
         country_filter = self._country_filter(country_name, iso)
         snapshot_filter = self._snapshot_filter(snapshot_date)
 
-        ***REMOVED*** SQL: SELECT relation, COUNT(*) FROM ... GROUP BY relation
-        ***REMOVED*** Returns one dict per relation: {'relation': str, 'count': int}
+        # SQL: SELECT relation, COUNT(*) FROM ... GROUP BY relation
+        # Returns one dict per relation: {'relation': str, 'count': int}
         accepted_by_rel = (
             SpatialTripletScore.objects
             .filter(country_filter & Q(predicted=True) & snapshot_filter)
@@ -579,9 +579,9 @@ class AugmentedDataService:
             .annotate(count=Count('id'))
         )
 
-        ***REMOVED*** Merge accepted + rejected counts per relation in Python.
-        ***REMOVED*** This is a small dict merge (one entry per relation), not a
-        ***REMOVED*** row-by-row iteration — the heavy lifting is done by SQL GROUP BY.
+        # Merge accepted + rejected counts per relation in Python.
+        # This is a small dict merge (one entry per relation), not a
+        # row-by-row iteration — the heavy lifting is done by SQL GROUP BY.
         rel_accepted = {r['relation']: r['count'] for r in accepted_by_rel}
         rel_rejected = {r['relation']: r['count'] for r in rejected_by_rel}
 
@@ -600,11 +600,11 @@ class AugmentedDataService:
                 'acceptance_rate': round(acc / total, 3) if total > 0 else 0.0,
             })
 
-        ***REMOVED*** Sort by total count descending (matches the old Counter.most_common())
+        # Sort by total count descending (matches the old Counter.most_common())
         distribution.sort(key=lambda x: x['count'], reverse=True)
         return distribution
 
-    ***REMOVED*** ── Augmentation Estimate ──────────────────────────────────────────
+    # ── Augmentation Estimate ──────────────────────────────────────────
 
     def _estimate_augmentation(
         self, country_name: str, iso: Optional[str]
@@ -632,9 +632,9 @@ class AugmentedDataService:
         country_filter = self._country_filter(country_name, iso)
         rejected_qs = SpatialTripletScoreRejected.objects.filter(country_filter)
 
-        ***REMOVED*** Single aggregate query: total count + augmentable count.
-        ***REMOVED*** The augmentable condition (geo > 0.3 OR name > 0.3 OR topo > 0.3)
-        ***REMOVED*** is pushed to SQL via CASE WHEN with Q expressions.
+        # Single aggregate query: total count + augmentable count.
+        # The augmentable condition (geo > 0.3 OR name > 0.3 OR topo > 0.3)
+        # is pushed to SQL via CASE WHEN with Q expressions.
         totals = rejected_qs.aggregate(
             total=Count('id'),
             augmentable=Count(
@@ -659,11 +659,11 @@ class AugmentedDataService:
                 reasoning="No rejected links to augment.",
             )
 
-        cost_per_call = 0.005  ***REMOVED*** Google Places Geocoding starter tier
+        cost_per_call = 0.005  # Google Places Geocoding starter tier
 
-        ***REMOVED*** Per-relation breakdown via SQL GROUP BY + conditional COUNT.
-        ***REMOVED*** This returns one row per relation with total and augmentable counts,
-        ***REMOVED*** replacing the Python Counter loop over all rejected links.
+        # Per-relation breakdown via SQL GROUP BY + conditional COUNT.
+        # This returns one row per relation with total and augmentable counts,
+        # replacing the Python Counter loop over all rejected links.
         by_rel_qs = (
             rejected_qs
             .values('relation')
@@ -711,7 +711,7 @@ class AugmentedDataService:
             reasoning=reasoning,
         )
 
-    ***REMOVED*** ── Subgraph Resolution ────────────────────────────────────────────
+    # ── Subgraph Resolution ────────────────────────────────────────────
 
     @staticmethod
     def _get_subgraphs(iso: Optional[str]) -> list:
@@ -732,7 +732,7 @@ class AugmentedDataService:
             SubgraphProfile.objects.filter(country_profile=profile)
         )
 
-    ***REMOVED*** ── Helpers ─────────────────────────────────────────────────────────
+    # ── Helpers ─────────────────────────────────────────────────────────
 
     @staticmethod
     def _country_filter(country_name: str, iso: Optional[str]):

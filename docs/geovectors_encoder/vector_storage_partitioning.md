@@ -1,4 +1,4 @@
-***REMOVED*** Vector Storage & Partitioning: pgvector + PostGIS
+# Vector Storage & Partitioning: pgvector + PostGIS
 
 > **Focus:** PostgreSQL is the unified storage stack for embeddings. The
 > two-DB topology (default + vectors), the `OsmEntity` partitioned table
@@ -12,9 +12,9 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Database Topology
+## 1. Database Topology
 
-***REMOVED******REMOVED******REMOVED*** 1.1 Two PostgreSQL instances
+### 1.1 Two PostgreSQL instances
 
 | Alias | Engine | Port | Purpose | Docker image |
 |---|---|---|---|---|
@@ -23,7 +23,7 @@
 
 **Source:** <ref_file file="backend/backend/settings.py" />
 
-***REMOVED******REMOVED******REMOVED*** 1.2 Vectors DB server tuning
+### 1.2 Vectors DB server tuning
 
 The `postgres-vectors` container is tuned for large HNSW index builds and
 bulk upserts:
@@ -46,7 +46,7 @@ command:
 `/dev/shm` is 24 GB because the previous 1 GB cap caused "No space left on
 device" during parallel `CREATE INDEX ... USING hnsw`.
 
-***REMOVED******REMOVED******REMOVED*** 1.3 Database routers
+### 1.3 Database routers
 
 **Source:** <ref_file file="backend/backend/database_router.py" />
 
@@ -63,9 +63,9 @@ Three routers in priority order:
 
 ---
 
-***REMOVED******REMOVED*** 2. The `semantic_search_osmentity` Table
+## 2. The `semantic_search_osmentity` Table
 
-***REMOVED******REMOVED******REMOVED*** 2.1 Django model
+### 2.1 Django model
 
 **Source:** <ref_file file="backend/worldkg_nca/models.py" />
 
@@ -94,7 +94,7 @@ Key columns:
 | `country_code` | `VARCHAR(3)` | ISO code, PARTITION KEY |
 | `source_snapshot_id` | `UUID` | Cross-DB FK to `osmsnapshot.Snapshot` |
 
-***REMOVED******REMOVED******REMOVED*** 2.2 The Two Snapshot Fields (Critical Distinction)
+### 2.2 The Two Snapshot Fields (Critical Distinction)
 
 | | `source_snapshot_id` | `snapshot_id` |
 |---|---|---|
@@ -108,7 +108,7 @@ Bridge: `snapshot_id_from_uuid(uuid) → str` (`worldkg_nca/snapshot_utils.py`)
 
 ---
 
-***REMOVED******REMOVED*** 3. Partitioning: Active
+## 3. Partitioning: Active
 
 `semantic_search_osmentity` is a partitioned table:
 
@@ -126,7 +126,7 @@ Each country gets its own leaf partition:
     - `embeddings_2025_12_31_is` (ALL Iceland, 184K)
     - `embeddings_2025_12_31_jm` (ALL Jamaica, 30K)
 
-***REMOVED******REMOVED******REMOVED*** 3.1 Automatic Cutover
+### 3.1 Automatic Cutover
 
 The cutover happens automatically on a fresh DB:
 1. `create_country_partitions` detects the empty monolith
@@ -139,7 +139,7 @@ The cutover happens automatically on a fresh DB:
 No manual cutover or backfill needed on fresh DBs. Verified E2E with JM
 (Jamaica) and CV (Cape Verde).
 
-***REMOVED******REMOVED******REMOVED*** 3.2 Runtime Partition-Aware Upserts
+### 3.2 Runtime Partition-Aware Upserts
 
 `vector_storage_service._bulk_upsert()` checks `pg_partitioned_table` at
 runtime to select the correct ON CONFLICT target:
@@ -148,7 +148,7 @@ runtime to select the correct ON CONFLICT target:
 
 No setting flag needed. The runtime check is the sole source of truth.
 
-***REMOVED******REMOVED******REMOVED*** 3.3 Partition Pruning = Spatial Filter
+### 3.3 Partition Pruning = Spatial Filter
 
 ```
 Query: "restaurants in Cuba"
@@ -170,7 +170,7 @@ The routing key is the pair `(snapshot_id, country_code)`.
 
 ---
 
-***REMOVED******REMOVED*** 4. HNSW Index: The 400D ANN Index
+## 4. HNSW Index: The 400D ANN Index
 
 > **Status (2026-09-09): design, not built.** `static_embedding` is NULL for
 > all 46,030,536 rows, `osmentity_static_embedding_hnsw_idx` does not exist,
@@ -178,7 +178,7 @@ The routing key is the pair `(snapshot_id, country_code)`.
 > per-snapshot MV indexes (`idx_mv_embeddings_*_hnsw`), which no runtime query
 > reads. Sections 4.1-4.3 describe the intended build.
 
-***REMOVED******REMOVED******REMOVED*** 4.1 What HNSW Stores
+### 4.1 What HNSW Stores
 
 **HNSW index (150 bytes/row):**
 - Layer assignment (which level this node lives on)
@@ -199,7 +199,7 @@ each edge is a pointer (~8 bytes), so ~128 bytes + overhead = 150 bytes/row.
 The actual vector data lives in the Postgres heap table, shared by all
 indexes. The HNSW index just points into the heap.
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Production Scale (Measured)
+### 4.2 Production Scale (Measured)
 
 | Country | Entities | HNSW Index | Build Time | Verdict |
 |---|---|---|---|---|
@@ -211,7 +211,7 @@ indexes. The HNSW index just points into the heap.
 | Australia (AU) | ~400M | 60 GB | ~4.2h | HNSW viable |
 | USA (US) | ~600M | 90 GB | ~6.4h | HNSW viable |
 
-***REMOVED******REMOVED******REMOVED*** 4.3 Index Lifecycle
+### 4.3 Index Lifecycle
 
 - **Step 1**: calls `create_country_partitions --skip-data --skip-mv`,
   creates the leaf partition with **no HNSW index** (nothing to drop, nothing
@@ -231,7 +231,7 @@ so there's nothing to drop.
 
 ---
 
-***REMOVED******REMOVED*** 5. Bulk Upsert Optimizations
+## 5. Bulk Upsert Optimizations
 
 **Source:** <ref_file file="backend/geovectors_encoder/services/vector_storage_service.py" />
 
@@ -249,7 +249,7 @@ so there's nothing to drop.
 
 ---
 
-***REMOVED******REMOVED*** 6. GiST Index: The Spatial Backbone
+## 6. GiST Index: The Spatial Backbone
 
 ```
 idx_..._geom ON geom USING gist
@@ -268,7 +268,7 @@ entities, not the whole planet.
 
 ---
 
-***REMOVED******REMOVED*** 7. Why pgvector on PostgreSQL (Not a Dedicated Vector DB)
+## 7. Why pgvector on PostgreSQL (Not a Dedicated Vector DB)
 
 A dedicated vector database (Milvus, Qdrant, Weaviate) would not
 dramatically improve ingestion throughput. The I/O ceiling doesn't go away.
@@ -286,7 +286,7 @@ The codebase has architectural reasons to stay on pgvector:
 
 ---
 
-***REMOVED******REMOVED*** 8. Invariants
+## 8. Invariants
 
 - The vectors database must have both `pgvector` and `PostGIS` extensions
   enabled.

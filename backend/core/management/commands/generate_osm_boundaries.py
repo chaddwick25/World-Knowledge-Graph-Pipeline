@@ -35,7 +35,7 @@ from core.services.planet_init.osm_wikidata_resolver import get_country_relation
 logger = logging.getLogger(__name__)
 
 
-***REMOVED*** ── Helpers ───────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────
 
 def _build_slug_to_iso() -> Dict[str, str]:
     """Build a dict: lowercase slug/name → ISO code.
@@ -52,7 +52,7 @@ def _build_slug_to_iso() -> Dict[str, str]:
     lookup = {}
     relations = get_country_relations_dict()
 
-    ***REMOVED*** Pre-build a QID→ISO mapping from CountryPipelineProfile
+    # Pre-build a QID→ISO mapping from CountryPipelineProfile
     qid_to_iso = {}
     try:
         from core.models import CountryPipelineProfile
@@ -80,20 +80,20 @@ def _build_slug_to_iso() -> Dict[str, str]:
     def _resolve_iso(iso_key: str, data: dict) -> str:
         """Resolve an ISO key to a real 2-letter ISO code."""
         key_upper = iso_key.upper()
-        ***REMOVED*** Already looks like a real ISO code (2 letters)
+        # Already looks like a real ISO code (2 letters)
         if len(key_upper) == 2 and key_upper.isalpha():
             return key_upper
-        ***REMOVED*** Try to resolve QID via our mapping
+        # Try to resolve QID via our mapping
         wkg_uri = data.get('wkg_uri', '')
         qid_from_uri = wkg_uri.rsplit('/', 1)[-1].upper() if wkg_uri else ''
         resolved = (
             qid_to_iso.get(key_upper)
             or qid_to_iso.get(qid_from_uri)
-            or key_upper  ***REMOVED*** fallback to original (QID)
+            or key_upper  # fallback to original (QID)
         )
         return resolved
 
-    ***REMOVED*** 1. country_relations.json
+    # 1. country_relations.json
     for iso_key, data in relations.items():
         slug = (data.get('slug') or '').lower()
         if slug:
@@ -102,7 +102,7 @@ def _build_slug_to_iso() -> Dict[str, str]:
         if name:
             lookup[name] = _resolve_iso(iso_key, data)
 
-    ***REMOVED*** 2. CountryPipelineProfile direct mapping (catches composite-QID countries)
+    # 2. CountryPipelineProfile direct mapping (catches composite-QID countries)
     try:
         from core.models import CountryPipelineProfile
         for profile in CountryPipelineProfile.objects.filter(
@@ -111,7 +111,7 @@ def _build_slug_to_iso() -> Dict[str, str]:
             iso2 = profile.iso2.upper()
             slug = (profile.canonical_slug or '').lower()
             if slug:
-                ***REMOVED*** Add both hyphenated and underscored variants
+                # Add both hyphenated and underscored variants
                 lookup.setdefault(slug, iso2)
                 lookup.setdefault(slug.replace('-', '_'), iso2)
     except Exception:
@@ -273,11 +273,11 @@ class Command(BaseCommand):
             deleted, _ = OsmBoundary.objects.all().delete()
             self.stdout.write(f'Cleared {deleted} existing OsmBoundary records')
 
-        ***REMOVED*** ── ISO lookup ──
+        # ── ISO lookup ──
         slug_to_iso = _build_slug_to_iso()
         self.stdout.write(f'Loaded {len(slug_to_iso)} country relations for ISO lookup')
 
-        ***REMOVED*** ── Land polygon (optional) ──
+        # ── Land polygon (optional) ──
         land_polygon = None
         if with_clip:
             osmium_bin = settings.OSMIUM_EXECUTABLE
@@ -291,22 +291,22 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(self.style.WARNING('Land polygon could not be built'))
 
-        ***REMOVED*** ── Query countries ──
-        ***REMOVED*** Exclude synthetic parents used for osmium extraction only
+        # ── Query countries ──
+        # Exclude synthetic parents used for osmium extraction only
         EXCLUDED_PARENTS = ['overrides', 'merge']
 
-        ***REMOVED*** Get all real continent IDs
+        # Get all real continent IDs
         continent_ids = list(RegionHierarchy.objects.filter(
             region_type=RegionHierarchy.RegionType.CONTINENT
         ).exclude(name__in=EXCLUDED_PARENTS).values_list('id', flat=True))
 
-        ***REMOVED*** Direct children of continents (most countries)
+        # Direct children of continents (most countries)
         direct_ids = list(RegionHierarchy.objects.filter(
             parent_id__in=continent_ids,
             polygon_file__isnull=False,
         ).values_list('id', flat=True))
 
-        ***REMOVED*** Grandchildren of continents (e.g. scotland → united_kingdom → europe)
+        # Grandchildren of continents (e.g. scotland → united_kingdom → europe)
         sub_country_parent_ids = list(RegionHierarchy.objects.filter(
             parent_id__in=continent_ids
         ).values_list('id', flat=True))
@@ -328,7 +328,7 @@ class Command(BaseCommand):
                 id__in=list(all_valid_ids),
             ).select_related('polygon_file', 'parent')
 
-        ***REMOVED*** Deduplicate by name
+        # Deduplicate by name
         seen = {}
         for c in countries_qs:
             key = c.name.lower()
@@ -356,7 +356,7 @@ class Command(BaseCommand):
                 skipped += 1
                 continue
 
-            ***REMOVED*** Parse geometry
+            # Parse geometry
             try:
                 geometry = parse_poly_file(str(poly_path))
                 geojson_geom = json.loads(geometry.geojson)
@@ -365,15 +365,15 @@ class Command(BaseCommand):
                 failed += 1
                 continue
 
-            ***REMOVED*** Optional coastline clip
+            # Optional coastline clip
             if with_clip and land_polygon:
                 geojson_geom = _clip_to_land(geojson_geom, land_polygon)
 
             bbox = _compute_bbox_from_geometry(geojson_geom)
-            ***REMOVED*** TODO: investigate this logic
-            ***REMOVED*** Try multiple name variants — RegionHierarchy.name uses underscores
-            ***REMOVED*** (e.g. "bosnia_herzegovina") but country_relations slugs use hyphens
-            ***REMOVED*** (e.g. "bosnia-herzegovina").  Also try spaces for safety.
+            # TODO: investigate this logic
+            # Try multiple name variants — RegionHierarchy.name uses underscores
+            # (e.g. "bosnia_herzegovina") but country_relations slugs use hyphens
+            # (e.g. "bosnia-herzegovina").  Also try spaces for safety.
             name_lower = country.name.lower()
             iso_code = (
                 slug_to_iso.get(name_lower)
@@ -392,8 +392,8 @@ class Command(BaseCommand):
 
             try:
                 OsmBoundary.objects.filter(polygon_file=poly_file).delete()
-                ***REMOVED*** Use a hash of the file path as a unique numeric ID
-                ***REMOVED*** since we don't have the real OSM relation ID from .poly files
+                # Use a hash of the file path as a unique numeric ID
+                # since we don't have the real OSM relation ID from .poly files
                 from hashlib import md5
                 unique_id = int(md5(str(poly_path).encode()).hexdigest()[:12], 16)
                 OsmBoundary.objects.create(

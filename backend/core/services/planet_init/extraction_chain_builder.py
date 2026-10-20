@@ -34,13 +34,13 @@ class ExtractionChainBuilder:
         except RegionHierarchy.DoesNotExist:
             raise ValueError(f"Region {target_region_id} not found")
         
-        ***REMOVED*** Build ancestor chain
+        # Build ancestor chain
         chain = ExtractionChainBuilder._build_ancestor_chain(target_region)
         
-        ***REMOVED*** Build extraction steps
+        # Build extraction steps
         steps = ExtractionChainBuilder._build_extraction_steps(chain)
         
-        ***REMOVED*** Calculate estimated resources
+        # Calculate estimated resources
         resources = ExtractionChainBuilder._estimate_resources(steps)
         
         return {
@@ -65,7 +65,7 @@ class ExtractionChainBuilder:
         chain = []
         current = region
         
-        ***REMOVED*** Walk up the tree to root
+        # Walk up the tree to root
         while current:
             chain.insert(0, {
                 'id': str(current.id),
@@ -77,7 +77,7 @@ class ExtractionChainBuilder:
             })
             current = current.parent
         
-        ***REMOVED*** Add planet at the beginning if not present
+        # Add planet at the beginning if not present
         planet_pbf = PbfFile.objects.filter(
             pbf_file_type=PbfFile.PbfType.PLANET,
             status=PbfFile.PbfStatus.COMPLETED
@@ -108,7 +108,7 @@ class ExtractionChainBuilder:
             parent = chain[i - 1]
             child = chain[i]
             
-            ***REMOVED*** Skip if child already has PBF
+            # Skip if child already has PBF
             if child['pbf_exists']:
                 steps.append({
                     'step_number': i,
@@ -121,7 +121,7 @@ class ExtractionChainBuilder:
                 })
                 continue
             
-            ***REMOVED*** Check if parent has PBF
+            # Check if parent has PBF
             if not parent['pbf_exists']:
                 steps.append({
                     'step_number': i,
@@ -133,7 +133,7 @@ class ExtractionChainBuilder:
                 })
                 continue
             
-            ***REMOVED*** Check if child has polygon file
+            # Check if child has polygon file
             if not child['polygon_file']:
                 steps.append({
                     'step_number': i,
@@ -144,7 +144,7 @@ class ExtractionChainBuilder:
                 })
                 continue
             
-            ***REMOVED*** Valid extraction step
+            # Valid extraction step
             steps.append({
                 'step_number': i,
                 'action': 'extract',
@@ -237,7 +237,7 @@ class ExtractionChainBuilder:
         """
         chain_data = ExtractionChainBuilder.build_extraction_chain(target_region_id)
         
-        ***REMOVED*** Build recipe steps
+        # Build recipe steps
         recipe_steps = []
         
         for step in chain_data['steps']:
@@ -247,8 +247,8 @@ class ExtractionChainBuilder:
                     'source_pbf_id': step['source_pbf_id'],
                     'polygon_file': step['polygon_file'],
                     'output_name': step['target_region'],
-                    'strategy': 'complete_ways',  ***REMOVED*** For history files
-                    'cpu_core_id': None  ***REMOVED*** Auto-assign
+                    'strategy': 'complete_ways',  # For history files
+                    'cpu_core_id': None  # Auto-assign
                 })
         
         return {
@@ -277,7 +277,7 @@ class ExtractionChainBuilder:
             errors = []
             warnings = []
             
-            ***REMOVED*** Check for errors in steps
+            # Check for errors in steps
             for step in chain_data['steps']:
                 if step['action'] == 'error':
                     errors.append({
@@ -286,7 +286,7 @@ class ExtractionChainBuilder:
                         'reason': step['reason']
                     })
             
-            ***REMOVED*** Check if planet file exists
+            # Check if planet file exists
             planet_pbf = PbfFile.objects.filter(
                 pbf_file_type=PbfFile.PbfType.PLANET,
                 status=PbfFile.PbfStatus.COMPLETED
@@ -299,7 +299,7 @@ class ExtractionChainBuilder:
                     'reason': 'No planet PBF file registered'
                 })
             
-            ***REMOVED*** Check for warnings
+            # Check for warnings
             if chain_data['resources']['total_time_hours'] > 2:
                 warnings.append({
                     'type': 'long_duration',

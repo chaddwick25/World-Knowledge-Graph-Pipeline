@@ -36,11 +36,11 @@ class TemplateExecutorsMixin:
         locations = cls._get_concepts_by_type(concepts, "LOCATION")
         amenity_text = amenity["text"] if amenity else None
 
-        ***REMOVED*** ── Pattern 2: "Which/What is closer to Y: X1 or X2?" ──
-        ***REMOVED*** The parser can emit a bogus OBJECT for this phrasing (e.g.
-        ***REMOVED*** "is closer" from "What is closer to X: A or B?"). Treat a
-        ***REMOVED*** non-amenity OBJECT as noise so the compare branch still fires
-        ***REMOVED*** when multi-entity extraction produced 3+ named locations.
+        # ── Pattern 2: "Which/What is closer to Y: X1 or X2?" ──
+        # The parser can emit a bogus OBJECT for this phrasing (e.g.
+        # "is closer" from "What is closer to X: A or B?"). Treat a
+        # non-amenity OBJECT as noise so the compare branch still fires
+        # when multi-entity extraction produced 3+ named locations.
         if len(locations) >= 3 and (not amenity_text
                                     or cls._resolve_amenity_tag(
                                         amenity_text, country_code, snapshot_date,
@@ -49,10 +49,10 @@ class TemplateExecutorsMixin:
                 locations, country_code, snapshot_date, trace
             )
 
-        ***REMOVED*** ── Pattern 1: "Which X is nearest to Y?" ──
+        # ── Pattern 1: "Which X is nearest to Y?" ──
         anchor = locations[0] if locations else None
 
-        ***REMOVED*** 1. SUPPORT: geocode the anchor
+        # 1. SUPPORT: geocode the anchor
         anchor_coords = None
         if anchor and anchor["text"]:
             anchor_coords = EntityGeocoder.geocode(
@@ -61,16 +61,16 @@ class TemplateExecutorsMixin:
             trace.append({"step": "geocode", "input": anchor["text"],
                           "output": anchor_coords})
 
-        ***REMOVED*** 2. PostGIS Distance ordering (graph path removed — factor tables
-        ***REMOVED***    don't cover this template; PostGIS is the primary path)
+        # 2. PostGIS Distance ordering (graph path removed — factor tables
+        #    don't cover this template; PostGIS is the primary path)
         if anchor_coords and anchor_coords.get("lat"):
             anchor_point = Point(
                 anchor_coords["lon"], anchor_coords["lat"], srid=4326
             )
-            ***REMOVED*** Open-ended "X near Y" phrasings misrouted here by the parser
-            ***REMOVED*** get a default spatial bound — otherwise the unbounded pool
-            ***REMOVED*** (e.g. 535K shop-keyed entities on IE) is fully sorted by
-            ***REMOVED*** distance (~9s) and the "nearby" answer isn't spatially honest.
+            # Open-ended "X near Y" phrasings misrouted here by the parser
+            # get a default spatial bound — otherwise the unbounded pool
+            # (e.g. 535K shop-keyed entities on IE) is fully sorted by
+            # distance (~9s) and the "nearby" answer isn't spatially honest.
             spatial_radius = None
             if question and PROXIMITY_QUESTION_RE.search(question):
                 spatial_radius = DEFAULT_NEAR_RADIUS_M
@@ -90,7 +90,7 @@ class TemplateExecutorsMixin:
                               "top": entities[0].get("name")})
             return entities
 
-        ***REMOVED*** No anchor — return unfiltered amenity search
+        # No anchor — return unfiltered amenity search
         entities = cls._search_by_amenity(
             amenity_text, country_code, snapshot_date, top_k=5, trace=trace,
         )
@@ -103,7 +103,7 @@ class TemplateExecutorsMixin:
         Geocodes each named candidate and the anchor, then ranks
         candidates by distance to the anchor.
         """
-        ***REMOVED*** Last location is the anchor, rest are candidates
+        # Last location is the anchor, rest are candidates
         anchor_name = locations[-1]["text"]
         candidate_names = [loc["text"] for loc in locations[:-1]]
 
@@ -118,24 +118,24 @@ class TemplateExecutorsMixin:
 
         anchor_point = Point(anchor["lon"], anchor["lat"], srid=4326)
         results = []
-        ***REMOVED*** Candidate geocodes prune to the anchor's country leaf when the
-        ***REMOVED*** request has none: an unpruned name search Appends over EVERY
-        ***REMOVED*** country partition of the snapshot (measured ~1-3s cold per
-        ***REMOVED*** geocode on the 2025_12_31 snapshot vs ~50ms on one leaf).
+        # Candidate geocodes prune to the anchor's country leaf when the
+        # request has none: an unpruned name search Appends over EVERY
+        # country partition of the snapshot (measured ~1-3s cold per
+        # geocode on the 2025_12_31 snapshot vs ~50ms on one leaf).
         candidate_country = country_code or anchor.get("country_code")
-        ***REMOVED*** Enriched candidates: input query + resolved entity (id, name,
-        ***REMOVED*** distance) so the trace can link each candidate to its OSM entity
-        ***REMOVED*** regardless of name matching. One entry per candidate, in input
-        ***REMOVED*** order — failed geocodes stay present with null entity fields.
+        # Enriched candidates: input query + resolved entity (id, name,
+        # distance) so the trace can link each candidate to its OSM entity
+        # regardless of name matching. One entry per candidate, in input
+        # order — failed geocodes stay present with null entity fields.
         enriched_candidates = []
         for name in candidate_names:
             entity = EntityGeocoder.geocode(
                 name, candidate_country, snapshot_date,
             )
             if entity is None and candidate_country != country_code:
-                ***REMOVED*** Cross-country candidate (e.g. border compare questions
-                ***REMOVED*** "Windsor or Detroit") — retry unpruned. Rare, so the
-                ***REMOVED*** extra Append is the exception, not the rule.
+                # Cross-country candidate (e.g. border compare questions
+                # "Windsor or Detroit") — retry unpruned. Rare, so the
+                # extra Append is the exception, not the rule.
                 entity = EntityGeocoder.geocode(
                     name, country_code, snapshot_date,
                 )
@@ -163,16 +163,16 @@ class TemplateExecutorsMixin:
                       "output_count": len(results)})
         return results
 
-    ***REMOVED*** ── Template 2: FILTER-AGGREGATE-MEASURE (***REMOVED***1) ───────────────────────────
-    ***REMOVED*** "Which bars are within 50m of Hollywood Blvd?"
-    ***REMOVED***
-    ***REMOVED*** Graph-grounded execution ([SPATIAL_AGENT:§3.5] — operators act on the
-    ***REMOVED*** graph manifold):
-    ***REMOVED***   1. SUPPORT: geocode the anchor → find its node in the k-NN graph
-    ***REMOVED***   2. SUB_COND + COND: BFS from anchor node, pruned by radius
-    ***REMOVED***      (convert radius_m to graph edge-weight threshold), filter by
-    ***REMOVED***      amenity type
-    ***REMOVED***   3. MEASURE: count + return matching entities
+    # ── Template 2: FILTER-AGGREGATE-MEASURE (#1) ───────────────────────────
+    # "Which bars are within 50m of Hollywood Blvd?"
+    #
+    # Graph-grounded execution ([SPATIAL_AGENT:§3.5] — operators act on the
+    # graph manifold):
+    #   1. SUPPORT: geocode the anchor → find its node in the k-NN graph
+    #   2. SUB_COND + COND: BFS from anchor node, pruned by radius
+    #      (convert radius_m to graph edge-weight threshold), filter by
+    #      amenity type
+    #   3. MEASURE: count + return matching entities
     @classmethod
     def _execute_filter_aggregate_measure(cls, concepts, country_code,
                                           snapshot_date, trace, question=None):
@@ -183,38 +183,38 @@ class TemplateExecutorsMixin:
         radius_m = cls._parse_radius(radius_concept["text"] if radius_concept else None)
         amenity_text = amenity["text"] if amenity else None
 
-        ***REMOVED*** Category → real OSM tag target ("hotel" → ("tourism", "hotel"),
-        ***REMOVED*** "peak" → ("natural", "peak")). The amenity-only class filter can't
-        ***REMOVED*** express these; the tag target filters tags @> {key: value} so the
-        ***REMOVED*** exact-tag tier matches instead of the fuzzy embedding tier.
+        # Category → real OSM tag target ("hotel" → ("tourism", "hotel"),
+        # "peak" → ("natural", "peak")). The amenity-only class filter can't
+        # express these; the tag target filters tags @> {key: value} so the
+        # exact-tag tier matches instead of the fuzzy embedding tier.
         tag_target = cls._resolve_tag_target(amenity_text)
 
-        ***REMOVED*** Proper-name OBJECTs (brands): the FastText pool is name-blind for
-        ***REMOVED*** out-of-vocabulary names ("juici patties" admits ~1 entity), so
-        ***REMOVED*** build the pool name-first (trigram tier) alongside the embedding
-        ***REMOVED*** tier. Categories ("cafes", tag-targeted "hotels") resolve to a
-        ***REMOVED*** tag → no name tier.
+        # Proper-name OBJECTs (brands): the FastText pool is name-blind for
+        # out-of-vocabulary names ("juici patties" admits ~1 entity), so
+        # build the pool name-first (trigram tier) alongside the embedding
+        # tier. Categories ("cafes", tag-targeted "hotels") resolve to a
+        # tag → no name tier.
         name_pool_query = None
         if amenity_text and tag_target is None and cls._resolve_amenity_tag(
             amenity_text, country_code, snapshot_date,
         ) is None:
             name_pool_query = amenity_text
 
-        ***REMOVED*** 1. SUPPORT: geocode the anchor — unless it is a generic amenity
-        ***REMOVED***    category ("police stations", "schools"), which the
-        ***REMOVED***    multi-anchor path resolves instead. Geocoding a category as a
-        ***REMOVED***    place name burns a full name-scan miss (~10-20s on LK).
+        # 1. SUPPORT: geocode the anchor — unless it is a generic amenity
+        #    category ("police stations", "schools"), which the
+        #    multi-anchor path resolves instead. Geocoding a category as a
+        #    place name burns a full name-scan miss (~10-20s on LK).
         anchor_coords = None
         anchor_is_category = False
         if anchor and anchor["text"]:
-            ***REMOVED*** Exact tiers only for the ANCHOR (2026-10-11 Ireland run):
-            ***REMOVED*** the fuzzy correction tier admitted "Dublin" as amenity
-            ***REMOVED*** "public" (levenshtein 2 edits, ratio 0.667 >= MIN_SCORE), so
-            ***REMOVED*** "within 3km of Dublin" silently became "within 3km of ANY
-            ***REMOVED*** amenity=public entity" (co-located pairs at 0m ranked
-            ***REMOVED*** first). A place name is not a typo of an amenity value; an
-            ***REMOVED*** anchor is a category only when it exactly names one, else
-            ***REMOVED*** it gets geocoded.
+            # Exact tiers only for the ANCHOR (2026-10-11 Ireland run):
+            # the fuzzy correction tier admitted "Dublin" as amenity
+            # "public" (levenshtein 2 edits, ratio 0.667 >= MIN_SCORE), so
+            # "within 3km of Dublin" silently became "within 3km of ANY
+            # amenity=public entity" (co-located pairs at 0m ranked
+            # first). A place name is not a typo of an amenity value; an
+            # anchor is a category only when it exactly names one, else
+            # it gets geocoded.
             anchor_is_category = cls._anchor_is_category(
                 anchor["text"], country_code, snapshot_date,
             )
@@ -225,12 +225,12 @@ class TemplateExecutorsMixin:
                 trace.append({"step": "geocode", "input": anchor["text"],
                               "output": anchor_coords})
 
-        ***REMOVED*** Default spatial bound for open-ended proximity questions
-        ***REMOVED*** ("What X are near/around Y?") with no explicit AMOUNT. Bounds
-        ***REMOVED*** the candidate pool AND makes the answer spatially honest — the
-        ***REMOVED*** old no-radius path returned country-wide pools. Only fires when
-        ***REMOVED*** the question itself signals proximity, so "cafes in Dublin"
-        ***REMOVED*** keeps its unfiltered semantics. Explicit radii always win.
+        # Default spatial bound for open-ended proximity questions
+        # ("What X are near/around Y?") with no explicit AMOUNT. Bounds
+        # the candidate pool AND makes the answer spatially honest — the
+        # old no-radius path returned country-wide pools. Only fires when
+        # the question itself signals proximity, so "cafes in Dublin"
+        # keeps its unfiltered semantics. Explicit radii always win.
         if radius_m is None and anchor and anchor["text"] and question \
                 and PROXIMITY_QUESTION_RE.search(question):
             radius_m = DEFAULT_NEAR_RADIUS_M
@@ -240,12 +240,12 @@ class TemplateExecutorsMixin:
                 "reason": "open-ended proximity question, no explicit radius",
             })
 
-        ***REMOVED*** 2. PostGIS spatial search (graph path removed — factor tables
-        ***REMOVED***    don't cover this template; PostGIS is the primary path).
-        ***REMOVED***    Finite-anchor guard (2026-10-11): NaN is truthy in Python, so
-        ***REMOVED***    `is not None` passes NaN coordinates; a NaN anchor matches
-        ***REMOVED***    only NaN-geometry entities at ST_Distance = 0. Require
-        ***REMOVED***    finite coordinates, else the honest empty below.
+        # 2. PostGIS spatial search (graph path removed — factor tables
+        #    don't cover this template; PostGIS is the primary path).
+        #    Finite-anchor guard (2026-10-11): NaN is truthy in Python, so
+        #    `is not None` passes NaN coordinates; a NaN anchor matches
+        #    only NaN-geometry entities at ST_Distance = 0. Require
+        #    finite coordinates, else the honest empty below.
         anchor_finite = False
         if anchor_coords and anchor_coords.get("lat") is not None:
             try:
@@ -268,11 +268,11 @@ class TemplateExecutorsMixin:
                 country_code, snapshot_date, trace, tag_target=tag_target,
             )
 
-        ***REMOVED*** 3. Multi-anchor fallback: the anchor text may be a generic
-        ***REMOVED***    amenity category (e.g. "schools", "hospitals") rather than
-        ***REMOVED***    a specific named place.  In that case, find all entities of
-        ***REMOVED***    that category and search for the target amenity within
-        ***REMOVED***    radius of ANY of them.
+        # 3. Multi-anchor fallback: the anchor text may be a generic
+        #    amenity category (e.g. "schools", "hospitals") rather than
+        #    a specific named place.  In that case, find all entities of
+        #    that category and search for the target amenity within
+        #    radius of ANY of them.
         if radius_m and anchor and anchor["text"]:
             multi_results = cls._multi_anchor_amenity_search(
                 amenity_text, anchor["text"],
@@ -282,9 +282,9 @@ class TemplateExecutorsMixin:
             if multi_results is not None:
                 return multi_results
 
-        ***REMOVED*** Anchor has no usable coordinates and is not a category.
-        ***REMOVED*** Returning all matching amenities would be misleading (the user
-        ***REMOVED*** asked for a spatial filter), so surface a clear error instead.
+        # Anchor has no usable coordinates and is not a category.
+        # Returning all matching amenities would be misleading (the user
+        # asked for a spatial filter), so surface a clear error instead.
         if radius_m and anchor:
             trace.append({
                 "step": "spatial_filter_skipped",
@@ -294,7 +294,7 @@ class TemplateExecutorsMixin:
             })
             return []
 
-        ***REMOVED*** No anchor or radius — return unfiltered amenity search
+        # No anchor or radius — return unfiltered amenity search
         entities = cls._search_by_amenity(
             amenity_text, country_code, snapshot_date, top_k=200, trace=trace,
             name_pool_query=name_pool_query, tag_target=tag_target,
@@ -333,7 +333,7 @@ class TemplateExecutorsMixin:
             })
         anchor_osm_id = anchor_coords.get("osm_id") if anchor_coords else None
         return cls._enrich_with_geo_and_uslp(
-            entities, "FILTER-AGGREGATE-MEASURE (***REMOVED***1)", anchor_coords, radius_m,
+            entities, "FILTER-AGGREGATE-MEASURE (#1)", anchor_coords, radius_m,
             anchor_osm_id, country_code, snapshot_date, trace,
             name_query=name_query,
         )
@@ -349,8 +349,8 @@ class TemplateExecutorsMixin:
         ``None`` if the anchor text is not a recognisable amenity
         category (so the caller can fall through to the error path).
         """
-        ***REMOVED*** Resolve anchor_text to an amenity tag value via the same 3-tier
-        ***REMOVED*** fallback used for OBJECT concepts.
+        # Resolve anchor_text to an amenity tag value via the same 3-tier
+        # fallback used for OBJECT concepts.
         anchor_amenity = cls._resolve_amenity_tag(
             anchor_text, country_code, snapshot_date,
         )
@@ -363,10 +363,10 @@ class TemplateExecutorsMixin:
             "resolved_amenity": anchor_amenity,
         })
 
-        ***REMOVED*** Fast path: when the target amenity is an exact OSM tag, resolve
-        ***REMOVED*** "X within radius of ANY anchor" in ONE spatial self-join. The
-        ***REMOVED*** previous per-anchor loop issued an ST_DWithin query PER anchor —
-        ***REMOVED*** LK has 490 police stations → ~20s; the join is one query.
+        # Fast path: when the target amenity is an exact OSM tag, resolve
+        # "X within radius of ANY anchor" in ONE spatial self-join. The
+        # previous per-anchor loop issued an ST_DWithin query PER anchor —
+        # LK has 490 police stations → ~20s; the join is one query.
         amenity_tag = cls._resolve_amenity_tag(
             amenity_text, country_code, snapshot_date,
         )
@@ -377,12 +377,12 @@ class TemplateExecutorsMixin:
             )
             if join_results is not None:
                 return join_results
-            ***REMOVED*** Join failed — fall through to the per-anchor loop.
+            # Join failed — fall through to the per-anchor loop.
 
-        ***REMOVED*** Find all anchor entities (e.g. all schools) with coordinates
+        # Find all anchor entities (e.g. all schools) with coordinates
         anchor_entities = cls._search_by_amenity(
             anchor_amenity, country_code, snapshot_date,
-            top_k=500, trace=None,  ***REMOVED*** silent — logged above
+            top_k=500, trace=None,  # silent — logged above
         )
         if not anchor_entities:
             trace.append({
@@ -396,9 +396,9 @@ class TemplateExecutorsMixin:
             "anchor_count": len(anchor_entities),
         })
 
-        ***REMOVED*** For each anchor, search for the target amenity within radius.
-        ***REMOVED*** Deduplicate by osm_id (a cafe near two schools should appear
-        ***REMOVED*** once, with the distance to the nearest school).
+        # For each anchor, search for the target amenity within radius.
+        # Deduplicate by osm_id (a cafe near two schools should appear
+        # once, with the distance to the nearest school).
         seen = {}
         for anchor_ent in anchor_entities:
             alat, alon = anchor_ent.get("lat"), anchor_ent.get("lon")
@@ -479,13 +479,13 @@ class TemplateExecutorsMixin:
                 cur.execute(sql, params)
                 cols = [d[0] for d in cur.description]
                 rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — fall back to the per-anchor loop
+        except Exception as exc:  # noqa: BLE001 — fall back to the per-anchor loop
             logger.warning("Multi-anchor spatial join failed (%s); using per-anchor loop", exc)
             return None
 
         results = []
         for row in rows:
-            ***REMOVED*** psycopg2 returns jsonb as a JSON string on raw cursors.
+            # psycopg2 returns jsonb as a JSON string on raw cursors.
             tags = row["tags"] or {}
             if isinstance(tags, str):
                 try:
@@ -527,18 +527,18 @@ class TemplateExecutorsMixin:
         """
         if not text:
             return None
-        key = text.lower().strip().rstrip("s")  ***REMOVED*** singularise
-        ***REMOVED*** Canonical alias map first — no DB hit ("police stations" →
-        ***REMOVED*** "police_station" → the standard OSM tag value "police").
+        key = text.lower().strip().rstrip("s")  # singularise
+        # Canonical alias map first — no DB hit ("police stations" →
+        # "police_station" → the standard OSM tag value "police").
         alias_key = key.replace(" ", "_")
         if alias_key in AMENITY_TAG_ALIASES:
             return AMENITY_TAG_ALIASES[alias_key]
-        ***REMOVED*** Ontology class map — the singularized key IS the tag value.
+        # Ontology class map — the singularized key IS the tag value.
         if key in AMENITY_TO_WKGS:
             return key
-        ***REMOVED*** Direct amenity tag match — bounded by country when available.
-        ***REMOVED*** `tags__contains` renders the `@>` operator (GIN-accelerated);
-        ***REMOVED*** `tags__amenity=value` renders `->>` equality and full-scans.
+        # Direct amenity tag match — bounded by country when available.
+        # `tags__contains` renders the `@>` operator (GIN-accelerated);
+        # `tags__amenity=value` renders `->>` equality and full-scans.
         from worldkg_nca.models import OsmEntity
         snapshot_id = snapshot_date or cls._get_snapshot_id(None)
         qs = OsmEntity.objects.using("vectors").filter(
@@ -550,12 +550,12 @@ class TemplateExecutorsMixin:
         if qs.exists():
             return key
 
-        ***REMOVED*** Fuzzy correction tier (Kuhn's Template correction layer): the
-        ***REMOVED*** phrase is not a known amenity tag. Correct misspellings against
-        ***REMOVED*** the snapshot's real tag vocabulary (pg_trgm + fuzzystrmatch) so
-        ***REMOVED*** the caller receives a canonical tag instead of None — and the
-        ***REMOVED*** FastText tier, when reached, embeds the corrected phrase rather
-        ***REMOVED*** than a garbage token.
+        # Fuzzy correction tier (Kuhn's Template correction layer): the
+        # phrase is not a known amenity tag. Correct misspellings against
+        # the snapshot's real tag vocabulary (pg_trgm + fuzzystrmatch) so
+        # the caller receives a canonical tag instead of None — and the
+        # FastText tier, when reached, embeds the corrected phrase rather
+        # than a garbage token.
         from semantic_search.services.query_correction_service import (
             QueryCorrectionService,
         )
@@ -648,16 +648,16 @@ class TemplateExecutorsMixin:
             return GENERIC_AMENITY_KEYS
         return None
 
-    ***REMOVED*** ── Template 3: PLACE-ATTRIBUTE-QUERY (***REMOVED***8) ──────────────────────────────
-    ***REMOVED*** "What restaurant is near X?" / "italian food near a bus station"
-    ***REMOVED***
-    ***REMOVED*** Factor-table execution ([SPATIAL_AGENT:§3.5]):
-    ***REMOVED***   1. SUPPORT: geocode the anchor → resolve its osm_id
-    ***REMOVED***   2. SUB_COND: heat kernel diffusion via pgvector <***REMOVED***> against stored
-    ***REMOVED***      eigen-loadings — one SQL query, no NetworkX/SciPy at request time
-    ***REMOVED***   3. Filter diffused nodes by amenity type, rank by diffusion score
-    ***REMOVED***   4. MEASURE: report top-k results
-    ***REMOVED***   PostGIS spatial search is the fallback when factor tables can't answer.
+    # ── Template 3: PLACE-ATTRIBUTE-QUERY (#8) ──────────────────────────────
+    # "What restaurant is near X?" / "italian food near a bus station"
+    #
+    # Factor-table execution ([SPATIAL_AGENT:§3.5]):
+    #   1. SUPPORT: geocode the anchor → resolve its osm_id
+    #   2. SUB_COND: heat kernel diffusion via pgvector <#> against stored
+    #      eigen-loadings — one SQL query, no NetworkX/SciPy at request time
+    #   3. Filter diffused nodes by amenity type, rank by diffusion score
+    #   4. MEASURE: report top-k results
+    #   PostGIS spatial search is the fallback when factor tables can't answer.
     @classmethod
     def _execute_place_attribute_query(cls, concepts, country_code,
                                        snapshot_date, trace):
@@ -674,7 +674,7 @@ class TemplateExecutorsMixin:
                           "error": "no amenity type or anchor name"})
             return []
 
-        ***REMOVED*** Geocode the anchor
+        # Geocode the anchor
         anchor_coords = None
         anchor_osm_id = None
         if anchor_name:
@@ -688,24 +688,24 @@ class TemplateExecutorsMixin:
             if anchor_coords:
                 anchor_osm_id = anchor_coords.get("osm_id")
 
-        ***REMOVED*** Factor-table path: SQL-only
-        ***REMOVED*** heat-kernel ranking via stored eigen-loadings.
+        # Factor-table path: SQL-only
+        # heat-kernel ranking via stored eigen-loadings.
         if (country_code and anchor_osm_id and amenity_type):
             table_results = cls._heat_kernel_search_via_tables(
                 anchor_osm_id, amenity_type, country_code, snapshot_date, trace,
             )
             if table_results is not None:
-                ***REMOVED*** Add geo_score + USLP boost to each result, then re-rank.
-                template = "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)"
+                # Add geo_score + USLP boost to each result, then re-rank.
+                template = "PLACE-ATTRIBUTE-QUERY (#8)"
                 table_results = cls._enrich_with_geo_and_uslp(
                     table_results, template, anchor_coords, radius_m,
                     anchor_osm_id, country_code, snapshot_date, trace,
                 )
-                ***REMOVED*** Geographic radius guard — if an AMOUNT (radius) concept was
-                ***REMOVED*** parsed, filter heat-kernel results by haversine distance.
-                ***REMOVED*** Heat kernel diffusion respects graph connectivity, not
-                ***REMOVED*** geographic distance, so entities far away in km can still
-                ***REMOVED*** get high diffusion scores.
+                # Geographic radius guard — if an AMOUNT (radius) concept was
+                # parsed, filter heat-kernel results by haversine distance.
+                # Heat kernel diffusion respects graph connectivity, not
+                # geographic distance, so entities far away in km can still
+                # get high diffusion scores.
                 if radius_m and anchor_coords and anchor_coords.get("lat"):
                     filtered = []
                     for r in table_results:
@@ -729,7 +729,7 @@ class TemplateExecutorsMixin:
                 trace.append({"step": "factor_join",
                               "warning": "table path unavailable — falling back"})
 
-        ***REMOVED*** Fallback: PostGIS spatial search when factor tables unavailable
+        # Fallback: PostGIS spatial search when factor tables unavailable
         if anchor_coords and anchor_coords.get("lat") and amenity_type:
             anchor_point = Point(
                 anchor_coords["lon"], anchor_coords["lat"], srid=4326
@@ -741,14 +741,14 @@ class TemplateExecutorsMixin:
             )
             return entities
 
-        ***REMOVED*** Only amenity type, no anchor or geocode failed
+        # Only amenity type, no anchor or geocode failed
         if amenity_type:
             return cls._search_by_amenity(
                 amenity_type, country_code, snapshot_date,
                 top_k=20, trace=trace,
             )
 
-        ***REMOVED*** Only anchor name, no amenity type — search by name
+        # Only anchor name, no amenity type — search by name
         snapshot_id = cls._get_snapshot_id(snapshot_date)
         qs = OsmEntity.objects.using("vectors").filter(
             snapshot_id=snapshot_id,
@@ -768,8 +768,8 @@ class TemplateExecutorsMixin:
                           "output_count": len(results)})
         return results
 
-    ***REMOVED*** ── Template 4: LOCATION-BEARING-CLASSIFY (***REMOVED***5) ──────────────────────────
-    ***REMOVED*** "Which direction is X from Y?"
+    # ── Template 4: LOCATION-BEARING-CLASSIFY (#5) ──────────────────────────
+    # "Which direction is X from Y?"
     @classmethod
     def _execute_location_bearing_classify(cls, concepts, country_code,
                                             snapshot_date, trace, question=None):
@@ -777,10 +777,10 @@ class TemplateExecutorsMixin:
 
         locations = cls._get_concepts_by_type(concepts, "LOCATION")
 
-        ***REMOVED*** Determine if 5a (bearing pair) or 5b (cone search)
+        # Determine if 5a (bearing pair) or 5b (cone search)
         cardinal = None
         if len(locations) < 2:
-            ***REMOVED*** Parse cardinal direction from question or concept texts
+            # Parse cardinal direction from question or concept texts
             if question:
                 m = re.search(
                     r"\b(north|northeast|east|southeast|south|southwest|west|northwest)\b",
@@ -789,7 +789,7 @@ class TemplateExecutorsMixin:
                 if m:
                     cardinal = m.group(1).lower()
             if not cardinal:
-                ***REMOVED*** Try finding it in any concept text (e.g. if question is not passed)
+                # Try finding it in any concept text (e.g. if question is not passed)
                 for c in concepts:
                     if c.get("text"):
                         m = re.search(
@@ -801,7 +801,7 @@ class TemplateExecutorsMixin:
                             break
 
         if len(locations) >= 2:
-            ***REMOVED*** ──── 5a: Bearing between two locations ────
+            # ──── 5a: Bearing between two locations ────
             a = EntityGeocoder.geocode(locations[0]["text"], country_code, snapshot_date)
             b = EntityGeocoder.geocode(locations[1]["text"], country_code, snapshot_date)
             trace.append({"step": "batch_geocode",
@@ -814,7 +814,7 @@ class TemplateExecutorsMixin:
                     trace[-1]["error"] = "Could not geocode one or both entities"
                 return [{"error": "Could not geocode one or both entities"}]
 
-            ***REMOVED*** Bearing ([SPATIAL_AGENT:§C.4] — Equation 8)
+            # Bearing ([SPATIAL_AGENT:§C.4] — Equation 8)
             phi1, lam1 = math.radians(a["lat"]), math.radians(a["lon"])
             phi2, lam2 = math.radians(b["lat"]), math.radians(b["lon"])
             dlam = lam2 - lam1
@@ -834,26 +834,26 @@ class TemplateExecutorsMixin:
                      "from": locations[0]["text"], "to": locations[1]["text"]}]
 
         elif len(locations) == 1 and cardinal:
-            ***REMOVED*** ──── 5b: Cone search ────
+            # ──── 5b: Cone search ────
             anchor_name = locations[0]["text"]
             anchor = EntityGeocoder.geocode(anchor_name, country_code, snapshot_date)
             trace.append({"step": "geocode", "input": anchor_name, "output": anchor})
 
             if not anchor or not anchor.get("osm_id") or not anchor.get("lat"):
-                ***REMOVED*** Fail fast: an anchor needs a usable OSM entity (id +
-                ***REMOVED*** coordinates). Flag the geocode step itself so the trace
-                ***REMOVED*** UI shows the error badge (the error would otherwise only
-                ***REMOVED*** live in the result dict and look like a clean step).
+                # Fail fast: an anchor needs a usable OSM entity (id +
+                # coordinates). Flag the geocode step itself so the trace
+                # UI shows the error badge (the error would otherwise only
+                # live in the result dict and look like a clean step).
                 if trace and trace[-1].get("step") == "geocode":
                     trace[-1]["error"] = f"Could not geocode anchor: {anchor_name}"
                 return [{"error": f"Could not geocode anchor: {anchor_name}"}]
 
-            ***REMOVED*** Map cardinal to angle
+            # Map cardinal to angle
             BEARING_BY_CARDINAL = {
                 "north": 0, "northeast": 45, "east": 90, "southeast": 135,
                 "south": 180, "southwest": 225, "west": 270, "northwest": 315
             }
-            ***REMOVED*** Also support abbreviations
+            # Also support abbreviations
             abbrev_map = {
                 "n": "north", "ne": "northeast", "e": "east", "se": "southeast",
                 "s": "south", "sw": "southwest", "w": "west", "nw": "northwest"
@@ -864,18 +864,18 @@ class TemplateExecutorsMixin:
             
             center_bearing = BEARING_BY_CARDINAL[norm_cardinal]
 
-            ***REMOVED*** Determine amenity type if present
+            # Determine amenity type if present
             object_concept = cls._get_concept(concepts, "OBJECT")
             amenity_type = None
             if object_concept and object_concept.get("text"):
                 amenity_text = object_concept["text"].strip().lower()
-                ***REMOVED*** If the extracted OBJECT text is the cardinal itself, it's not a real amenity
+                # If the extracted OBJECT text is the cardinal itself, it's not a real amenity
                 if amenity_text != norm_cardinal and amenity_text not in abbrev_map:
                     amenity_type = object_concept["text"]
 
-            ***REMOVED*** Fetch candidates within the direction cone radius. Default
-            ***REMOVED*** 10km — bounds the candidate pool for open-ended direction
-            ***REMOVED*** questions (was 20km → 60+ candidates per cone).
+            # Fetch candidates within the direction cone radius. Default
+            # 10km — bounds the candidate pool for open-ended direction
+            # questions (was 20km → 60+ candidates per cone).
             radius_m = DIRECTION_NEAREST_RADIUS_M
             anchor_point = Point(anchor["lon"], anchor["lat"], srid=4326)
 
@@ -913,7 +913,7 @@ class TemplateExecutorsMixin:
                     entities = []
                 candidates = [cls._entity_to_result(e) for e in entities]
 
-            ***REMOVED*** Calculate bearing & filter by ±45° cone
+            # Calculate bearing & filter by ±45° cone
             def get_bearing(lat1, lon1, lat2, lon2):
                 phi1, lam1 = math.radians(lat1), math.radians(lon1)
                 phi2, lam2 = math.radians(lat2), math.radians(lon2)
@@ -929,7 +929,7 @@ class TemplateExecutorsMixin:
 
             valid_candidates = []
             for c in candidates:
-                ***REMOVED*** Exclude anchor itself
+                # Exclude anchor itself
                 if c.get("osm_id") == anchor.get("osm_id") and c.get("osm_type") == anchor.get("osm_type"):
                     continue
                 c_lat = c.get("lat")
@@ -944,7 +944,7 @@ class TemplateExecutorsMixin:
                     c_copy["direction"] = norm_cardinal
                     c_copy["anchor_name"] = anchor_name
                     c_copy["requested_amenity"] = amenity_type
-                    ***REMOVED*** Ensure distance_m is present and rounded
+                    # Ensure distance_m is present and rounded
                     if "distance_m" not in c_copy:
                         dist_m = cls._haversine_m(anchor["lat"], anchor["lon"], c_lat, c_lon)
                         c_copy["distance_m"] = round(dist_m, 1)
@@ -961,7 +961,7 @@ class TemplateExecutorsMixin:
             if not valid_candidates:
                 return []
 
-            ***REMOVED*** Sort by distance
+            # Sort by distance
             valid_candidates.sort(key=lambda x: x.get("distance_m", float("inf")))
             
             trace.append({
@@ -984,20 +984,20 @@ class TemplateExecutorsMixin:
                               "error": "need 2 LOCATION concepts, got %d" % len(locations)})
             return []
 
-    ***REMOVED*** ── Template 5: OBJECT-FIELD-MEASURE (***REMOVED***2) ───────────────────────────────
-    ***REMOVED*** "How far is X from Y?"
-    ***REMOVED***
-    ***REMOVED*** Graph-grounded execution ([SPATIAL_AGENT:§3.5]):
-    ***REMOVED***   1. SUB_COND + COND: geocode both locations → find their nodes in graph
-    ***REMOVED***   2. SUPPORT: Dijkstra shortest path between the two nodes
-    ***REMOVED***   3. MEASURE: report graph distance + geographic distance
+    # ── Template 5: OBJECT-FIELD-MEASURE (#2) ───────────────────────────────
+    # "How far is X from Y?"
+    #
+    # Graph-grounded execution ([SPATIAL_AGENT:§3.5]):
+    #   1. SUB_COND + COND: geocode both locations → find their nodes in graph
+    #   2. SUPPORT: Dijkstra shortest path between the two nodes
+    #   3. MEASURE: report graph distance + geographic distance
 
-    ***REMOVED*** Superlative qualifier on a class phrase ("the nearest tavern",
-    ***REMOVED*** "the second closest cafe"): stripped before class resolution, with
-    ***REMOVED*** the ordinal kept for nearest-by-class. CASE-SENSITIVE on purpose:
-    ***REMOVED*** "The Top Bar" (a place name, title-case) must not strip; the
-    ***REMOVED*** planner's placeholder convention writes lowercase ("the top
-    ***REMOVED*** tavern").
+    # Superlative qualifier on a class phrase ("the nearest tavern",
+    # "the second closest cafe"): stripped before class resolution, with
+    # the ordinal kept for nearest-by-class. CASE-SENSITIVE on purpose:
+    # "The Top Bar" (a place name, title-case) must not strip; the
+    # planner's placeholder convention writes lowercase ("the top
+    # tavern").
     _GENERIC_QUALIFIER_RE = re.compile(
         r"^(?:the\s+)?(second\s+|third\s+)?(?:nearest|closest|top)\s+"
     )
@@ -1028,11 +1028,11 @@ class TemplateExecutorsMixin:
             return []
 
         texts = [locations[0]["text"], locations[1]["text"]]
-        ***REMOVED*** Nearest-by-class (2026-10-11 Ireland run): a superlative class
-        ***REMOVED*** phrase ("the nearest tavern") is not a place name; the fuzzy
-        ***REMOVED*** name tier matched "tavern"-named entities 146-302km away for
-        ***REMOVED*** what the data answers at meters. Strip the qualifier, resolve
-        ***REMOVED*** the class, and answer nearest-from the other endpoint.
+        # Nearest-by-class (2026-10-11 Ireland run): a superlative class
+        # phrase ("the nearest tavern") is not a place name; the fuzzy
+        # name tier matched "tavern"-named entities 146-302km away for
+        # what the data answers at meters. Strip the qualifier, resolve
+        # the class, and answer nearest-from the other endpoint.
         stripped = [cls._strip_generic_qualifiers(t) for t in texts]
         targets = [
             cls._resolve_tag_target(s) if s else None for s, _o in stripped
@@ -1089,7 +1089,7 @@ class TemplateExecutorsMixin:
                 trace[-1]["error"] = "Could not geocode one or both entities"
             return [{"error": "Could not geocode one or both entities"}]
 
-        ***REMOVED*** Geographic distance (haversine) — primary metric (graph path removed)
+        # Geographic distance (haversine) — primary metric (graph path removed)
         geo_dist_km = cls._haversine_km(a["lat"], a["lon"], b["lat"], b["lon"])
         geo_dist_m = geo_dist_km * 1000
 
@@ -1109,4 +1109,4 @@ class TemplateExecutorsMixin:
             result["to_resolved"] = b.get("name")
         return [result]
 
-    ***REMOVED*** ── Data-plane search helper ────────────────────────────────────────────
+    # ── Data-plane search helper ────────────────────────────────────────────

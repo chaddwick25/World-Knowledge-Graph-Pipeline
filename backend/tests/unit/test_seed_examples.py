@@ -61,8 +61,8 @@ def fake_qs():
     ), mock.patch(
         "worldkg_nca.views.research.resolve_iso_code", return_value="JM"
     ), mock.patch(
-        ***REMOVED*** No boundary row: the geometry guard is skipped, current
-        ***REMOVED*** behavior preserved (hermetic - no default-DB access).
+        # No boundary row: the geometry guard is skipped, current
+        # behavior preserved (hermetic - no default-DB access).
         "worldkg_nca.views.research._country_bbox", return_value=None
     ):
         yield fake
@@ -77,7 +77,7 @@ def test_seed_examples_selects_cuisine_food_venues(fake_qs):
     has_keys = [kw.get("tags__has_key") for kw in filters]
     assert "name" in has_keys
     assert "cuisine" in has_keys
-    assert "amenity" not in (has_keys or [])  ***REMOVED*** no venue-class shotgun
+    assert "amenity" not in (has_keys or [])  # no venue-class shotgun
 
 
 def test_seed_examples_requires_embeddings_and_coordinates(fake_qs):
@@ -99,7 +99,7 @@ def test_seed_examples_orders_by_richness_then_md5(fake_qs):
 
 def test_seed_examples_uses_vectors_db(fake_qs):
     research_views.research_seed_examples(_request())
-    assert fake_qs.calls  ***REMOVED*** the chain was exercised on the vectors manager
+    assert fake_qs.calls  # the chain was exercised on the vectors manager
 
 
 def test_seed_examples_bbox_guard_applies_when_boundary_exists():

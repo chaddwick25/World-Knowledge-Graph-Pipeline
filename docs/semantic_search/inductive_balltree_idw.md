@@ -1,4 +1,4 @@
-***REMOVED*** Inductive BallTree + IDW: Encoding Unseen Entities
+# Inductive BallTree + IDW: Encoding Unseen Entities
 
 > **Focus:** how BallTree and logarithmic inverse-distance weighting (IDW)
 > are used to inductively encode unseen entities from PostGIS spatial
@@ -14,7 +14,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Inductive Bridge
+## 1. The Inductive Bridge
 
 **New entity (from a new snapshot):**
 - `osm_id: 999999`
@@ -44,7 +44,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 2. Why Inductive Encoding?
+## 2. Why Inductive Encoding?
 
 DeepWalk training (Step 5) is expensive:
 - Build BallTree from all entities
@@ -58,7 +58,7 @@ Running Step 5 for every new temporal snapshot would be prohibitively
 expensive. Instead, the inductive service computes a **provisional** GV-NLE
 for new entities by interpolating from the nearest trained entities.
 
-***REMOVED******REMOVED******REMOVED*** 2.1 The Trade-Off
+### 2.1 The Trade-Off
 
 | Approach | Cost | Quality |
 |---|---|---|
@@ -74,17 +74,17 @@ The inductive encoding is a **good approximation** because:
 
 ---
 
-***REMOVED******REMOVED*** 3. The IDW Damped Weight Formula
+## 3. The IDW Damped Weight Formula
 
 The IDW (Inverse Distance Weighting) damped weight formula is the
 architectural keystone that connects the spatial axis to the semantic axis:
 
 ```python
-weights = np.maximum(weights, 1.1)          ***REMOVED*** clamp minimum distance to 1.1km
-weights = np.maximum(1.0 / np.log(weights), np.e)  ***REMOVED*** w' = max(1/ln(d), e)
+weights = np.maximum(weights, 1.1)          # clamp minimum distance to 1.1km
+weights = np.maximum(1.0 / np.log(weights), np.e)  # w' = max(1/ln(d), e)
 ```
 
-***REMOVED******REMOVED******REMOVED*** 3.1 What the Formula Means
+### 3.1 What the Formula Means
 
 - `d` = haversine distance in kilometers between two OSM entities
 - Clamp to 1.1: prevents `ln(1) = 0` (division by zero). Entities closer
@@ -95,7 +95,7 @@ weights = np.maximum(1.0 / np.log(weights), np.e)  ***REMOVED*** w' = max(1/ln(d
 - `max(..., e)`: floor at e ≈ 2.718. Even the farthest entities retain a
   non-zero weight, so the k-NN graph stays fully connected.
 
-***REMOVED******REMOVED******REMOVED*** 3.2 The Four Usage Sites
+### 3.2 The Four Usage Sites
 
 The IDW formula appears in four places in the codebase, all of which must
 stay in sync:
@@ -107,13 +107,13 @@ stay in sync:
 | DeepWalk service (damping) | `semantic_search/services/deepwalk_service.py:148-164` | Applies damping to pre-computed graph |
 | Inductive inference | `semantic_search/services/inductive_spatial_service.py:109-113` | Provisional GV-NLE for new entities |
 
-***REMOVED******REMOVED******REMOVED*** 3.3 NLE Encoder Variant (Original GeoVectors Formula)
+### 3.3 NLE Encoder Variant (Original GeoVectors Formula)
 
 `NLEModel.encode_coords()` uses a slightly different variant that matches
 the original GeoVectors paper:
 
 ```python
-dist = np.log(1 + (1 / (n[1] / 1000)))  ***REMOVED*** n[1] in meters → km
+dist = np.log(1 + (1 / (n[1] / 1000)))  # n[1] in meters → km
 ```
 
 This is `ln(1 + 1/d)`, a log-inverse distance weight. It produces the same
@@ -124,7 +124,7 @@ depends on whether you need the graph-connectivity guarantee (the
 
 ---
 
-***REMOVED******REMOVED*** 4. The BallTree: In-Memory, Ephemeral
+## 4. The BallTree: In-Memory, Ephemeral
 
 <ref_snippet file="backend/semantic_search/services/inductive_spatial_service.py" lines="171-174" />
 
@@ -140,7 +140,7 @@ The BallTree is:
   keeps the pool size manageable)
 - **Haversine metric**, radian coordinates for great-circle distance
 
-***REMOVED******REMOVED******REMOVED*** 4.1 BallTree vs PostGIS GiST KNN
+### 4.1 BallTree vs PostGIS GiST KNN
 
 Both can answer "find the k nearest entities to this point":
 
@@ -155,7 +155,7 @@ into memory first).
 
 ---
 
-***REMOVED******REMOVED*** 5. The Pickle Connection
+## 5. The Pickle Connection
 
 The `wdw.pickle` (DeepWalk model) and the BallTree serve different purposes:
 
@@ -176,7 +176,7 @@ the `gv_nle_embedding` column provides the vectors to weight.
 
 ---
 
-***REMOVED******REMOVED*** 6. The Full Inductive Flow
+## 6. The Full Inductive Flow
 
 1. New entity arrives (new snapshot, has GV-Tags, no GV-NLE).
 2. `InductiveSpatialService.initialize(country_code, snapshot_id)`:
@@ -202,7 +202,7 @@ the `gv_nle_embedding` column provides the vectors to weight.
 
 ---
 
-***REMOVED******REMOVED*** 7. Relationship to the Learned Layer
+## 7. Relationship to the Learned Layer
 
 **Training (Step 5, expensive, per-snapshot):**
 PostGIS GiST → load entities → BallTree → k-NN graph → IDW damped weights →
@@ -224,7 +224,7 @@ semantic search without retraining the full DeepWalk model.
 
 ---
 
-***REMOVED******REMOVED*** 8. Invariants
+## 8. Invariants
 
 - The BallTree is in-memory and ephemeral, rebuilt from PostGIS-loaded
   entities each time.

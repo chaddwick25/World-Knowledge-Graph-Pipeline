@@ -44,7 +44,7 @@ def client():
     return Client(HTTP_HOST="localhost")
 
 
-***REMOVED*** ── Endpoint tests ───────────────────────────────────────────────────
+# ── Endpoint tests ───────────────────────────────────────────────────
 
 class TestExecuteQueryEndpoint:
     """Test the /api/nca/execute-query/ endpoint."""
@@ -100,12 +100,12 @@ class TestExecuteQueryEndpoint:
         result = data["result"]
         assert "trace" in result
         assert isinstance(result["trace"], list)
-        ***REMOVED*** Each trace step should have a "step" field
+        # Each trace step should have a "step" field
         for step in result["trace"]:
             assert "step" in step
 
 
-***REMOVED*** ── Executor service tests ───────────────────────────────────────────
+# ── Executor service tests ───────────────────────────────────────────
 
 class TestExecutorService:
     """Test QueryExecutorService.execute() directly."""
@@ -113,7 +113,7 @@ class TestExecutorService:
     def test_unknown_template(self, executor, parser):
         """Unknown template should return an error, not crash."""
         parsed = {
-            "template": "UNKNOWN-TEMPLATE (***REMOVED***99)",
+            "template": "UNKNOWN-TEMPLATE (#99)",
             "concepts": [],
             "roles": [],
             "dag": [],
@@ -127,18 +127,18 @@ class TestExecutorService:
         """Executor should return latency_ms."""
         parsed = parser.parse("Which bars are within 50m of Hollywood Blvd?")
         result = executor.execute(parsed, country_code="US")
-        ***REMOVED*** May return latency_ms or error (if DB has no data), but should not crash
+        # May return latency_ms or error (if DB has no data), but should not crash
         assert "latency_ms" in result or "error" in result
 
     def test_executor_returns_answer(self, executor, parser):
         """Executor should return an answer string."""
         parsed = parser.parse("Which bars are within 50m of Hollywood Blvd?")
         result = executor.execute(parsed, country_code="US")
-        ***REMOVED*** Answer may be "No results found." if no data, but should exist
+        # Answer may be "No results found." if no data, but should exist
         assert "answer" in result or "error" in result
 
 
-***REMOVED*** ── Semantic query plan endpoint ─────────────────────────────────────
+# ── Semantic query plan endpoint ─────────────────────────────────────
 
 class TestSemanticQueryPlanEndpoint:
     """Test that /api/nca/semantic-query/plan/ now uses QueryParserService."""
@@ -159,20 +159,20 @@ class TestSemanticQueryPlanEndpoint:
             content_type="application/json",
         )
         data = json.loads(resp.content)
-        ***REMOVED*** If bbox resolution succeeded, we get 200 with full plan
+        # If bbox resolution succeeded, we get 200 with full plan
         if resp.status_code == 200:
-            ***REMOVED*** New parser fields
+            # New parser fields
             assert "template" in data, f"Missing 'template' in {list(data.keys())}"
             assert "concepts" in data, f"Missing 'concepts' in {list(data.keys())}"
             assert "confidence" in data, f"Missing 'confidence' in {list(data.keys())}"
-            ***REMOVED*** Legacy fields still present for backward compat
+            # Legacy fields still present for backward compat
             assert "rdf_types" in data
             assert "country_bbox" in data
         else:
-            ***REMOVED*** If bbox failed, we still get a 400 — but the parser fields
-            ***REMOVED*** should NOT be present (parser runs after bbox check).
-            ***REMOVED*** This is acceptable: the test validates that the endpoint
-            ***REMOVED*** doesn't crash and returns a structured response.
+            # If bbox failed, we still get a 400 — but the parser fields
+            # should NOT be present (parser runs after bbox check).
+            # This is acceptable: the test validates that the endpoint
+            # doesn't crash and returns a structured response.
             assert "error" in data, f"Expected 'error' in {list(data.keys())}"
 
     def test_plan_missing_country(self, client):
@@ -185,11 +185,11 @@ class TestSemanticQueryPlanEndpoint:
         assert resp.status_code == 400
 
 
-***REMOVED*** ── Self-supervised questions (coverage-expansion §8) ─
+# ── Self-supervised questions (coverage-expansion §8) ─
 
-***REMOVED*** Controlled entity set seeded into the test vectors DB (same set as
-***REMOVED*** tests/unit/test_mapqa_question_generator.py — keeps the generator hermetic
-***REMOVED*** and lets the executor actually geocode the generated anchors).
+# Controlled entity set seeded into the test vectors DB (same set as
+# tests/unit/test_mapqa_question_generator.py — keeps the generator hermetic
+# and lets the executor actually geocode the generated anchors).
 _ENTITY_ROWS = [
     ("Belize Bank", "bank", 17.5045, -88.1856, 100001),
     ("Cafe de Belice", "cafe", 17.5047, -88.1860, 100002),
@@ -277,11 +277,11 @@ class TestSelfSupervisedQuestionsExecute:
             country_code="BZ", snapshot_id="2025_12_31", per_class=2
         )
         known_templates = {
-            "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
-            "OBJECT-FIELD-MEASURE (***REMOVED***2)",
-            "GEOCODE-BATCH-COMPARE (***REMOVED***4)",
-            "LOCATION-BEARING-CLASSIFY (***REMOVED***5)",
-            "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)",
+            "FILTER-AGGREGATE-MEASURE (#1)",
+            "OBJECT-FIELD-MEASURE (#2)",
+            "GEOCODE-BATCH-COMPARE (#4)",
+            "LOCATION-BEARING-CLASSIFY (#5)",
+            "PLACE-ATTRIBUTE-QUERY (#8)",
         }
         for row in rows:
             parsed = parser.parse(row["MapQA question"])

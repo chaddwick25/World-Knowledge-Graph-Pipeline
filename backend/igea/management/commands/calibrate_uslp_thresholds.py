@@ -32,33 +32,33 @@ from django.core.management.base import BaseCommand
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** ── GPU memory model ──────────────────────────────────────────────────────
-***REMOVED*** Derived from TorchUSLP's persistent tensors and score_batch's peak usage.
-***REMOVED***
-***REMOVED*** Persistent per-pool-entity (N = pool size):
-***REMOVED***   _gpu_pool_embeddings       (N, 100) float32 = N * 400 bytes
-***REMOVED***   _gpu_pool_class_embeddings (N, 100) float32 = N * 400 bytes
-***REMOVED***   _gpu_pool_coords           (N,   2) float32 = N *   8 bytes
-***REMOVED***   _geohash_matrices[1,3,4]   (N,   2) float32 = N *  24 bytes  (3 × 8)
-***REMOVED***   _d_max_tensors[1,3,4]      (N,)    float32 = N *  12 bytes  (3 × 4)
-***REMOVED***   ─────────────────────────────────────────────────
-***REMOVED***   Total persistent:  N * 844 bytes
-***REMOVED***
-***REMOVED*** Per-batch peak (H = head batch size, N = pool size):
-***REMOVED***   score_batch creates ~6 simultaneous (H, N) float32 tensors
-***REMOVED***   (dlat, dlon, a, dist_km, geo_scores, radius_mask / name_scores / class_scores)
-***REMOVED***   Peak: 6 * H * N * 4 = 24 * H * N bytes
-***REMOVED***   (matches _adaptive_head_batch_size's estimate)
-***REMOVED***
-***REMOVED*** FastText model overhead: ~200 MB (100-dim model on GPU)
+# ── GPU memory model ──────────────────────────────────────────────────────
+# Derived from TorchUSLP's persistent tensors and score_batch's peak usage.
+#
+# Persistent per-pool-entity (N = pool size):
+#   _gpu_pool_embeddings       (N, 100) float32 = N * 400 bytes
+#   _gpu_pool_class_embeddings (N, 100) float32 = N * 400 bytes
+#   _gpu_pool_coords           (N,   2) float32 = N *   8 bytes
+#   _geohash_matrices[1,3,4]   (N,   2) float32 = N *  24 bytes  (3 × 8)
+#   _d_max_tensors[1,3,4]      (N,)    float32 = N *  12 bytes  (3 × 4)
+#   ─────────────────────────────────────────────────
+#   Total persistent:  N * 844 bytes
+#
+# Per-batch peak (H = head batch size, N = pool size):
+#   score_batch creates ~6 simultaneous (H, N) float32 tensors
+#   (dlat, dlon, a, dist_km, geo_scores, radius_mask / name_scores / class_scores)
+#   Peak: 6 * H * N * 4 = 24 * H * N bytes
+#   (matches _adaptive_head_batch_size's estimate)
+#
+# FastText model overhead: ~200 MB (100-dim model on GPU)
 
-FASTTEXT_OVERHEAD_BYTES = 200 * 1024 * 1024  ***REMOVED*** 200 MB
-PERSISTENT_BYTES_PER_ENTITY = 844             ***REMOVED*** bytes per pool entity
-PEAK_BYTES_PER_HEAD_PER_ENTITY = 24           ***REMOVED*** 6 tensors * 4 bytes float32
-VRAM_SAFETY_FACTOR = 0.70                     ***REMOVED*** match _adaptive_head_batch_size
+FASTTEXT_OVERHEAD_BYTES = 200 * 1024 * 1024  # 200 MB
+PERSISTENT_BYTES_PER_ENTITY = 844             # bytes per pool entity
+PEAK_BYTES_PER_HEAD_PER_ENTITY = 24           # 6 tensors * 4 bytes float32
+VRAM_SAFETY_FACTOR = 0.70                     # match _adaptive_head_batch_size
 DEFAULT_HEAD_BATCH_SIZE = 256
 
-***REMOVED*** Spatial literal tag keys that identify head entities (from predict_spatial_links.py)
+# Spatial literal tag keys that identify head entities (from predict_spatial_links.py)
 SPATIAL_LITERAL_KEYS = [
     'is_in', 'is_in:country', 'is_in:state', 'is_in:county',
     'addr:country', 'addr:state', 'addr:county', 'addr:city',
@@ -100,7 +100,7 @@ def compute_max_safe_pool_size(
 
     max_n = int(available * safety / (pp * safety + head_batch_size * php))
 
-    ***REMOVED*** Verify: compute adaptive batch at max_n
+    # Verify: compute adaptive batch at max_n
     persistent = max_n * pp
     free = available - persistent
     adaptive = max(1, int(free * safety / (max_n * php))) if max_n > 0 else 0
@@ -185,7 +185,7 @@ class Command(BaseCommand):
         include_subgraphs = options.get('include_subgraphs')
         as_json = options.get('json')
 
-        ***REMOVED*** ── 1. GPU memory model ────────────────────────────────────────────
+        # ── 1. GPU memory model ────────────────────────────────────────────
         gpu_info = self._get_gpu_info(gpu_device)
         gpu_total = gpu_info["total_bytes"]
 
@@ -194,7 +194,7 @@ class Command(BaseCommand):
             head_batch_size=head_batch,
         )
 
-        ***REMOVED*** Also compute for a range of pool sizes to show the trade-off curve
+        # Also compute for a range of pool sizes to show the trade-off curve
         trade_off = []
         for n in [50_000, 100_000, 200_000, 500_000, 750_000, 1_000_000,
                    1_500_000, 2_000_000, 3_000_000, 5_000_000]:
@@ -223,17 +223,17 @@ class Command(BaseCommand):
                 self._print_gpu_report(gpu_info, max_pool_info, trade_off, head_batch)
             return
 
-        ***REMOVED*** ── 2. DB scan: entity counts per country/subgraph ─────────────────
+        # ── 2. DB scan: entity counts per country/subgraph ─────────────────
         regions = self._scan_entity_counts(
             country, snapshot_date, include_subgraphs=include_subgraphs,
         )
 
-        ***REMOVED*** ── 3. Compute recommendations ─────────────────────────────────────
+        # ── 3. Compute recommendations ─────────────────────────────────────
         recommendations = self._compute_recommendations(
             regions, max_pool_info, head_batch, gpu_total,
         )
 
-        ***REMOVED*** ── 4. Output ──────────────────────────────────────────────────────
+        # ── 4. Output ──────────────────────────────────────────────────────
         if as_json:
             import json
             self.stdout.write(json.dumps({
@@ -247,7 +247,7 @@ class Command(BaseCommand):
             self._print_gpu_report(gpu_info, max_pool_info, trade_off, head_batch)
             self._print_region_report(regions, recommendations, max_pool_info)
 
-    ***REMOVED*** ── GPU info ──────────────────────────────────────────────────────────
+    # ── GPU info ──────────────────────────────────────────────────────────
 
     def _get_gpu_info(self, device: str) -> dict:
         """Get GPU total memory. Falls back to 16 GB if torch unavailable."""
@@ -280,11 +280,11 @@ class Command(BaseCommand):
             return {
                 "device": device,
                 "name": f"Unknown ({exc})",
-                "total_bytes": 16 * 1024**3,  ***REMOVED*** assume 16 GB
+                "total_bytes": 16 * 1024**3,  # assume 16 GB
                 "total_gb": 16.0,
             }
 
-    ***REMOVED*** ── DB scan ───────────────────────────────────────────────────────────
+    # ── DB scan ───────────────────────────────────────────────────────────
 
     def _scan_entity_counts(
         self, country_filter: str, snapshot_date: str,
@@ -301,13 +301,13 @@ class Command(BaseCommand):
         Returns a list of dicts sorted by entities_with_geom descending:
             {
                 "country": "CA",
-                "subgraph": "ontario",       ***REMOVED*** None for country-level
+                "subgraph": "ontario",       # None for country-level
                 "snapshot_id": "2025_12_31",
                 "total_entities": 1_048_003,
                 "entities_with_geom": 1_040_000,
                 "head_entities": 12_500,
-                "current_limit_hit": True,   ***REMOVED*** entities_with_geom > 200000
-                "current_heads_hit": False,  ***REMOVED*** head_entities > 50000
+                "current_limit_hit": True,   # entities_with_geom > 200000
+                "current_heads_hit": False,  # head_entities > 50000
             }
         """
         from django.db import connections
@@ -315,7 +315,7 @@ class Command(BaseCommand):
 
         table = OsmEntity._meta.db_table
 
-        ***REMOVED*** Determine which countries to scan
+        # Determine which countries to scan
         if country_filter:
             countries = [country_filter.upper()]
         else:
@@ -340,15 +340,15 @@ class Command(BaseCommand):
             ))
             return []
 
-        ***REMOVED*** Build the tags ?| array literal once
+        # Build the tags ?| array literal once
         tag_keys = ','.join(f"'{k}'" for k in SPATIAL_LITERAL_KEYS)
 
         regions = []
         for cc in countries:
             self.stdout.write(f"  Scanning {cc}...")
 
-            ***REMOVED*** Single query: total, with_geom, head_count in one pass.
-            ***REMOVED*** Uses partition pruning on snapshot_id + country_code.
+            # Single query: total, with_geom, head_count in one pass.
+            # Uses partition pruning on snapshot_id + country_code.
             with connections['vectors'].cursor() as cur:
                 if snapshot_date:
                     cur.execute(f"""
@@ -394,7 +394,7 @@ class Command(BaseCommand):
                 f"    total={total:,}  geom={with_geom:,}  heads={head_count:,}"
             )
 
-            ***REMOVED*** Per-subgraph breakdown is opt-in (slow: 13 spatial queries)
+            # Per-subgraph breakdown is opt-in (slow: 13 spatial queries)
             if include_subgraphs:
                 subgraph_counts = self._scan_subgraphs(cc, snapshot_date, table, tag_keys)
                 for sg in subgraph_counts:
@@ -484,7 +484,7 @@ class Command(BaseCommand):
 
         return results
 
-    ***REMOVED*** ── Recommendations ───────────────────────────────────────────────────
+    # ── Recommendations ───────────────────────────────────────────────────
 
     def _compute_recommendations(
         self, regions: list, max_pool_info: dict,
@@ -494,21 +494,21 @@ class Command(BaseCommand):
         if not regions:
             return {}
 
-        ***REMOVED*** limit: the max pool size that fits in VRAM, but not less than
-        ***REMOVED*** the largest subgraph (so no subgraph is truncated).
+        # limit: the max pool size that fits in VRAM, but not less than
+        # the largest subgraph (so no subgraph is truncated).
         max_safe = max_pool_info["max_pool"]
         largest_pool = max(r["entities_with_geom"] for r in regions)
 
-        ***REMOVED*** Recommended limit = min(largest_pool, max_safe) rounded up to 10K
+        # Recommended limit = min(largest_pool, max_safe) rounded up to 10K
         recommended_limit = min(largest_pool, max_safe)
         recommended_limit = math.ceil(recommended_limit / 10_000) * 10_000
 
-        ***REMOVED*** max_heads: the largest head count across all regions, rounded up
-        ***REMOVED*** to 5K.  This ensures no region's head entities are truncated.
+        # max_heads: the largest head count across all regions, rounded up
+        # to 5K.  This ensures no region's head entities are truncated.
         largest_heads = max(r["head_entities"] for r in regions)
         recommended_max_heads = math.ceil(largest_heads / 5_000) * 5_000
 
-        ***REMOVED*** Check if current thresholds are sufficient
+        # Check if current thresholds are sufficient
         current_limit = 200_000
         current_max_heads = 50_000
 
@@ -545,7 +545,7 @@ class Command(BaseCommand):
             ),
         }
 
-    ***REMOVED*** ── Output formatting ─────────────────────────────────────────────────
+    # ── Output formatting ─────────────────────────────────────────────────
 
     def _print_gpu_report(self, gpu_info, max_pool_info, trade_off, head_batch):
         self.stdout.write(self.style.SUCCESS(
@@ -592,7 +592,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("  No regions found in DB."))
             return
 
-        ***REMOVED*** Region table
+        # Region table
         self.stdout.write(f"  {'Region':<40}  {'Pool':>10}  {'Heads':>8}  {'LimHit':>7}  {'HeadHit':>8}")
         self.stdout.write(f"  {'─'*40}  {'─'*10}  {'─'*8}  {'─'*7}  {'─'*8}")
         for r in regions:
@@ -607,7 +607,7 @@ class Command(BaseCommand):
             )
         self.stdout.write("")
 
-        ***REMOVED*** Recommendations
+        # Recommendations
         self.stdout.write(self.style.SUCCESS(
             f"{'='*70}\n"
             f"Recommendations for hyperparams.yaml\n"

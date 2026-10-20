@@ -1,8 +1,8 @@
-***REMOVED*** Pipeline Intent Overview: Preserving the WorldKG Research
+# Pipeline Intent Overview: Preserving the WorldKG Research
 
 The master overview for the WorldKG extraction pipeline. Explains the high-level strategy for preserving and amplifying the research intent of the original academic papers (WorldKG, IGEA, GeoVectors) within the Django + Celery pipeline.
 
-***REMOVED******REMOVED*** 1. The Strategy of Direct Algorithmic Preservation
+## 1. The Strategy of Direct Algorithmic Preservation
 
 The implementation philosophy moves away from fragmented "Academic Snippets" (scripts, CSVs, and manual Java runs) toward a **native geospatial engine**. The goal is to ensure that the mathematical intent of the research is embedded in the system's architecture itself.
 
@@ -13,7 +13,7 @@ The implementation philosophy moves away from fragmented "Academic Snippets" (sc
 - **GeoVectors Intent**: Bridging sparse tags to a continuous semantic space.
     - *Result*: The extraction workers handle FastText embedding generation on-the-fly during the PBF stream, geofencing the training vectors to their regional topography with optional GPU acceleration.
 
-***REMOVED******REMOVED*** 2. The Pipeline Canvas
+## 2. The Pipeline Canvas
 
 The pipeline is a Celery canvas (chain + chords) of country-level steps, with planet-initialization pre-build substeps. Frontend triggers the country run; Celery orchestrates the stages:
 
@@ -36,27 +36,27 @@ The pipeline is a Celery canvas (chain + chords) of country-level steps, with pl
 - **SubgraphProfile Model**: Stores subgraph BBOX and filepaths as database ground truth
 - **PipelineRun Model**: Stage-level tracking with WebSocket progress updates
 
-***REMOVED******REMOVED*** 3. Core Principles of the Pipeline
+## 3. Core Principles of the Pipeline
 
-***REMOVED******REMOVED******REMOVED*** A. The Administrative Region as a "Data Primitive"
+### A. The Administrative Region as a "Data Primitive"
 As the pipeline progresses, `admin_level=2` (Countries) and `admin_level=4` (States) are treated as the fundamental units of data. By linking these spatial boundaries to their **Wikidata/Knowledge Graph** counterparts via the `OSMWikiDataHierarchy` model, the pipeline creates a unified namespace.
 *   **Result**: The Transformer (IGEA) and the Embedding Layer (GeoVectors) are aligned on the same "Physical + Cognitive" ground truth.
 
-***REMOVED******REMOVED******REMOVED*** B. The Temporal Geofence (Geofabrik Versioning)
+### B. The Temporal Geofence (Geofabrik Versioning)
 Temporal snapshots (`osmium time-filter`) ensure that boundaries and entities match the specific historical state of the world relative to the training data.
 *   **Result**: This avoids "Temporal Drift", a common research failure where 2024 boundary data is accidentally used to validate 2018 entity extractions.
 *   **Temporal Poly-Fencing**: Each monthly snapshot is paired with a unique, high-resolution `.poly` file and a human-readable `.json` GeoJSON boundary, ensuring zero spatial leakage across time.
 
-***REMOVED******REMOVED******REMOVED*** C. GPU-Accelerated Processing
+### C. GPU-Accelerated Processing
 Scalability is not just about speed; it is about **iterative capacity**. By using PyTorch with CUDA support, the pipeline enables GPU-accelerated processing for:
 - **GV-NLE Training**: 10-20x speedup for large datasets using PyTorch Geometric (`PyGDeepWalkService`)
 - **USLP Link Prediction**: GPU-accelerated tri-space scoring via `TorchUSLP` with batch embedding precomputation
 - **TransE Training**: CUDA support for large-scale knowledge graph embedding training
 
-***REMOVED******REMOVED******REMOVED*** D. Cartesian-Semantic Synchronization
+### D. Cartesian-Semantic Synchronization
 By using the `osm_id` and associated geometry of the administrative boundary as a master filter for FastText corpus extraction, the pipeline ensures that the "Physical" boundary and the "Semantic" embedding are synchronized. This eliminates regional noise and enforces the project's intent of treating the administrative region as a unified data primitive.
 
-***REMOVED******REMOVED*** 4. Navigating the Intent Guides
+## 4. Navigating the Intent Guides
 For detailed breakdowns of specific research implementations, refer to:
 - [IGEA Implementation Details](IGEA.md)
 - [GeoVectors Semantic Translation](GEOVECTORS.md)

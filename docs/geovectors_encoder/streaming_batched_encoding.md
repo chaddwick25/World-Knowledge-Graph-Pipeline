@@ -1,4 +1,4 @@
-***REMOVED*** Streaming Batched Encoding: PBF → Bounded Memory
+# Streaming Batched Encoding: PBF → Bounded Memory
 
 > **Focus:** SAX-style PBF ingestion via `pyosmium.SimpleHandler`, chunked
 > DB flush, and bounded parallel encode/upsert fan-out via `BatchCollector`.
@@ -10,7 +10,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Why Streaming
+## 1. Why Streaming
 
 The pipeline ingests the full planet PBF and per-country snapshot PBFs.
 Loading any of these fully into memory is fatal on a 4 GB Celery worker.
@@ -36,7 +36,7 @@ buffer grows unbounded.
 
 ---
 
-***REMOVED******REMOVED*** 2. The Streaming Handler Contract
+## 2. The Streaming Handler Contract
 
 Every PBF consumer subclasses `osmium.SimpleHandler` and overrides one or
 more of `node()`, `way()`, `relation()`. The contract:
@@ -57,7 +57,7 @@ saves memory for handlers that only need node/way refs.
 
 ---
 
-***REMOVED******REMOVED*** 3. Handler Inventory
+## 3. Handler Inventory
 
 | Handler | File | Sink | batch_size | locations | Purpose |
 |---|---|---|---|---|---|
@@ -71,7 +71,7 @@ saves memory for handlers that only need node/way refs.
 
 ---
 
-***REMOVED******REMOVED*** 4. AssetExtractor: Removed 2026-09-09
+## 4. AssetExtractor: Removed 2026-09-09
 
 `AssetExtractor` was the canonical streaming handler. It extracted nodes,
 edges, and tags from a snapshot PBF into three Parquet files that became the
@@ -96,7 +96,7 @@ Its lessons still apply to the surviving handlers:
 
 ---
 
-***REMOVED******REMOVED*** 5. The Step 1 Production Path: BatchCollector
+## 5. The Step 1 Production Path: BatchCollector
 
 **Source:** <ref_file file="backend/geovectors_encoder/services/batch_collector.py" />
 **Called by:** <ref_file file="backend/geovectors_encoder/core/util.py" /> (`read_from_snapshot`)
@@ -106,7 +106,7 @@ The Step 1 production path streams the PBF via `SampleHandler` (another
 a file, it pushes records into a `BatchCollector`, a **drop-in writer
 replacement** that fans out to parallel encoding workers.
 
-***REMOVED******REMOVED******REMOVED*** 5.1 Bounded Queue + Single Upsert Worker
+### 5.1 Bounded Queue + Single Upsert Worker
 
 ```
 PBF (on disk)
@@ -123,7 +123,7 @@ upsert_worker (1 thread)       ← SQL COPY into OsmEntity (vectors DB)
 PostgreSQL (vectors, port 5433)
 ```
 
-***REMOVED******REMOVED******REMOVED*** 5.2 Why a Single Upsert Worker
+### 5.2 Why a Single Upsert Worker
 
 The single upsert worker eliminates PostgreSQL lock contention on the leaf
 partition's unique index. The regression that motivated it: 8 workers each
@@ -132,7 +132,7 @@ caused lock contention (Option A, abandoned). The current design (Approach
 B / Option C) uses N encoding threads + 1 upsert thread. Encoding is
 parallel, upsert is serialized.
 
-***REMOVED******REMOVED******REMOVED*** 5.3 BatchCollector Contract (do not break)
+### 5.3 BatchCollector Contract (do not break)
 
 `read_from_snapshot` and the `itertools.chain(w_data, r_data)` loop in
 `EmbeddingService.run` depend on `BatchCollector` being a drop-in writer:
@@ -146,7 +146,7 @@ parallel, upsert is serialized.
 - `counts` / `total` reflect every record handed to `add_line`, grouped by
   OSM type (`node` / `way` / `relation`).
 
-***REMOVED******REMOVED******REMOVED*** 5.4 Thread-Safety
+### 5.4 Thread-Safety
 
 - `FastTextModel` and `NLEModel` are shared across encoding threads. FastText
   inference releases the GIL; `NLEModel.encode_coords` issues a PostGIS KNN
@@ -160,7 +160,7 @@ parallel, upsert is serialized.
 - The upsert thread closes its Django connections in `finally` via
   `connections.close_all()` (no request lifecycle in Celery threads).
 
-***REMOVED******REMOVED******REMOVED*** 5.5 Sentinel-Based Termination + ErrorBox
+### 5.5 Sentinel-Based Termination + ErrorBox
 
 - One `SENTINEL` object per worker guarantees clean shutdown without
   deadlocks on a full bounded queue.
@@ -169,7 +169,7 @@ parallel, upsert is serialized.
 
 ---
 
-***REMOVED******REMOVED*** 6. The Two-Pass Subgraph Splitter
+## 6. The Two-Pass Subgraph Splitter
 
 **Source:** <ref_file file="backend/core/services/snapshot/embedding_shapely_splitter.py" />
 
@@ -177,14 +177,14 @@ parallel, upsert is serialized.
 assigns OSM entities to subgraph regions (e.g. US states, GB countries) via
 shapely STRtree containment. Two streaming passes:
 
-***REMOVED******REMOVED******REMOVED*** 6.1 Pass 1: Node → Region (locations=True, chunked STRtree)
+### 6.1 Pass 1: Node → Region (locations=True, chunked STRtree)
 
 `NodeHandler` streams nodes with `locations=True` into numpy arrays
 (`osm_ids`, `lons`, `lats`). Even though it buffers all node coordinates,
 the spatial containment test runs in **2M-node chunks** to bound the STRtree
 query memory.
 
-***REMOVED******REMOVED******REMOVED*** 6.2 Pass 2: Way/Relation → Region (locations=False)
+### 6.2 Pass 2: Way/Relation → Region (locations=False)
 
 `WayRelationHandler` streams ways + relations with `locations=False`. Only
 node/way refs are needed, not coordinates, so coordinates are never
@@ -194,7 +194,7 @@ in the splitter.
 
 ---
 
-***REMOVED******REMOVED*** 7. OOM-Prevention Technique Summary
+## 7. OOM-Prevention Technique Summary
 
 | Technique | Where | Effect |
 |---|---|---|
@@ -213,7 +213,7 @@ or to a bounded queue (DB upsert) before the buffer grows unbounded.
 
 ---
 
-***REMOVED******REMOVED*** 8. The Pre-Streaming Regression (and Why It Was Replaced)
+## 8. The Pre-Streaming Regression (and Why It Was Replaced)
 
 The upstream `GeoVectors-master` reference implementation used the same
 `osmium.SimpleHandler` SAX API but **did not flush in chunks**.
@@ -234,7 +234,7 @@ at planet scale:
 3. **No backpressure.** `DependencyGeomHandler` also deep-copied the
    dependency dicts, so each pass doubled those dicts too.
 
-***REMOVED******REMOVED******REMOVED*** The Streaming Rewrite
+### The Streaming Rewrite
 
 The in-tree `geovectors_encoder/core/util.py` is a streaming rewrite with
 three changes that fixed the OOM:
@@ -247,7 +247,7 @@ three changes that fixed the OOM:
 
 ---
 
-***REMOVED******REMOVED*** 9. Throughput Ceiling
+## 9. Throughput Ceiling
 
 The streaming rewrite solved the OOM problem. A separate question is whether
 upsert throughput can be improved. After benchmarking, the current
@@ -257,7 +257,7 @@ the FastText-only encoding path. **Verified 2026-08-31:** `.env` confirms
 `parallel_upsert.workers=1`, the live configuration, not just a documented
 default.
 
-***REMOVED******REMOVED******REMOVED*** Benchmark (Belize, 307,937 rows)
+### Benchmark (Belize, 307,937 rows)
 
 | config | workers | chunk_sz | wall_clock_s | rows/sec | vs base |
 |---|---|---|---|---|---|
@@ -278,7 +278,7 @@ the NLE two-axis path (per-entity PostGIS 50-NN query + Node2Vec inference,
 
 ---
 
-***REMOVED******REMOVED*** 10. Why pgvector on PostgreSQL (Not a Dedicated Vector DB)
+## 10. Why pgvector on PostgreSQL (Not a Dedicated Vector DB)
 
 A dedicated vector database (Milvus, Qdrant, Weaviate) would not
 dramatically improve ingestion throughput. The I/O ceiling doesn't go away.

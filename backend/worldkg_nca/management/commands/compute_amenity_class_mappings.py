@@ -53,7 +53,7 @@ class Command(BaseCommand):
 
         dry_run = options["dry_run"]
 
-        ***REMOVED*** ── Tier 1: data aggregation ─────────────────────────────────────
+        # ── Tier 1: data aggregation ─────────────────────────────────────
         agg = (
             OsmEntity.objects.using("vectors")
             .filter(
@@ -66,7 +66,7 @@ class Command(BaseCommand):
             .annotate(cnt=Count("id"))
             .order_by("tags__amenity", "-cnt")
         )
-        data_mappings = []  ***REMOVED*** (amenity, wkg_class, support_count)
+        data_mappings = []  # (amenity, wkg_class, support_count)
         seen = set()
         for row in agg:
             amenity = (row["tags__amenity"] or "").strip().lower().replace(" ", "_")
@@ -76,7 +76,7 @@ class Command(BaseCommand):
             data_mappings.append((amenity, row["wkg_class"], row["cnt"]))
         self.stdout.write(f"Tier 1 (data): {len(data_mappings)} amenity values")
 
-        ***REMOVED*** ── Tier 2: ontology TTL ─────────────────────────────────────────
+        # ── Tier 2: ontology TTL ─────────────────────────────────────────
         ontology_mappings = {}
         ttl_path = Path(getattr(settings, "WORLDKG_ONTOLOGY_PATH", "") or "")
         if ttl_path.exists():
@@ -103,7 +103,7 @@ class Command(BaseCommand):
                 "ontology tier skipped"
             ))
 
-        ***REMOVED*** ── Precedence: data wins on support; ontology fills the rest ──
+        # ── Precedence: data wins on support; ontology fills the rest ──
         total = len(data_mappings)
         for amenity, wkg_class in ontology_mappings.items():
             if amenity not in seen:
@@ -118,7 +118,7 @@ class Command(BaseCommand):
             self.stdout.write(f"dry-run: {total} mappings (not written)")
             return
 
-        ***REMOVED*** ── Idempotent write (delete-then-insert) ────────────────────────
+        # ── Idempotent write (delete-then-insert) ────────────────────────
         AmenityClassMapping.objects.using("vectors").all().delete()
         objs = [
             AmenityClassMapping(

@@ -52,7 +52,7 @@ def poly_base_dir(tmp_path):
     return d
 
 
-***REMOVED*** ====== 1. THE FIX -- top-level continents must use underscores ======
+# ====== 1. THE FIX -- top-level continents must use underscores ======
 
 
 @pytest.mark.integration
@@ -96,7 +96,7 @@ class TestGeofabrikPolyServiceFix:
         assert len(north_calls) == 0, "requests.get should not be called when poly exists"
 
 
-***REMOVED*** ====== 2. Download stats ======
+# ====== 2. Download stats ======
 
 
 @pytest.mark.integration
@@ -109,7 +109,7 @@ class TestDownloadStats:
         assert total >= 5
 
 
-***REMOVED*** ====== 3. Resilience ======
+# ====== 3. Resilience ======
 
 
 @pytest.mark.integration
@@ -128,7 +128,7 @@ class TestDownloadResilience:
             assert stats["downloaded"] >= 2
 
 
-***REMOVED*** ====== 4. Backward compatibility ======
+# ====== 4. Backward compatibility ======
 
 
 @pytest.mark.integration

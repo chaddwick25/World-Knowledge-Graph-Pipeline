@@ -232,16 +232,16 @@ import axios from 'axios'
 
 // ── Relation type color map (must match WorldKGMap.vue) ──────────────────
 const RELATION_COLORS = {
-  addrCity:        '***REMOVED***8b5cf6',  // violet-500
-  addrPlace:       '***REMOVED***10b981',  // emerald-500
-  addrNeighbour:   '***REMOVED***06b6d4',  // cyan-500
-  addrSuburb:      '***REMOVED***84cc16',  // lime-500
-  addrDistrict:    '***REMOVED***3b82f6',  // blue-500
-  addrState:       '***REMOVED***ef4444',  // red-500
-  addrProvince:    '***REMOVED***ec4899',  // pink-500
-  addrHamlet:      '***REMOVED***f59e0b',  // amber-500
+  addrCity:        '#8b5cf6',  // violet-500
+  addrPlace:       '#10b981',  // emerald-500
+  addrNeighbour:   '#06b6d4',  // cyan-500
+  addrSuburb:      '#84cc16',  // lime-500
+  addrDistrict:    '#3b82f6',  // blue-500
+  addrState:       '#ef4444',  // red-500
+  addrProvince:    '#ec4899',  // pink-500
+  addrHamlet:      '#f59e0b',  // amber-500
 }
-const DEFAULT_RELATION_COLOR = '***REMOVED***6b7280'
+const DEFAULT_RELATION_COLOR = '#6b7280'
 
 function getRelationColor(relation) {
   return RELATION_COLORS[relation] || DEFAULT_RELATION_COLOR

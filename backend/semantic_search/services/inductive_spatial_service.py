@@ -47,9 +47,9 @@ _GEOHASH_BITS = [
 ]
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Minimal geohash encoder (no external dependency)
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Minimal geohash encoder (no external dependency)
+# ---------------------------------------------------------------------------
 
 def _encode_geohash(lat: float, lon: float, precision: int = 6) -> str:
     """Encode lat/lon to geohash string of given precision."""
@@ -116,9 +116,9 @@ def _geohash_center(gh: str) -> Tuple[float, float]:
     return lat, lon
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Edge weight (GeoVectors paper formula)
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Edge weight (GeoVectors paper formula)
+# ---------------------------------------------------------------------------
 
 def _damped_weight(dist_km: float) -> float:
     """Damped weight for the inductive embedding path.
@@ -140,9 +140,9 @@ def _damped_weight(dist_km: float) -> float:
     return max(1.0 / np.log(d), np.e)
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Main service
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Main service
+# ---------------------------------------------------------------------------
 
 class InductiveSpatialService:
     """
@@ -150,8 +150,8 @@ class InductiveSpatialService:
 
     Usage:
         service = InductiveSpatialService(k=50)
-        service.load_pool_from_db()                        ***REMOVED*** or load_pool(entities)
-        emb = service.embed_entity(lat=51.5, lon=-0.1)    ***REMOVED*** London
+        service.load_pool_from_db()                        # or load_pool(entities)
+        emb = service.embed_entity(lat=51.5, lon=-0.1)    # London
     """
 
     def __init__(self, k: int = 50):
@@ -160,15 +160,15 @@ class InductiveSpatialService:
             k: Number of nearest pool entities to aggregate (paper default: 50).
         """
         self.k = k
-        self._pool_coords: Optional[np.ndarray] = None   ***REMOVED*** shape (N, 2) [lat, lon]
-        self._pool_embeddings: Optional[np.ndarray] = None  ***REMOVED*** shape (N, 300)
+        self._pool_coords: Optional[np.ndarray] = None   # shape (N, 2) [lat, lon]
+        self._pool_embeddings: Optional[np.ndarray] = None  # shape (N, 300)
         self._pool_osm_ids: Optional[List[int]] = None
         self._pool_size: int = 0
         self._tree = None
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Pool loading
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Pool loading
+    # ------------------------------------------------------------------
 
     def load_pool(self, entities: List[Dict]) -> int:
         """
@@ -195,7 +195,7 @@ class InductiveSpatialService:
         self._pool_embeddings = np.array([e['gv_nle_embedding'] for e in valid], dtype=np.float32)
         self._pool_size = len(valid)
         
-        ***REMOVED*** Build ultra-fast BallTree for k-NN queries (requires radians)
+        # Build ultra-fast BallTree for k-NN queries (requires radians)
         from sklearn.neighbors import BallTree
         logger.info(f"InductiveSpatialService: Building BallTree index for {self._pool_size} entities...")
         self._tree = BallTree(np.radians(self._pool_coords), metric='haversine')
@@ -236,9 +236,9 @@ class InductiveSpatialService:
 
         return self.load_pool(entities)
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Embedding inference
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Embedding inference
+    # ------------------------------------------------------------------
 
     def embed_entity(self, lat: float, lon: float) -> Optional[np.ndarray]:
         """
@@ -261,22 +261,22 @@ class InductiveSpatialService:
         coord = (lat, lon)
         k = min(self.k, self._pool_size)
 
-        ***REMOVED*** Vectorized query: returns (distances in radians, indices)
+        # Vectorized query: returns (distances in radians, indices)
         coord_rad = np.radians([[lat, lon]])
         dists_rad, indices = self._tree.query(coord_rad, k=k)
         
-        ***REMOVED*** Convert haversine radians back to kilometers (Earth radius ~ 6371.0)
+        # Convert haversine radians back to kilometers (Earth radius ~ 6371.0)
         nearest_dists = dists_rad[0] * 6371.0
         nearest_idx = indices[0]
 
-        ***REMOVED*** Damped weights
+        # Damped weights
         weights = np.array([_damped_weight(d) for d in nearest_dists], dtype=np.float32)
         weights /= weights.sum()
 
-        ***REMOVED*** Weighted mean
+        # Weighted mean
         embedding = (self._pool_embeddings[nearest_idx] * weights[:, None]).sum(axis=0)
 
-        ***REMOVED*** L2-normalise (consistent with GV-NLE training)
+        # L2-normalise (consistent with GV-NLE training)
         norm = np.linalg.norm(embedding)
         if norm > 0:
             embedding /= norm
@@ -295,9 +295,9 @@ class InductiveSpatialService:
         """
         return [self.embed_entity(lat, lon) for lat, lon in coords]
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Geohash-based fast candidate scoring (USLP geographic space)
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Geohash-based fast candidate scoring (USLP geographic space)
+    # ------------------------------------------------------------------
 
     def geohash_score(self, lat1: float, lon1: float,
                       lat2: float, lon2: float,
@@ -333,9 +333,9 @@ class InductiveSpatialService:
         dist_km = haversine(c1, c2, unit=Unit.KILOMETERS)
         return 1.0 / (1.0 + dist_km)
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Pool statistics
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Pool statistics
+    # ------------------------------------------------------------------
 
     def pool_stats(self) -> Dict:
         """Return summary statistics about the loaded embedding pool."""

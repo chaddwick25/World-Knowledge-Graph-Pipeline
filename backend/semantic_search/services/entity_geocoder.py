@@ -34,10 +34,10 @@ class EntityGeocoder:
         if not entity_name:
             return None
 
-        ***REMOVED*** Curly vs straight quotes: OSM names and user input both carry
-        ***REMOVED*** U+2018/U+2019 ("Ice N' Beans" fails every exact/ILIKE tier when
-        ***REMOVED*** one side is curly). Normalize the query; the SQL tiers
-        ***REMOVED*** normalize the stored name the same way.
+        # Curly vs straight quotes: OSM names and user input both carry
+        # U+2018/U+2019 ("Ice N' Beans" fails every exact/ILIKE tier when
+        # one side is curly). Normalize the query; the SQL tiers
+        # normalize the stored name the same way.
         entity_name = EntityGeocoder._normalize_quotes(entity_name)
 
         snapshot_id = snapshot_date or get_latest_snapshot_id()
@@ -45,7 +45,7 @@ class EntityGeocoder:
             logger.warning("No snapshot_id available for geocoding")
             return None
 
-        ***REMOVED*** Strip leading articles ("a bus station" → "bus station")
+        # Strip leading articles ("a bus station" → "bus station")
         clean_name = EntityGeocoder._strip_articles(entity_name)
 
         qs = OsmEntity.objects.using("vectors").filter(
@@ -54,33 +54,33 @@ class EntityGeocoder:
         if country_code:
             qs = qs.filter(country_code=country_code.upper())
 
-        ***REMOVED*** The cleaned name usually equals the original — dedupe so we never
-        ***REMOVED*** run the same (potentially expensive) fallback query twice.
+        # The cleaned name usually equals the original — dedupe so we never
+        # run the same (potentially expensive) fallback query twice.
         variants = [v for v in dict.fromkeys([clean_name, entity_name]) if v]
 
-        ***REMOVED*** 1. Fuzzy match via pg_trgm similarity on the romanized name
-        ***REMOVED***    (GIN trigram index — ~40ms even on misses, tolerant of typos:
-        ***REMOVED***    "Shannon Bells" → "Shandon Bells" at sim 0.65).  Runs FIRST:
-        ***REMOVED***    the unindexed tags->>'name' scans below cost ~4-9s on a miss
-        ***REMOVED***    (IE leaf ~9.7M rows), while an exact-match hit always has
-        ***REMOVED***    similarity 1.0, so the trigram ranking returns the same entity
-        ***REMOVED***    for correctly-spelled romanized names.
+        # 1. Fuzzy match via pg_trgm similarity on the romanized name
+        #    (GIN trigram index — ~40ms even on misses, tolerant of typos:
+        #    "Shannon Bells" → "Shandon Bells" at sim 0.65).  Runs FIRST:
+        #    the unindexed tags->>'name' scans below cost ~4-9s on a miss
+        #    (IE leaf ~9.7M rows), while an exact-match hit always has
+        #    similarity 1.0, so the trigram ranking returns the same entity
+        #    for correctly-spelled romanized names.
         for name_variant in variants:
             try:
-                ***REMOVED*** The `%` operator is index-assisted; Django's
-                ***REMOVED*** `__trigram_similar` lookup is TextField-only, so use the
-                ***REMOVED*** raw operator + similarity() ranking directly.  `%%` is
-                ***REMOVED*** psycopg2's escape for a literal `%` — a bare `%` collides
-                ***REMOVED*** with placeholder parsing (IndexError).  The explicit
-                ***REMOVED*** similarity >= 0.4 guard rejects junk matches (the default
-                ***REMOVED*** 0.3 threshold false-positives, e.g. "paranormal nonsense
-                ***REMOVED*** place" → "Paradise Place" at ~0.32).
+                # The `%` operator is index-assisted; Django's
+                # `__trigram_similar` lookup is TextField-only, so use the
+                # raw operator + similarity() ranking directly.  `%%` is
+                # psycopg2's escape for a literal `%` — a bare `%` collides
+                # with placeholder parsing (IndexError).  The explicit
+                # similarity >= 0.4 guard rejects junk matches (the default
+                # 0.3 threshold false-positives, e.g. "paranormal nonsense
+                # place" → "Paradise Place" at ~0.32).
                 from django.contrib.postgres.search import TrigramSimilarity
-                ***REMOVED*** Fragment guard: a short query ("Cliffs") must not match a
-                ***REMOVED*** much longer candidate ("Cliffs of Howth") at low similarity
-                ***REMOVED*** — that is a truncated entity span, not a typo. Preserves
-                ***REMOVED*** the equal-length typo case ("Shannon Bells" → "Shandon
-                ***REMOVED*** Bells", sim 0.65).
+                # Fragment guard: a short query ("Cliffs") must not match a
+                # much longer candidate ("Cliffs of Howth") at low similarity
+                # — that is a truncated entity span, not a typo. Preserves
+                # the equal-length typo case ("Shannon Bells" → "Shandon
+                # Bells", sim 0.65).
                 qs_fuzzy = (
                     qs.extra(
                         where=[
@@ -99,12 +99,12 @@ class EntityGeocoder:
                     result = EntityGeocoder._entity_to_dict(entity)
                     if result and result.get("lat") is not None:
                         return result
-            except Exception:  ***REMOVED*** noqa: BLE001 — trigram unavailable → skip
+            except Exception:  # noqa: BLE001 — trigram unavailable → skip
                 break
 
-        ***REMOVED*** 2. Exact name match (case-insensitive) — check the 'name' tag.
-        ***REMOVED***    The stored name is quote-normalized in SQL so a curly stored
-        ***REMOVED***    apostrophe still matches the straight query (and vice versa).
+        # 2. Exact name match (case-insensitive) — check the 'name' tag.
+        #    The stored name is quote-normalized in SQL so a curly stored
+        #    apostrophe still matches the straight query (and vice versa).
         for name_variant in variants:
             qs_exact = qs.extra(
                 where=["%s = LOWER(%s)"],
@@ -117,13 +117,13 @@ class EntityGeocoder:
                 result = EntityGeocoder._entity_to_dict(entity)
                 if result and result.get("lat") is not None:
                     return result
-                ***REMOVED*** Exact match but no coords — keep looking but remember as fallback
+                # Exact match but no coords — keep looking but remember as fallback
                 fallback = result
 
-        ***REMOVED*** 3. ILIKE contains match — prefer entities with valid coordinates.
-        ***REMOVED***    Unbounded scan on names not romanized (94% of IE) — only hit
-        ***REMOVED***    when both the indexed trigram and exact steps missed. Stored
-        ***REMOVED***    name is quote-normalized like the query.
+        # 3. ILIKE contains match — prefer entities with valid coordinates.
+        #    Unbounded scan on names not romanized (94% of IE) — only hit
+        #    when both the indexed trigram and exact steps missed. Stored
+        #    name is quote-normalized like the query.
         for name_variant in variants:
             qs_ilike = qs.extra(
                 where=[
@@ -132,11 +132,11 @@ class EntityGeocoder:
                 ],
                 params=[f"%{name_variant}%"],
             )
-            ***REMOVED*** Fragment guard (Kuhn's Template correction layer): a short
-            ***REMOVED*** query ("Cliffs", 6 chars) must not substring-match a much
-            ***REMOVED*** longer name ("Cliffs of Howth") — that is a truncated span,
-            ***REMOVED*** not a partial name. Partial-name queries of >= 8 chars and
-            ***REMOVED*** contained names up to 2x the query length are unaffected.
+            # Fragment guard (Kuhn's Template correction layer): a short
+            # query ("Cliffs", 6 chars) must not substring-match a much
+            # longer name ("Cliffs of Howth") — that is a truncated span,
+            # not a partial name. Partial-name queries of >= 8 chars and
+            # contained names up to 2x the query length are unaffected.
             if len(name_variant) < 8:
                 qs_ilike = qs_ilike.extra(
                     where=["length(tags->>'name') <= %s"],
@@ -149,7 +149,7 @@ class EntityGeocoder:
                     return result
                 fallback = result
 
-        ***REMOVED*** 4. Try with common abbreviations expanded
+        # 4. Try with common abbreviations expanded
         expanded = EntityGeocoder._expand_abbreviations(clean_name)
         if expanded != clean_name:
             qs_exp = qs.extra(
@@ -166,8 +166,8 @@ class EntityGeocoder:
                     return result
                 fallback = result
 
-        ***REMOVED*** 5. Last resort: return the best match even without coordinates
-        ***REMOVED***    (the executor may still use it as a graph node lookup)
+        # 5. Last resort: return the best match even without coordinates
+        #    (the executor may still use it as a graph node lookup)
         try:
             fallback
         except NameError:
@@ -179,10 +179,10 @@ class EntityGeocoder:
                      entity_name, country_code, snapshot_id)
         return None
 
-    ***REMOVED*** Settlement place tags — a named settlement should beat a same-name
-    ***REMOVED*** marker (signpost, route sign) at equal similarity ("Belfast" the city
-    ***REMOVED*** vs "Belfast" the NCN 93 destination sign — observed 2026-09-19, every
-    ***REMOVED*** Belfast-anchored question radiated from a countryside signpost).
+    # Settlement place tags — a named settlement should beat a same-name
+    # marker (signpost, route sign) at equal similarity ("Belfast" the city
+    # vs "Belfast" the NCN 93 destination sign — observed 2026-09-19, every
+    # Belfast-anchored question radiated from a countryside signpost).
     _PLACE_SETTLEMENT_TAGS = (
         "city", "town", "village", "hamlet", "suburb", "neighbourhood",
         "borough", "locality", "isolated_dwelling", "municipality",
@@ -293,7 +293,7 @@ class EntityGeocoder:
                 rows = EntityGeocoder._trigram_rows(
                     name_variant, qs, limit, min_sim,
                 )
-            except Exception:  ***REMOVED*** noqa: BLE001 — trigram unavailable → skip
+            except Exception:  # noqa: BLE001 — trigram unavailable → skip
                 break
             candidates = [
                 d for d in (EntityGeocoder._entity_to_dict(e) for e in rows)
@@ -337,7 +337,7 @@ class EntityGeocoder:
             try:
                 y = entity.geom.y
                 x = entity.geom.x
-                ***REMOVED*** Ways may have POINT(NaN NaN) — treat as no coordinates
+                # Ways may have POINT(NaN NaN) — treat as no coordinates
                 if y is not None and x is not None and not (
                     isinstance(y, float) and math.isnan(y)
                 ) and not (
@@ -348,11 +348,11 @@ class EntityGeocoder:
             except Exception:
                 pass
             if lat is None:
-                ***REMOVED*** Ways/relations have line/polygon geometries — .x/.y yield
-                ***REMOVED*** nothing, so derive a representative point. Without this,
-                ***REMOVED*** entities like "Spire of Dublin" (a way) geocode to
-                ***REMOVED*** lat=None and every coordinate-dependent executor path
-                ***REMOVED*** (cone search, distance, anchors) fails on them.
+                # Ways/relations have line/polygon geometries — .x/.y yield
+                # nothing, so derive a representative point. Without this,
+                # entities like "Spire of Dublin" (a way) geocode to
+                # lat=None and every coordinate-dependent executor path
+                # (cone search, distance, anchors) fails on them.
                 try:
                     pt = entity.geom.point_on_surface
                     if pt is not None:
@@ -375,8 +375,8 @@ class EntityGeocoder:
             "lon": lon,
             "tags": tags,
             "wkg_class": entity.wkg_class,
-            ***REMOVED*** Lets the executor prune context queries to the entity's leaf
-            ***REMOVED*** partition instead of Appending over every country.
+            # Lets the executor prune context queries to the entity's leaf
+            # partition instead of Appending over every country.
             "country_code": entity.country_code,
         }
 

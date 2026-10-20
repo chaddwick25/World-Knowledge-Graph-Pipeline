@@ -47,7 +47,7 @@ class AugmentedDataSummaryView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        ***REMOVED*** snapshot_date filters entity counts by OsmEntity.snapshot_id
+        # snapshot_date filters entity counts by OsmEntity.snapshot_id
         snapshot_date = request.query_params.get('snapshot_date')
 
         try:
@@ -155,7 +155,7 @@ class AugmentedLinksGeomView(APIView):
 
                 base_qs = model.objects.filter(base_filter)
 
-                ***REMOVED*** Count per relation
+                # Count per relation
                 rel_counts = (
                     base_qs.values('relation')
                     .annotate(c=Count('id'))
@@ -165,19 +165,19 @@ class AugmentedLinksGeomView(APIView):
                 if total == 0:
                     return []
 
-                ***REMOVED*** Allocate limit proportionally, minimum 1 per relation
+                # Allocate limit proportionally, minimum 1 per relation
                 links = []
                 for rc in rel_counts:
                     alloc = max(1, round((rc['c'] / total) * total_limit))
-                    alloc = min(alloc, rc['c'])  ***REMOVED*** can't take more than exist
+                    alloc = min(alloc, rc['c'])  # can't take more than exist
                     rel_links = (
                         base_qs.filter(relation=rc['relation'])
                         .order_by('-normalized_score')[:alloc]
                     )
                     links.extend(rel_links)
 
-                ***REMOVED*** If proportional allocation underfills (rounding), top up
-                ***REMOVED*** from the highest-scoring remaining links
+                # If proportional allocation underfills (rounding), top up
+                # from the highest-scoring remaining links
                 if len(links) < total_limit:
                     already_ids = {l.id for l in links}
                     extra = (
@@ -206,7 +206,7 @@ class AugmentedLinksGeomView(APIView):
                 country_filter & snapshot_filter
             ).count()
 
-            ***REMOVED*** Batch-resolve OsmEntity geometries for head and tail entities
+            # Batch-resolve OsmEntity geometries for head and tail entities
             def _resolve_geoms(links):
                 """Resolve (osm_type, osm_id) → (lat, lon) via OsmEntity.geom."""
                 ids = set()
@@ -216,8 +216,8 @@ class AugmentedLinksGeomView(APIView):
                 if not ids:
                     return {}
 
-                ***REMOVED*** Build a Q filter for all referenced entities
-                ***REMOVED*** Use OR of (osm_type=X, osm_id=Y) pairs
+                # Build a Q filter for all referenced entities
+                # Use OR of (osm_type=X, osm_id=Y) pairs
                 q_filter = Q()
                 for osm_type, osm_id in ids:
                     q_filter |= Q(osm_type=osm_type, osm_id=osm_id)
@@ -243,7 +243,7 @@ class AugmentedLinksGeomView(APIView):
                     tail_key = (link.tail_osm_type, link.tail_osm_id)
                     head_geom = geom_map.get(head_key)
                     tail_geom = geom_map.get(tail_key)
-                    ***REMOVED*** Skip links where either endpoint has no geometry
+                    # Skip links where either endpoint has no geometry
                     if not head_geom or not tail_geom:
                         continue
                     result.append({

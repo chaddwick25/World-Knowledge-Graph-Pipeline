@@ -32,12 +32,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Twin channel weights (v0 fixed; phase 2 calibrates them per recipe).
+# Twin channel weights (v0 fixed; phase 2 calibrates them per recipe).
 WEIGHTS = {"cosine": 0.6, "class": 0.25, "uslp": 0.15}
 
-***REMOVED*** Presence posterior defaults: weak Beta prior (mean 0.2) and a
-***REMOVED*** conservative absence bar (the posterior upper bound must fall below
-***REMOVED*** MAX_P before the replan is skipped).
+# Presence posterior defaults: weak Beta prior (mean 0.2) and a
+# conservative absence bar (the posterior upper bound must fall below
+# MAX_P before the replan is skipped).
 PRIOR_ALPHA = 1.0
 PRIOR_BETA = 4.0
 MIN_PROBE = 5
@@ -47,7 +47,7 @@ MAX_P = 0.10
 class EvidenceScoringService:
     """Decision coefficients from resolved rows (deterministic v0)."""
 
-    ***REMOVED*** ── 1. Twin score ────────────────────────────────────────────────
+    # ── 1. Twin score ────────────────────────────────────────────────
 
     @staticmethod
     def score_candidates(seed_class: Optional[str], candidates: list,
@@ -95,8 +95,8 @@ class EvidenceScoringService:
             score = sum(
                 w.get(k, 0.0) * v for k, v in channels.items()
             ) / total_w
-            ***REMOVED*** Agreement across available channels; a single channel is
-            ***REMOVED*** honest unknown, never faked.
+            # Agreement across available channels; a single channel is
+            # honest unknown, never faked.
             confidence = (
                 round(1.0 - (max(channels.values())
                              - min(channels.values())), 4)
@@ -112,7 +112,7 @@ class EvidenceScoringService:
         )
         return candidates
 
-    ***REMOVED*** ── 2. Presence posterior ────────────────────────────────────────
+    # ── 2. Presence posterior ────────────────────────────────────────
 
     @staticmethod
     def presence_posterior(n_class: int, n_total: int,
@@ -144,7 +144,7 @@ class EvidenceScoringService:
             "decision": "absent" if absent else "uncertain",
         }
 
-    ***REMOVED*** ── 3. Run confidence ────────────────────────────────────────────
+    # ── 3. Run confidence ────────────────────────────────────────────
 
     @staticmethod
     def compose_confidence(coverage: list,
@@ -182,7 +182,7 @@ class EvidenceScoringService:
             },
         }
 
-    ***REMOVED*** ── DB-facing wiring (fail-soft) ─────────────────────────────────
+    # ── DB-facing wiring (fail-soft) ─────────────────────────────────
 
     @classmethod
     def score_preplan_twins(cls, tool_calls: list, country_code: str,
@@ -229,7 +229,7 @@ class EvidenceScoringService:
             return cls.score_candidates(
                 seed.get("wkg_class"), rows, uslp_by_osm_id=uslp,
             )
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 (never kill the loop)
+        except Exception as exc:  # noqa: BLE001 (never kill the loop)
             logger.warning("Twin scoring failed (fail-soft): %s", exc)
             return None
 

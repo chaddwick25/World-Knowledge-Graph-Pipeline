@@ -17,7 +17,7 @@ def read_samples(path):
                'type': 'object', 'tags': 'object', 'lat': 'float64', 'lon': 'float64'}
     data = pd.read_csv(path, sep='\t', names=names, dtype=dtypes)
 
-    ***REMOVED*** drop duplicates from overlapping datasets
+    # drop duplicates from overlapping datasets
     data = data.sort_values(["id", "type", "lat", "lon"], na_position='last')
     data = data.drop_duplicates(subset=['id', 'type'], keep='first')
     return data
@@ -119,7 +119,7 @@ class SampleHandler(osmium.SimpleHandler):
             if self.writer is not None:
                 self.writer.add_line(record)
                 self.node_count += 1
-                ***REMOVED*** Flush periodically to prevent memory buildup
+                # Flush periodically to prevent memory buildup
                 if self.node_count % self.chunk_size == 0:
                     if hasattr(self.writer.storage, 'flush'):
                         self.writer.storage.flush()
@@ -129,8 +129,8 @@ class SampleHandler(osmium.SimpleHandler):
 
     def way(self, w):
         self.way_index += 1
-        ***REMOVED*** Pathological-way guard: skip the node loop for absurd node counts
-        ***REMOVED*** (wedges the encode); keep the tag record.
+        # Pathological-way guard: skip the node loop for absurd node counts
+        # (wedges the encode); keep the tag record.
         if len(w.nodes) > 2_000_000:
             logger.warning(
                 "Skipping pathological way id=%s nodes=%d", w.id, len(w.nodes),
@@ -145,14 +145,14 @@ class SampleHandler(osmium.SimpleHandler):
 
             for n in w.nodes:
                 add_to_dict(self.way_nodes, n.ref, w.id)
-                ***REMOVED*** Prevent unbounded growth of way_nodes dict
+                # Prevent unbounded growth of way_nodes dict
                 if len(self.way_nodes) > self.max_dict_size:
                     self.way_nodes = dict(list(self.way_nodes.items())[-self.max_dict_size//2:])
 
         if (self.entire_dump or self.way_index in self.target_ways):
-            ***REMOVED*** Per-way work only — the old per-node loop was redundant and
-            ***REMOVED*** wedged the encode on large ways (2026-10-10, py-spy: way()
-            ***REMOVED*** line 153 for 30+ min). The body is constant per way.
+            # Per-way work only — the old per-node loop was redundant and
+            # wedged the encode on large ways (2026-10-10, py-spy: way()
+            # line 153 for 30+ min). The body is constant per way.
             if w.id not in self.relation_ways:
                 self.relation_ways[w.id] = set()
             if len(self.relation_ways) > self.max_dict_size:
@@ -164,8 +164,8 @@ class SampleHandler(osmium.SimpleHandler):
 
     def relation(self, r):
         self.relation_index += 1
-        ***REMOVED*** Pathological-relation guard: skip the member loop for absurd
-        ***REMOVED*** member counts (wedges the encode); keep the tag record.
+        # Pathological-relation guard: skip the member loop for absurd
+        # member counts (wedges the encode); keep the tag record.
         if len(r.members) > 2_000_000:
             logger.warning(
                 "Skipping pathological relation id=%s members=%d",
@@ -221,12 +221,12 @@ class DependencyGeomHandler(osmium.SimpleHandler):
                  relation_ways,
                  relation_relations):
         osmium.SimpleHandler.__init__(self)
-        ***REMOVED*** Take ownership of the dicts directly — no deepcopy.
-        ***REMOVED*** The handler consumes keys (deletes resolved entries) and may add
-        ***REMOVED*** new keys (when a way/relation member is discovered).  The caller
-        ***REMOVED*** snapshots the original key sets before each pass so it can
-        ***REMOVED*** distinguish old-unresolved keys from newly-discovered keys
-        ***REMOVED*** after the PBF read, without doubling memory via deepcopy.
+        # Take ownership of the dicts directly — no deepcopy.
+        # The handler consumes keys (deletes resolved entries) and may add
+        # new keys (when a way/relation member is discovered).  The caller
+        # snapshots the original key sets before each pass so it can
+        # distinguish old-unresolved keys from newly-discovered keys
+        # after the PBF read, without doubling memory via deepcopy.
         self.way_nodes = way_nodes
         self.relation_nodes = relation_nodes
         self.relation_ways = relation_ways
@@ -306,14 +306,14 @@ def read_from_snapshot(path, targets=None, writer=None, max_runs=float('inf'), c
 
     setproctitle.setproctitle("Sample handler"+path)
 
-    ***REMOVED*** Phase 1: Process nodes and collect way/relation dependencies
+    # Phase 1: Process nodes and collect way/relation dependencies
     sample_handler.apply_file(path)
     
-    ***REMOVED*** If writer is provided, flush nodes immediately
+    # If writer is provided, flush nodes immediately
     if writer is not None and hasattr(writer.storage, 'flush'):
         writer.storage.flush()
     
-    ***REMOVED*** resolve dependencies
+    # resolve dependencies
     way_nodes = sample_handler.way_nodes
     relation_nodes = sample_handler.relation_nodes
     relation_ways = sample_handler.relation_ways
@@ -328,11 +328,11 @@ def read_from_snapshot(path, targets=None, writer=None, max_runs=float('inf'), c
     current_run = 0
     while (len(way_nodes) > 0 or len(relation_nodes) > 0 or len(relation_ways) > 0 or len(relation_relations)) \
             and current_run < max_runs:
-        ***REMOVED*** Snapshot original key sets so we can distinguish old-unresolved
-        ***REMOVED*** keys from newly-discovered keys after the PBF pass — replaces the
-        ***REMOVED*** former deepcopy() which doubled memory for no correctness benefit.
-        ***REMOVED*** A set of int keys is orders of magnitude smaller than a full copy
-        ***REMOVED*** of {int: set(int)} dicts.
+        # Snapshot original key sets so we can distinguish old-unresolved
+        # keys from newly-discovered keys after the PBF pass — replaces the
+        # former deepcopy() which doubled memory for no correctness benefit.
+        # A set of int keys is orders of magnitude smaller than a full copy
+        # of {int: set(int)} dicts.
         old_relation_nodes_keys = set(relation_nodes.keys())
         old_relation_ways_keys = set(relation_ways.keys())
         old_relation_relations_keys = set(relation_relations.keys())
@@ -346,12 +346,12 @@ def read_from_snapshot(path, targets=None, writer=None, max_runs=float('inf'), c
         setproctitle.setproctitle("Dependency handler pass"+str(current_run) + " " + path)
 
         dep_handler.apply_file(path)
-        ***REMOVED*** way_nodes is read-only in the handler (never added to), so all
-        ***REMOVED*** remaining keys are unresolved — drop them.
+        # way_nodes is read-only in the handler (never added to), so all
+        # remaining keys are unresolved — drop them.
         way_nodes = {}
-        ***REMOVED*** Keep only NEW keys (discovered during this pass via way/relation
-        ***REMOVED*** member expansion).  Old keys that weren't consumed are unresolved
-        ***REMOVED*** and dropped — same behavior as the former remove_old_key().
+        # Keep only NEW keys (discovered during this pass via way/relation
+        # member expansion).  Old keys that weren't consumed are unresolved
+        # and dropped — same behavior as the former remove_old_key().
         relation_nodes = {k: v for k, v in dep_handler.relation_nodes.items()
                           if k not in old_relation_nodes_keys}
         relation_ways = {k: v for k, v in dep_handler.relation_ways.items()

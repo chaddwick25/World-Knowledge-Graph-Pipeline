@@ -19,19 +19,19 @@ from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 logger = logging.getLogger(__name__)
 
 
-***REMOVED*** WorldKG 1.0 namespaces (Dsouza et al., CIKM 2021). These MUST match the
-***REMOVED*** actual WorldKG dumps under settings.WORLDKG_ONTOLOGY_PATH (verified
-***REMOVED*** 2026-08-26: the ontology TTL declares `wkgs: <http://www.worldkg.org/schema/>`
-***REMOVED*** and entity URIs use `http://www.worldkg.org/resource/`). Do NOT use the old
-***REMOVED*** GeoVectors v2 namespaces (geovectors.l3s.uni-hannover.de/...) or the bogus
-***REMOVED*** `http://schema.worldkg.org/` variant — both match ZERO triples in the data.
-***REMOVED*** See docs/core/slug_gate_and_rdf_namespaces.md.
+# WorldKG 1.0 namespaces (Dsouza et al., CIKM 2021). These MUST match the
+# actual WorldKG dumps under settings.WORLDKG_ONTOLOGY_PATH (verified
+# 2026-08-26: the ontology TTL declares `wkgs: <http://www.worldkg.org/schema/>`
+# and entity URIs use `http://www.worldkg.org/resource/`). Do NOT use the old
+# GeoVectors v2 namespaces (geovectors.l3s.uni-hannover.de/...) or the bogus
+# `http://schema.worldkg.org/` variant — both match ZERO triples in the data.
+# See docs/core/slug_gate_and_rdf_namespaces.md.
 WKGS_BASE_URI = "http://www.worldkg.org/schema/"
 WKG_BASE_URI = "http://www.worldkg.org/resource/"
 OSMN_BASE_URI = "https://www.openstreetmap.org/node/"
 
 
-***REMOVED*** ── Parallel enrichment worker (module-level for threading) ─────────────────
+# ── Parallel enrichment worker (module-level for threading) ─────────────────
 
 def _enrich_chunk_thread(
     service: "WorldKGEnrichmentService",
@@ -81,7 +81,7 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
     """
     
     SPARQL_ENDPOINT = "https://www.worldkg.org/sparql"
-    TIMEOUT = 10  ***REMOVED*** seconds
+    TIMEOUT = 10  # seconds
     
     def __init__(self):
         self.ontology = get_worldkg_ontology_service()
@@ -116,10 +116,10 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
             if result:
                 self.stats['sparql_queries'] += 1
                 return result
-            ***REMOVED*** Fallback to local if SPARQL fails
+            # Fallback to local if SPARQL fails
             logger.warning(f"SPARQL failed for {entity}, falling back to local prediction")
         
-        ***REMOVED*** Local tag-based prediction
+        # Local tag-based prediction
         result = self._enrich_via_local_tags(entity)
         if result:
             self.stats['local_predictions'] += 1
@@ -145,8 +145,8 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
             query = f"""
             PREFIX wkgs: <{WKGS_BASE_URI}>
             PREFIX osmn: <{OSMN_BASE_URI}>
-            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns***REMOVED***>
-            PREFIX owl: <http://www.w3.org/2002/07/owl***REMOVED***>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
             SELECT ?wkgsClass ?wikidataClass WHERE {{
                 ?entity wkgs:osmLink osmn:{entity.osm_id} ;
@@ -176,7 +176,7 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
                 return None
 
             row = bindings[0]
-            ***REMOVED*** Extract short class name: http://www.worldkg.org/schema/Restaurant -> wkgs:Restaurant
+            # Extract short class name: http://www.worldkg.org/schema/Restaurant -> wkgs:Restaurant
             wkgs_uri = row['wkgsClass']['value']
             class_short = 'wkgs:' + wkgs_uri[len(WKGS_BASE_URI):]
 
@@ -185,7 +185,7 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
             superclasses = self.ontology.get_superclasses(class_short)
             depth = self.ontology.get_depth(class_short)
 
-            ***REMOVED*** Derive type key/value from ontology cache
+            # Derive type key/value from ontology cache
             wkg_type_key = self.ontology.get_canonical_osm_key(class_short)
             wkg_type_value = self.ontology.get_canonical_osm_value(class_short)
 
@@ -239,10 +239,10 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
         query = f"""
         PREFIX wkgs: <{WKGS_BASE_URI}>
         PREFIX osmn: <{OSMN_BASE_URI}>
-        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns***REMOVED***>
-        PREFIX geo: <http://www.opengis.net/ont/geosparql***REMOVED***>
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+        PREFIX geo: <http://www.opengis.net/ont/geosparql#>
         PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema***REMOVED***>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
         SELECT ?entity ?type ?label ?wkt ?osmLink WHERE {{
             {type_triple}
@@ -354,31 +354,31 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
         """
         from concurrent.futures import as_completed
 
-        ***REMOVED*** Extract (osm_id, tags) for the workers (entity_id not needed in worker).
+        # Extract (osm_id, tags) for the workers (entity_id not needed in worker).
         worker_items = [(osm_id, tags) for _, osm_id, tags in items]
 
-        ***REMOVED*** Split into num_workers sub-chunks (roughly equal).
+        # Split into num_workers sub-chunks (roughly equal).
         chunk_size = max(1, len(worker_items) // num_workers)
         chunks = [
             worker_items[i:i + chunk_size]
             for i in range(0, len(worker_items), chunk_size)
         ]
 
-        ***REMOVED*** Dispatch to thread pool and collect results.
+        # Dispatch to thread pool and collect results.
         futures = [
             executor.submit(_enrich_chunk_thread, self, chunk)
             for chunk in chunks
         ]
         chunk_results = [f.result() for f in as_completed(futures)]
 
-        ***REMOVED*** Build a lookup: {osm_id: result_dict}
+        # Build a lookup: {osm_id: result_dict}
         result_map = {}
         for chunk_result in chunk_results:
             for osm_id, result in chunk_result:
                 if result is not None:
                     result_map[osm_id] = result
 
-        ***REMOVED*** Build lightweight OsmEntity instances for bulk_update.
+        # Build lightweight OsmEntity instances for bulk_update.
         enriched = []
         for entity_id, osm_id, tags in items:
             result = result_map.get(osm_id)
@@ -437,13 +437,13 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
         Returns:
             Statistics dict
         """
-        ***REMOVED*** Build query using values_list for lightweight tuples
+        # Build query using values_list for lightweight tuples
         query = (
             OsmEntity.objects.using('vectors')
             .values_list('id', 'osm_id', 'tags')
         )
 
-        ***REMOVED*** Spatial filtering
+        # Spatial filtering
         bbox: Optional[Tuple[float, float, float, float]] = None
 
         if poly_file:
@@ -499,11 +499,11 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
             'local_predictions': 0
         }
 
-        ***REMOVED*** Resolve worker count: hyperparams.yaml (enrichment.workers) > parameter > default 2.
+        # Resolve worker count: hyperparams.yaml (enrichment.workers) > parameter > default 2.
         if num_workers is None:
             num_workers = ModelHyperparams.load_from_yaml().enrichment_workers
         if use_sparql:
-            num_workers = 1  ***REMOVED*** SPARQL hits external endpoint — no parallelism
+            num_workers = 1  # SPARQL hits external endpoint — no parallelism
 
         total_batches = (total + batch_size - 1) // batch_size if total else 0
         batch_num = 0
@@ -515,7 +515,7 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
         ]
 
         if num_workers > 1:
-            ***REMOVED*** ── Parallel enrichment path (ThreadPoolExecutor) ──────────
+            # ── Parallel enrichment path (ThreadPoolExecutor) ──────────
             from concurrent.futures import ThreadPoolExecutor
 
             logger.info(
@@ -546,7 +546,7 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
                         current_batch = []
                         batch_timestamp = timezone.now()
 
-                ***REMOVED*** Flush remaining
+                # Flush remaining
                 if current_batch:
                     enriched_entities = self._parallel_enrich_batch(
                         executor, current_batch, num_workers, batch_timestamp,
@@ -565,7 +565,7 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
             finally:
                 executor.shutdown(wait=True)
         else:
-            ***REMOVED*** ── Serial enrichment path ─────────────────────────────────
+            # ── Serial enrichment path ─────────────────────────────────
             enriched_entities = []
             for entity_id, osm_id, tags in query.iterator(chunk_size=batch_size):
                 if use_sparql:
@@ -604,7 +604,7 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
                     enriched_entities = []
                     batch_timestamp = timezone.now()
 
-            ***REMOVED*** Flush remaining
+            # Flush remaining
             if enriched_entities:
                 OsmEntity.objects.using('vectors').bulk_update(
                     enriched_entities, BULK_UPDATE_FIELDS
@@ -643,7 +643,7 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
         """
         qs = OsmEntity.objects.using('vectors')
         if include_subclasses:
-            ***REMOVED*** Get all subclasses
+            # Get all subclasses
             subclasses = self.ontology.get_subclasses(wkg_class, recursive=True)
             class_filter = [wkg_class] + subclasses
             qs = qs.filter(wkg_class__in=class_filter).order_by('-wkg_depth')
@@ -668,15 +668,15 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
         """
         query = OsmEntity.objects.using('vectors').exclude(wkg_class__isnull=True)
 
-        ***REMOVED*** Optional spatial / snapshot scoping
+        # Optional spatial / snapshot scoping
         if snapshot_id:
             query = query.filter(snapshot_id=snapshot_id)
 
         if region:
-            ***REMOVED*** Mirror the region to bbox resolution used in batch_enrich_region
-            ***REMOVED*** so that per-country distributions align with enrichment scope.
-            ***REMOVED*** resolve_country_bbox now pre-resolves QIDs, country names, and
-            ***REMOVED*** synthetic ISOs to real ISO codes via resolve_iso_code().
+            # Mirror the region to bbox resolution used in batch_enrich_region
+            # so that per-country distributions align with enrichment scope.
+            # resolve_country_bbox now pre-resolves QIDs, country names, and
+            # synthetic ISOs to real ISO codes via resolve_iso_code().
             bbox = resolve_country_bbox(region, None)
 
             if bbox:
@@ -695,14 +695,14 @@ class WorldKGEnrichmentService(WorldKGEnrichmentSqlMixin):
                     region,
                 )
         
-        ***REMOVED*** Aggregate by class
+        # Aggregate by class
         from django.db.models import Count
         distribution = query.values('wkg_class').annotate(count=Count('wkg_class'))
         
         return {item['wkg_class']: item['count'] for item in distribution}
 
 
-***REMOVED*** Singleton instance
+# Singleton instance
 _enrichment_service = None
 
 def get_worldkg_enrichment_service() -> WorldKGEnrichmentService:

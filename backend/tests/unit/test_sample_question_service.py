@@ -14,7 +14,7 @@ from semantic_search.services.sample_question_service import (
 )
 
 
-def _row(question, template="FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
+def _row(question, template="FILTER-AGGREGATE-MEASURE (#1)",
          source="curated", anchor="Belmopan"):
     r = mock.Mock(spec=SampleQuestion)
     r.question = question
@@ -39,7 +39,7 @@ class TestListQuestions:
 
     def test_subdivision_scope_when_generated(self):
         sub_rows = [_row("How far is Punta Gorda from Dolores?",
-                         "OBJECT-FIELD-MEASURE (***REMOVED***2)", "generated", "Punta Gorda")]
+                         "OBJECT-FIELD-MEASURE (#2)", "generated", "Punta Gorda")]
         country_rows = [_row("Which cafes are within 2km of Belmopan?")]
 
         def fake_filter(**kwargs):
@@ -57,7 +57,7 @@ class TestListQuestions:
         assert result["questions"][0]["source"] == "generated"
 
     def test_subdivision_falls_back_to_country(self):
-        ***REMOVED*** No generated rows for the subdivision → country curated set.
+        # No generated rows for the subdivision → country curated set.
         country_rows = [_row("Which cafes are within 2km of Belmopan?")]
 
         def fake_filter(**kwargs):
@@ -91,9 +91,9 @@ class TestGenerateSubdivision:
         return p
 
     def test_sparse_subdivision_skipped(self):
-        ***REMOVED*** Fewer named entities than min_entities → skip (country fallback
-        ***REMOVED*** serves it), not an error. Prior generated rows are cleared so a
-        ***REMOVED*** stale bank does not keep serving.
+        # Fewer named entities than min_entities → skip (country fallback
+        # serves it), not an error. Prior generated rows are cleared so a
+        # stale bank does not keep serving.
         delete = mock.Mock()
         with mock.patch(
             "semantic_search.services.sample_question_service.resolve_subdivision_polygon",
@@ -115,8 +115,8 @@ class TestGenerateSubdivision:
         delete.assert_called_once()
 
     def test_duplicate_anchor_names_deduped(self):
-        ***REMOVED*** Two anchors with the same name produce the same question — the
-        ***REMOVED*** unique constraint must not reject the batch.
+        # Two anchors with the same name produce the same question — the
+        # unique constraint must not reject the batch.
         anchors = [
             {"name": "San Pablo", "osm_id": 1, "lat": 1.0, "lon": 1.0},
             {"name": "San Pablo", "osm_id": 2, "lat": 1.1, "lon": 1.1},
@@ -153,14 +153,14 @@ class TestGenerateSubdivision:
             )
         questions = {getattr(o, "question") for o in created}
         assert result["generated"] == len(created)
-        assert len(questions) == len(created)  ***REMOVED*** no duplicates persisted
+        assert len(questions) == len(created)  # no duplicates persisted
         assert "Which churches are within 200m of San Pablo?" in questions
 
     def test_verify_drops_questions_without_results(self):
-        ***REMOVED*** DB-evidence keep: a candidate whose census evidence is below its
-        ***REMOVED*** floor is not stored. The class-LIST forms need >= 3 entities of
-        ***REMOVED*** the amenity in range; the ***REMOVED***2 distance answer (two real named
-        ***REMOVED*** anchors in the pool) always keeps.
+        # DB-evidence keep: a candidate whose census evidence is below its
+        # floor is not stored. The class-LIST forms need >= 3 entities of
+        # the amenity in range; the #2 distance answer (two real named
+        # anchors in the pool) always keeps.
         anchors = [
             {"name": "San Pablo", "osm_id": 1, "lat": 1.0, "lon": 1.0},
             {"name": "San Juan", "osm_id": 2, "lat": 1.1, "lon": 1.1},
@@ -196,13 +196,13 @@ class TestGenerateSubdivision:
                 "BZ", "Q512273",
             )
         stored = {getattr(o, "template") for o in created}
-        assert result["generated"] == 1  ***REMOVED*** only the ***REMOVED***2 distance question
+        assert result["generated"] == 1  # only the #2 distance question
         assert result["dropped"] >= 1
-        assert stored == {"OBJECT-FIELD-MEASURE (***REMOVED***2)"}
+        assert stored == {"OBJECT-FIELD-MEASURE (#2)"}
 
     def test_one_question_per_template_selected(self):
-        ***REMOVED*** Criteria 2026-10-01: the subdivision bank is exactly ONE
-        ***REMOVED*** question per trained template (***REMOVED***1 ***REMOVED***2 ***REMOVED***4 ***REMOVED***5 ***REMOVED***8).
+        # Criteria 2026-10-01: the subdivision bank is exactly ONE
+        # question per trained template (#1 #2 #4 #5 #8).
         anchors = [
             {"name": "San Pablo", "osm_id": 1, "lat": 1.0, "lon": 1.0},
             {"name": "San Juan", "osm_id": 2, "lat": 1.1, "lon": 1.1},
@@ -240,26 +240,26 @@ class TestGenerateSubdivision:
         assert result["generated"] == 5
         templates = {getattr(o, "template") for o in created}
         assert templates == {
-            "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
-            "OBJECT-FIELD-MEASURE (***REMOVED***2)",
-            "GEOCODE-BATCH-COMPARE (***REMOVED***4)",
-            "LOCATION-BEARING-CLASSIFY (***REMOVED***5)",
-            "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)",
+            "FILTER-AGGREGATE-MEASURE (#1)",
+            "OBJECT-FIELD-MEASURE (#2)",
+            "GEOCODE-BATCH-COMPARE (#4)",
+            "LOCATION-BEARING-CLASSIFY (#5)",
+            "PLACE-ATTRIBUTE-QUERY (#8)",
         }
         assert result["dropped"] == 0
 
     def test_select_one_per_template_uses_candidate_floor(self):
-        ***REMOVED*** The >= 3 floor rides the question FORM (a class list), not the
-        ***REMOVED*** template: a class question whose DB evidence is below its floor
-        ***REMOVED*** is dropped, while a structural answer (distance) keeps at >= 1
-        ***REMOVED*** (2026-10-01; evidence-based since 2026-10-11).
+        # The >= 3 floor rides the question FORM (a class list), not the
+        # template: a class question whose DB evidence is below its floor
+        # is dropped, while a structural answer (distance) keeps at >= 1
+        # (2026-10-01; evidence-based since 2026-10-11).
         rows = [
             {"question": "Which churches are within 200m of San Pablo?",
-             "template": "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
+             "template": "FILTER-AGGREGATE-MEASURE (#1)",
              "anchor": "San Pablo", "min_results": 3,
              "evidence_count": 2},
             {"question": "How far is San Pablo from San Juan?",
-             "template": "OBJECT-FIELD-MEASURE (***REMOVED***2)",
+             "template": "OBJECT-FIELD-MEASURE (#2)",
              "anchor": "San Pablo", "min_results": 1,
              "evidence_count": 2},
         ]
@@ -267,15 +267,15 @@ class TestGenerateSubdivision:
             SampleQuestionService._select_one_per_template(rows)
         )
         assert [r["template"] for r in selected] == [
-            "OBJECT-FIELD-MEASURE (***REMOVED***2)",
+            "OBJECT-FIELD-MEASURE (#2)",
         ]
         assert verified == 1
         assert dropped == 1
 
     def test_country_snapshot_prefers_present(self):
-        ***REMOVED*** The profile snapshot_date wins only when it matches the vectors
-        ***REMOVED*** data; otherwise the newest present snapshot is used (BZ profile
-        ***REMOVED*** said 2026_09_10, data under 2025_12_31).
+        # The profile snapshot_date wins only when it matches the vectors
+        # data; otherwise the newest present snapshot is used (BZ profile
+        # said 2026_09_10, data under 2025_12_31).
         fake_cursor = mock.Mock()
         fake_cursor.fetchall.return_value = [
             ("2025_12_31",), ("2024_05_28",),

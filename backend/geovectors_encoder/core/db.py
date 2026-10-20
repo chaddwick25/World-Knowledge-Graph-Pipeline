@@ -51,7 +51,7 @@ class DjangoPostgresDB:
         self.pool = [self.get_connection()]
 
     def close_connection_pool(self):
-        pass ***REMOVED*** Django handles connection closing
+        pass # Django handles connection closing
 
     def get_pool_connection(self):
         return self.get_connection()

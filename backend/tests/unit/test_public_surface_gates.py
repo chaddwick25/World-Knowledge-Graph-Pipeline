@@ -81,7 +81,7 @@ class TestWriteEndpointGate:
         '/api/nca/enrich/entity/',
         '/api/igea/align/',
         '/api/geovectors/encode/',
-        ***REMOVED*** Prefix-gated surfaces (operator CRUD registry + IGEA inference)
+        # Prefix-gated surfaces (operator CRUD registry + IGEA inference)
         '/api/geodata/datasets/',
         '/api/geodata/datasets/sync_metadata/',
         '/api/geodata/records/',
@@ -95,9 +95,9 @@ class TestWriteEndpointGate:
         with pytest.raises(Http404):
             _call(WriteEndpointGateMiddleware, path, PUBLIC_HOST)
 
-    ***REMOVED*** NOTE: /api/worldkg-pipeline-v2/start/ is intentionally NOT in the 404
-    ***REMOVED*** list above — it is key-gated on every surface (see
-    ***REMOVED*** test_pipeline_trigger_fail_closed_without_key below).
+    # NOTE: /api/worldkg-pipeline-v2/start/ is intentionally NOT in the 404
+    # list above — it is key-gated on every surface (see
+    # test_pipeline_trigger_fail_closed_without_key below).
 
     def test_pipeline_trigger_fail_closed_without_key(self):
         """Fail-closed: with no PIPELINE_TRIGGER_KEY configured (this
@@ -156,7 +156,7 @@ class TestPipelineTriggerKey:
             WriteEndpointGateMiddleware, '/api/worldkg-pipeline-v2/start/', 'localhost',
             key='test-secret',
         )
-        assert resp is not None  ***REMOVED*** passes through to the view
+        assert resp is not None  # passes through to the view
 
     def test_no_key_configured_allows_local(self, monkeypatch):
         monkeypatch.setattr('django.conf.settings.PIPELINE_TRIGGER_KEY', '')
@@ -204,7 +204,7 @@ class TestTailnetSurface:
 
     @pytest.fixture(autouse=True)
     def _key(self, monkeypatch):
-        ***REMOVED*** Pin the key so these tests don't depend on the ambient .env value.
+        # Pin the key so these tests don't depend on the ambient .env value.
         monkeypatch.setattr('django.conf.settings.PIPELINE_TRIGGER_KEY', 'test-secret')
 
     def test_admin_allowed_on_tailnet_surface(self):

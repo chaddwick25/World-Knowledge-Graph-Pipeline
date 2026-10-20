@@ -24,7 +24,7 @@ from semantic_search.services.query_executor_service.template_executors import (
 )
 
 
-***REMOVED*** ── Deterministic embedder stub ─────────────────────────────────────────
+# ── Deterministic embedder stub ─────────────────────────────────────────
 
 _TOKEN_IDS = {
     "island": 0, "grill": 1, "cook": 2, "shop": 3, "auhsaj": 4, "chill": 5,
@@ -60,17 +60,17 @@ def _stub_uslp(monkeypatch):
     )
 
 
-***REMOVED*** Anchor: Ocho Rios High School (the JM repro).
+# Anchor: Ocho Rios High School (the JM repro).
 _ANCHOR = {"lat": 18.4018432, "lon": -77.1031874, "osm_id": 4835797386}
 
-_TEMPLATE = "FILTER-AGGREGATE-MEASURE (***REMOVED***1)"
+_TEMPLATE = "FILTER-AGGREGATE-MEASURE (#1)"
 
 
 def _result(osm_id, name, lat, lon):
     return {"osm_id": osm_id, "name": name, "lat": lat, "lon": lon}
 
 
-***REMOVED*** ── Re-rank behavior ─────────────────────────────────────────────────────
+# ── Re-rank behavior ─────────────────────────────────────────────────────
 
 def test_name_query_ranks_exact_name_first():
     """The Island Grill repro: exact-name entity must beat the nearer
@@ -102,7 +102,7 @@ def test_name_score_exact_match_and_nameless():
     )
 
     by_id = {r["osm_id"]: r for r in out}
-    ***REMOVED*** "island grill" vs "Island Grill" — same token bag → cosine 1.0
+    # "island grill" vs "Island Grill" — same token bag → cosine 1.0
     assert by_id[1]["name_score"] == pytest.approx(1.0, abs=1e-4)
     assert by_id[2]["name_score"] == 0.0
 
@@ -136,7 +136,7 @@ def test_combined_score_composition():
     assert r["combined_score"] == expected
 
 
-***REMOVED*** ── Handler wiring ───────────────────────────────────────────────────────
+# ── Handler wiring ───────────────────────────────────────────────────────
 
 def test_rerank_with_name_alignment_proper_name(monkeypatch):
     """A non-resolvable OBJECT text ("island grill") becomes name_query."""

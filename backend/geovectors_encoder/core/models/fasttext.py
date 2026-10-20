@@ -36,10 +36,10 @@ class FastTextModel(BaseModel):
         else:
             vectors = []
             for k, v in tags:
-                ***REMOVED*** Always include the key (e.g., 'name', 'highway')
+                # Always include the key (e.g., 'name', 'highway')
                 vectors.append(self._get_word_vector_cached(str(k)))
                 
-                ***REMOVED*** Tokenize value and include all words
+                # Tokenize value and include all words
                 if v:
                     val_str = str(v)
                     for token in val_str.split():
@@ -51,7 +51,7 @@ class FastTextModel(BaseModel):
                 
             enc = np.mean(vectors, axis=0)
             
-            ***REMOVED*** Apply L2 Normalization to ensure manifold consistency with Search API
+            # Apply L2 Normalization to ensure manifold consistency with Search API
             norm = np.linalg.norm(enc)
             if norm > 0:
                 enc = enc / norm

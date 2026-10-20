@@ -50,9 +50,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Sentinel enqueued once per worker to signal "no more batches".
-***REMOVED*** Distinct object identity is the termination signal — never put a batch
-***REMOVED*** that compares equal to this on the queue.
+# Sentinel enqueued once per worker to signal "no more batches".
+# Distinct object identity is the termination signal — never put a batch
+# that compares equal to this on the queue.
 SENTINEL = object()
 
 
@@ -107,8 +107,8 @@ class BatchCollector:
         self._batch_size = batch_size
         self._buffer: List[Any] = []
         self._counts: Dict[str, int] = {"node": 0, "way": 0, "relation": 0}
-        ***REMOVED*** ``storage`` is self so ``read_from_snapshot`` / ``SampleHandler``
-        ***REMOVED*** can call ``writer.storage.flush()`` and reach ``BatchCollector.flush``.
+        # ``storage`` is self so ``read_from_snapshot`` / ``SampleHandler``
+        # can call ``writer.storage.flush()`` and reach ``BatchCollector.flush``.
         self.storage = self
 
     @property
@@ -155,8 +155,8 @@ class BatchCollector:
     def _push_batch(self) -> None:
         batch = self._buffer
         self._buffer = []
-        ***REMOVED*** Bounded queue → blocks (backpressure) if workers are behind.
-        ***REMOVED*** This caps in-flight memory at ~workers*queue_depth*batch_size records.
+        # Bounded queue → blocks (backpressure) if workers are behind.
+        # This caps in-flight memory at ~workers*queue_depth*batch_size records.
         self._queue.put(batch)
 
 
@@ -281,7 +281,7 @@ def upsert_worker(
                 nle_storage.flush()
             except Exception:
                 logger.warning("[parallel-embed] upsert worker nle flush failed in finally")
-        ***REMOVED*** Drop reusable staging tables (opt 3).
+        # Drop reusable staging tables (opt 3).
         try:
             tags_storage.cleanup()
         except Exception:

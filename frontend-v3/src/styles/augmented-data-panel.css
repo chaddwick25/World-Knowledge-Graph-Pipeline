@@ -16,7 +16,7 @@
 .augmented__hint {
   margin: 0;
   font-size: 0.78rem;
-  color: ***REMOVED***6b7280;
+  color: #6b7280;
   text-align: center;
 }
 
@@ -29,7 +29,7 @@
 .augmented__error {
   margin: 0;
   font-size: 0.78rem;
-  color: ***REMOVED***fecaca;
+  color: #fecaca;
   padding: 0.3rem 0.4rem;
   background: rgba(239, 68, 68, 0.08);
   border-radius: 0.4rem;
@@ -47,10 +47,10 @@
   align-items: center;
   gap: 0.3rem;
   padding: 0.35rem 0.5rem;
-  border: 1px solid ***REMOVED***1f2937;
+  border: 1px solid #1f2937;
   border-radius: 0.4rem;
-  background: ***REMOVED***020617;
-  color: ***REMOVED***9ca3af;
+  background: #020617;
+  color: #9ca3af;
   font-size: 0.72rem;
   font-weight: 500;
   cursor: pointer;
@@ -58,8 +58,8 @@
 }
 
 .augmented__map-btn:hover:not(:disabled) {
-  border-color: ***REMOVED***374151;
-  color: ***REMOVED***d1d5db;
+  border-color: #374151;
+  color: #d1d5db;
 }
 
 .augmented__map-btn:disabled {
@@ -68,15 +68,15 @@
 }
 
 .augmented__map-btn--active-accepted {
-  border-color: ***REMOVED***22c55e;
+  border-color: #22c55e;
   background: rgba(34, 197, 94, 0.12);
-  color: ***REMOVED***86efac;
+  color: #86efac;
 }
 
 .augmented__map-btn--active-rejected {
-  border-color: ***REMOVED***ef4444;
+  border-color: #ef4444;
   background: rgba(239, 68, 68, 0.12);
-  color: ***REMOVED***fca5a5;
+  color: #fca5a5;
 }
 
 .augmented__map-btn-dot {
@@ -87,17 +87,17 @@
 }
 
 .augmented__map-btn-dot--accepted {
-  background: ***REMOVED***22c55e;
+  background: #22c55e;
 }
 
 .augmented__map-btn-dot--rejected {
-  background: ***REMOVED***ef4444;
+  background: #ef4444;
 }
 
 .augmented__map-btn-count {
   margin-left: auto;
   font-size: 0.62rem;
-  color: ***REMOVED***6b7280;
+  color: #6b7280;
   font-weight: 400;
 }
 
@@ -116,43 +116,43 @@
 .metric {
   padding: 0.4rem 0.5rem;
   border-radius: 0.5rem;
-  background: ***REMOVED***020617;
-  border: 1px solid ***REMOVED***111827;
+  background: #020617;
+  border: 1px solid #111827;
   text-align: center;
 }
 
 .metric__value {
   font-size: 0.95rem;
   font-weight: 600;
-  color: ***REMOVED***e5e7eb;
+  color: #e5e7eb;
 }
 
 .metric__value--accent {
-  color: ***REMOVED***60a5fa;
+  color: #60a5fa;
 }
 
 .metric__value--danger {
-  color: ***REMOVED***ef4444;
+  color: #ef4444;
 }
 
 .metric__value--warning {
-  color: ***REMOVED***facc15;
+  color: #facc15;
 }
 
 .metric__value--cost {
-  color: ***REMOVED***fb923c;
+  color: #fb923c;
 }
 
 .metric__label {
   font-size: 0.68rem;
-  color: ***REMOVED***9ca3af;
+  color: #9ca3af;
 }
 
 .augmented__section-title {
   margin: 0 0 0.3rem;
   font-size: 0.78rem;
   font-weight: 600;
-  color: ***REMOVED***d1d5db;
+  color: #d1d5db;
 }
 
 .augmented__section {
@@ -177,7 +177,7 @@
 .histogram__value {
   display: block;
   font-size: 0.62rem;
-  color: ***REMOVED***9ca3af;
+  color: #9ca3af;
 }
 
 .histogram__bar {
@@ -185,14 +185,14 @@
   max-width: 30px;
   margin: 0 auto;
   border-radius: 3px 3px 0 0;
-  background: linear-gradient(180deg, ***REMOVED***6366f1, ***REMOVED***4f46e5);
+  background: linear-gradient(180deg, #6366f1, #4f46e5);
   min-height: 3px;
 }
 
 .histogram__label {
   display: block;
   font-size: 0.62rem;
-  color: ***REMOVED***6b7280;
+  color: #6b7280;
   margin-top: 0.05rem;
 }
 
@@ -215,7 +215,7 @@
 
 .link-type-row__value {
   font-weight: 600;
-  color: ***REMOVED***e5e7eb;
+  color: #e5e7eb;
 }
 
 /* Relations */
@@ -264,14 +264,14 @@
 }
 
 .relations__meta {
-  color: ***REMOVED***9ca3af;
+  color: #9ca3af;
   font-size: 0.68rem;
 }
 
 .relations__bar-track {
   margin-top: 0.15rem;
   height: 6px;
-  background: ***REMOVED***111827;
+  background: #111827;
   border-radius: 999px;
   overflow: hidden;
 }
@@ -298,7 +298,7 @@
   padding: 0.4rem 0.5rem 0.4rem 0.55rem;
   border-radius: 0.4rem;
   background: rgba(15, 23, 42, 0.5);
-  border: 1px solid ***REMOVED***1f2937;
+  border: 1px solid #1f2937;
   cursor: pointer;
   transition: all 0.15s;
   font: inherit;
@@ -307,24 +307,24 @@
 }
 
 .subgraphs__card:hover {
-  border-color: ***REMOVED***374151;
+  border-color: #374151;
   background: rgba(31, 41, 55, 0.6);
 }
 
 .subgraphs__card--active {
-  border-color: ***REMOVED***6366f1;
+  border-color: #6366f1;
   background: rgba(99, 102, 241, 0.2);
-  box-shadow: inset 3px 0 0 ***REMOVED***6366f1, 0 0 10px rgba(99, 102, 241, 0.35);
+  box-shadow: inset 3px 0 0 #6366f1, 0 0 10px rgba(99, 102, 241, 0.35);
 }
 
 .subgraphs__card--active .subgraphs__name {
-  color: ***REMOVED***c7d2fe;
+  color: #c7d2fe;
 }
 
 .subgraphs__name {
   font-size: 0.75rem;
   font-weight: 600;
-  color: ***REMOVED***e5e7eb;
+  color: #e5e7eb;
 }
 
 .subgraphs__stats {
@@ -335,11 +335,11 @@
 }
 
 .subgraphs__stat--success {
-  color: ***REMOVED***22c55e;
+  color: #22c55e;
 }
 
 .subgraphs__stat--danger {
-  color: ***REMOVED***ef4444;
+  color: #ef4444;
 }
 
 /* Augmentation */
@@ -353,7 +353,7 @@
 .augment-box__text {
   margin: 0 0 0.4rem;
   font-size: 0.72rem;
-  color: ***REMOVED***9ca3af;
+  color: #9ca3af;
   line-height: 1.3;
 }
 
@@ -368,7 +368,7 @@
   height: 24px;
   border-radius: 999px;
   border: 3px solid rgba(148, 163, 184, 0.4);
-  border-top-color: ***REMOVED***6366f1;
+  border-top-color: #6366f1;
   animation: spin 0.8s linear infinite;
 }
 

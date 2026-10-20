@@ -1,4 +1,4 @@
-***REMOVED*** Factor-Table Mathematics: From k-NN Graph to Runtime pgvector
+# Factor-Table Mathematics: From k-NN Graph to Runtime pgvector
 
 > **Purpose:** the complete mathematical reference for the combinatorial-
 > graph layer: how the in-memory k-NN graph becomes Laplacian eigenbases
@@ -25,7 +25,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Two Decompositions That Make the Whole Design Work
+## 1. The Two Decompositions That Make the Whole Design Work
 
 The architecture is a chain of three mathematical moves, each one converting
 an expensive object into something storable and cheap to evaluate:
@@ -34,7 +34,7 @@ an expensive object into something storable and cheap to evaluate:
 |---|---|---|
 | Move 1: spatial data → weighted graph | OSM entities (lat, lon, tags) → k-NN graph | `A`, `D`, `W` (batch) |
 | Move 2: graph → Laplacian → eigendecomposition | `L = I − D^{−1/2} W D^{−1/2}`, `L = Φ Λ Φᵀ` | `λ₁..λ_K` + `Φ` (batch); fingerprint (default DB, eigenvalues λ); factor table (vectors DB, φ per node, 128D) |
-| Move 3: Laplacian → factorized heat kernel → one inner product per node | `e^{−tL} = Φ · e^{−tΛ} · Φᵀ` | `w = e^{−tλ} ⊙ φ(anchor)` (numpy, K ≤ 128); φ(node) rows (pgvector column); ONE SQL: `eigen_loadings <***REMOVED***> :w` ORDER BY ... ASC |
+| Move 3: Laplacian → factorized heat kernel → one inner product per node | `e^{−tL} = Φ · e^{−tΛ} · Φᵀ` | `w = e^{−tλ} ⊙ φ(anchor)` (numpy, K ≤ 128); φ(node) rows (pgvector column); ONE SQL: `eigen_loadings <#> :w` ORDER BY ... ASC |
 
 **Why this is the "factorization":** the matrix exponential of the
 Laplacian (the object you'd otherwise apply with scipy at request time)
@@ -46,12 +46,12 @@ pgvector is for.
 
 ---
 
-***REMOVED******REMOVED*** 2. Stage 1: The k-NN Graph (the Input Combinatorial Object)
+## 2. Stage 1: The k-NN Graph (the Input Combinatorial Object)
 
 `KNNGraphService` (`knn_graph_service.py`). Nodes are OSM entities; edges
 are geographic proximity.
 
-***REMOVED******REMOVED******REMOVED*** 2.1 Construction Math
+### 2.1 Construction Math
 
 ```
 nodes  = OSM entities with geom, keyed by osm_id (no osm_type, graph keyspace is osm_id only)
@@ -70,7 +70,7 @@ materialization it is made undirected with **max-weight canonicalization**:
 each `(i, j)` pair is deduplicated keeping `max(w_ij, w_ji)`, matching
 NetworkX semantics exactly (`SparseGraph._canonical_edges`).
 
-***REMOVED******REMOVED******REMOVED*** 2.2 Two Representations
+### 2.2 Two Representations
 
 | Representation | When | Memory (IE: 2.47M nodes / 73.8M edges) |
 |---|---|---|
@@ -82,9 +82,9 @@ NetworkX semantics exactly (`SparseGraph._canonical_edges`).
 
 ---
 
-***REMOVED******REMOVED*** 3. Stage 2: Laplacians and the Eigendecomposition
+## 3. Stage 2: Laplacians and the Eigendecomposition
 
-***REMOVED******REMOVED******REMOVED*** 3.1 The Two Laplacians and Their Roles
+### 3.1 The Two Laplacians and Their Roles
 
 ```
 Adjacency:          A  (CSR, symmetrized, weighted)
@@ -97,7 +97,7 @@ Combinatorial Laplacian L_comb = D − W
    → Dirichlet energy sᵀLs, heat kernel, per-node sᵢ(Ls)ᵢ
 ```
 
-***REMOVED******REMOVED******REMOVED*** 3.2 Eigendecomposition
+### 3.2 Eigendecomposition
 
 ```
 L Φ = Φ Λ,  ΦᵀΦ = I   (orthonormal)
@@ -118,7 +118,7 @@ n ≥ 5M                        →  CPU shift-invert randomized SVD
                                    (Chebyshev polynomial filters failed on clustered spectra)
 ```
 
-***REMOVED******REMOVED******REMOVED*** 3.3 The Graph Signal (WorldKG Classes as a Node Function)
+### 3.3 The Graph Signal (WorldKG Classes as a Node Function)
 
 ```
 s(node) = class index of wkg_class(node)          (scalar encoding, hardening plan Phase 3)
@@ -129,9 +129,9 @@ diffusion:         (L + μI)⁻¹ s                           (regularized inver
 
 ---
 
-***REMOVED******REMOVED*** 4. The Runtime Factorization: Heat Kernel as One pgvector Query
+## 4. The Runtime Factorization: Heat Kernel as One pgvector Query
 
-***REMOVED******REMOVED******REMOVED*** 4.1 Derivation
+### 4.1 Derivation
 
 Heat-kernel diffusion from an anchor node (event diffusion, "what's near X"):
 
@@ -162,14 +162,14 @@ The **two halves of the product come from two different tables**:
    `unverified_eigenbasis` trace note; `FACTOR_EIGENBASIS_STRICT=True`
    upgrades NULL to a mismatch.
 3. `w = zeros(128); w[:k] = exp(−t · λ) * φ_anchor[:k]`
-4. Candidates → `SELECT osm_id, (eigen_loadings <***REMOVED***> :w) AS neg_ip FROM
+4. Candidates → `SELECT osm_id, (eigen_loadings <#> :w) AS neg_ip FROM
    factor_spectral_node_metric WHERE snapshot_id = :snap AND country_code =
    :cc [AND subgraph_slug = :slug] [AND osm_id IN (:candidates)] ORDER BY
    neg_ip ASC LIMIT :top_k`
-5. `score = −neg_ip` (pgvector `<***REMOVED***>` = NEGATIVE inner product, so ASC order
+5. `score = −neg_ip` (pgvector `<#>` = NEGATIVE inner product, so ASC order
    = descending score)
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Worked Numeric Example (illustrative, K = 4 for readability)
+### 4.2 Worked Numeric Example (illustrative, K = 4 for readability)
 
 Take anchor `osm_id = 12345` (a cafe) with stored loadings and fingerprint
 eigenvalues at `t = 1.0`:
@@ -189,7 +189,7 @@ Two candidate nodes:
                                       = 0.172 + 0.070 + 0.117 + 0.010 = 0.368
   φ(B) = [0.10,  0.20, −0.35, 0.45]  → score = 0.043 − 0.056 − 0.136 + 0.043 = −0.106
 
-ORDER BY eigen_loadings <***REMOVED***> :w ASC  →  A first (0.368), B later (−0.106)
+ORDER BY eigen_loadings <#> :w ASC  →  A first (0.368), B later (−0.106)
 ```
 
 Read the structure: the decay `e^{−tλ}` damps **high-frequency** components
@@ -200,16 +200,16 @@ Provenance and design rationale (Laplacian choice, invariant differences,
 fusion with USLP scores, PCA future work): see
 `../research_to_runtime/DIFFUSION_SCORE_AND_QUERY_FUSION.md`.
 
-***REMOVED******REMOVED******REMOVED*** 4.3 Why Zero-Padding to 128 Is Safe
+### 4.3 Why Zero-Padding to 128 Is Safe
 
 Large countries compute K=64, small ones K=128. Both are padded to
 `EIGEN_LOADING_DIM = 128` with trailing zeros. Zeros contribute nothing to
-the inner product, so `<***REMOVED***>` results are identical across the two cases. The
+the inner product, so `<#>` results are identical across the two cases. The
 drift code takes `min(K_from, K_to)` the same way.
 
 ---
 
-***REMOVED******REMOVED*** 5. Table-by-Table Math Reference
+## 5. Table-by-Table Math Reference
 
 All `factor_*` tables live on the **vectors** DB (join `OsmEntity` without
 FDW). The fingerprint and drift rows live on the **default** DB behind the
@@ -217,21 +217,21 @@ FDW). The fingerprint and drift rows live on the **default** DB behind the
 
 | Batch write | Runtime read |
 |---|---|
-| Step 5c → `factor_spectral_node_metric` (`SpectralNodeMetric`) | `diffusion_rank` (pgvector `<***REMOVED***>`), `community_summary` (GROUP BY), `resolve_metrics` (metrics join) |
+| Step 5c → `factor_spectral_node_metric` (`SpectralNodeMetric`) | `diffusion_rank` (pgvector `<#>`), `community_summary` (GROUP BY), `resolve_metrics` (metrics join) |
 | Step 5c → `semantic_search_graphspectralfingerprint` (`GraphSpectralFingerprint`) | `_get_eigenvalues` (λ → w), drift computation |
-| Step 5c Phase B → `factor_subgraph_transport` (`SubgraphTransport`) | `transport_loadings` (numpy k×k), then `<***REMOVED***>` in target |
+| Step 5c Phase B → `factor_subgraph_transport` (`SubgraphTransport`) | `transport_loadings` (numpy k×k), then `<#>` in target |
 | Step 5d → `factor_drift_node_metric` (`DriftNodeMetric`) | temporal drift joins |
 | cmd → `factor_amenity_embedding` (`AmenityEmbedding`) | `amenity_embedding` (equality lookup), feeds `<=>` cosine vs `gv_tags_embedding` |
 | Step 5d → `semantic_search_graphspectraldrift` (`GraphSpectralDrift`) | drift / forecast APIs |
 
-***REMOVED******REMOVED******REMOVED*** 5.1 `factor_spectral_node_metric` → `SpectralNodeMetric`
+### 5.1 `factor_spectral_node_metric` → `SpectralNodeMetric`
 
 Key: `(snapshot_id, country_code, subgraph_slug, osm_id)`. **This table *is*
 the graph at runtime**, one row per materialized factor node.
 
 | Column | Math | Runtime use |
 |---|---|---|
-| `eigen_loadings` (VectorField 128) | φ(node) = row of Φ, zero-padded to 128 | **operand of `<***REMOVED***>`** |
+| `eigen_loadings` (VectorField 128) | φ(node) = row of Φ, zero-padded to 128 | **operand of `<#>`** |
 | `fiedler_component` | φ₂(node) = `eigen_loadings[0]` (duplicated for cheap scalar ops) | scalar sort/filter |
 | `louvain_community` | Louvain: greedy modularity max, `Q = (1/2m) Σ_ij [A_ij − d_i d_j / 2m] δ(c_i, c_j)` | `GROUP BY` |
 | `dirichlet_contrib` | `sᵢ·(Ls)ᵢ` (combinatorial L) | per-node energy |
@@ -242,7 +242,7 @@ the graph at runtime**, one row per materialized factor node.
 Runtime SQL (the heart of the system, `diffusion_rank`):
 
 ```sql
-SELECT osm_id, (eigen_loadings <***REMOVED***> :w) AS neg_ip
+SELECT osm_id, (eigen_loadings <#> :w) AS neg_ip
 FROM factor_spectral_node_metric
 WHERE snapshot_id = %(snap)s AND country_code = %(cc)s
   [AND subgraph_slug = %(slug)s]
@@ -251,11 +251,11 @@ ORDER BY neg_ip ASC
 LIMIT %(top_k)s;
 ```
 
-`<***REMOVED***>` is **exact** negative inner product, no ANN/HNSW involved here
+`<#>` is **exact** negative inner product, no ANN/HNSW involved here
 (that's why Step 1 doesn't maintain HNSW on the `gv_*` columns; the
 `static_embedding` HNSW is a separate path).
 
-***REMOVED******REMOVED******REMOVED*** 5.2 `semantic_search_graphspectralfingerprint` → `GraphSpectralFingerprint`
+### 5.2 `semantic_search_graphspectralfingerprint` → `GraphSpectralFingerprint`
 
 Key: `(region, snapshot)`, region = country code or subgraph slug. Carries
 the **scalar half of the factorization**.
@@ -272,12 +272,12 @@ the **scalar half of the factorization**.
 Runtime is an ORM fetch (`_get_eigenvalues`), never pgvector. The values
 become the `e^{−tλ}` decay in `w`.
 
-***REMOVED******REMOVED******REMOVED*** 5.3 `factor_subgraph_transport` → `SubgraphTransport`
+### 5.3 `factor_subgraph_transport` → `SubgraphTransport`
 
 Key: `(snapshot_id, country_code, subgraph_from, subgraph_to)`. Only for
 ≥ 5M-node countries split into per-subgraph eigenbases. Full math in §7.
 
-***REMOVED******REMOVED******REMOVED*** 5.4 `factor_drift_node_metric` → `DriftNodeMetric`
+### 5.4 `factor_drift_node_metric` → `DriftNodeMetric`
 
 Key: `(country_code, snapshot_from_id, snapshot_to_id, osm_id)`. Written by
 Step 5d from two snapshots' factor rows over **shared nodes only**.
@@ -291,7 +291,7 @@ Step 5d from two snapshots' factor rows over **shared nodes only**.
 
 No pgvector at runtime, scalar comparisons for temporal queries.
 
-***REMOVED******REMOVED******REMOVED*** 5.5 `factor_amenity_embedding` → `AmenityEmbedding`
+### 5.5 `factor_amenity_embedding` → `AmenityEmbedding`
 
 300-D L2-normalized FastText per lowercased amenity vocabulary string. This
 table is a **dictionary**: access is an equality lookup, and its output
@@ -304,7 +304,7 @@ amenity text --> SELECT embedding FROM factor_amenity_embedding WHERE amenity_te
      miss --> runtime FastTextEmbeddingService.calculate_text_embedding (open vocabulary)
 ```
 
-***REMOVED******REMOVED******REMOVED*** 5.6 `semantic_search_graphspectraldrift` → `GraphSpectralDrift`
+### 5.6 `semantic_search_graphspectraldrift` → `GraphSpectralDrift`
 
 Key: `(region, snapshot_from, snapshot_to)`. Pure numpy/JSON, no pgvector.
 
@@ -321,7 +321,7 @@ Key: `(region, snapshot_from, snapshot_to)`. Pure numpy/JSON, no pgvector.
 
 ---
 
-***REMOVED******REMOVED*** 6. Calling the Factor Tables at Runtime: `getEntityContext`
+## 6. Calling the Factor Tables at Runtime: `getEntityContext`
 
 The enrichment layer consumes these tables through
 `EntityContextService.get_context`, the deterministic
@@ -343,64 +343,64 @@ context = EntityContextService.get_context(
     osm_ids, country_code, snapshot_date,
     template=template, trace=trace,
 )
-***REMOVED*** context = {
-***REMOVED***   "uslp_links":   [{"head_osm_id", "relation", "tail_osm_id", "normalized_score"}, ...],
-***REMOVED***   "communities":  {osm_id: {"fiedler_component", "louvain_community", "degree",
-***REMOVED***                             "clustering_coeff", "component_id", "component_size", ...}},
-***REMOVED***   "class_distribution": [{"wkg_class", "count"}, ...],
-***REMOVED*** }
+# context = {
+#   "uslp_links":   [{"head_osm_id", "relation", "tail_osm_id", "normalized_score"}, ...],
+#   "communities":  {osm_id: {"fiedler_component", "louvain_community", "degree",
+#                             "clustering_coeff", "component_id", "component_size", ...}},
+#   "class_distribution": [{"wkg_class", "count"}, ...],
+# }
 ```
 
-***REMOVED******REMOVED******REMOVED*** 6.1 Template → Context-Source Selection
+### 6.1 Template → Context-Source Selection
 
 | Template | USLP links | Communities | Class dist | Factor tables touched |
 |---|---|---|---|---|
-| ***REMOVED***1 FILTER-AGGREGATE-MEASURE | ✓ | ✓ | ✓ | `resolve_metrics` (spectral node metric) |
-| ***REMOVED***2 OBJECT-FIELD-MEASURE | ✓ | ✓ | — | `resolve_metrics` |
-| ***REMOVED***4 GEOCODE-BATCH-COMPARE | ✓ | ✓ | ✓ | `resolve_metrics` |
-| ***REMOVED***5 LOCATION-BEARING-CLASSIFY | — | — | ✓ | `OsmEntity.wkg_class` |
-| ***REMOVED***8 PLACE-ATTRIBUTE-QUERY | ✓ | — | ✓ | `diffusion_rank` + `resolve_metrics` |
-| ***REMOVED***11-14 graph/spectral | — | ✓ | — | `diffusion_rank` / `community_summary` |
+| #1 FILTER-AGGREGATE-MEASURE | ✓ | ✓ | ✓ | `resolve_metrics` (spectral node metric) |
+| #2 OBJECT-FIELD-MEASURE | ✓ | ✓ | — | `resolve_metrics` |
+| #4 GEOCODE-BATCH-COMPARE | ✓ | ✓ | ✓ | `resolve_metrics` |
+| #5 LOCATION-BEARING-CLASSIFY | — | — | ✓ | `OsmEntity.wkg_class` |
+| #8 PLACE-ATTRIBUTE-QUERY | ✓ | — | ✓ | `diffusion_rank` + `resolve_metrics` |
+| #11-14 graph/spectral | — | ✓ | — | `diffusion_rank` / `community_summary` |
 
-***REMOVED******REMOVED******REMOVED*** 6.2 Direct Factor-Table Calls (executor + enrichment)
+### 6.2 Direct Factor-Table Calls (executor + enrichment)
 
 ```python
-***REMOVED*** ---- factor_spectral_node_metric ----
-***REMOVED*** heat kernel diffusion (PLACE-ATTRIBUTE / EVENT-DIFFUSION):
+# ---- factor_spectral_node_metric ----
+# heat kernel diffusion (PLACE-ATTRIBUTE / EVENT-DIFFUSION):
 ranked = FactorResolutionService().diffusion_rank(
     anchor_osm_id=12345, t=1.0,
     snapshot_id="2025_12_31", country_code="BZ",
     candidate_osm_ids=candidates, limit=20, trace=trace,
-)   ***REMOVED*** one pgvector <***REMOVED***> query (SQL in §5.1)
+)   # one pgvector <#> query (SQL in §5.1)
 
-***REMOVED*** structural metrics for getEntityContext's "communities" source:
+# structural metrics for getEntityContext's "communities" source:
 metrics = FactorResolutionService().resolve_metrics(
     osm_ids, snapshot_id, country_code,
-)   ***REMOVED*** {osm_id: {fiedler_component, louvain_community, degree, ...}}
+)   # {osm_id: {fiedler_component, louvain_community, degree, ...}}
 
-***REMOVED*** community summaries (COMMUNITY-DETECT):
+# community summaries (COMMUNITY-DETECT):
 summary = FactorResolutionService().community_summary(
     snapshot_id, country_code, wkg_class="wkgs:Cafe", trace=trace,
-)   ***REMOVED*** SELECT louvain_community, COUNT(*) ... GROUP BY louvain_community
+)   # SELECT louvain_community, COUNT(*) ... GROUP BY louvain_community
 
-***REMOVED*** ---- factor_amenity_embedding ----
-emb = FactorResolutionService().amenity_embedding("cafe")   ***REMOVED*** 300-D array or None
-***REMOVED*** None → runtime FastText fallback (open-vocabulary OBJECT extraction)
+# ---- factor_amenity_embedding ----
+emb = FactorResolutionService().amenity_embedding("cafe")   # 300-D array or None
+# None → runtime FastText fallback (open-vocabulary OBJECT extraction)
 
-***REMOVED*** ---- factor_subgraph_transport (≥ 5M-node countries) ----
+# ---- factor_subgraph_transport (≥ 5M-node countries) ----
 from semantic_search.services.subgraph_transport_service import (
     SubgraphTransportService,
 )
 loadings_b = SubgraphTransportService.transport_loadings(
-    loadings_a, C,                       ***REMOVED*** C = stored k×k matrix (JSON)
-)   ***REMOVED*** numpy k×k multiply → then <***REMOVED***> in subgraph B
+    loadings_a, C,                       # C = stored k×k matrix (JSON)
+)   # numpy k×k multiply → then <#> in subgraph B
 ```
 
-***REMOVED******REMOVED******REMOVED*** 6.3 What the Synthesis LLM Receives
+### 6.3 What the Synthesis LLM Receives
 
 ```
 Question: "Which cafes are within 50km of Belize City?"
-Template: FILTER-AGGREGATE-MEASURE (***REMOVED***1)
+Template: FILTER-AGGREGATE-MEASURE (#1)
 Primary result: 18 cafes (osm_ids ...)
 
 Context:
@@ -417,7 +417,7 @@ inference, no graph load, ~50 ms.
 
 ---
 
-***REMOVED******REMOVED*** 7. Cross-Subgraph Transport: the Math for Big Countries
+## 7. Cross-Subgraph Transport: the Math for Big Countries
 
 For countries ≥ `SUBDIVISION_NODE_THRESHOLD` (5M), each subgraph is solved
 independently, so each has its **own eigenbasis**. Transport matrices bridge
@@ -449,7 +449,7 @@ commutativity_residual = ‖CΛ_A − Λ_B C‖_F / ‖Λ_A‖_F
    `factor_subgraph_transport`, JSON, with residuals)
 3. `w_target[k] = e^{−t·λ_k^B} · loadings_b[k]` (re-decay in B's eigenvalue
    space; λ^B from B's fingerprint)
-4. `SELECT osm_id, (eigen_loadings <***REMOVED***> :w_target) AS neg_ip FROM
+4. `SELECT osm_id, (eigen_loadings <#> :w_target) AS neg_ip FROM
    factor_spectral_node_metric WHERE subgraph_slug = 'B' ... ORDER BY neg_ip
    ASC`
 5. Merge + re-rank A and B results (hardening Phase 4 normalizes scores)
@@ -461,7 +461,7 @@ certificates stored alongside.
 
 ---
 
-***REMOVED******REMOVED*** 8. Temporal Drift: the Pair-Wise Math (Step 5d)
+## 8. Temporal Drift: the Pair-Wise Math (Step 5d)
 
 ```
 per-node (factor_drift_node_metric):
@@ -484,13 +484,13 @@ aggregate (semantic_search_graphspectraldrift):
 
 ---
 
-***REMOVED******REMOVED*** 9. Invariants to Protect (from the Test Suites)
+## 9. Invariants to Protect (from the Test Suites)
 
 ```
 λ ∈ [0, 2], sorted ascending, non-negative            (normalized Laplacian)
 ΦᵀΦ ≈ I                                               (orthonormality)
 eigen_loadings rows are coordinates in ONE snapshot's basis, never mix snapshots
-score = <w, φ>  computed with <***REMOVED***> (negative IP) ⇒ ORDER BY ASC = rank by score
+score = <w, φ>  computed with <#> (negative IP) ⇒ ORDER BY ASC = rank by score
 loading_drift, fiedler_drift ∈ [0, 2]                 (cosine distance)
 tr(sᵀLs) ≥ 0;  = 0 for constant signal on connected graph
 modularity Q ∈ [−0.5, 1]
@@ -499,7 +499,7 @@ zero-padding to EIGEN_LOADING_DIM = 128 is shared padding — inner products sta
 
 ---
 
-***REMOVED******REMOVED*** 10. Known Hardening Gaps (see the Hardening Plan)
+## 10. Known Hardening Gaps (see the Hardening Plan)
 
 | Area | Gap | Plan phase |
 |---|---|---|

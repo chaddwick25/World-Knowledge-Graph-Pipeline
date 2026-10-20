@@ -44,7 +44,7 @@ class Command(BaseCommand):
 
         dry_run = options['dry_run']
 
-        ***REMOVED*** ── Load Geofabrik index ──────────────────────────────────────
+        # ── Load Geofabrik index ──────────────────────────────────────
         geofabrik_path = Path(settings.BASE_DATA_DIR) / 'geofabrik_index.json'
         if not geofabrik_path.exists():
             self.stdout.write(self.style.ERROR("geofabrik_index.json not found"))
@@ -53,7 +53,7 @@ class Command(BaseCommand):
         with open(geofabrik_path) as f:
             geofabrik = json.load(f)
 
-        ***REMOVED*** Build parent -> {id: props} map
+        # Build parent -> {id: props} map
         geo_children = {}
         geo_names = {}
         for feature in geofabrik.get('features', []):
@@ -63,7 +63,7 @@ class Command(BaseCommand):
             geo_children.setdefault(parent, {})[gid] = props
             geo_names[gid] = props['name']
 
-        ***REMOVED*** ── Load country_relations for slug -> Geofabrik mapping ──────
+        # ── Load country_relations for slug -> Geofabrik mapping ──────
         cr_path = Path(settings.BASE_DATA_DIR) / 'country_relations.json'
         if not cr_path.exists():
             self.stdout.write(self.style.ERROR("country_relations.json not found"))
@@ -72,7 +72,7 @@ class Command(BaseCommand):
         with open(cr_path) as f:
             country_relations = json.load(f)
 
-        ***REMOVED*** Build slug -> relation data
+        # Build slug -> relation data
         cr_by_slug = {}
         for iso, cdata in country_relations.items():
             if isinstance(cdata, dict) and 'slug' in cdata:
@@ -81,7 +81,7 @@ class Command(BaseCommand):
                     '_iso': iso,
                 }
 
-        ***REMOVED*** ── Resolve countries ─────────────────────────────────────────
+        # ── Resolve countries ─────────────────────────────────────────
         if options['countries']:
             slugs = [s.strip() for s in options['countries'].split(',')]
             countries = CountryPipelineProfile.objects.filter(
@@ -104,7 +104,7 @@ class Command(BaseCommand):
         total_skipped = 0
 
         for country in countries:
-            ***REMOVED*** Find Geofabrik entry via parent_slug + slug
+            # Find Geofabrik entry via parent_slug + slug
             cr_entry = cr_by_slug.get(country.canonical_slug)
             if not cr_entry:
                 total_skipped += 1
@@ -113,7 +113,7 @@ class Command(BaseCommand):
             parent_slug = cr_entry.get('parent_slug', '')
             geofabrik_id = cr_entry.get('slug', '')
 
-            ***REMOVED*** Navigate Geofabrik tree: root -> parent_slug -> slug
+            # Navigate Geofabrik tree: root -> parent_slug -> slug
             if parent_slug and geo_children.get(parent_slug, {}).get(geofabrik_id):
                 sub_regions = list(geo_children.get(geofabrik_id, {}).values())
             else:

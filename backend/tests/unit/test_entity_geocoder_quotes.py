@@ -26,7 +26,7 @@ import pytest
 from semantic_search.services.entity_geocoder import EntityGeocoder
 
 SNAP = "2025_12_31"
-OSM_ID = 700042  ***REMOVED*** 7xxxxx range, no collision with the guard suite
+OSM_ID = 700042  # 7xxxxx range, no collision with the guard suite
 
 
 def test_normalize_quotes_maps_curly_to_straight():
@@ -56,7 +56,7 @@ def test_geocode_curly_query_matches_straight_stored(
             country_code="BZ",
             tags={"name": "Ice N' Beans", "amenity": "cafe"},
             geom=Point(-88.5, 17.25),
-            name_romanized=None,  ***REMOVED*** trigram tier skipped; tiers 2/3 tested
+            name_romanized=None,  # trigram tier skipped; tiers 2/3 tested
         )
         try:
             result = EntityGeocoder.geocode(

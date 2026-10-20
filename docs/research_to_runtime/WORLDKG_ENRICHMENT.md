@@ -1,4 +1,4 @@
-***REMOVED*** Preserving the WorldKG Enrichment Architecture
+# Preserving the WorldKG Enrichment Architecture
 
 How the semantic enrichment methodology from the original [WorldKG](https://arxiv.org/abs/2304.09503) research paper (Dsouza et al., CIKM 2021) was integrated into the Django pipeline.
 
@@ -6,12 +6,12 @@ The enrichment pipeline assigns WorldKG ontology classes to OSM entities, popula
 
 ---
 
-***REMOVED******REMOVED*** 1. Two-Mode Enrichment: SPARQL vs Local Prediction
+## 1. Two-Mode Enrichment: SPARQL vs Local Prediction
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The WorldKG paper publishes a SPARQL endpoint at `https://www.worldkg.org/sparql` where OSM entities are typed via `rdf:type wkgs:{ClassName}` assertions, linked back to OSM via `wkgs:osmLink osmn:{osm_id}`, and aligned to Wikidata via `owl:equivalentClass` on the class level.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline supports both online and offline enrichment modes, with offline as the default for pipeline runs:
 
 * **Mechanism:** `WorldKGEnrichmentService` (in `semantic_search/services/worldkg_enrichment_service.py`) provides three paths:
@@ -51,8 +51,8 @@ class WorldKGEnrichmentService:
             result = self._enrich_via_sparql(entity)
             if result:
                 return result
-            ***REMOVED*** Fallback to local if SPARQL fails
-        ***REMOVED*** Local tag-based prediction
+            # Fallback to local if SPARQL fails
+        # Local tag-based prediction
         result = self._enrich_via_local_tags(entity)
         return result
 
@@ -72,9 +72,9 @@ class WorldKGEnrichmentService:
 
 ---
 
-***REMOVED******REMOVED*** 2. Batch Enrichment with Spatial Scoping
+## 2. Batch Enrichment with Spatial Scoping
 
-***REMOVED******REMOVED******REMOVED*** The Pipeline Integration
+### The Pipeline Integration
 Enrichment runs as the final phase of Step 1 (`embedding_service.py`), after all OSM entities have been upserted into the `OsmEntity` table. The call chain is:
 
 ```
@@ -86,7 +86,7 @@ Step 1 (step_1_embed.py)
     → compute_entropy(cfg, logger)  ← uses enriched class distribution
 ```
 
-***REMOVED******REMOVED******REMOVED*** Spatial Filtering
+### Spatial Filtering
 `sql_enrich_region` resolves a bounding box to scope which entities get enriched:
 
 1. **Explicit poly file** (if provided), parsed via `parse_poly_bbox()` for exact geometry
@@ -96,7 +96,7 @@ The bbox is applied as `ST_Within(e.geom, ST_MakeEnvelope(...))` in the SQL WHER
 
 **Important:** Enrichment uses the **country-level** bbox, not individual subgraph bboxes. Even when `has_subgraphs=True`, enrichment processes all entities within the country boundary in a single pass. Subgraph bboxes are only used at query time (subdivision search) and for GV-NLE training fan-out.
 
-***REMOVED******REMOVED******REMOVED*** SQL-Side Enrichment (Default Path)
+### SQL-Side Enrichment (Default Path)
 The `sql_enrich_region()` method replaces the previous Python loop with a single SQL operation:
 
 1. **Load ontology into temp table**: `_load_ontology_to_temp_table()` copies the in-memory ontology index into a Postgres temp table (`tmp_wkg_ontology`) with one row per `(osm_key, osm_value, class_name, depth, superclasses, wikidata_uri, type_key, type_value)` mapping.
@@ -115,11 +115,11 @@ The `sql_enrich_region()` method replaces the previous Python loop with a single
 ```python
 def sql_enrich_region(self, region=None, poly_file=None, snapshot_id=None,
                       skip_enriched=True, limit=None):
-    ***REMOVED*** 1. Load ontology into temp table
+    # 1. Load ontology into temp table
     self._load_ontology_to_temp_table(cursor)
-    ***REMOVED*** 2. Resolve leaf table
+    # 2. Resolve leaf table
     leaf = self._resolve_leaf_table(cursor, snapshot_id, region)
-    ***REMOVED*** 3. Single UPDATE...FROM join
+    # 3. Single UPDATE...FROM join
     update_sql = f"""
         WITH matched AS (
             SELECT e.id AS entity_id, o.class_name, o.depth, ...
@@ -136,7 +136,7 @@ def sql_enrich_region(self, region=None, poly_file=None, snapshot_id=None,
     cursor.execute(update_sql, update_params)
 ```
 
-***REMOVED******REMOVED******REMOVED*** Python Batch Enrichment (Fallback Path)
+### Python Batch Enrichment (Fallback Path)
 The `batch_enrich_region()` method remains as a fallback when the ontology index is not built. It uses `ThreadPoolExecutor` with configurable worker count (`enrichment.workers` in `pipeline/hyperparams.yaml` (default 2)):
 
 - `query.iterator(chunk_size=batch_size)`, server-side cursor for memory efficiency
@@ -145,9 +145,9 @@ The `batch_enrich_region()` method remains as a fallback when the ontology index
 
 ---
 
-***REMOVED******REMOVED*** 3. Wikidata Candidate Harvest (Step 2: Upstream of IGEA)
+## 3. Wikidata Candidate Harvest (Step 2: Upstream of IGEA)
 
-***REMOVED******REMOVED******REMOVED*** The Two-Phase Harvest
+### The Two-Phase Harvest
 Before IGEA can align OSM↔Wikidata entities, it needs Wikidata candidates with `wkg_class` populated. This is done in Step 2 (`harvest_wikidata_candidates`) using a two-phase SPARQL approach:
 
 **Phase 1: Spatial harvest (`harvest_by_bbox` / `harvest_by_country`):**
@@ -167,7 +167,7 @@ Before IGEA can align OSM↔Wikidata entities, it needs Wikidata candidates with
 **Code Reference:** `backend/worldkg_nca/services/wikidata_service.py`
 ```python
 def enrich_wkg_class(self, candidates, batch_size=100):
-    ***REMOVED*** Build VALUES clause from NCA reverse map (~45 known ontology types)
+    # Build VALUES clause from NCA reverse map (~45 known ontology types)
     type_values_clause = self._build_type_values_clause()
     for i in range(0, len(uris), batch_size):
         batch_uris = uris[i:i + batch_size]
@@ -179,7 +179,7 @@ SELECT ?entity ?typeUri WHERE {{
   ?entity wdt:P31/wdt:P279* ?typeUri .
 }}
 """
-        ***REMOVED*** POST to avoid Wikidata's URL length limit (~8KB for GET)
+        # POST to avoid Wikidata's URL length limit (~8KB for GET)
         response = requests.post(
             WIKIDATA_SPARQL_ENDPOINT,
             data={"query": query, "format": "json"},
@@ -189,10 +189,10 @@ SELECT ?entity ?typeUri WHERE {{
         )
 ```
 
-***REMOVED******REMOVED******REMOVED*** Why Two Phases?
+### Why Two Phases?
 Adding P31/P279* to the spatial `wikibase:box` query would force Wikidata to JOIN the ~500M-row statement table on top of the spatial result set, causing 504 Gateway Timeout on country-sized bboxes. The two-phase approach lets Wikidata use a hash join (O(batch_size)) per batch instead of a full P31 table scan.
 
-***REMOVED******REMOVED******REMOVED*** USLP Independence from IGEA
+### USLP Independence from IGEA
 
 USLP (Step 4) runs independently of IGEA acceptance. The previous gate that skipped USLP when IGEA accepted 0 links has been removed: `step_4_uslp.py` no longer checks `total_accepted` or `igea_accepted`. Step 3 still emits IGEA acceptance counts in the envelope state, but Step 4 ignores them.
 
@@ -200,7 +200,7 @@ This means the Wikidata harvest + class enrichment in Step 2 feeds IGEA (Step 3)
 
 ---
 
-***REMOVED******REMOVED*** 4. Entropy Gate (Post-Enrichment)
+## 4. Entropy Gate (Post-Enrichment)
 
 After enrichment, `compute_entropy()` (in `pipeline/tasks/helper.py`) computes the Shannon entropy of the `wkg_class` distribution across all enriched entities in the country. This serves as a semantic diversity check:
 
@@ -213,26 +213,26 @@ The entropy gate can be bypassed with `hyperparam_overrides={"min_entropy": 0.0}
 
 ---
 
-***REMOVED******REMOVED*** 5. NCA (Neural Class Alignment): The Learned Mapping Layer
+## 5. NCA (Neural Class Alignment): The Learned Mapping Layer
 
-***REMOVED******REMOVED******REMOVED*** Relationship to Enrichment
+### Relationship to Enrichment
 The enrichment described in Sections 1-2 uses **static ontology lookup** (TTL → inverted index → tag→class). NCA provides a **learned** alternative that trains a neural model on IGEA-aligned entities to predict tag→class mappings.
 
-***REMOVED******REMOVED******REMOVED*** Lifecycle (runs in Step 3, after IGEA)
+### Lifecycle (runs in Step 3, after IGEA)
 1. `build_vocabularies(linked_entities)`: extract tag keys/values and Wikidata classes from IGEA-accepted pairs
 2. `prepare_training_data(linked_entities)`: create multi-hot tag vectors and class labels
 3. `train()`: fit the neural model (BiLSTM cross-attention)
 4. `extract_mappings(threshold)`: probe model to get `(tag, class, confidence)` triples
 5. `apply_mappings(osm_entities)`: assign `wkg_class` to entities using learned mappings
 
-***REMOVED******REMOVED******REMOVED*** The Reverse Map (Used by Wikidata Harvest)
+### The Reverse Map (Used by Wikidata Harvest)
 NCA also produces a **reverse map** (`_wikidata_to_wkg`) that maps Wikidata type URIs → `wkgs:` classes. This reverse map is used by `enrich_wkg_class` in Step 2 to map harvested Wikidata candidates to WorldKG classes. Without NCA having been trained at least once, the reverse map is empty and `enrich_wkg_class` cannot map any candidates.
 
 **Bootstrapping:** On a fresh database, the NCA reverse map is built from the initial WorldKG ontology TTL load (`enrich_worldkg_classes --load-ontology`), which provides ~34 static Wikidata→wkgs mappings. The neural NCA model (trained in Step 3) can expand this with learned mappings over time.
 
 ---
 
-***REMOVED******REMOVED*** 6. Class Distribution Query (Post-Enrichment)
+## 6. Class Distribution Query (Post-Enrichment)
 
 `get_class_distribution()` (in `worldkg_enrichment_service.py`) aggregates entity counts by `wkg_class` for a given region/snapshot. Used by:
 - The entropy gate (Step 1)
@@ -242,40 +242,40 @@ Spatial scoping mirrors `batch_enrich_region`: `resolve_country_bbox(region)` �
 
 ---
 
-***REMOVED******REMOVED*** 7. Operational Notes
+## 7. Operational Notes
 
-***REMOVED******REMOVED******REMOVED*** Ontology Loading
+### Ontology Loading
 ```bash
-***REMOVED*** Load from TTL (primary: provides static mappings + superclass hierarchy)
+# Load from TTL (primary: provides static mappings + superclass hierarchy)
 python manage.py enrich_worldkg_classes --load-from-ttl /path/to/WorldKG_Ontology.ttl
 
-***REMOVED*** Load from JSON sample (fallback for development)
+# Load from JSON sample (fallback for development)
 python manage.py enrich_worldkg_classes --load-ontology ../data/worldkg_ontology_sample.json
 ```
 
 The TTL is cached in Redis (DB 2) via `WorldKGOntologyService`. After a Redis flush, reload with:
 ```bash
-redis-cli -n 2 FLUSHDB  ***REMOVED*** clears ontology cache
+redis-cli -n 2 FLUSHDB  # clears ontology cache
 python manage.py enrich_worldkg_classes --load-from-ttl /path/to/WorldKG_Ontology.ttl
 ```
 
-***REMOVED******REMOVED******REMOVED*** SPARQL Rate Limiting
+### SPARQL Rate Limiting
 - Wikidata SPARQL: ~1 req/s for anonymous clients. `REQUEST_DELAY_S = 1.1` between paginated requests.
 - WorldKG SPARQL: 10s timeout per entity (SPARQL mode is slow: use only for single-entity lookups, not bulk).
 - `enrich_wkg_class` batch failures (502/429) are caught and skipped. Partial enrichment is expected for large countries under Wikidata throttling.
 
-***REMOVED******REMOVED******REMOVED*** Idempotency
+### Idempotency
 - `batch_enrich_region(skip_enriched=True)`: only processes entities with `wkg_class IS NULL`. Safe to re-run.
 - `enrich_wkg_class`: modifies candidates in-place. Re-running harvest + enrichment overwrites previous results.
 
-***REMOVED******REMOVED******REMOVED*** Database Routing
+### Database Routing
 - `OsmEntity` lives in the `vectors` database (pgvector). All enrichment queries use `OsmEntity.objects.using('vectors')`.
 - `SubgraphProfile`, `CountryPipelineProfile`, `OsmBoundary` live in the `default` database.
 - The ontology cache lives in Redis (DB 2).
 
 ---
 
-***REMOVED******REMOVED*** 8. Cross-References
+## 8. Cross-References
 
 | Topic | Document |
 |-------|----------|

@@ -139,11 +139,11 @@ def step_4_predict_spatial_links(self, env: CountryEnvelope) -> CountryEnvelope:
     chord was built with ``has_subgraphs=False``.
     """
 
-    ***REMOVED*** Rehydrate subgraphs from DB to ensure fresh data.
-    ***REMOVED*** On a fresh DB, subgraphs are generated during Step 1's
-    ***REMOVED*** preprocess_snapshot, but the canvas chord was already built with
-    ***REMOVED*** has_subgraphs=False.  This rehydration picks up the newly generated
-    ***REMOVED*** subgraphs so we can fan out per-subgraph instead of country-level.
+    # Rehydrate subgraphs from DB to ensure fresh data.
+    # On a fresh DB, subgraphs are generated during Step 1's
+    # preprocess_snapshot, but the canvas chord was already built with
+    # has_subgraphs=False.  This rehydration picks up the newly generated
+    # subgraphs so we can fan out per-subgraph instead of country-level.
     rehydrated = False
     if not env.has_subgraphs or not env.subgraphs:
         try:
@@ -191,11 +191,11 @@ def step_4_predict_spatial_links(self, env: CountryEnvelope) -> CountryEnvelope:
     from django.core.management import call_command
 
     if env.has_subgraphs and env.subgraphs:
-        ***REMOVED*** Per-subgraph USLP — fan out to each subgraph's polygon.
-        ***REMOVED*** This runs inline (not via Celery chord) because the canvas chord
-        ***REMOVED*** was already built with the stale has_subgraphs=False envelope.
-        ***REMOVED*** The chord callback (step_4b) will be a no-op since we handle
-        ***REMOVED*** everything here.
+        # Per-subgraph USLP — fan out to each subgraph's polygon.
+        # This runs inline (not via Celery chord) because the canvas chord
+        # was already built with the stale has_subgraphs=False envelope.
+        # The chord callback (step_4b) will be a no-op since we handle
+        # everything here.
         _log(
             logger,
             "info",
@@ -241,7 +241,7 @@ def step_4_predict_spatial_links(self, env: CountryEnvelope) -> CountryEnvelope:
                 snapshot_date=env.snapshot_date,
             )
     else:
-        ***REMOVED*** Country-level USLP (no subgraphs available).
+        # Country-level USLP (no subgraphs available).
         call_command(
             "predict_spatial_links",
             country=env.iso, max_heads=env.uslp_max_heads,
@@ -300,10 +300,10 @@ def _run_subgraph_uslp(
             pipeline_run_id=env.pipeline_run_id,
         )
 
-    ***REMOVED*** Acquire GPU slot lock to prevent concurrent subgraph USLP tasks
-    ***REMOVED*** from exhausting VRAM. Same pattern as step_5_nle.py — the chord
-    ***REMOVED*** fires all subgraph tasks in parallel, but GPU memory is finite.
-    ***REMOVED*** With concurrency=1 (default), subgraphs are serialized on the GPU.
+    # Acquire GPU slot lock to prevent concurrent subgraph USLP tasks
+    # from exhausting VRAM. Same pattern as step_5_nle.py — the chord
+    # fires all subgraph tasks in parallel, but GPU memory is finite.
+    # With concurrency=1 (default), subgraphs are serialized on the GPU.
     slot_lock = None
     if env.uslp_use_gpu and env.uslp_gpu_device:
         concurrency = _gpu_concurrency_for(env.uslp_gpu_device)

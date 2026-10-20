@@ -33,7 +33,7 @@ from pipeline.celery_app import (
 
 logger = logging.getLogger("pipeline")
 
-***REMOVED*** ── Multi-GPU configuration ────────────────────────────────────────────────
+# ── Multi-GPU configuration ────────────────────────────────────────────────
 
 
 def _parse_gpu_config() -> Tuple[List[str], List[int]]:
@@ -61,9 +61,9 @@ def _parse_gpu_config() -> Tuple[List[str], List[int]]:
 
 _GPU_DEVICES, _GPU_CONCURRENCY = _parse_gpu_config()
 
-***REMOVED*** Size threshold (MB) for assigning subgraphs to the big GPU vs the small one.
-***REMOVED*** Subgraphs with PBF > this go to cuda:0 (more VRAM); smaller ones can go to
-***REMOVED*** cuda:1.  0.3 MB ≈ ~50K entities, which needs ~4-5 GB VRAM — fits on 8 GB.
+# Size threshold (MB) for assigning subgraphs to the big GPU vs the small one.
+# Subgraphs with PBF > this go to cuda:0 (more VRAM); smaller ones can go to
+# cuda:1.  0.3 MB ≈ ~50K entities, which needs ~4-5 GB VRAM — fits on 8 GB.
 _SMALL_PBF_THRESHOLD_MB = ModelHyperparams.load_from_yaml().gv_nle_small_pbf_mb
 
 
@@ -82,9 +82,9 @@ def _assign_gpu(subgraph: SubgraphConfig) -> str:
     if len(_GPU_DEVICES) == 1:
         return _GPU_DEVICES[0]
 
-    ***REMOVED*** Send everything to the big GPU.  The GpuSlotLock handles queuing
-    ***REMOVED*** when the GPU is at capacity.  The secondary GPU is reserved for
-    ***REMOVED*** future use or manual override via hyperparams.yaml (gv_nle.gpu_devices).
+    # Send everything to the big GPU.  The GpuSlotLock handles queuing
+    # when the GPU is at capacity.  The secondary GPU is reserved for
+    # future use or manual override via hyperparams.yaml (gv_nle.gpu_devices).
     return _GPU_DEVICES[0]
 
 
@@ -110,7 +110,7 @@ class GpuSlotLock:
     def __init__(self, device: str, concurrency: int):
         self.device = device
         self.concurrency = concurrency
-        ***REMOVED*** Sanitize device name for filename (cuda:0 → cuda_0)
+        # Sanitize device name for filename (cuda:0 → cuda_0)
         dev_tag = device.replace(":", "_")
         self._lock_dir = os.path.join(tempfile.gettempdir(), "gpu_slots")
         os.makedirs(self._lock_dir, exist_ok=True)
@@ -128,21 +128,21 @@ class GpuSlotLock:
                 fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    ***REMOVED*** Got it
+                    # Got it
                     self._held_fd = fd
                     self._held_index = i
                     return
                 except (BlockingIOError, OSError):
                     os.close(fd)
                     continue
-            ***REMOVED*** All slots busy — block on the first slot (waits until it's free),
-            ***REMOVED*** then loop back to try all slots again.  This avoids thundering
-            ***REMOVED*** herd: only one waiter wakes per release.
+            # All slots busy — block on the first slot (waits until it's free),
+            # then loop back to try all slots again.  This avoids thundering
+            # herd: only one waiter wakes per release.
             fd = os.open(self._lock_files[0], os.O_CREAT | os.O_RDWR, 0o644)
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX)  ***REMOVED*** blocks
-                ***REMOVED*** We got the first slot — but we might want a different one.
-                ***REMOVED*** Just use this one.
+                fcntl.flock(fd, fcntl.LOCK_EX)  # blocks
+                # We got the first slot — but we might want a different one.
+                # Just use this one.
                 self._held_fd = fd
                 self._held_index = 0
                 return
@@ -177,11 +177,11 @@ def step_5_train_gv_nle(self, env: CountryEnvelope) -> CountryEnvelope:
     Small territories (has_subgraphs=False) run at country level only,
     skipping the subgraph fan-out.
     """
-    ***REMOVED*** Rehydrate subgraphs from DB to ensure fresh data.
-    ***REMOVED*** On a fresh DB, subgraphs are generated during Step 1's
-    ***REMOVED*** preprocess_snapshot, but the canvas chord was already built with
-    ***REMOVED*** has_subgraphs=False.  This rehydration picks up the newly generated
-    ***REMOVED*** subgraphs so we can self-dispatch per-subgraph training.
+    # Rehydrate subgraphs from DB to ensure fresh data.
+    # On a fresh DB, subgraphs are generated during Step 1's
+    # preprocess_snapshot, but the canvas chord was already built with
+    # has_subgraphs=False.  This rehydration picks up the newly generated
+    # subgraphs so we can self-dispatch per-subgraph training.
     rehydrated = False
     if not env.has_subgraphs or not env.subgraphs:
         try:
@@ -229,9 +229,9 @@ def step_5_train_gv_nle(self, env: CountryEnvelope) -> CountryEnvelope:
 
     if env.has_subgraphs and env.subgraphs:
         if rehydrated:
-            ***REMOVED*** Subgraphs were rehydrated — the canvas chord was built with
-            ***REMOVED*** has_subgraphs=False, so there IS no Step 5b chord.  Self-dispatch
-            ***REMOVED*** per-subgraph training inline so NLE is not skipped.
+            # Subgraphs were rehydrated — the canvas chord was built with
+            # has_subgraphs=False, so there IS no Step 5b chord.  Self-dispatch
+            # per-subgraph training inline so NLE is not skipped.
             _log(
                 logger,
                 "info",
@@ -270,8 +270,8 @@ def step_5_train_gv_nle(self, env: CountryEnvelope) -> CountryEnvelope:
                 finally:
                     slot_lock.release()
         else:
-            ***REMOVED*** Subgraphs were already present at canvas build time — the
-            ***REMOVED*** canvas chord (Step 5b) handles per-subgraph training.
+            # Subgraphs were already present at canvas build time — the
+            # canvas chord (Step 5b) handles per-subgraph training.
             _log(
                 logger,
                 "info",
@@ -367,7 +367,7 @@ def _train_subgraph_gv_nle(
     sg = SubgraphConfig.from_dict(subgraph_dict)
     env = CountryEnvelope.from_dict(parent_config)
 
-    ***REMOVED*** Pick GPU based on subgraph PBF size
+    # Pick GPU based on subgraph PBF size
     gpu_device = _assign_gpu(sg)
     concurrency = _gpu_concurrency_for(gpu_device)
     slot_lock = GpuSlotLock(gpu_device, concurrency)
@@ -383,10 +383,10 @@ def _train_subgraph_gv_nle(
         pipeline_run_id=env.pipeline_run_id,
     )
 
-    ***REMOVED*** Acquire per-GPU slot (blocks if that GPU is at capacity)
+    # Acquire per-GPU slot (blocks if that GPU is at capacity)
     slot_lock.acquire()
     try:
-        ***REMOVED*** Override the envelope's gpu_device for this subgraph
+        # Override the envelope's gpu_device for this subgraph
         env = dataclasses.replace(
             env,
             hyperparams=dataclasses.replace(

@@ -16,7 +16,7 @@ from core.models import OSMWikiDataHierarchy
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Module-level cache for country relations to avoid repeated DB queries
+# Module-level cache for country relations to avoid repeated DB queries
 _country_relations_cache: Dict[str, dict] = None
 
 
@@ -74,11 +74,11 @@ def get_country_relations_dict() -> Dict[str, dict]:
 
 
 
-        ***REMOVED*** 1. Load data from the legacy JSON file if it exists. We only use this
+        # 1. Load data from the legacy JSON file if it exists. We only use this
 
-        ***REMOVED***    as an optional metadata overlay (ISO codes, Geovectors TSV paths),
+        #    as an optional metadata overlay (ISO codes, Geovectors TSV paths),
 
-        ***REMOVED***    not as the primary source of truth.
+        #    not as the primary source of truth.
 
         json_relations_by_uri: Dict[str, dict] = {}
 
@@ -110,17 +110,17 @@ def get_country_relations_dict() -> Dict[str, dict]:
 
 
 
-        ***REMOVED*** 2. Query all countries (admin_level=2) from OSMWikiDataHierarchy
+        # 2. Query all countries (admin_level=2) from OSMWikiDataHierarchy
 
         hierarchies = list(OSMWikiDataHierarchy.objects.filter(admin_level=2))
 
 
 
-        ***REMOVED*** 3. Convert to dict format compatible with existing code, keyed
+        # 3. Convert to dict format compatible with existing code, keyed
 
-        ***REMOVED***    primarily by ISO 3166-1 alpha-2 codes. When no ISO is known for a
+        #    primarily by ISO 3166-1 alpha-2 codes. When no ISO is known for a
 
-        ***REMOVED***    row, we fall back to using the Wikidata ID (QID) as the key.
+        #    row, we fall back to using the Wikidata ID (QID) as the key.
 
         relations: Dict[str, dict] = {}
 
@@ -130,7 +130,7 @@ def get_country_relations_dict() -> Dict[str, dict]:
 
 
 
-            ***REMOVED*** Prefer ISO code from JSON overlay when available
+            # Prefer ISO code from JSON overlay when available
 
             iso_code = None
 
@@ -140,7 +140,7 @@ def get_country_relations_dict() -> Dict[str, dict]:
 
 
 
-            ***REMOVED*** Fallback: use Wikidata ID / last URI segment as synthetic key
+            # Fallback: use Wikidata ID / last URI segment as synthetic key
 
             if not iso_code:
 
@@ -194,7 +194,7 @@ def get_country_relations_dict() -> Dict[str, dict]:
 
 
 
-            ***REMOVED*** Merge TSV paths and legacy metadata from JSON when available
+            # Merge TSV paths and legacy metadata from JSON when available
 
             if json_entry is not None:
 
@@ -210,7 +210,7 @@ def get_country_relations_dict() -> Dict[str, dict]:
 
                     data["geovectors_tags_tsv"] = json_entry["geovectors_tags_tsv"]
 
-                ***REMOVED*** Prefer JSON pbf_url if DB does not have one
+                # Prefer JSON pbf_url if DB does not have one
 
                 if not data["pbf_url"] and json_entry.get("pbf_url"):
 
@@ -286,11 +286,11 @@ def get_country_by_iso(iso_code: str) -> Optional[dict]:
 
         lookup = OSMWikiDataHierarchy.objects.filter(admin_level=2)
 
-        ***REMOVED*** Exact match first — never substring-match codes: "AE" must not
-        ***REMOVED*** match the slug "israel" ("isr[ae]l") and return the wrong country
-        ***REMOVED*** (2026-10-06). The fuzzy fallback is preserved ONLY for non-ISO-2
-        ***REMOVED*** inputs (alpha-3 / QID fragments); ISO-2 codes match exactly or
-        ***REMOVED*** not at all.
+        # Exact match first — never substring-match codes: "AE" must not
+        # match the slug "israel" ("isr[ae]l") and return the wrong country
+        # (2026-10-06). The fuzzy fallback is preserved ONLY for non-ISO-2
+        # inputs (alpha-3 / QID fragments); ISO-2 codes match exactly or
+        # not at all.
         hierarchy = lookup.filter(
             models.Q(wikidata_id__iexact=iso_code)
             | models.Q(slug__iexact=iso_code.lower())
@@ -368,10 +368,10 @@ def get_country_by_name(country_name: str) -> Optional[dict]:
 
     try:
 
-        ***REMOVED*** A 2-letter input is a code, not a name — route to the ISO lookup
-        ***REMOVED*** instead of substring-matching names ("EN" must not match
-        ***REMOVED*** "Fr[en]ch"). Name inputs keep the case-insensitive contains
-        ***REMOVED*** lookup (2026-10-06).
+        # A 2-letter input is a code, not a name — route to the ISO lookup
+        # instead of substring-matching names ("EN" must not match
+        # "Fr[en]ch"). Name inputs keep the case-insensitive contains
+        # lookup (2026-10-06).
         cleaned = (country_name or '').strip()
         if len(cleaned) == 2 and cleaned.isalpha():
             return get_country_by_iso(cleaned)

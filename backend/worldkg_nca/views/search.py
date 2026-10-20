@@ -38,14 +38,14 @@ from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
 logger = logging.getLogger(__name__)
 
 
-***REMOVED*** TODO: Refactor this monolithic file
+# TODO: Refactor this monolithic file
 
-***REMOVED*** ── Name-search noise filtering helpers ──────────────────────────────────
-***REMOVED*** OSM tag keys that assert an entity's type/identity.  Entities lacking ALL
-***REMOVED*** of these keys are treated as noise in name-based search (e.g. a node with
-***REMOVED*** only {"name": "벤치"} — a bench whose "name" is literally "bench", or
-***REMOVED*** traffic-sign text leaked into name=).  Configurable via
-***REMOVED*** SPATIAL_SEMANTICS_CONFIG['type_asserting_keys'].
+# ── Name-search noise filtering helpers ──────────────────────────────────
+# OSM tag keys that assert an entity's type/identity.  Entities lacking ALL
+# of these keys are treated as noise in name-based search (e.g. a node with
+# only {"name": "벤치"} — a bench whose "name" is literally "bench", or
+# traffic-sign text leaked into name=).  Configurable via
+# SPATIAL_SEMANTICS_CONFIG['type_asserting_keys'].
 _TYPE_ASSERTING_KEYS = getattr(
     settings.SPATIAL_SEMANTICS_CONFIG,
     'get',
@@ -71,10 +71,10 @@ _NAME_SUBSTRING_BOOST = settings.SPATIAL_SEMANTICS_CONFIG.get(
     'name_substring_boost', 1.0,
 )
 
-***REMOVED*** ── Name romanization helpers (delegated to RomanizerRegistry) ──────────
-***REMOVED*** The romanization logic now lives in semantic_search/services/romanizing_names/.
-***REMOVED*** These thin wrappers maintain backward compatibility with the search view's
-***REMOVED*** existing code while the migration to SQL similarity() is in progress.
+# ── Name romanization helpers (delegated to RomanizerRegistry) ──────────
+# The romanization logic now lives in semantic_search/services/romanizing_names/.
+# These thin wrappers maintain backward compatibility with the search view's
+# existing code while the migration to SQL similarity() is in progress.
 
 def _contains_hangul(text: str) -> bool:
     """Return True if *text* contains any Hangul (Korean) characters."""
@@ -120,12 +120,12 @@ def _cross_script_name_score(query_text: str, entity_name: str) -> float:
     q_hangul = _contains_hangul(query_text)
     e_hangul = _contains_hangul(entity_name)
     if q_hangul and e_hangul:
-        ***REMOVED*** Same-script Korean — use n-gram directly
+        # Same-script Korean — use n-gram directly
         return _char_ngram_jaccard(query_text, entity_name, n=2)
     if not q_hangul and not e_hangul:
-        ***REMOVED*** Same-script Latin — FastText handles this
+        # Same-script Latin — FastText handles this
         return 0.0
-    ***REMOVED*** Cross-script: romanize the Hangul side via the registry
+    # Cross-script: romanize the Hangul side via the registry
     if e_hangul:
         romanized = RomanizerRegistry.auto_romanize(entity_name)
         return _char_ngram_jaccard(query_text.lower(), romanized, n=2)
@@ -141,15 +141,15 @@ def worldkg_semantic_triplet_search(request):
 
     POST /api/nca/semantic-triplet-search/
     Body: {
-        "country_code": "Belize",        ***REMOVED*** Country name or ISO code
+        "country_code": "Belize",        # Country name or ISO code
         "query_tags": {"amenity": "cafe"},
-        "lat": 17.25,                     ***REMOVED*** Optional: geographic anchor
-        "lon": -88.77,                    ***REMOVED*** Optional: geographic anchor
-        "rdf_type": "wkgs:Cafe",          ***REMOVED*** Optional: WorldKG class filter
-        "top_k": 20,                      ***REMOVED*** 1-100, default 20
-        "exact_tag_match": false,         ***REMOVED*** Optional: require exact tag match (default false)
-        "name_distance_threshold": 0.3,  ***REMOVED*** Optional: max cosine distance for semantic match (default 0.3)
-        "use_ann": false                  ***REMOVED*** Optional: use 400D static_embedding with HNSW (default false)
+        "lat": 17.25,                     # Optional: geographic anchor
+        "lon": -88.77,                    # Optional: geographic anchor
+        "rdf_type": "wkgs:Cafe",          # Optional: WorldKG class filter
+        "top_k": 20,                      # 1-100, default 20
+        "exact_tag_match": false,         # Optional: require exact tag match (default false)
+        "name_distance_threshold": 0.3,  # Optional: max cosine distance for semantic match (default 0.3)
+        "use_ann": false                  # Optional: use 400D static_embedding with HNSW (default false)
     }
 
     Scoring:
@@ -172,12 +172,12 @@ def worldkg_semantic_triplet_search(request):
     country_code = request.data.get("country_code")
     query_tags = request.data.get("query_tags") or {}
     natural_query = request.data.get("natural_query") or ""
-    ***REMOVED*** Derive a name search term from natural_query OR query_tags["name"].
-    ***REMOVED*** When query_tags contains a "name" key (e.g. {"name": "파리바게뜨"}), treat
-    ***REMOVED*** it as a name search term for cross-script scoring, substring boost, and
-    ***REMOVED*** the Korean ILIKE pre-filter — the same as a natural_query.  Without this,
-    ***REMOVED*** a Korean name in query_tags is fed to FastText cc.en.300 which can't
-    ***REMOVED*** tokenize Hangul, producing meaningless OOV-collapse distances.
+    # Derive a name search term from natural_query OR query_tags["name"].
+    # When query_tags contains a "name" key (e.g. {"name": "파리바게뜨"}), treat
+    # it as a name search term for cross-script scoring, substring boost, and
+    # the Korean ILIKE pre-filter — the same as a natural_query.  Without this,
+    # a Korean name in query_tags is fed to FastText cc.en.300 which can't
+    # tokenize Hangul, producing meaningless OOV-collapse distances.
     name_search_term = natural_query
     if not name_search_term and isinstance(query_tags, dict):
         name_search_term = (query_tags.get("name") or "").strip()
@@ -186,32 +186,32 @@ def worldkg_semantic_triplet_search(request):
     rdf_type = request.data.get("rdf_type")
     top_k = request.data.get("top_k", 20)
     exact_tag_match = request.data.get("exact_tag_match", False)
-    ***REMOVED*** Cosine distance threshold for semantic filtering (0 = identical, 2 = opposite).
-    ***REMOVED*** Default 0.5 (configurable via SPATIAL_SEMANTICS_CONFIG).  The old default
-    ***REMOVED*** of 0.75 was too permissive — FastText OOV-collapse noise (Korean text
-    ***REMOVED*** that cc.en.300 can't tokenize) clustered at ~0.09 distance and passed
-    ***REMOVED*** the filter.  0.5 is a tighter cutoff that still keeps genuine matches.
+    # Cosine distance threshold for semantic filtering (0 = identical, 2 = opposite).
+    # Default 0.5 (configurable via SPATIAL_SEMANTICS_CONFIG).  The old default
+    # of 0.75 was too permissive — FastText OOV-collapse noise (Korean text
+    # that cc.en.300 can't tokenize) clustered at ~0.09 distance and passed
+    # the filter.  0.5 is a tighter cutoff that still keeps genuine matches.
     name_distance_threshold = request.data.get(
         "name_distance_threshold", _DEFAULT_NAME_DISTANCE_THRESHOLD,
     )
     use_ann = request.data.get("use_ann", False)
     use_learned_weights = request.data.get("use_learned_weights", False)
-    ***REMOVED*** snapshot_date filters OsmEntity by snapshot_id (CharField, e.g. "2025_12_31")
+    # snapshot_date filters OsmEntity by snapshot_id (CharField, e.g. "2025_12_31")
     snapshot_date = request.data.get("snapshot_date")
-    ***REMOVED*** Optional: filter within a subdivision (province/state/municipality) by Wikidata QID
+    # Optional: filter within a subdivision (province/state/municipality) by Wikidata QID
     subdivision_qid = request.data.get("subdivision_qid")
-    ***REMOVED*** Noise filtering: exclude entities without any type-asserting OSM key
-    ***REMOVED*** (eliminates benches named "벤치", traffic-sign text, generic nouns).
+    # Noise filtering: exclude entities without any type-asserting OSM key
+    # (eliminates benches named "벤치", traffic-sign text, generic nouns).
     filter_noise = request.data.get("filter_noise", True)
 
-    ***REMOVED*** Auto-infer rdf_type from query_tags if not provided
+    # Auto-infer rdf_type from query_tags if not provided
     if not rdf_type and query_tags:
         ontology_service = get_worldkg_ontology_service()
         inferred_class = ontology_service.predict_class_from_tags(query_tags)
         if inferred_class:
             rdf_type = inferred_class
 
-    ***REMOVED*** Auto-infer rdf_type from natural_query if not provided
+    # Auto-infer rdf_type from natural_query if not provided
     if not rdf_type and natural_query:
         class_keyword_map = {
             "wkgs:Cafe": ["cafe", "coffee", "coffee shop", "espresso"],
@@ -228,8 +228,8 @@ def worldkg_semantic_triplet_search(request):
                 rdf_type = cls
                 break
 
-        ***REMOVED*** Convert natural language to structured query_tags for better matching
-        ***REMOVED*** Extract class keywords and convert to OSM tags
+        # Convert natural language to structured query_tags for better matching
+        # Extract class keywords and convert to OSM tags
         tag_mapping = {
             "school": "amenity",
             "cafe": "amenity",
@@ -243,7 +243,7 @@ def worldkg_semantic_triplet_search(request):
                 query_tags = {osm_key: keyword}
                 break
     
-    ***REMOVED*** Adjust threshold for ANN mode (400D distances are different from 300D)
+    # Adjust threshold for ANN mode (400D distances are different from 300D)
     if use_ann:
         name_distance_threshold = request.data.get("name_distance_threshold", 1.0)
 
@@ -277,27 +277,27 @@ def worldkg_semantic_triplet_search(request):
             return default
         return v
 
-    ***REMOVED*** The frontend sends a full country name (e.g. "Belize"), not an ISO code.
-    ***REMOVED*** Use the same bbox resolution logic as enrichment service for consistency,
-    ***REMOVED*** but be robust to callers that pass slug-style identifiers such as
-    ***REMOVED*** "ireland-and-northern-ireland" or "Ireland_and_northern_ireland".
+    # The frontend sends a full country name (e.g. "Belize"), not an ISO code.
+    # Use the same bbox resolution logic as enrichment service for consistency,
+    # but be robust to callers that pass slug-style identifiers such as
+    # "ireland-and-northern-ireland" or "Ireland_and_northern_ireland".
     from core.services.snapshot.country_override_service import get_country_override_record
     from semantic_search.utils.subdivision_resolver import (
         resolve_subdivision_bbox as _resolve_subdivision_bbox,
         resolve_subdivision_country_code,
     )
 
-    ***REMOVED*** If subdivision_qid is provided, use the subdivision bbox directly and
-    ***REMOVED*** infer the country_code if not explicitly given. A subdivision without
-    ***REMOVED*** boundary data (SPARQL gap — `backfill_subdivision_bboxes` closes it)
-    ***REMOVED*** DEGRADES to a country-wide search with a note instead of failing the
-    ***REMOVED*** request (2026-09-30).
+    # If subdivision_qid is provided, use the subdivision bbox directly and
+    # infer the country_code if not explicitly given. A subdivision without
+    # boundary data (SPARQL gap — `backfill_subdivision_bboxes` closes it)
+    # DEGRADES to a country-wide search with a note instead of failing the
+    # request (2026-09-30).
     subdivision_fallback = False
     bbox = None
     if subdivision_qid:
         bbox = _resolve_subdivision_bbox(subdivision_qid)
         if bbox:
-            ***REMOVED*** Infer country_code from the subdivision if not provided
+            # Infer country_code from the subdivision if not provided
             if not country_code:
                 inferred_iso = resolve_subdivision_country_code(subdivision_qid)
                 if inferred_iso:
@@ -310,15 +310,15 @@ def worldkg_semantic_triplet_search(request):
             )
     if subdivision_fallback or not bbox:
         bbox = None
-        ***REMOVED*** Resolve through the shared country resolver FIRST. It handles ISO
-        ***REMOVED*** codes, QIDs, and names safely (resolve_iso_code internally). The
-        ***REMOVED*** previous ad-hoc name__icontains lookup matched 2-letter ISO codes
-        ***REMOVED*** as substrings of unrelated region names ("PL" → "Plzensky") and
-        ***REMOVED*** short-circuited the correct resolver, silently returning an empty
-        ***REMOVED*** bbox for valid ISO inputs.
+        # Resolve through the shared country resolver FIRST. It handles ISO
+        # codes, QIDs, and names safely (resolve_iso_code internally). The
+        # previous ad-hoc name__icontains lookup matched 2-letter ISO codes
+        # as substrings of unrelated region names ("PL" → "Plzensky") and
+        # short-circuited the correct resolver, silently returning an empty
+        # bbox for valid ISO inputs.
         bbox = resolve_country_bbox(country_code, None)
         if not bbox:
-            ***REMOVED*** Fallback to ISO/QID and override-aware resolution.
+            # Fallback to ISO/QID and override-aware resolution.
             iso_code = country_code.upper()
             try:
                 override_record = get_country_override_record(country_code)
@@ -330,7 +330,7 @@ def worldkg_semantic_triplet_search(request):
                 pass
             bbox = resolve_country_bbox(iso_code, None)
             if not bbox:
-                ***REMOVED*** Fallback to name-based lookup via OSMWikiDataHierarchy
+                # Fallback to name-based lookup via OSMWikiDataHierarchy
                 country_meta = get_country_by_name(country_code)
                 if country_meta:
                     iso = (
@@ -354,38 +354,38 @@ def worldkg_semantic_triplet_search(request):
         gv_tags_embedding__isnull=False,
     )
 
-    ***REMOVED*** ── Noise filtering ────────────────────────────────────────────────
-    ***REMOVED*** Exclude entities without any type-asserting OSM key.  This eliminates
-    ***REMOVED*** mis-tagged noise: benches whose name= is literally "벤치" (bench),
-    ***REMOVED*** traffic-sign text leaked into name=, generic nouns like "도로" (road),
-    ***REMOVED*** etc.  Uses the GIN index on tags (jsonb ?| operator) for performance.
-    ***REMOVED*** Set filter_noise=false in the request body to disable.
+    # ── Noise filtering ────────────────────────────────────────────────
+    # Exclude entities without any type-asserting OSM key.  This eliminates
+    # mis-tagged noise: benches whose name= is literally "벤치" (bench),
+    # traffic-sign text leaked into name=, generic nouns like "도로" (road),
+    # etc.  Uses the GIN index on tags (jsonb ?| operator) for performance.
+    # Set filter_noise=false in the request body to disable.
     if filter_noise and _TYPE_ASSERTING_KEYS:
         qs = qs.filter(tags__has_any_keys=_TYPE_ASSERTING_KEYS)
 
-    ***REMOVED*** Filter by snapshot_date when provided (OsmEntity.snapshot_id is a CharField)
+    # Filter by snapshot_date when provided (OsmEntity.snapshot_id is a CharField)
     if snapshot_date:
         qs = qs.filter(snapshot_id=snapshot_date)
 
-    ***REMOVED*** Filter by inferred or provided rdf_type (when auto-inferred, filter to ensure relevance)
+    # Filter by inferred or provided rdf_type (when auto-inferred, filter to ensure relevance)
     auto_inferred_rdf_type = rdf_type and not request.data.get("rdf_type")
-    ***REMOVED*** Don't filter at database level for natural queries - use post-scoring instead
-    ***REMOVED*** if auto_inferred_rdf_type:
-    ***REMOVED***     qs = qs.filter(wkg_class=rdf_type)
+    # Don't filter at database level for natural queries - use post-scoring instead
+    # if auto_inferred_rdf_type:
+    #     qs = qs.filter(wkg_class=rdf_type)
 
-    ***REMOVED*** Tag filtering — always apply when query_tags has specific keys.
-    ***REMOVED*** When exact_tag_match=True: require exact key=value match.
-    ***REMOVED*** When exact_tag_match=False: require the tag key to be present (semantic
-    ***REMOVED***   ranking handles value similarity). This prevents entities without the
-    ***REMOVED***   tag at all from polluting results (e.g. querying {"cuisine": "jamaican"}
-    ***REMOVED***   should not return entities with no cuisine tag).
+    # Tag filtering — always apply when query_tags has specific keys.
+    # When exact_tag_match=True: require exact key=value match.
+    # When exact_tag_match=False: require the tag key to be present (semantic
+    #   ranking handles value similarity). This prevents entities without the
+    #   tag at all from polluting results (e.g. querying {"cuisine": "jamaican"}
+    #   should not return entities with no cuisine tag).
     if query_tags:
         tag_filters = Q()
         for key, value in query_tags.items():
             if value and exact_tag_match:
                 if key == "name":
-                    ***REMOVED*** name= is free text with OSM casing — exact match
-                    ***REMOVED*** must be case-insensitive ('jerk' == 'Jerk').
+                    # name= is free text with OSM casing — exact match
+                    # must be case-insensitive ('jerk' == 'Jerk').
                     tag_filters &= Q(tags__name__iexact=value)
                 else:
                     tag_filters &= Q(**{f"tags__{key}": value})
@@ -393,14 +393,14 @@ def worldkg_semantic_triplet_search(request):
                 tag_filters &= Q(tags__has_key=key)
         qs = qs.filter(tag_filters)
 
-    ***REMOVED*** Optional: load learned projection weights for this country
+    # Optional: load learned projection weights for this country
     w_geo = 1.0
     w_name = 1.0
     w_class = 1.0
 
-    ***REMOVED*** Boost class score when rdf_type is auto-inferred from query
+    # Boost class score when rdf_type is auto-inferred from query
     if rdf_type and not request.data.get("rdf_type"):
-        w_class = 5.0  ***REMOVED*** Much higher weight for auto-inferred class matching
+        w_class = 5.0  # Much higher weight for auto-inferred class matching
 
     if use_learned_weights:
         try:
@@ -420,24 +420,24 @@ def worldkg_semantic_triplet_search(request):
             w_name = float(weight_asset.w_name)
             w_class = float(weight_asset.w_class)
         else:
-            ***REMOVED*** Fallback to default weights when none are available
+            # Fallback to default weights when none are available
             use_learned_weights = False
 
-    ***REMOVED*** ANN Search Path (400D static_embedding)
+    # ANN Search Path (400D static_embedding)
     if use_ann:
-        ***REMOVED*** Check if static_embedding is available
+        # Check if static_embedding is available
         qs = qs.filter(static_embedding__isnull=False)
 
-        ***REMOVED*** Generate 300D query embedding from tags
+        # Generate 300D query embedding from tags
         tag_counts = FastTextEmbeddingService.build_tag_counts_from_osm_tags(query_tags)
         query_embedding_300d = FastTextEmbeddingService.calculate_embedding(tag_counts)
         query_list_300d = query_embedding_300d.tolist()
 
-        ***REMOVED*** Pad to 400D (100D spatial component = zeros for now)
-        ***REMOVED*** TODO: Future enhancement: generate spatial component from lat/lon
+        # Pad to 400D (100D spatial component = zeros for now)
+        # TODO: Future enhancement: generate spatial component from lat/lon
         query_list_400d = query_list_300d + [0.0] * 100
 
-        ***REMOVED*** Use HNSW index for fast ANN search
+        # Use HNSW index for fast ANN search
         qs = qs.annotate(
             ann_distance=RawSQL(
                 "static_embedding <=> %s::vector",
@@ -446,7 +446,7 @@ def worldkg_semantic_triplet_search(request):
             )
         )
 
-        ***REMOVED*** Add geo distance annotation if lat/lon provided
+        # Add geo distance annotation if lat/lon provided
         point = None
         if lat is not None and lon is not None:
             try:
@@ -457,11 +457,11 @@ def worldkg_semantic_triplet_search(request):
             except (TypeError, ValueError):
                 point = None
 
-        ***REMOVED*** Get top candidates via ANN (no re-ranking for speed)
+        # Get top candidates via ANN (no re-ranking for speed)
         initial_limit = max(top_k * 10, top_k)
         candidates = list(qs.order_by("ann_distance")[:initial_limit])
 
-        ***REMOVED*** Prepare query name terms for substring matching (same as triple-space)
+        # Prepare query name terms for substring matching (same as triple-space)
         _ann_query_name_terms = []
         if name_search_term:
             _ann_query_name_terms = [
@@ -469,7 +469,7 @@ def worldkg_semantic_triplet_search(request):
                 if len(t) >= 3 and t not in FastTextEmbeddingService._STOP_WORDS
             ]
 
-        ***REMOVED*** Direct scoring from ANN distance, with optional learned weights
+        # Direct scoring from ANN distance, with optional learned weights
         results = []
         for entity in candidates:
             ann_distance = getattr(entity, "ann_distance", None)
@@ -477,19 +477,19 @@ def worldkg_semantic_triplet_search(request):
                 ann_distance = float(ann_distance) if ann_distance is not None else 1.0
             except (TypeError, ValueError):
                 ann_distance = 1.0
-            ***REMOVED*** Guard against NaN (same as triple-space path)
+            # Guard against NaN (same as triple-space path)
             if not math.isfinite(ann_distance):
                 ann_distance = 1.0
 
-            ***REMOVED*** Cross-script name score (Korean↔Latin fallback) — computed
-            ***REMOVED*** before the threshold check so cross-script matches can bypass
-            ***REMOVED*** the (meaningless for CJK) FastText distance filter.
+            # Cross-script name score (Korean↔Latin fallback) — computed
+            # before the threshold check so cross-script matches can bypass
+            # the (meaningless for CJK) FastText distance filter.
             xscript_score = 0.0
             entity_name = (entity.tags or {}).get("name", "") or ""
             if name_search_term and entity_name:
                 xscript_score = _cross_script_name_score(name_search_term, entity_name)
 
-            ***REMOVED*** Name substring match boost
+            # Name substring match boost
             name_boost_score = 0.0
             if _ann_query_name_terms and entity_name:
                 name_lower = entity_name.lower()
@@ -497,16 +497,16 @@ def worldkg_semantic_triplet_search(request):
                     if term in name_lower:
                         name_boost_score += _NAME_SUBSTRING_BOOST
 
-            ***REMOVED*** Convert ANN distance to similarity score
+            # Convert ANN distance to similarity score
             name_score = 1.0 - ann_distance
 
-            ***REMOVED*** Apply semantic distance threshold, but allow cross-script or
-            ***REMOVED*** name-substring matches to bypass it (same logic as triple-space).
+            # Apply semantic distance threshold, but allow cross-script or
+            # name-substring matches to bypass it (same logic as triple-space).
             if ann_distance > name_distance_threshold:
                 if xscript_score <= 0.0 and name_boost_score <= 0.0:
                     continue
 
-            ***REMOVED*** USLP geographic score (geohash P4 cluster centers, d_max=39km)
+            # USLP geographic score (geohash P4 cluster centers, d_max=39km)
             geo_score = 0.0
             if point is not None:
                 geo_value = getattr(entity, "geo_distance", None)
@@ -530,7 +530,7 @@ def worldkg_semantic_triplet_search(request):
                     except (TypeError, ValueError, Exception):
                         geo_score = 0.0
 
-            ***REMOVED*** Class scoring
+            # Class scoring
             class_score = 0.0
             if rdf_type:
                 if entity.wkg_class == rdf_type or (
@@ -538,7 +538,7 @@ def worldkg_semantic_triplet_search(request):
                 ):
                     class_score = 1.0
 
-            ***REMOVED*** Tag match boost (same logic as triple-space path)
+            # Tag match boost (same logic as triple-space path)
             tag_match_score = 0.0
             if query_tags:
                 for qk, qv in query_tags.items():
@@ -599,21 +599,21 @@ def worldkg_semantic_triplet_search(request):
             }
         )
 
-    ***REMOVED*** Triple-Space Search Path (current implementation)
-    ***REMOVED*** Support both structured tag queries and natural language queries.
-    ***REMOVED*** When query_tags were extracted from a natural query (lines 549-562), use
-    ***REMOVED*** the clean tag-based embedding — the raw text embedding dilutes the signal
-    ***REMOVED*** with stop words and country names (e.g. "find cafes in belize" embeds
-    ***REMOVED*** "find", "in", "belize" as noise). Fall back to text embedding only when
-    ***REMOVED*** no tags were extracted.
+    # Triple-Space Search Path (current implementation)
+    # Support both structured tag queries and natural language queries.
+    # When query_tags were extracted from a natural query (lines 549-562), use
+    # the clean tag-based embedding — the raw text embedding dilutes the signal
+    # with stop words and country names (e.g. "find cafes in belize" embeds
+    # "find", "in", "belize" as noise). Fall back to text embedding only when
+    # no tags were extracted.
     if natural_query and not query_tags:
         query_embedding = FastTextEmbeddingService.calculate_text_embedding(natural_query)
     else:
-        ***REMOVED*** Build tag counts for FastText embedding, excluding the "name" key.
-        ***REMOVED*** The name value is handled by name_search_term (cross-script scoring,
-        ***REMOVED*** substring boost, ILIKE pre-filter) — including it in tag_counts would
-        ***REMOVED*** feed Korean text to FastText cc.en.300 which can't tokenize Hangul,
-        ***REMOVED*** producing meaningless OOV-collapse vectors.
+        # Build tag counts for FastText embedding, excluding the "name" key.
+        # The name value is handled by name_search_term (cross-script scoring,
+        # substring boost, ILIKE pre-filter) — including it in tag_counts would
+        # feed Korean text to FastText cc.en.300 which can't tokenize Hangul,
+        # producing meaningless OOV-collapse vectors.
         tags_for_embedding = {
             k: v for k, v in query_tags.items() if k != "name"
         } if query_tags else {}
@@ -621,17 +621,17 @@ def worldkg_semantic_triplet_search(request):
             tag_counts = FastTextEmbeddingService.build_tag_counts_from_osm_tags(tags_for_embedding)
             query_embedding = FastTextEmbeddingService.calculate_embedding(tag_counts)
         elif name_search_term:
-            ***REMOVED*** Only a name was provided (no other tags) — use text embedding
+            # Only a name was provided (no other tags) — use text embedding
             query_embedding = FastTextEmbeddingService.calculate_text_embedding(name_search_term)
         else:
             query_embedding = FastTextEmbeddingService.calculate_embedding({})
     query_list = query_embedding.tolist()
 
-    ***REMOVED*** Use exact cosine distance (not HNSW approximation).  The + 0 makes the
-    ***REMOVED*** expression non-indexable, preventing PostgreSQL from using the HNSW
-    ***REMOVED*** index on gv_tags_embedding — which returns approximate results that
-    ***REMOVED*** miss relevant entities (e.g. cafe query returns highway=service at
-    ***REMOVED*** dist=0.62 instead of actual cafes at dist=0.16).
+    # Use exact cosine distance (not HNSW approximation).  The + 0 makes the
+    # expression non-indexable, preventing PostgreSQL from using the HNSW
+    # index on gv_tags_embedding — which returns approximate results that
+    # miss relevant entities (e.g. cafe query returns highway=service at
+    # dist=0.62 instead of actual cafes at dist=0.16).
     qs = qs.annotate(
         name_distance=RawSQL(
             "(gv_tags_embedding <=> %s::vector) + 0",
@@ -652,11 +652,11 @@ def worldkg_semantic_triplet_search(request):
     if point is not None:
         qs = qs.annotate(geo_distance=Distance("geom", point))
 
-    ***REMOVED*** ── Prepare query terms for name substring matching ────────────────
-    ***REMOVED*** Extract meaningful tokens from natural_query for substring matching
-    ***REMOVED*** against entity name= tags.  This provides a complementary signal to
-    ***REMOVED*** FastText embeddings, especially for cross-script (Korean↔Latin) and
-    ***REMOVED*** misspelling cases where the embedding alone can't distinguish tokens.
+    # ── Prepare query terms for name substring matching ────────────────
+    # Extract meaningful tokens from natural_query for substring matching
+    # against entity name= tags.  This provides a complementary signal to
+    # FastText embeddings, especially for cross-script (Korean↔Latin) and
+    # misspelling cases where the embedding alone can't distinguish tokens.
     _query_name_terms = []
     if name_search_term:
         _query_name_terms = [
@@ -664,33 +664,33 @@ def worldkg_semantic_triplet_search(request):
             if len(t) >= 3 and t not in FastTextEmbeddingService._STOP_WORDS
         ]
 
-    ***REMOVED*** Increase candidate limit when rdf_type is auto-inferred to find class matches
+    # Increase candidate limit when rdf_type is auto-inferred to find class matches
     initial_limit = max(top_k * 50, top_k) if auto_inferred_rdf_type else max(top_k * 10, top_k)
 
-    ***REMOVED*** ── Name-term candidate pull ───────────────────────────────────────
-    ***REMOVED*** gv_tags_embedding encodes tag structure, not the name= text, so a
-    ***REMOVED*** name query ('jerk') has no path into the embedding-ordered window —
-    ***REMOVED*** on Jamaica it returned zero rows despite 25+ jerk-named entities
-    ***REMOVED*** (2026-10-16).  Pull name candidates separately and merge them into
-    ***REMOVED*** the embedding window so the substring boost / exact match can rank
-    ***REMOVED*** them.  When the query contains Hangul, FastText cc.en.300 cannot
-    ***REMOVED*** meaningfully rank candidates at all (OOV tokens produce similar/NaN
-    ***REMOVED*** distances), so the pre-filter is the primary retrieval path there.
+    # ── Name-term candidate pull ───────────────────────────────────────
+    # gv_tags_embedding encodes tag structure, not the name= text, so a
+    # name query ('jerk') has no path into the embedding-ordered window —
+    # on Jamaica it returned zero rows despite 25+ jerk-named entities
+    # (2026-10-16).  Pull name candidates separately and merge them into
+    # the embedding window so the substring boost / exact match can rank
+    # them.  When the query contains Hangul, FastText cc.en.300 cannot
+    # meaningfully rank candidates at all (OOV tokens produce similar/NaN
+    # distances), so the pre-filter is the primary retrieval path there.
     _is_korean_query = _contains_hangul(name_search_term)
     name_candidates = []
     if _is_korean_query and name_search_term:
-        ***REMOVED*** Hangul never lands in name_romanized; ILIKE on the raw name=
-        ***REMOVED*** tag leverages the tags GIN index for same-script matching.
+        # Hangul never lands in name_romanized; ILIKE on the raw name=
+        # tag leverages the tags GIN index for same-script matching.
         name_candidates = list(
             qs.filter(tags__name__icontains=name_search_term.strip())
             .order_by("name_distance")[:max(top_k * 10, 100)]
         )
     elif name_search_term:
-        ***REMOVED*** Latin (and other) scripts: index-assisted trigram match on
-        ***REMOVED*** name_romanized (%% is the pg_trgm % operator — a bare % collides
-        ***REMOVED*** with psycopg2 placeholder parsing).  Case-free since romanized
-        ***REMOVED*** names are lowercased, and spelling-tolerant: 'jerk center'
-        ***REMOVED*** matches 'Jerk Centre' at sim 0.6.
+        # Latin (and other) scripts: index-assisted trigram match on
+        # name_romanized (%% is the pg_trgm % operator — a bare % collides
+        # with psycopg2 placeholder parsing).  Case-free since romanized
+        # names are lowercased, and spelling-tolerant: 'jerk center'
+        # matches 'Jerk Centre' at sim 0.6.
         name_candidates = list(
             qs.extra(
                 where=["name_romanized %% %s"],
@@ -707,7 +707,7 @@ def worldkg_semantic_triplet_search(request):
         )
 
     if name_candidates:
-        ***REMOVED*** Merge with regular candidates (deduplicated by osm_type+osm_id)
+        # Merge with regular candidates (deduplicated by osm_type+osm_id)
         regular_candidates = list(qs.order_by("name_distance")[:initial_limit])
         seen_ids = set()
         candidates = []
@@ -719,15 +719,15 @@ def worldkg_semantic_triplet_search(request):
     else:
         candidates = list(qs.order_by("name_distance")[:initial_limit])
         if name_search_term:
-            ***REMOVED*** Latin-script name queries: the embedding window (top-N by
-            ***REMOVED*** gv_tags distance) cannot guarantee name matches enter the
-            ***REMOVED*** pool — gv_tags embeds tags, not the name (measured 2026-10-07:
-            ***REMOVED*** "The Friars Tavern" sat at rank 3205 of the name-key set at
-            ***REMOVED*** distance 0.57, so the substring boost had no candidate to
-            ***REMOVED*** rescue and the search returned 0). Mirror the Korean ILIKE
-            ***REMOVED*** pre-filter: pull entities whose name= contains any query
-            ***REMOVED*** token (apostrophe-stripped variants included), then merge
-            ***REMOVED*** into the pool.
+            # Latin-script name queries: the embedding window (top-N by
+            # gv_tags distance) cannot guarantee name matches enter the
+            # pool — gv_tags embeds tags, not the name (measured 2026-10-07:
+            # "The Friars Tavern" sat at rank 3205 of the name-key set at
+            # distance 0.57, so the substring boost had no candidate to
+            # rescue and the search returned 0). Mirror the Korean ILIKE
+            # pre-filter: pull entities whose name= contains any query
+            # token (apostrophe-stripped variants included), then merge
+            # into the pool.
             patterns = set()
             for t in _query_name_terms:
                 patterns.add(t)
@@ -748,17 +748,17 @@ def worldkg_semantic_triplet_search(request):
                         seen.add(key)
                         candidates.append(e)
 
-    ***REMOVED*** Exact tag-value matches bypass the embedding window. Rare values
-    ***REMOVED*** (e.g. cuisine=bubble_tea) embed far from the query vector and never
-    ***REMOVED*** enter the top-N candidates, so the tag_match boost could never
-    ***REMOVED*** surface them — a Tag Query with an explicit value must find them.
-    ***REMOVED*** Tag-phrase gate (2026-10-11): multi-word values normalize to the
-    ***REMOVED*** stored OSM convention ("bubble tea" → "bubble_tea") so a typed
-    ***REMOVED*** space form hits the underscore-stored tag. The `name` key is
-    ***REMOVED*** exempt: entity names are free text, not tag vocabulary.
-    ***REMOVED*** name= values are free text stored with OSM casing, so match them
-    ***REMOVED*** case-insensitively — jsonb containment ('jerk center') misses the
-    ***REMOVED*** stored 'Jerk Center'.
+    # Exact tag-value matches bypass the embedding window. Rare values
+    # (e.g. cuisine=bubble_tea) embed far from the query vector and never
+    # enter the top-N candidates, so the tag_match boost could never
+    # surface them — a Tag Query with an explicit value must find them.
+    # Tag-phrase gate (2026-10-11): multi-word values normalize to the
+    # stored OSM convention ("bubble tea" → "bubble_tea") so a typed
+    # space form hits the underscore-stored tag. The `name` key is
+    # exempt: entity names are free text, not tag vocabulary.
+    # name= values are free text stored with OSM casing, so match them
+    # case-insensitively — jsonb containment ('jerk center') misses the
+    # stored 'Jerk Center'.
     _name_exact = (query_tags.get("name") or "").strip()
     _exact_pairs = {
         k: normalize_tag_value(v)
@@ -787,30 +787,30 @@ def worldkg_semantic_triplet_search(request):
             name_distance = float(name_distance) if name_distance is not None else 1.0
         except (TypeError, ValueError):
             name_distance = 1.0
-        ***REMOVED*** Guard against NaN — FastText cc.en.300 produces NaN distances for
-        ***REMOVED*** Korean-only queries (OOV Hangul tokens yield zero-norm vectors).
-        ***REMOVED*** NaN comparisons are always False, so NaN would bypass the threshold
-        ***REMOVED*** check below.  Treat NaN as max distance (1.0).
+        # Guard against NaN — FastText cc.en.300 produces NaN distances for
+        # Korean-only queries (OOV Hangul tokens yield zero-norm vectors).
+        # NaN comparisons are always False, so NaN would bypass the threshold
+        # check below.  Treat NaN as max distance (1.0).
         if not math.isfinite(name_distance):
             name_distance = 1.0
 
-        ***REMOVED*** ── Cross-script name score (Korean↔Latin fallback) ────────────
-        ***REMOVED*** FastText cc.en.300 cannot meaningfully compare Korean and Latin
-        ***REMOVED*** text — all Hangul OOV tokens collapse to similar subword vectors.
-        ***REMOVED*** When the query and entity name use different scripts, compute a
-        ***REMOVED*** character n-gram Jaccard similarity as a complementary signal.
-        ***REMOVED*** NOTE: computed BEFORE the distance threshold check so that cross-
-        ***REMOVED*** script matches can bypass the (meaningless for CJK) FastText
-        ***REMOVED*** distance filter.
+        # ── Cross-script name score (Korean↔Latin fallback) ────────────
+        # FastText cc.en.300 cannot meaningfully compare Korean and Latin
+        # text — all Hangul OOV tokens collapse to similar subword vectors.
+        # When the query and entity name use different scripts, compute a
+        # character n-gram Jaccard similarity as a complementary signal.
+        # NOTE: computed BEFORE the distance threshold check so that cross-
+        # script matches can bypass the (meaningless for CJK) FastText
+        # distance filter.
         xscript_score = 0.0
         entity_name = (entity.tags or {}).get("name", "") or ""
         if name_search_term and entity_name:
             xscript_score = _cross_script_name_score(name_search_term, entity_name)
 
-        ***REMOVED*** ── Name substring match boost ─────────────────────────────────
-        ***REMOVED*** When a query term appears as a substring of the entity's name=
-        ***REMOVED*** tag (case-insensitive), boost the score.  This helps exact-name
-        ***REMOVED*** and partial-name matches that the embedding might not surface.
+        # ── Name substring match boost ─────────────────────────────────
+        # When a query term appears as a substring of the entity's name=
+        # tag (case-insensitive), boost the score.  This helps exact-name
+        # and partial-name matches that the embedding might not surface.
         name_boost_score = 0.0
         if _query_name_terms and entity_name:
             name_lower = entity_name.lower()
@@ -818,32 +818,32 @@ def worldkg_semantic_triplet_search(request):
                 if term in name_lower:
                     name_boost_score += _NAME_SUBSTRING_BOOST
 
-        ***REMOVED*** Tag match boost — when query_tags has specific values, boost
-        ***REMOVED*** entities whose tag value exactly matches. This ensures that
-        ***REMOVED*** {"cuisine": "jamaican"} ranks cuisine=jamaican above cuisine=indian
-        ***REMOVED*** even when their FastText embeddings are semantically similar.
+        # Tag match boost — when query_tags has specific values, boost
+        # entities whose tag value exactly matches. This ensures that
+        # {"cuisine": "jamaican"} ranks cuisine=jamaican above cuisine=indian
+        # even when their FastText embeddings are semantically similar.
         tag_match_score = 0.0
         if query_tags:
             for qk, qv in query_tags.items():
                 if qv and entity.tags.get(qk) == qv:
                     tag_match_score += 1.0
 
-        ***REMOVED*** Apply semantic distance threshold, but allow cross-script,
-        ***REMOVED*** name-substring, or exact tag-value matches to bypass it — all
-        ***REMOVED*** three are exact signals. FastText cc.en.300 distance is
-        ***REMOVED*** meaningless for Korean text (OOV collapse), and rare tag values
-        ***REMOVED*** embed far from the query vector (bubble_tea sits at dist 0.4+
-        ***REMOVED*** while generic cuisine rows cluster at ~0.25).
+        # Apply semantic distance threshold, but allow cross-script,
+        # name-substring, or exact tag-value matches to bypass it — all
+        # three are exact signals. FastText cc.en.300 distance is
+        # meaningless for Korean text (OOV collapse), and rare tag values
+        # embed far from the query vector (bubble_tea sits at dist 0.4+
+        # while generic cuisine rows cluster at ~0.25).
         if name_distance > name_distance_threshold:
             if xscript_score <= 0.0 and name_boost_score <= 0.0 and tag_match_score <= 0.0:
                 continue
 
         name_score = 1.0 - name_distance
 
-        ***REMOVED*** USLP geographic space score (Mann et al. 2023 §3.3):
-        ***REMOVED*** Geohash cluster centers at P4 (~39km cells), d_max = P4 cell width.
-        ***REMOVED*** The semantic search view has no template context, so P4 (local) is
-        ***REMOVED*** the default precision — appropriate for most tag-based queries.
+        # USLP geographic space score (Mann et al. 2023 §3.3):
+        # Geohash cluster centers at P4 (~39km cells), d_max = P4 cell width.
+        # The semantic search view has no template context, so P4 (local) is
+        # the default precision — appropriate for most tag-based queries.
         geo_score = 0.0
         geo_value = getattr(entity, "geo_distance", None)
         if geo_value is not None and point is not None:
@@ -852,7 +852,7 @@ def worldkg_semantic_triplet_search(request):
                     dist_m = float(geo_value.m)
                 else:
                     dist_m = float(geo_value)
-                ***REMOVED*** Use geohash cluster centers, not raw coordinates
+                # Use geohash cluster centers, not raw coordinates
                 import geohash2
                 gh_h = geohash2.encode(point.y, point.x, precision=4)
                 gh_t = geohash2.encode(entity.geom.y, entity.geom.x, precision=4)
@@ -861,8 +861,8 @@ def worldkg_semantic_triplet_search(request):
                 cluster_dist_km = math.sqrt(
                     (float(lat_h) - float(lat_t))**2 +
                     (float(lon_h) - float(lon_t))**2
-                ) * 111.0  ***REMOVED*** rough km conversion
-                d_max = 39.0  ***REMOVED*** P4 cell width
+                ) * 111.0  # rough km conversion
+                d_max = 39.0  # P4 cell width
                 geo_score = max(0.0, min(1.0, 1.0 - (cluster_dist_km / d_max)))
             except (TypeError, ValueError, Exception):
                 geo_score = 0.0
@@ -916,14 +916,14 @@ def worldkg_semantic_triplet_search(request):
 
     results.sort(key=lambda r: r["scores"]["final_score"], reverse=True)
 
-    ***REMOVED*** When rdf_type is auto-inferred, boost class-matching entities in ranking
+    # When rdf_type is auto-inferred, boost class-matching entities in ranking
     if auto_inferred_rdf_type:
         class_matches = [r for r in results if r["scores"]["class_score"] == 1.0]
         if class_matches:
-            ***REMOVED*** Boost class matches by adding 2.0 to their final score
+            # Boost class matches by adding 2.0 to their final score
             for r in class_matches:
                 r["scores"]["final_score"] += 2.0
-            ***REMOVED*** Re-sort with boosted scores
+            # Re-sort with boosted scores
             results.sort(key=lambda r: r["scores"]["final_score"], reverse=True)
 
     results = results[:top_k]
@@ -936,8 +936,8 @@ def worldkg_semantic_triplet_search(request):
         "search_mode": "triple_space",
     }
     if subdivision_fallback:
-        ***REMOVED*** No boundary data for the requested subdivision — the search ran
-        ***REMOVED*** country-wide; surface it so the client knows it was not scoped.
+        # No boundary data for the requested subdivision — the search ran
+        # country-wide; surface it so the client knows it was not scoped.
         response_payload["subdivision_fallback"] = subdivision_qid
         response_payload["warning"] = (
             f"Subdivision {subdivision_qid} has no boundary data; "
@@ -981,7 +981,7 @@ def worldkg_semantic_query_plan(request):
     if not query_text.strip():
         return Response({"error": "query required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    ***REMOVED*** Resolve country bbox using same logic as semantic_triplet_search
+    # Resolve country bbox using same logic as semantic_triplet_search
     bbox = resolve_country_bbox(country_code, None)
     normalized_country = country_code
     if not bbox:
@@ -1001,14 +1001,14 @@ def worldkg_semantic_query_plan(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    ***REMOVED*** ── MapQA parser (replaces class_keyword_map heuristic) ──
+    # ── MapQA parser (replaces class_keyword_map heuristic) ──
     parser = QueryParserService.get_instance()
     parsed = parser.parse(
         query_text, country_code=country_code,
         object_oracle=_object_recovery_oracle,
     )
 
-    ***REMOVED*** Extract OBJECT concept as primary amenity for backward-compat rdf_type
+    # Extract OBJECT concept as primary amenity for backward-compat rdf_type
     primary_rdf_type = None
     rdf_types = []
     object_concept = None
@@ -1017,7 +1017,7 @@ def worldkg_semantic_query_plan(request):
             object_concept = c["text"]
             break
 
-    ***REMOVED*** Map common amenity strings to wkgs: classes for backward compat
+    # Map common amenity strings to wkgs: classes for backward compat
     amenity_to_class = {
         "cafe": "wkgs:Cafe", "coffee_shop": "wkgs:Cafe",
         "restaurant": "wkgs:Restaurant", "diner": "wkgs:Restaurant",
@@ -1032,7 +1032,7 @@ def worldkg_semantic_query_plan(request):
         primary_rdf_type = amenity_to_class.get(key, "wkgs:Amenity")
         rdf_types = [primary_rdf_type]
 
-    ***REMOVED*** Simple region hints from capitalized tokens (potential city/area names)
+    # Simple region hints from capitalized tokens (potential city/area names)
     region_hints = []
     for token in query_text.split():
         stripped = token.strip(",.()")
@@ -1070,7 +1070,7 @@ def worldkg_semantic_query_plan(request):
         "region_hints": region_hints,
         "executor": "worldkg_semantic_triplet_search",
         "semantic_triplet_params": semantic_triplet_params,
-        ***REMOVED*** ── MapQA parser fields (new) ──
+        # ── MapQA parser fields (new) ──
         "template": parsed.get("template"),
         "concepts": parsed.get("concepts"),
         "roles": parsed.get("roles"),
@@ -1130,22 +1130,22 @@ def execute_query(request):
     if not query_text:
         return Response({"error": "query required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    ***REMOVED*** Normalize country_code to ISO if provided
+    # Normalize country_code to ISO if provided
     if country_code:
         try:
             country_code = resolve_iso_code(country_code)
         except Exception:
-            pass  ***REMOVED*** use as-is if resolution fails
+            pass  # use as-is if resolution fails
 
-    ***REMOVED*** Phase 1: parse (with class-verified OBJECT recovery — brand names
-    ***REMOVED*** like "kfc" that the ML concept extractor misses)
+    # Phase 1: parse (with class-verified OBJECT recovery — brand names
+    # like "kfc" that the ML concept extractor misses)
     parser = QueryParserService.get_instance()
     parsed = parser.parse(
         query_text, country_code=country_code,
         object_oracle=_object_recovery_oracle,
     )
 
-    ***REMOVED*** Phase 2: execute
+    # Phase 2: execute
     result = QueryExecutorService.execute(
         parsed, country_code, snapshot_date, question=query_text
     )
@@ -1186,27 +1186,27 @@ def execute_query_stream(request):
     if not query_text:
         return JsonResponse({"error": "query required"}, status=400)
 
-    ***REMOVED*** Traceability: one trace per run; the
-    ***REMOVED*** caller can propagate a cross-app id via ?trace_id= (or X-Trace-Id).
+    # Traceability: one trace per run; the
+    # caller can propagate a cross-app id via ?trace_id= (or X-Trace-Id).
     trace_id = request.GET.get("trace_id") or uuid.uuid4().hex
 
     async def event_stream():
-        ***REMOVED*** Async generator + asyncio.Queue: Django's ASGI handler BUFFERS
-        ***REMOVED*** sync streaming generators (verified empirically — chunks arrive in
-        ***REMOVED*** one burst when the response closes under both runserver and
-        ***REMOVED*** daphne), which flattened the answer-first UX and made
-        ***REMOVED*** client-measured retrieval times unreliable. Async generators
-        ***REMOVED*** stream chunk-by-chunk. The executor runs in a worker thread;
-        ***REMOVED*** events cross to the event loop via loop.call_soon_threadsafe.
+        # Async generator + asyncio.Queue: Django's ASGI handler BUFFERS
+        # sync streaming generators (verified empirically — chunks arrive in
+        # one burst when the response closes under both runserver and
+        # daphne), which flattened the answer-first UX and made
+        # client-measured retrieval times unreliable. Async generators
+        # stream chunk-by-chunk. The executor runs in a worker thread;
+        # events cross to the event loop via loop.call_soon_threadsafe.
         loop = asyncio.get_running_loop()
         events = asyncio.Queue(maxsize=512)
 
         def emit(event, **payload):
-            ***REMOVED*** Accept both call forms: emit("name", key=val) from this view
-            ***REMOVED*** and event_callback({"event": "name", ...}) from the executor.
-            ***REMOVED*** The executor's dict form is the enrichment/executor contract —
-            ***REMOVED*** without normalization the whole dict lands in the SSE event
-            ***REMOVED*** name and EventSource named listeners never fire.
+            # Accept both call forms: emit("name", key=val) from this view
+            # and event_callback({"event": "name", ...}) from the executor.
+            # The executor's dict form is the enrichment/executor contract —
+            # without normalization the whole dict lands in the SSE event
+            # name and EventSource named listeners never fire.
             if isinstance(event, dict):
                 payload = {k: v for k, v in event.items() if k != "event"}
                 event = event.get("event") or "message"
@@ -1218,17 +1218,17 @@ def execute_query_stream(request):
                 from semantic_search.services.query_parser_service import QueryParserService
                 from semantic_search.services.query_executor_service import QueryExecutorService
 
-                ***REMOVED*** Local aliases — assigning to the closure vars would make
-                ***REMOVED*** them local to run() (UnboundLocalError on read).
+                # Local aliases — assigning to the closure vars would make
+                # them local to run() (UnboundLocalError on read).
                 cc = country_code
                 if cc:
                     try:
                         cc = resolve_iso_code(cc)
                     except Exception:
-                        pass  ***REMOVED*** use as-is if resolution fails
+                        pass  # use as-is if resolution fails
 
-                ***REMOVED*** The trace context is thread-local: LLM spans emitted by
-                ***REMOVED*** LLMService inside the executor attach as children.
+                # The trace context is thread-local: LLM spans emitted by
+                # LLMService inside the executor attach as children.
                 with TraceService.run_trace(
                     "execute_query", trace_id=trace_id,
                     metadata={
@@ -1250,10 +1250,10 @@ def execute_query_stream(request):
                     if isinstance(result, dict):
                         result["trace_id"] = trace_id
                     emit("done", result=result)
-            except Exception as exc:  ***REMOVED*** noqa: BLE001 — surface errors as an SSE event
+            except Exception as exc:  # noqa: BLE001 — surface errors as an SSE event
                 emit("error", error=str(exc))
             finally:
-                loop.call_soon_threadsafe(events.put_nowait, None)  ***REMOVED*** sentinel
+                loop.call_soon_threadsafe(events.put_nowait, None)  # sentinel
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -1312,22 +1312,22 @@ def worldkg_subdivisions(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    ***REMOVED*** Normalize to ISO first (override-aware — handles Geofabrik region
-    ***REMOVED*** names like "Ireland And Northern Ireland" → IE), consistent with
-    ***REMOVED*** execute_query / execute_query_stream.
+    # Normalize to ISO first (override-aware — handles Geofabrik region
+    # names like "Ireland And Northern Ireland" → IE), consistent with
+    # execute_query / execute_query_stream.
     try:
         resolved = resolve_iso_code(country_code)
         if resolved:
             country_code = resolved
     except Exception:
-        pass  ***REMOVED*** fall through to the profile lookups below
+        pass  # fall through to the profile lookups below
 
-    ***REMOVED*** Resolve to CountryPipelineProfile — EXACT ISO match only.
-    ***REMOVED*** resolve_iso_code() above normalizes names AND Geofabrik region names
-    ***REMOVED*** ("Ireland And Northern Ireland" → IE), so a canonical-name substring
-    ***REMOVED*** fallback is unnecessary and dangerous: a profile-less code like "AE"
-    ***REMOVED*** would match "Isr[ae]l" and silently return the wrong country's data
-    ***REMOVED*** (2026-10-06; also hardened at the resolver — country_relations.py).
+    # Resolve to CountryPipelineProfile — EXACT ISO match only.
+    # resolve_iso_code() above normalizes names AND Geofabrik region names
+    # ("Ireland And Northern Ireland" → IE), so a canonical-name substring
+    # fallback is unnecessary and dangerous: a profile-less code like "AE"
+    # would match "Isr[ae]l" and silently return the wrong country's data
+    # (2026-10-06; also hardened at the resolver — country_relations.py).
     profile = CountryPipelineProfile.objects.filter(iso2__iexact=country_code).first()
     if not profile:
         return Response(
@@ -1345,9 +1345,9 @@ def worldkg_subdivisions(request):
         has_bbox = all(v is not None for v in (
             sg.bbox_min_lon, sg.bbox_min_lat, sg.bbox_max_lon, sg.bbox_max_lat,
         ))
-        ***REMOVED*** Only offer subdivisions that can actually scope the search — a
-        ***REMOVED*** bbox-less subdivision would otherwise 400 on selection
-        ***REMOVED*** (backfill with `backfill_subdivision_bboxes` to close gaps).
+        # Only offer subdivisions that can actually scope the search — a
+        # bbox-less subdivision would otherwise 400 on selection
+        # (backfill with `backfill_subdivision_bboxes` to close gaps).
         if not has_bbox:
             continue
         subdivisions.append({
@@ -1414,11 +1414,11 @@ def worldkg_similar_entities(request):
 
     POST /api/nca/similar-entities/
     Body: {
-        "entity": "The Friars Tavern",   ***REMOVED*** Required: the seed entity's name
-        "country_code": "IE",            ***REMOVED*** Optional: scopes the seed lookup
-        "snapshot_date": "2025_12_31",   ***REMOVED*** Optional: snapshot partition key
-        "top_k": 10,                     ***REMOVED*** 1-50, default 10
-        "scope": "same_country",         ***REMOVED*** "same_country" (default) | "all"
+        "entity": "The Friars Tavern",   # Required: the seed entity's name
+        "country_code": "IE",            # Optional: scopes the seed lookup
+        "snapshot_date": "2025_12_31",   # Optional: snapshot partition key
+        "top_k": 10,                     # 1-50, default 10
+        "scope": "same_country",         # "same_country" (default) | "all"
     }
 
     Answers "like X", not "near X": one exact cosine (<=>) query over the

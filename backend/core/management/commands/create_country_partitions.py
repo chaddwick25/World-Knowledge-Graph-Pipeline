@@ -24,22 +24,22 @@ or ``OsmBoundary``) — not from a hardcoded dict.  This covers all 191 countrie
 
 Usage::
 
-    ***REMOVED*** All completed SnapshotJobs (default)
+    # All completed SnapshotJobs (default)
     python manage.py create_country_partitions
 
-    ***REMOVED*** Specific country + snapshot
+    # Specific country + snapshot
     python manage.py create_country_partitions --country CU --snapshot 2025_12_31
 
-    ***REMOVED*** Structure only (no data migration, no HNSW, no MV)
+    # Structure only (no data migration, no HNSW, no MV)
     python manage.py create_country_partitions --skip-data
 
-    ***REMOVED*** MV only — create/refresh materialized view for a country (used by step_6)
+    # MV only — create/refresh materialized view for a country (used by step_6)
     python manage.py create_country_partitions --country CU --mv-only
 
-    ***REMOVED*** Dry run — report what would happen
+    # Dry run — report what would happen
     python manage.py create_country_partitions --dry-run
 
-    ***REMOVED*** Cleanup a specific country's partition + MV
+    # Cleanup a specific country's partition + MV
     python manage.py create_country_partitions --cleanup --country CU
 
 The command is idempotent: re-running it skips partitions that are already
@@ -59,13 +59,13 @@ from osmsnapshot.models import SnapshotJob
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** The root partitioned table IS the Django model's table.
-***REMOVED*** Django's migration creates it as a regular table; _ensure_root_table()
-***REMOVED*** converts it to a partitioned table on first run.
+# The root partitioned table IS the Django model's table.
+# Django's migration creates it as a regular table; _ensure_root_table()
+# converts it to a partitioned table on first run.
 ROOT_TABLE = "semantic_search_osmentity"
-SNAPSHOT_TABLE = "embeddings_{snapshot}"          ***REMOVED*** e.g. embeddings_2025_12_31
-LEAF_TABLE = "embeddings_{snapshot}_{cc_lower}"   ***REMOVED*** e.g. embeddings_2025_12_31_cu
-MV_TABLE = "mv_embeddings_{snapshot}_{cc_lower}"  ***REMOVED*** e.g. mv_embeddings_2025_12_31_cu
+SNAPSHOT_TABLE = "embeddings_{snapshot}"          # e.g. embeddings_2025_12_31
+LEAF_TABLE = "embeddings_{snapshot}_{cc_lower}"   # e.g. embeddings_2025_12_31_cu
+MV_TABLE = "mv_embeddings_{snapshot}_{cc_lower}"  # e.g. mv_embeddings_2025_12_31_cu
 
 
 class Command(BaseCommand):
@@ -126,7 +126,7 @@ class Command(BaseCommand):
                  "Used by step_6 after GV-NLE training is complete.",
         )
 
-    ***REMOVED*** ── Main ─────────────────────────────────────────────────────────────
+    # ── Main ─────────────────────────────────────────────────────────────
 
     def handle(self, *args, **options):
         country = options["country"].upper() if options["country"] else None
@@ -172,7 +172,7 @@ class Command(BaseCommand):
             ))
             return
 
-        ***REMOVED*** Build the list of (snapshot, country) pairs to process
+        # Build the list of (snapshot, country) pairs to process
         targets = self._resolve_targets(country, snapshot)
         if not targets:
             self.stdout.write(self.style.WARNING(
@@ -187,7 +187,7 @@ class Command(BaseCommand):
         ))
         self.stdout.write("-" * 72)
 
-        ***REMOVED*** Resolve bboxes for all target countries
+        # Resolve bboxes for all target countries
         bboxes = self._resolve_bboxes([c for _, c in targets])
         if not bboxes:
             self.stdout.write(self.style.ERROR(
@@ -196,7 +196,7 @@ class Command(BaseCommand):
             ))
             return
 
-        ***REMOVED*** Ensure the root table exists (once per run)
+        # Ensure the root table exists (once per run)
         if not dry_run:
             with connections["vectors"].cursor() as cursor:
                 self._ensure_root_table(cursor)
@@ -213,7 +213,7 @@ class Command(BaseCommand):
                 skipped += 1
                 continue
 
-            ***REMOVED*** Idempotency gate
+            # Idempotency gate
             if not force and PartitionRegistry.is_complete(snap, cc):
                 self.stdout.write(
                     f"  [{snap}/{cc}] already complete (PartitionRegistry) — skipping."
@@ -246,7 +246,7 @@ class Command(BaseCommand):
             f"(dry_run={dry_run})."
         ))
 
-    ***REMOVED*** ── Target resolution ────────────────────────────────────────────────
+    # ── Target resolution ────────────────────────────────────────────────
 
     def _resolve_targets(
         self, country: Optional[str], snapshot: Optional[str]
@@ -260,7 +260,7 @@ class Command(BaseCommand):
         if country:
             if snapshot:
                 return [(snapshot, country)]
-            ***REMOVED*** Find the latest completed SnapshotJob for this country
+            # Find the latest completed SnapshotJob for this country
             job = (
                 SnapshotJob.objects
                 .filter(country_code=country, status=SnapshotJob.Status.COMPLETED)
@@ -275,7 +275,7 @@ class Command(BaseCommand):
             ))
             return []
 
-        ***REMOVED*** All completed SnapshotJobs
+        # All completed SnapshotJobs
         jobs = (
             SnapshotJob.objects
             .filter(status=SnapshotJob.Status.COMPLETED)
@@ -286,7 +286,7 @@ class Command(BaseCommand):
 
         return [(j.snapshot_date, j.country_code) for j in jobs]
 
-    ***REMOVED*** ── Bbox resolution ──────────────────────────────────────────────────
+    # ── Bbox resolution ──────────────────────────────────────────────────
 
     def _resolve_bboxes(self, country_codes: List[str]) -> Dict[str, Tuple]:
         """Resolve bboxes for the given country codes from DB.
@@ -303,7 +303,7 @@ class Command(BaseCommand):
         bboxes: Dict[str, Tuple] = {}
         unique_codes = sorted(set(c.upper() for c in country_codes))
 
-        ***REMOVED*** Batch-load CountryPipelineProfile payloads
+        # Batch-load CountryPipelineProfile payloads
         profiles = {
             p.iso2.upper(): p
             for p in CountryPipelineProfile.objects.filter(
@@ -325,7 +325,7 @@ class Command(BaseCommand):
             if not bbox:
                 bbox = resolve_country_bbox(code)
             if bbox:
-                ***REMOVED*** Clamp antimeridian-crossing bboxes (lon span > 180)
+                # Clamp antimeridian-crossing bboxes (lon span > 180)
                 min_lon, min_lat, max_lon, max_lat = bbox
                 if max_lon - min_lon > 180:
                     if code == "US":
@@ -346,7 +346,7 @@ class Command(BaseCommand):
 
         return bboxes
 
-    ***REMOVED*** ── Root table ───────────────────────────────────────────────────────
+    # ── Root table ───────────────────────────────────────────────────────
 
     def _ensure_root_table(self, cursor):
         """Ensure the root partitioned table exists.
@@ -359,7 +359,7 @@ class Command(BaseCommand):
         The root is partitioned by ``LIST(snapshot_id)`` with a composite PK
         that includes the partition key (Postgres requirement).
         """
-        ***REMOVED*** Check if the table exists and whether it's already partitioned
+        # Check if the table exists and whether it's already partitioned
         cursor.execute("""
             SELECT c.relname, p.partrelid IS NOT NULL as is_partitioned
             FROM pg_class c
@@ -369,11 +369,11 @@ class Command(BaseCommand):
         row = cursor.fetchone()
 
         if row and row[1]:
-            ***REMOVED*** Already partitioned — nothing to do
+            # Already partitioned — nothing to do
             return
 
         if row and not row[1]:
-            ***REMOVED*** Table exists but is NOT partitioned — check if empty
+            # Table exists but is NOT partitioned — check if empty
             cursor.execute(f"SELECT count(*) FROM {ROOT_TABLE};")
             count = cursor.fetchone()[0]
             if count > 0:
@@ -382,14 +382,14 @@ class Command(BaseCommand):
                     f"{count} rows.  Cannot convert to partitioned table. "
                     f"Back up data, drop the table, and re-run."
                 )
-            ***REMOVED*** Empty monolith — safe to drop and recreate as partitioned
+            # Empty monolith — safe to drop and recreate as partitioned
             self.stdout.write(
                 f"  [root] {ROOT_TABLE} exists as non-partitioned (empty) — "
                 f"converting to partitioned table."
             )
             cursor.execute(f"DROP TABLE {ROOT_TABLE} CASCADE;")
 
-        ***REMOVED*** Create the root partitioned table
+        # Create the root partitioned table
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {ROOT_TABLE} (
                 id BIGINT NOT NULL,
@@ -421,9 +421,9 @@ class Command(BaseCommand):
                 PRIMARY KEY (id, snapshot_id, country_code)
             ) PARTITION BY LIST (snapshot_id);
         """)
-        ***REMOVED*** Create a sequence for the id column (BigAutoField replacement).
-        ***REMOVED*** Partitioned tables can't use SERIAL directly, so we create an
-        ***REMOVED*** explicit sequence and set it as the default.
+        # Create a sequence for the id column (BigAutoField replacement).
+        # Partitioned tables can't use SERIAL directly, so we create an
+        # explicit sequence and set it as the default.
         cursor.execute(f"""
             CREATE SEQUENCE IF NOT EXISTS {ROOT_TABLE}_id_seq;
         """)
@@ -431,19 +431,19 @@ class Command(BaseCommand):
             ALTER SEQUENCE {ROOT_TABLE}_id_seq OWNED BY {ROOT_TABLE}.id;
             ALTER TABLE {ROOT_TABLE} ALTER COLUMN id SET DEFAULT nextval('{ROOT_TABLE}_id_seq');
         """)
-        ***REMOVED*** Unique index matching the partitioned table's constraint.
+        # Unique index matching the partitioned table's constraint.
         cursor.execute(f"""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_{ROOT_TABLE}_entity_unique
             ON {ROOT_TABLE} (osm_type, osm_id, gv_tags_version, snapshot_id, country_code);
         """)
-        ***REMOVED*** Tags GIN indexes (jsonb_path_ops declared in the OsmEntity model
-        ***REMOVED*** Meta; plain ops needed for `?`/`?|` key-existence queries). The
-        ***REMOVED*** cutover drops the monolith — and its migration-0011 GIN indexes
-        ***REMOVED*** with it — so the partitioned parent must recreate them or every
-        ***REMOVED*** `tags @>` / `tags ?|` query (amenity resolution, exact-tag
-        ***REMOVED*** tiers, multi-anchor joins, generic-amenity searches) falls back
-        ***REMOVED*** to a full partition scan (52s on LK, ~85s on CA). Created on
-        ***REMOVED*** the parent → cascades to all leaves.
+        # Tags GIN indexes (jsonb_path_ops declared in the OsmEntity model
+        # Meta; plain ops needed for `?`/`?|` key-existence queries). The
+        # cutover drops the monolith — and its migration-0011 GIN indexes
+        # with it — so the partitioned parent must recreate them or every
+        # `tags @>` / `tags ?|` query (amenity resolution, exact-tag
+        # tiers, multi-anchor joins, generic-amenity searches) falls back
+        # to a full partition scan (52s on LK, ~85s on CA). Created on
+        # the parent → cascades to all leaves.
         cursor.execute(f"""
             CREATE INDEX IF NOT EXISTS osmentity_tags_gin_idx
             ON {ROOT_TABLE} USING GIN (tags jsonb_path_ops);
@@ -453,7 +453,7 @@ class Command(BaseCommand):
             ON {ROOT_TABLE} USING GIN (tags);
         """)
 
-    ***REMOVED*** ── Per-country processing ───────────────────────────────────────────
+    # ── Per-country processing ───────────────────────────────────────────
 
     def _process_country(
         self, snapshot, country, bbox,
@@ -475,36 +475,36 @@ class Command(BaseCommand):
             return
 
         with connections["vectors"].cursor() as cursor:
-            ***REMOVED*** 1. Create partition hierarchy
+            # 1. Create partition hierarchy
             self._create_partitions(cursor, snapshot, country, snap_table, leaf_table)
 
-            ***REMOVED*** 2. Migrate data
+            # 2. Migrate data
             if not skip_data:
                 if force:
-                    ***REMOVED*** TRUNCATE the leaf before re-migrating to remove any
-                    ***REMOVED*** stale rows from a previous (incorrect) run.
+                    # TRUNCATE the leaf before re-migrating to remove any
+                    # stale rows from a previous (incorrect) run.
                     cursor.execute(f"TRUNCATE TABLE {leaf_table};")
                     self.stdout.write(f"    [data] truncated {leaf_table} (--force)")
                 self._migrate_data(cursor, country, bbox, snapshot, leaf_table, force)
             else:
                 self.stdout.write(f"    [data] skipped (--skip-data)")
 
-            ***REMOVED*** 3. Build HNSW index (independent of data migration —
-            ***REMOVED*** CREATE INDEX IF NOT EXISTS is idempotent, so this is safe
-            ***REMOVED*** even if data wasn't re-migrated).
+            # 3. Build HNSW index (independent of data migration —
+            # CREATE INDEX IF NOT EXISTS is idempotent, so this is safe
+            # even if data wasn't re-migrated).
             if not skip_hnsw:
                 self._build_hnsw(cursor, leaf_table, hnsw_m, hnsw_ef)
             else:
                 self.stdout.write(f"    [hnsw] skipped (--skip-hnsw)")
 
-            ***REMOVED*** 4. Create materialized view
+            # 4. Create materialized view
             if not skip_mv:
                 self._create_mview(cursor, leaf_table, mv_table, country, snapshot,
                                    skip_hnsw)
             else:
                 self.stdout.write(f"    [mv] skipped (--skip-mv)")
 
-        ***REMOVED*** 5. PartitionRegistry tracking
+        # 5. PartitionRegistry tracking
         if not skip_data:
             self._register_partition(snapshot, country, leaf_table)
 
@@ -512,14 +512,14 @@ class Command(BaseCommand):
             f"    [{snapshot}/{country}] OK"
         ))
 
-    ***REMOVED*** ── Step 1: Create partitions ────────────────────────────────────────
+    # ── Step 1: Create partitions ────────────────────────────────────────
 
     def _create_partitions(self, cursor, snapshot, country, snap_table, leaf_table):
         """Create snapshot sub-partition + country leaf partition.
 
         The root table is already ensured by ``_ensure_root_table``.
         """
-        ***REMOVED*** Snapshot partition: sub-partitioned by LIST(country_code)
+        # Snapshot partition: sub-partitioned by LIST(country_code)
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {snap_table}
             PARTITION OF {ROOT_TABLE}
@@ -527,26 +527,26 @@ class Command(BaseCommand):
             PARTITION BY LIST (country_code);
         """)
 
-        ***REMOVED*** Default partition for unmatched country codes in this snapshot
+        # Default partition for unmatched country codes in this snapshot
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {snap_table}_default
             PARTITION OF {snap_table} DEFAULT;
         """)
 
-        ***REMOVED*** Country leaf
+        # Country leaf
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {leaf_table}
             PARTITION OF {snap_table}
             FOR VALUES IN ('{country}');
         """)
 
-        ***REMOVED*** B-tree + GiST indexes on the leaf
+        # B-tree + GiST indexes on the leaf
         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{leaf_table}_osm ON {leaf_table} (osm_type, osm_id);")
         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{leaf_table}_geom ON {leaf_table} USING gist (geom);")
         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{leaf_table}_wkg_class ON {leaf_table} (wkg_class);")
         cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{leaf_table}_wikidata ON {leaf_table} (wikidata_uri);")
 
-    ***REMOVED*** ── Step 2: Migrate data ─────────────────────────────────────────────
+    # ── Step 2: Migrate data ─────────────────────────────────────────────
 
     def _migrate_data(self, cursor, country, bbox, snapshot, leaf_table, force):
         """Bulk INSERT ... SELECT from the root table into the leaf.
@@ -559,9 +559,9 @@ class Command(BaseCommand):
         Uses ``ON CONFLICT`` for idempotency (re-runnable).  Filters by
         ``snapshot_id`` AND ``country_code`` (the partition keys).
         """
-        ***REMOVED*** Check if there's data in the root table for this snapshot/country
-        ***REMOVED*** that hasn't been routed to a leaf yet (shouldn't happen with
-        ***REMOVED*** partition routing, but handle it for safety)
+        # Check if there's data in the root table for this snapshot/country
+        # that hasn't been routed to a leaf yet (shouldn't happen with
+        # partition routing, but handle it for safety)
         cursor.execute(f"""
             SELECT count(*) FROM ONLY {ROOT_TABLE}
             WHERE snapshot_id = '{snapshot}' AND country_code = '{country}';
@@ -581,7 +581,7 @@ class Command(BaseCommand):
             ))
             return
 
-        ***REMOVED*** Count source entities
+        # Count source entities
         cursor.execute(f"SELECT count(*) FROM ONLY {ROOT_TABLE} e {where_clause};")
         count = cursor.fetchone()[0]
         self.stdout.write(f"    [data] source entities: {count}")
@@ -633,7 +633,7 @@ class Command(BaseCommand):
         with_tags = cursor.fetchone()[0]
         self.stdout.write(f"    [data] with gv_tags_embedding: {with_tags}/{migrated}")
 
-    ***REMOVED*** ── Step 3: Build HNSW index ─────────────────────────────────────────
+    # ── Step 3: Build HNSW index ─────────────────────────────────────────
 
     def _build_hnsw(self, cursor, leaf_table, m, ef_construction):
         """Build HNSW index on ``gv_tags_embedding`` on the leaf.
@@ -648,7 +648,7 @@ class Command(BaseCommand):
         previous run), it's dropped first.
         """
         idx_name = f"idx_{leaf_table}_hnsw"
-        ***REMOVED*** Check if the existing index is on the wrong column
+        # Check if the existing index is on the wrong column
         cursor.execute(f"""
             SELECT a.attname
             FROM pg_index i
@@ -676,7 +676,7 @@ class Command(BaseCommand):
         size = cursor.fetchone()[0]
         self.stdout.write(f"    [hnsw] {idx_name} on gv_tags_embedding (size={size})")
 
-    ***REMOVED*** ── Step 4: Create materialized view ─────────────────────────────────
+    # ── Step 4: Create materialized view ─────────────────────────────────
 
     def _create_mview(self, cursor, leaf_table, mv_table, country, snapshot,
                       skip_hnsw):
@@ -692,7 +692,7 @@ class Command(BaseCommand):
         multi-leaf countries (subdivisions) this would be ``UNION ALL`` of
         all subdivision leaves — not needed today but the pattern is ready.
         """
-        ***REMOVED*** Check if MV already exists
+        # Check if MV already exists
         cursor.execute("""
             SELECT 1 FROM pg_matviews WHERE matviewname = %s;
         """, (mv_table,))
@@ -700,7 +700,7 @@ class Command(BaseCommand):
 
         if mv_exists:
             self.stdout.write(f"    [mv] {mv_table} already exists — refreshing concurrently")
-            ***REMOVED*** Ensure unique index exists (required for REFRESH CONCURRENTLY)
+            # Ensure unique index exists (required for REFRESH CONCURRENTLY)
             cursor.execute(f"""
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_{mv_table}_id
                 ON {mv_table} (id);
@@ -711,14 +711,14 @@ class Command(BaseCommand):
                 CREATE MATERIALIZED VIEW {mv_table} AS
                 SELECT * FROM {leaf_table};
             """)
-            ***REMOVED*** Unique index required for REFRESH CONCURRENTLY on future runs
+            # Unique index required for REFRESH CONCURRENTLY on future runs
             cursor.execute(f"""
                 CREATE UNIQUE INDEX idx_{mv_table}_id
                 ON {mv_table} (id);
             """)
 
         if not skip_hnsw:
-            ***REMOVED*** Check if HNSW index already exists — skip rebuild if so
+            # Check if HNSW index already exists — skip rebuild if so
             cursor.execute("""
                 SELECT 1 FROM pg_indexes
                 WHERE indexname = %s AND schemaname = 'public';
@@ -727,10 +727,10 @@ class Command(BaseCommand):
             if hnsw_exists:
                 self.stdout.write(f"    [mv] {mv_table} HNSW index already exists — skipping build")
             else:
-                ***REMOVED*** Cap maintenance_work_mem for HNSW builds.  The server default
-                ***REMOVED*** (32GB) is far too aggressive for index builds on large MVs
-                ***REMOVED*** and caused OOM freezes when combined with shared_buffers.
-                ***REMOVED*** 4GB is sufficient for HNSW on ~10M rows.
+                # Cap maintenance_work_mem for HNSW builds.  The server default
+                # (32GB) is far too aggressive for index builds on large MVs
+                # and caused OOM freezes when combined with shared_buffers.
+                # 4GB is sufficient for HNSW on ~10M rows.
                 cursor.execute("SET maintenance_work_mem = '4GB';")
                 cursor.execute("SET max_parallel_maintenance_workers = 1;")
                 cursor.execute(f"""
@@ -748,7 +748,7 @@ class Command(BaseCommand):
         count = cursor.fetchone()[0]
         self.stdout.write(f"    [mv] {mv_table} ({count} rows)")
 
-    ***REMOVED*** ── Step 5: PartitionRegistry ────────────────────────────────────────
+    # ── Step 5: PartitionRegistry ────────────────────────────────────────
 
     def _register_partition(self, snapshot, country, leaf_table):
         """Record completion in PartitionRegistry."""
@@ -768,7 +768,7 @@ class Command(BaseCommand):
             f"entities={entity_count} embeddings={embedding_count}"
         )
 
-    ***REMOVED*** ── Dry run ──────────────────────────────────────────────────────────
+    # ── Dry run ──────────────────────────────────────────────────────────
 
     def _dry_run_report(self, snapshot, country, bbox, leaf_table, mv_table,
                         skip_data, skip_hnsw, skip_mv):
@@ -777,7 +777,7 @@ class Command(BaseCommand):
         self.stdout.write(f"    [dry-run] leaf={leaf_table}")
         if not skip_data:
             with connections["vectors"].cursor() as cursor:
-                ***REMOVED*** Check for un-partitioned data in the root table
+                # Check for un-partitioned data in the root table
                 cursor.execute(f"""
                     SELECT count(*) FROM ONLY {ROOT_TABLE}
                     WHERE snapshot_id = '{snapshot}' AND country_code = '{country}';
@@ -792,7 +792,7 @@ class Command(BaseCommand):
         if not skip_mv:
             self.stdout.write(f"    [dry-run] would create MV: {mv_table}")
 
-    ***REMOVED*** ── Cleanup ──────────────────────────────────────────────────────────
+    # ── Cleanup ──────────────────────────────────────────────────────────
 
     def _cleanup(self, snapshot, country):
         """Drop the leaf partition + MV for a specific country/snapshot."""
@@ -809,12 +809,12 @@ class Command(BaseCommand):
             cursor.execute(f"DROP MATERIALIZED VIEW IF EXISTS {mv_table};")
             self.stdout.write(f"  dropped MV: {mv_table}")
 
-            ***REMOVED*** Detach the leaf from the snapshot partition, then drop it.
-            ***REMOVED*** DROP TABLE on a partition also works but may require CASCADE.
+            # Detach the leaf from the snapshot partition, then drop it.
+            # DROP TABLE on a partition also works but may require CASCADE.
             cursor.execute(f"DROP TABLE IF EXISTS {leaf_table} CASCADE;")
             self.stdout.write(f"  dropped leaf: {leaf_table}")
 
-            ***REMOVED*** Mark PartitionRegistry as failed (cleanup)
+            # Mark PartitionRegistry as failed (cleanup)
             PartitionRegistry.objects.filter(
                 snapshot_id=snapshot, country_code=country
             ).update(status=PartitionRegistry.PartitionStatus.FAILED,

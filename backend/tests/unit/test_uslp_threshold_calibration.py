@@ -42,14 +42,14 @@ from igea.management.commands.calibrate_uslp_thresholds import (
 )
 
 
-***REMOVED*** ── Constants ────────────────────────────────────────────────────────────
+# ── Constants ────────────────────────────────────────────────────────────
 
 GB = 1024 ** 3
-RTX_4070_TI_SUPER = int(15.6 * GB)   ***REMOVED*** 16,743,280,640 bytes
-RTX_2070 = int(7.6 * GB)             ***REMOVED*** 8,159,746,048 bytes
+RTX_4070_TI_SUPER = int(15.6 * GB)   # 16,743,280,640 bytes
+RTX_2070 = int(7.6 * GB)             # 8,159,746,048 bytes
 
 
-***REMOVED*** ── compute_max_safe_pool_size ───────────────────────────────────────────
+# ── compute_max_safe_pool_size ───────────────────────────────────────────
 
 
 class TestComputeMaxSafePoolSize:
@@ -68,7 +68,7 @@ class TestComputeMaxSafePoolSize:
         assert result["max_pool"] < 3_000_000, (
             f"Expected <3M max pool on 16GB GPU, got {result['max_pool']:,}"
         )
-        ***REMOVED*** Adaptive batch at max pool should be >= 256
+        # Adaptive batch at max pool should be >= 256
         assert result["adaptive_batch"] >= 256, (
             f"Adaptive batch {result['adaptive_batch']} < 256 at max pool"
         )
@@ -131,7 +131,7 @@ class TestComputeMaxSafePoolSize:
         )
 
 
-***REMOVED*** ── compute_adaptive_batch ───────────────────────────────────────────────
+# ── compute_adaptive_batch ───────────────────────────────────────────────
 
 
 class TestComputeAdaptiveBatch:
@@ -188,7 +188,7 @@ class TestComputeAdaptiveBatch:
         """
         N = 200_000
         total = RTX_4070_TI_SUPER
-        ***REMOVED*** Simulate: allocated = fasttext + persistent
+        # Simulate: allocated = fasttext + persistent
         allocated = FASTTEXT_OVERHEAD_BYTES + N * PERSISTENT_BYTES_PER_ENTITY
         free = total - allocated
         bytes_per_head = N * 4 * 6
@@ -200,7 +200,7 @@ class TestComputeAdaptiveBatch:
         )
 
 
-***REMOVED*** ── Cross-checks ─────────────────────────────────────────────────────────
+# ── Cross-checks ─────────────────────────────────────────────────────────
 
 
 class TestCrossCheck:
@@ -239,7 +239,7 @@ class TestCrossCheck:
         )
 
 
-***REMOVED*** ── Memory model constants ───────────────────────────────────────────────
+# ── Memory model constants ───────────────────────────────────────────────
 
 
 class TestMemoryModelConstants:

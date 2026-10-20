@@ -1,4 +1,4 @@
-***REMOVED*** Platform LLM: LLMService, Enrichment, Parser Refine
+# Platform LLM: LLMService, Enrichment, Parser Refine
 
 > **⚠️ Superseded 2026-09-09 for the direct query path.** The enrichment
 > research loop in §2 (LLM selects `nameSearch`/`structuredSearch`, they
@@ -23,7 +23,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. LLMService: `core/services/llm_service.py`
+## 1. LLMService: `core/services/llm_service.py`
 
 Two API styles, selected by `LLM_API_STYLE`:
 
@@ -48,7 +48,7 @@ cache TTL.
 
 ---
 
-***REMOVED******REMOVED*** 2. Enrichment Research Loop: `query_enrichment_service.py`
+## 2. Enrichment Research Loop: `query_enrichment_service.py`
 
 After a template result (e.g. "Found 18 entities within 50km."):
 
@@ -87,7 +87,7 @@ enriched_answer}`. Any failure returns the deterministic answer unchanged.
 
 ---
 
-***REMOVED******REMOVED*** 3. Parser Refine: `query_parser_service.py`
+## 3. Parser Refine: `query_parser_service.py`
 
 `QueryParserService.parse()` re-classifies template + concepts via the LLM
 when TF-IDF confidence < `MAPQA_LLM_FALLBACK_CONFIDENCE` (default 0.5). The
@@ -97,7 +97,7 @@ re-applied; any failure keeps the heuristic parse.
 
 ---
 
-***REMOVED******REMOVED*** 4. LLM Call Counts
+## 4. LLM Call Counts
 
 - **`skip_llm`**: `_synthesize_answer(..., skip_llm=True)` skips the
   standalone answer-rewrite LLM pass when a question is present, since the
@@ -109,7 +109,7 @@ re-applied; any failure keeps the heuristic parse.
 
 ---
 
-***REMOVED******REMOVED*** 5. Files
+## 5. Files
 
 - `backend/core/services/llm_service.py`
 - `backend/semantic_search/services/query_enrichment_service.py`

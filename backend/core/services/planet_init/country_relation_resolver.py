@@ -9,14 +9,14 @@ from core.services.snapshot.regional_path_service import normalize_country_name
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** ── Continent slug redirects ─────────────────────────────────────────
-***REMOVED*** Geofabrik parent slugs use hyphens (e.g. 'australia-oceania') but
-***REMOVED*** RegionHierarchy continent names use underscores (e.g. 'australia_oceania').
-***REMOVED*** The continent map keys are built with r.name.lower().replace('-', '_'),
-***REMOVED*** and the base_continent lookup also does replace('-', '_'), so the
-***REMOVED*** only redirect needed is Geofabrik's 'australia-oceania' → 'australia_oceania'
-***REMOVED*** (which the replace already handles).  No redirects needed — the
-***REMOVED*** normalization is done by replace('-', '_') on both sides.
+# ── Continent slug redirects ─────────────────────────────────────────
+# Geofabrik parent slugs use hyphens (e.g. 'australia-oceania') but
+# RegionHierarchy continent names use underscores (e.g. 'australia_oceania').
+# The continent map keys are built with r.name.lower().replace('-', '_'),
+# and the base_continent lookup also does replace('-', '_'), so the
+# only redirect needed is Geofabrik's 'australia-oceania' → 'australia_oceania'
+# (which the replace already handles).  No redirects needed — the
+# normalization is done by replace('-', '_') on both sides.
 CONTINENT_REDIRECTS = {}
 
 class CountryRelationResolver:
@@ -32,12 +32,12 @@ class CountryRelationResolver:
         Fetches data from both sources, merges them by ISO code, and saves to JSON.
         Now also links to continents registered in the RegionHierarchy.
         """
-        ***REMOVED*** 1. Get Geofabrik ISO -> Slug mapping
+        # 1. Get Geofabrik ISO -> Slug mapping
         geofabrik_map = geofabrik_index_service.get_iso_to_slug_map()
         
-        ***REMOVED*** 2. Get SPARQL ISO -> Relation ID mapping
+        # 2. Get SPARQL ISO -> Relation ID mapping
         sparql_map = sparql_country_relation_service.fetch_country_relations()
-        ***REMOVED*** 3. Get all countries from RegionHierarchy for fallback mapping
+        # 3. Get all countries from RegionHierarchy for fallback mapping
         from api.models import RegionHierarchy
         all_regions = RegionHierarchy.objects.filter(parent__isnull=False).select_related('parent')
         db_region_map = {}
@@ -45,10 +45,10 @@ class CountryRelationResolver:
             normalized_name = normalize_country_name(r.name)
             db_region_map[normalized_name] = r
             
-        ***REMOVED*** Build continent map with normalized underscore keys to handle
-        ***REMOVED*** slug variants like 'central-america' vs 'central_america'.
-        ***REMOVED*** If duplicates exist (e.g. hyphen and underscore variants), the
-        ***REMOVED*** entry with children wins — the empty one is the stale duplicate.
+        # Build continent map with normalized underscore keys to handle
+        # slug variants like 'central-america' vs 'central_america'.
+        # If duplicates exist (e.g. hyphen and underscore variants), the
+        # entry with children wins — the empty one is the stale duplicate.
         raw_continents = {}
         for r in RegionHierarchy.objects.filter(parent__isnull=True):
             key = r.name.lower().replace('-', '_')
@@ -57,7 +57,7 @@ class CountryRelationResolver:
                 raw_continents[key] = str(r.id)
         continents = raw_continents
         
-        ***REMOVED*** 4. Merge and filter
+        # 4. Merge and filter
         merged_list = {}
         for iso, sparql_data in sparql_map.items():
             name = sparql_data['name']
@@ -67,13 +67,13 @@ class CountryRelationResolver:
                 geo_data = geofabrik_map[iso]
                 parent_slug = geo_data['parent']
                 
-                ***REMOVED*** Normalize parent slug to find continent
+                # Normalize parent slug to find continent
                 continent_name = None
                 continent_id = None
                 
                 if parent_slug:
                     base_continent = parent_slug.split('/')[0].lower().replace('-', '_')
-                    ***REMOVED*** Apply redirects for known continent name mismatches
+                    # Apply redirects for known continent name mismatches
                     if base_continent in CONTINENT_REDIRECTS:
                         base_continent = CONTINENT_REDIRECTS[base_continent]
                     
@@ -81,7 +81,7 @@ class CountryRelationResolver:
                         continent_name = base_continent
                         continent_id = continents[base_continent]
 
-                ***REMOVED*** Use hyphens for slugs to match on-disk GeoVectors TSV filenaming
+                # Use hyphens for slugs to match on-disk GeoVectors TSV filenaming
                 slug = geo_data['slug'].replace('_', '-')
                 merged_list[iso] = {
                     'name': name,
@@ -94,7 +94,7 @@ class CountryRelationResolver:
                     'wkg_uri': sparql_data['uri']
                 }
             elif normalized_sparql_name in db_region_map:
-                ***REMOVED*** Fallback: found in SPARQL and DB, but missing from Geofabrik
+                # Fallback: found in SPARQL and DB, but missing from Geofabrik
                 db_region = db_region_map[normalized_sparql_name]
                 continent_name = db_region.parent.name if db_region.parent else None
                 continent_id = str(db_region.parent.id) if db_region.parent else None
@@ -104,17 +104,17 @@ class CountryRelationResolver:
                 merged_list[iso] = {
                     'name': name,
                     'relation_id': sparql_data['relation_id'],
-                    'slug': db_region.name, ***REMOVED*** Use DB name as slug
+                    'slug': db_region.name, # Use DB name as slug
                     'parent_slug': continent_name,
                     'continent_name': continent_name,
                     'continent_id': continent_id,
-                    'pbf_url': None, ***REMOVED*** No direct Geofabrik PBF
+                    'pbf_url': None, # No direct Geofabrik PBF
                     'wkg_uri': sparql_data['uri']
                 }
             else:
                 logger.warning(f"ISO {iso} ({name}) found in SPARQL but missing from both Geofabrik and RegionHierarchy.")
 
-        ***REMOVED*** 5. Save results
+        # 5. Save results
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.output_path, 'w') as f:
             json.dump(merged_list, f, indent=4)

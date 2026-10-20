@@ -45,11 +45,11 @@ def worldkg_ontology_info(request):
             status=status.HTTP_503_SERVICE_UNAVAILABLE
         )
     
-    ***REMOVED*** Get depth distribution
+    # Get depth distribution
     depths = [ontology.get_depth(cls) for cls in list(all_classes)[:100]]
     max_depth = max(depths) if depths else 0
     
-    ***REMOVED*** Sample classes
+    # Sample classes
     sample = []
     for cls in list(all_classes)[:10]:
         sample.append({

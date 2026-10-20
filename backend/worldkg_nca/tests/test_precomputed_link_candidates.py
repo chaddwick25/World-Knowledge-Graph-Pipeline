@@ -90,5 +90,5 @@ class PrecomputedLinkCandidatesAPITests(TestCase):
         self.assertEqual(len(data["candidates"]), 1)
         self.assertEqual(data["candidates"][0]["wikidata_id"], "Q2")
 
-        ***REMOVED*** get_alignment_candidates should not have been called on a cache hit
+        # get_alignment_candidates should not have been called on a cache hit
         svc.get_alignment_candidates.assert_not_called()

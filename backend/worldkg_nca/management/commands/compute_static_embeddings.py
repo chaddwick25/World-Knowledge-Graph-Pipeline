@@ -12,11 +12,11 @@ class Command(BaseCommand):
         batch_size = 5000
         updated_count = 0
 
-        ***REMOVED*** Query entities that have both embeddings but no static_embedding.
-        ***REMOVED*** IMPORTANT: do NOT use offset-based slicing (qs[i:i+batch_size]) here.
-        ***REMOVED*** As each entity is updated its static_embedding becomes non-null, so it
-        ***REMOVED*** drops out of the queryset — causing offset-based slices to skip rows.
-        ***REMOVED*** Use .iterator() to stream all candidates in a single pass instead.
+        # Query entities that have both embeddings but no static_embedding.
+        # IMPORTANT: do NOT use offset-based slicing (qs[i:i+batch_size]) here.
+        # As each entity is updated its static_embedding becomes non-null, so it
+        # drops out of the queryset — causing offset-based slices to skip rows.
+        # Use .iterator() to stream all candidates in a single pass instead.
         qs = OsmEntity.objects.using('vectors').filter(
             gv_tags_embedding__isnull=False,
             gv_nle_embedding__isnull=False,
@@ -40,7 +40,7 @@ class Command(BaseCommand):
                 self.stdout.write(f"Updated {updated_count}/{total} entities...")
                 batch = []
 
-        ***REMOVED*** Flush remaining entities
+        # Flush remaining entities
         if batch:
             OsmEntity.objects.using('vectors').bulk_update(batch, ['static_embedding'])
             updated_count += len(batch)

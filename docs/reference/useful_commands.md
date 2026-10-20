@@ -1,13 +1,13 @@
-***REMOVED******REMOVED*** Useful Commands
+## Useful Commands
 Even thugh I use AI. I still like to run the commands manually to understand what's happening.
 
-***REMOVED*** Remove pycache    
+# Remove pycache    
 find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; find . -name "*.pyc" -delete 2>/dev/null; echo "Done - caches cleared"
 
-***REMOVED*** Flush redis
+# Flush redis
 redis-cli FLUSHALL 2>/dev/null; echo "Done - Redis flushed"
 
-***REMOVED*** Compose Commands
+# Compose Commands
 docker compose -f 'docker-compose.yml' -f 'compose.override.yml' build
 docker compose -f 'docker-compose.yml' -f 'compose.override.yml' up -d postgres-default postgres-vectors redis
 docker compose -f 'docker-compose.yml' -f 'compose.override.yml' up -d backend worker
@@ -16,19 +16,19 @@ docker compose logs -f worker
 docker compose -f docker-compose.yml -f compose.override.yml run --rm -e NVIDIA_VISIBLE_DEVICES="" --entrypoint="" worker bash -c "source /app/.venv/bin/activate && celery -A pipeline.celery_app worker --loglevel=info --pool=solo --concurrency=1"
 
 
-***REMOVED*** Django Commands
+# Django Commands
 docker compose exec backend python manage.py migrate
 docker compose exec backend python manage.py migrate --database=vectors
 
-***REMOVED*** Create a superuser (interactive prompt)
+# Create a superuser (interactive prompt)
 docker compose exec backend python manage.py createsuperuser
 
-***REMOVED******REMOVED*** Osmium Command
+## Osmium Command
 docker compose exec backend which osmium
 
 
-***REMOVED******REMOVED*** Splitting malaysia-singapore-brunei into three separate embeddings
-docker compose exec backend python manage.py preprocess_embeddings  ***REMOVED*** splits workers from hyperparams.yaml embedding_splits.workers
+## Splitting malaysia-singapore-brunei into three separate embeddings
+docker compose exec backend python manage.py preprocess_embeddings  # splits workers from hyperparams.yaml embedding_splits.workers
 ============================================================
 Scanning embeddings in: /media/.../OSM/embeddings
 Snapshot: 2025_12_31  Dry run: False
@@ -47,7 +47,7 @@ Snapshot: 2025_12_31  Dry run: False
 
 DB results: 1 created, 3 updated
 
-***REMOVED******REMOVED*** Merging the 5 sharded US embeddings into a single embedding
+## Merging the 5 sharded US embeddings into a single embedding
 docker compose exec backend python manage.py shell -c "
 from pipeline.tasks.planet_initialization_pipeline_steps.step_0h_prebuild_embeddings import step_0j_prebuild_merge_us_embeddings
 from pipeline.config import CountryConfig
@@ -64,17 +64,17 @@ result = step_0j_prebuild_merge_us_embeddings(cfg.to_dict())
 print('Result:', result)
 "
 
-***REMOVED******REMOVED*** Scanning Embeddings -  validates splits and merges from the previous steps
+## Scanning Embeddings -  validates splits and merges from the previous steps
 docker compose exec backend python manage.py scan_embeddings
 
 
 dancing808
 **********************************************************************************************
 
-***REMOVED*** 1. Backfill (sets snapshot_id on all 3M rows, country_code on 1.1M)
+# 1. Backfill (sets snapshot_id on all 3M rows, country_code on 1.1M)
 docker compose exec backend python manage.py backfill_partition_keys
 
-***REMOVED*** 2. Verify the monolith has partition keys populated
+# 2. Verify the monolith has partition keys populated
 docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   SELECT count(*) AS total,
          count(snapshot_id) AS with_snap,
@@ -82,58 +82,58 @@ docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   FROM semantic_search_osmentity;
 "
 
-***REMOVED*** 3. Verify API endpoints still work (the BREAKS fixes are conditional)
+# 3. Verify API endpoints still work (the BREAKS fixes are conditional)
 curl -s http://localhost:8000/api/semantic-search/gv-tags/ \
   -H "Content-Type: application/json" \
   -d '{"query_tags": {"amenity": "restaurant"}, "top_k": 3}' | python -m json.tool
 
-***REMOVED*** 4. Verify the prototype partition still works alongside the monolith
+# 4. Verify the prototype partition still works alongside the monolith
 docker compose exec backend python manage.py prototype_physical_sharding --skip-data
 
 **********************************************************************************************
-***REMOVED******REMOVED*** MapQA Parser - Training, Testing, and Query Execution
+## MapQA Parser - Training, Testing, and Query Execution
 **********************************************************************************************
 
-***REMOVED*** Retrain the parser (includes natural-language QA pairs augmentation)
-***REMOVED*** Artifacts are written to backend/data/mapqa_parser/artifacts/
+# Retrain the parser (includes natural-language QA pairs augmentation)
+# Artifacts are written to backend/data/mapqa_parser/artifacts/
 docker compose exec backend python manage.py train_mapqa_parser
 
-***REMOVED*** Retrain with custom CSV path or concept models disabled
+# Retrain with custom CSV path or concept models disabled
 docker compose exec backend python manage.py train_mapqa_parser --csv-path /path/to/custom.csv
 docker compose exec backend python manage.py train_mapqa_parser --no-concept-models
 
-***REMOVED*** Run parser unit tests (22 tests - classification, concepts, DAG, multi-entity, edge cases)
+# Run parser unit tests (22 tests - classification, concepts, DAG, multi-entity, edge cases)
 docker compose exec backend python -m pytest tests/unit/test_mapqa_parser.py -v
 
-***REMOVED*** Run executor integration tests (12 tests - endpoint, executor, plan)
+# Run executor integration tests (12 tests - endpoint, executor, plan)
 docker compose exec backend python -m pytest tests/integration/test_mapqa_executor.py -v
 
-***REMOVED*** Run all MapQA + spectral + community tests together
+# Run all MapQA + spectral + community tests together
 docker compose exec backend python -m pytest tests/unit/test_mapqa_parser.py tests/integration/test_mapqa_executor.py tests/unit/test_spectral_analysis_service.py tests/unit/test_graph_signal_service.py tests/unit/test_community_detection_service.py -v
 
-***REMOVED*** Run the factor-node table tests (16 tests - writer, drift sign alignment,
-***REMOVED*** diffusion parity vs numpy, amenity command, executor flag on/off)
+# Run the factor-node table tests (16 tests - writer, drift sign alignment,
+# diffusion parity vs numpy, amenity command, executor flag on/off)
 docker compose exec backend python -m pytest tests/unit/test_factor_node_tables.py -v
 
-***REMOVED*** ── Self-supervised training-data generation ──
-***REMOVED*** Generate PostGIS-verifiable Q&A pairs for templates ***REMOVED***1/***REMOVED***2/***REMOVED***4/***REMOVED***5/***REMOVED***8 from
-***REMOVED*** OsmEntity ground truth in processed countries. Appends to
-***REMOVED*** {MAPQA_PARSER_DATA_DIR}/training_data/natural_language_qa_pairs.csv
-***REMOVED*** (idempotent - replaces its own prior (country, snapshot, template) rows).
+# ── Self-supervised training-data generation ──
+# Generate PostGIS-verifiable Q&A pairs for templates #1/#2/#4/#5/#8 from
+# OsmEntity ground truth in processed countries. Appends to
+# {MAPQA_PARSER_DATA_DIR}/training_data/natural_language_qa_pairs.csv
+# (idempotent - replaces its own prior (country, snapshot, template) rows).
 docker compose exec backend python manage.py generate_mapqa_training_data --country BZ
 docker compose exec backend python manage.py generate_mapqa_training_data --country BZ,JM,IE --per-class 250
 docker compose exec backend python manage.py generate_mapqa_training_data --all-processed --dry-run
 docker compose exec backend python manage.py generate_mapqa_training_data --all-processed --retrain
-***REMOVED*** Optional LLM paraphrase tier (Ollama via LLMService - off by default)
+# Optional LLM paraphrase tier (Ollama via LLMService - off by default)
 MAPQA_LLM_AUGMENTATION_ENABLED=true docker compose exec backend python manage.py generate_mapqa_training_data --country BZ --llm
 
-***REMOVED*** Generator unit tests (11 tests, needs test DBs with vector + postgis extensions)
+# Generator unit tests (11 tests, needs test DBs with vector + postgis extensions)
 docker compose exec backend python -m pytest tests/unit/test_mapqa_question_generator.py -v --reuse-db
 
-***REMOVED*** Paraphraser unit tests (16 tests, no DB needed)
+# Paraphraser unit tests (16 tests, no DB needed)
 docker compose exec backend python -m pytest tests/unit/test_mapqa_paraphraser.py -v --reuse-db
 
-***REMOVED*** Quick parser test (no DB needed) - verify all 5 templates classify correctly
+# Quick parser test (no DB needed) - verify all 5 templates classify correctly
 docker compose exec backend python manage.py shell -c "
 from semantic_search.services.query_parser_service import QueryParserService
 QueryParserService.reset_instance()
@@ -152,7 +152,7 @@ for q in tests:
     print(f'  concepts: {[(c[\"type\"], c[\"text\"]) for c in r[\"concepts\"]]}')
 "
 
-***REMOVED*** Full end-to-end query test via the execute-query endpoint (needs DB + graph artifact)
+# Full end-to-end query test via the execute-query endpoint (needs DB + graph artifact)
 docker compose exec backend python manage.py shell -c "
 from django.test import Client
 import json
@@ -183,35 +183,35 @@ for q in tests:
 "
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Graph Endpoints - Spectral, Community, Event Diffusion
+## Graph Endpoints - Spectral, Community, Event Diffusion
 **********************************************************************************************
 
-***REMOVED*** Spectral query (uses cached fingerprint from Step 5c if available)
+# Spectral query (uses cached fingerprint from Step 5c if available)
 curl -s http://localhost:8000/api/nca/spectral-query/ \
   -H "Content-Type: application/json" \
   -d '{"query": "what is the spatial connectivity of this region", "country_code": "BZ", "snapshot_date": "2025_12_31"}' | python -m json.tool
 
-***REMOVED*** Community detection query (Louvain on k-NN graph)
+# Community detection query (Louvain on k-NN graph)
 curl -s http://localhost:8000/api/nca/community-query/ \
   -H "Content-Type: application/json" \
   -d '{"query": "what communities exist in this region", "country_code": "BZ", "snapshot_date": "2025_12_31"}' | python -m json.tool
 
-***REMOVED*** Event diffusion query (heat kernel diffusion from a source entity)
+# Event diffusion query (heat kernel diffusion from a source entity)
 curl -s http://localhost:8000/api/nca/event-diffusion-query/ \
   -H "Content-Type: application/json" \
   -d '{"query": "Belmopan", "country_code": "BZ", "snapshot_date": "2025_12_31"}' | python -m json.tool
 
-***REMOVED*** Temporal drift query (requires 2+ snapshots for comparison)
+# Temporal drift query (requires 2+ snapshots for comparison)
 curl -s http://localhost:8000/api/nca/temporal-query/ \
   -H "Content-Type: application/json" \
   -d '{"query": "how has this area changed", "country_code": "BZ", "snapshot_date": "2025_12_31"}' | python -m json.tool
 
 **********************************************************************************************
-***REMOVED******REMOVED*** k-NN Graph - Build, Serialize, and Inspect (Step 5c artifact)
+## k-NN Graph - Build, Serialize, and Inspect (Step 5c artifact)
 **********************************************************************************************
 
-***REMOVED*** Build the k-NN graph for a country/snapshot and serialize to GraphML
-***REMOVED*** This is normally done by Step 5c during the pipeline, but can be run manually
+# Build the k-NN graph for a country/snapshot and serialize to GraphML
+# This is normally done by Step 5c during the pipeline, but can be run manually
 docker compose exec backend python manage.py shell -c "
 from semantic_search.services.knn_graph_service import KNNGraphService
 import networkx as nx, os, time
@@ -229,34 +229,34 @@ nx.write_graphml(G, path)
 print(f'Serialized to {path} ({os.path.getsize(path)} bytes)')
 "
 
-***REMOVED*** Verify the graph artifact exists on disk
+# Verify the graph artifact exists on disk
 ls -lh backend/data/graph_artifacts/
 
-***REMOVED*** Check graph artifact from inside the container
+# Check graph artifact from inside the container
 docker compose exec backend ls -lh /app/data/graph_artifacts/
 
 **********************************************************************************************
-***REMOVED******REMOVED*** USLP Calibration - Hyperparameter Threshold Validation
+## USLP Calibration - Hyperparameter Threshold Validation
 **********************************************************************************************
 
-***REMOVED*** Run USLP threshold calibration (uses worker container for GPU reporting)
-***REMOVED*** Do NOT change YAML thresholds without explicit approval
+# Run USLP threshold calibration (uses worker container for GPU reporting)
+# Do NOT change YAML thresholds without explicit approval
 docker compose exec worker python manage.py calibrate_uslp_thresholds --country BZ --snapshot-date 2025_12_31
 
-***REMOVED*** Run USLP calibration tests
+# Run USLP calibration tests
 docker compose exec backend python -m pytest tests/unit/test_uslp_threshold_calibration.py -v
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Database Indexes - Migration 0011 (wkg_class B-tree + tags GIN)
+## Database Indexes - Migration 0011 (wkg_class B-tree + tags GIN)
 **********************************************************************************************
 
-***REMOVED*** Check migration state
+# Check migration state
 docker compose exec backend python manage.py showmigrations worldkg_nca
 
-***REMOVED*** Run the index migration (after clean DB reset)
+# Run the index migration (after clean DB reset)
 docker compose exec backend python manage.py migrate worldkg_nca
 
-***REMOVED*** Verify indexes exist on the parent table
+# Verify indexes exist on the parent table
 docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   SELECT indexname, indexdef
   FROM pg_indexes
@@ -264,7 +264,7 @@ docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   ORDER BY indexname;
 "
 
-***REMOVED*** Verify GIN index on tags is used in query plans
+# Verify GIN index on tags is used in query plans
 docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   EXPLAIN (ANALYZE, BUFFERS)
   SELECT * FROM semantic_search_osmentity
@@ -272,7 +272,7 @@ docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   LIMIT 10;
 "
 
-***REMOVED*** Verify B-tree index on wkg_class is used
+# Verify B-tree index on wkg_class is used
 docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   EXPLAIN (ANALYZE, BUFFERS)
   SELECT * FROM semantic_search_osmentity
@@ -281,41 +281,41 @@ docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
 "
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Database Reset and Rebuild
+## Database Reset and Rebuild
 **********************************************************************************************
 
-***REMOVED*** Full database destruction. Default keeps migration files (the fresh-DB E2E
-***REMOVED*** needs the real chain, including semantic_search/0006 + worldkg_nca/0018).
-***REMOVED*** Pass --wipe-migrations for the nuclear option (deletes migration files).
+# Full database destruction. Default keeps migration files (the fresh-DB E2E
+# needs the real chain, including semantic_search/0006 + worldkg_nca/0018).
+# Pass --wipe-migrations for the nuclear option (deletes migration files).
 bash ./scripts/drop_databases_v2.sh
 bash ./scripts/drop_databases_v2.sh --wipe-migrations
 
-***REMOVED*** Rebuild from scratch (migrations kept, so no makemigrations needed)
+# Rebuild from scratch (migrations kept, so no makemigrations needed)
 docker compose -f 'docker-compose.yml' -f 'compose.override.yml' up -d
 docker compose exec backend python manage.py migrate
 docker compose exec backend python manage.py migrate --database=vectors
 
-***REMOVED*** Manual ontology load (init_planet also runs enrich_worldkg_classes)
+# Manual ontology load (init_planet also runs enrich_worldkg_classes)
 docker compose exec backend python manage.py enrich_worldkg_classes --load-ontology ../data/worldkg_ontology_sample.json
 
-***REMOVED*** Init planet (runs as Docker entrypoint step, gated by RUN_INIT_PLANET=true;
-***REMOVED*** rebuilds the ontology cache, parser model, and amenity embeddings)
+# Init planet (runs as Docker entrypoint step, gated by RUN_INIT_PLANET=true;
+# rebuilds the ontology cache, parser model, and amenity embeddings)
 docker compose exec backend python manage.py init_planet
-***REMOVED*** Or run a single step:
+# Or run a single step:
 docker compose exec backend python manage.py init_planet --step register_planet
 
-***REMOVED*** Manual post-reset rebuilds (decoupled from init_planet):
+# Manual post-reset rebuilds (decoupled from init_planet):
 docker compose exec backend python manage.py compute_amenity_class_mappings
 docker compose exec backend python manage.py romanize_names
-***REMOVED*** Country leaf partitions for the pipeline:
+# Country leaf partitions for the pipeline:
 docker compose exec backend python manage.py create_country_partitions --country XX --mv-only
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Spectral / Temporal Pipeline Steps (Step 5c / 5d)
+## Spectral / Temporal Pipeline Steps (Step 5c / 5d)
 **********************************************************************************************
 
-***REMOVED*** Run Step 5c (graph spectral analysis) manually for a country
-***REMOVED*** This builds the k-NN graph, computes spectral features, and serializes the graph to GraphML
+# Run Step 5c (graph spectral analysis) manually for a country
+# This builds the k-NN graph, computes spectral features, and serializes the graph to GraphML
 docker compose exec backend python manage.py shell -c "
 from pipeline.tasks.country_pipeline_steps.step_5c_graph_spectral import step_5c_graph_spectral_analysis
 from pipeline.envelopes import CountryEnvelope
@@ -330,7 +330,7 @@ env = CountryEnvelope(
 step_5c_graph_spectral_analysis.apply(args=[env])
 "
 
-***REMOVED*** Run Step 5d (temporal drift) manually - requires 2+ snapshots
+# Run Step 5d (temporal drift) manually - requires 2+ snapshots
 docker compose exec backend python manage.py shell -c "
 from pipeline.tasks.country_pipeline_steps.step_5d_temporal_drift import step_5d_temporal_drift
 from pipeline.envelopes import CountryEnvelope
@@ -345,7 +345,7 @@ env = CountryEnvelope(
 step_5d_temporal_drift.apply(args=[env])
 "
 
-***REMOVED*** Check if spectral fingerprint exists for a country
+# Check if spectral fingerprint exists for a country
 docker compose exec backend python manage.py shell -c "
 from semantic_search.models import GraphSpectralFingerprint
 fps = GraphSpectralFingerprint.objects.filter(region='BZ')
@@ -354,22 +354,22 @@ for fp in fps:
 "
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Factor-Node Tables - Runtime Joins for MapQA
+## Factor-Node Tables - Runtime Joins for MapQA
 **********************************************************************************************
 
-***REMOVED*** Factor tables live on the vectors DB (models in worldkg_nca, migrations 0012/0013).
-***REMOVED*** Apply migrations to the vectors DB explicitly:
+# Factor tables live on the vectors DB (models in worldkg_nca, migrations 0012/0013).
+# Apply migrations to the vectors DB explicitly:
 docker compose exec backend python manage.py migrate --database=vectors
 
-***REMOVED*** Verify the tables exist
+# Verify the tables exist
 docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "\dt factor_*"
 
-***REMOVED*** Precompute amenity embeddings (MapQA vocab → factor_amenity_embedding, 621 rows)
-***REMOVED*** Also runs as an init_planet step before `finalize`
+# Precompute amenity embeddings (MapQA vocab → factor_amenity_embedding, 621 rows)
+# Also runs as an init_planet step before `finalize`
 docker compose exec backend python manage.py compute_amenity_embeddings
 docker compose exec backend python manage.py init_planet --step compute_amenity_embeddings --no-lock
 
-***REMOVED*** Inspect factor rows for a country (populated by Step 5c/5d)
+# Inspect factor rows for a country (populated by Step 5c/5d)
 docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   SELECT country_code, snapshot_id, count(*),
          count(eigen_loadings) AS with_loadings,
@@ -383,8 +383,8 @@ docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
 "
 
-***REMOVED*** Smoke-test the SQL-only heat-kernel diffusion (factor tables) for a country
-***REMOVED*** that has completed Step 5c - one pgvector inner-product query per call
+# Smoke-test the SQL-only heat-kernel diffusion (factor tables) for a country
+# that has completed Step 5c - one pgvector inner-product query per call
 docker compose exec backend python manage.py shell -c "
 from semantic_search.services.factor_resolution_service import FactorResolutionService
 from worldkg_nca.models import SpectralNodeMetric
@@ -404,18 +404,18 @@ for r in ranked:
     print(f'  {r[\"osm_id\"]:>12}  score={r[\"score\"]:.6f}')
 "
 
-***REMOVED*** G4 availability check (Spatial-Agent §3.3 - is a factor row executable?)
+# G4 availability check (Spatial-Agent §3.3 - is a factor row executable?)
 docker compose exec backend python manage.py shell -c "
 from semantic_search.services.factor_resolution_service import FactorResolutionService
 print(FactorResolutionService().check_availability([123, 456], '2025_12_31', 'BZ'))
 "
 
-***REMOVED*** The factor-table path is authoritative and always on. The shadow rollout
-***REMOVED*** flags (FACTOR_NODE_TABLES_SHADOW / FACTOR_NODE_TABLES_ENABLED) and the
-***REMOVED*** legacy runtime graph path were removed; FACTOR_NODE_TABLES_ENABLED is a
-***REMOVED*** dead setting (see FACTOR_NODE_REVIEW_FINDINGS F1).
+# The factor-table path is authoritative and always on. The shadow rollout
+# flags (FACTOR_NODE_TABLES_SHADOW / FACTOR_NODE_TABLES_ENABLED) and the
+# legacy runtime graph path were removed; FACTOR_NODE_TABLES_ENABLED is a
+# dead setting (see FACTOR_NODE_REVIEW_FINDINGS F1).
 
-***REMOVED*** Run the executor end-to-end (table path)
+# Run the executor end-to-end (table path)
 docker compose exec backend python manage.py shell -c "
 from semantic_search.services.query_parser_service import QueryParserService
 from semantic_search.services.query_executor_service import QueryExecutorService
@@ -426,75 +426,75 @@ print('answer:', r['answer'])
 print('trace steps:', [t['step'] for t in r['trace']])
 "
 
-***REMOVED*** One-time test-DB setup (pytest --reuse-db persists these):
-***REMOVED*** pgvector extension must exist in BOTH test databases
+# One-time test-DB setup (pytest --reuse-db persists these):
+# pgvector extension must exist in BOTH test databases
 docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "CREATE DATABASE test_vector_db OWNER vector_user;"
 docker compose exec postgres-vectors psql -U vector_user -d test_vector_db -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS postgis;"
 docker compose exec postgres-default psql -U django_user -d test_django_db -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS postgis;"
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Query Modes - Three Independent Search Endpoints
+## Query Modes - Three Independent Search Endpoints
 **********************************************************************************************
 
-***REMOVED*** Mode 1: Structured JSON (tags + name) - FastText + romanizer
-***REMOVED*** Search by OSM tags (semantic type matching)
+# Mode 1: Structured JSON (tags + name) - FastText + romanizer
+# Search by OSM tags (semantic type matching)
 curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   -H "Content-Type: application/json" \
   -d '{"country_code": "South Korea", "query_tags": {"amenity": "cafe"}, "top_k": 5}' \
   | python3 -m json.tool
 
-***REMOVED*** Search by name in any language (romanizer cross-script matching)
+# Search by name in any language (romanizer cross-script matching)
 curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   -H "Content-Type: application/json" \
   -d '{"country_code": "South Korea", "query_tags": {"name": "파리바게뜨"}, "top_k": 5}' \
   | python3 -m json.tool
 
-***REMOVED*** Mode 2: Natural language name search - FastText + romanizer
-***REMOVED*** Type a name in any language or script (cross-script matching)
+# Mode 2: Natural language name search - FastText + romanizer
+# Type a name in any language or script (cross-script matching)
 curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   -H "Content-Type: application/json" \
   -d '{"country_code": "South Korea", "natural_query": "paris bagueete", "top_k": 5}' \
   | python3 -m json.tool
 
-***REMOVED*** Korean same-script substring search
+# Korean same-script substring search
 curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   -H "Content-Type: application/json" \
   -d '{"country_code": "South Korea", "natural_query": "원탕", "top_k": 5}' \
   | python3 -m json.tool
 
-***REMOVED*** Mode 3: Natural language template (MapQA parser) - parser + executor only
-***REMOVED*** Type a full geospatial question (separate endpoint, independent of Modes 1-2)
+# Mode 3: Natural language template (MapQA parser) - parser + executor only
+# Type a full geospatial question (separate endpoint, independent of Modes 1-2)
 curl -s -X POST http://localhost:8000/api/nca/execute-query/ \
   -H "Content-Type: application/json" \
   -d '{"query": "Which bars are within 50m of Hollywood Blvd?", "country_code": "US"}' \
   | python3 -m json.tool
 
-***REMOVED*** Parser-only test (see template classification without execution)
+# Parser-only test (see template classification without execution)
 curl -s -X POST http://localhost:8000/api/nca/execute-query/ \
   -H "Content-Type: application/json" \
   -d '{"query": "How far is Union Station from downtown LA?", "country_code": "US"}' \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Template: {d[\"parsed\"][\"template\"]}  conf={d[\"parsed\"][\"confidence\"]:.3f}'); print(f'Concepts: {[(c[\"type\"],c[\"text\"]) for c in d[\"parsed\"][\"concepts\"]]}')"
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Name Romanizing - Cross-Script Name Preprocessing
+## Name Romanizing - Cross-Script Name Preprocessing
 **********************************************************************************************
 
-***REMOVED*** Romanize ALL entities across all countries (idempotent, resumable)
+# Romanize ALL entities across all countries (idempotent, resumable)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py romanize_names
 
-***REMOVED*** Romanize one country (e.g., South Korea - ~4 min at ~4,400 entities/sec)
+# Romanize one country (e.g., South Korea - ~4 min at ~4,400 entities/sec)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py romanize_names --country-code KR
 
-***REMOVED*** Dry run (see samples without writing to DB)
+# Dry run (see samples without writing to DB)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py romanize_names --country-code KR --dry-run
 
-***REMOVED*** Test with a small batch first
+# Test with a small batch first
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py romanize_names --country-code KR --limit 1000
 
-***REMOVED*** Custom batch size (larger = faster for big countries)
+# Custom batch size (larger = faster for big countries)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py romanize_names --country-code KR --batch-size 10000
 
-***REMOVED*** Verify romanized names in the DB
+# Verify romanized names in the DB
 docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   SELECT tags->>'name' AS name, name_romanized
   FROM semantic_search_osmentity
@@ -502,7 +502,7 @@ docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   LIMIT 10;
 "
 
-***REMOVED*** Check romanization progress (how many entities still need processing)
+# Check romanization progress (how many entities still need processing)
 docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   SELECT country_code,
          COUNT(*) FILTER (WHERE name_romanized IS NULL) AS pending,
@@ -512,10 +512,10 @@ docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   GROUP BY country_code ORDER BY pending DESC;
 "
 
-***REMOVED*** Run the romanizer unit tests (45 tests)
+# Run the romanizer unit tests (45 tests)
 docker compose exec backend python -m pytest tests/unit/test_romanizers.py -v
 
-***REMOVED*** Quick registry test (no DB needed)
+# Quick registry test (no DB needed)
 docker compose exec backend python manage.py shell -c "
 from semantic_search.services.romanizing_names.registry import RomanizerRegistry
 print('Supported:', RomanizerRegistry.list_supported())
@@ -526,88 +526,88 @@ print('Irish:   Banc na hÉireann →', repr(RomanizerRegistry.auto_romanize('Ba
 print('English: Paris Baguette →', repr(RomanizerRegistry.auto_romanize('Paris Baguette')))
 "
 
-***REMOVED*** Test cross-script search (Korean entity matching English misspelling)
+# Test cross-script search (Korean entity matching English misspelling)
 curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   -H "Content-Type: application/json" \
   -d '{"country_code": "South Korea", "natural_query": "paris bagueete", "top_k": 5}' \
   | python3 -c "import sys,json; [print(r['tags']['name']) for r in json.load(sys.stdin)['results']]"
 
-***REMOVED*** Test Korean name query via query_tags
+# Test Korean name query via query_tags
 curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   -H "Content-Type: application/json" \
   -d '{"country_code": "South Korea", "query_tags": {"name": "파리바게뜨"}, "top_k": 5}' \
   | python3 -c "import sys,json; [print(r['tags']['name']) for r in json.load(sys.stdin)['results']]"
 
-***REMOVED*** Test Korean same-script substring search
+# Test Korean same-script substring search
 curl -s -X POST http://localhost:8000/api/nca/semantic-triplet-search/ \
   -H "Content-Type: application/json" \
   -d '{"country_code": "South Korea", "natural_query": "원탕", "top_k": 5}' \
   | python3 -c "import sys,json; [print(r['tags']['name']) for r in json.load(sys.stdin)['results']]"
 
 **********************************************************************************************
-***REMOVED******REMOVED*** MCP Agent Stack - Ollama + Goose (../platform/docker_agent_stack.md)
+## MCP Agent Stack - Ollama + Goose (../platform/docker_agent_stack.md)
 **********************************************************************************************
 
-***REMOVED*** Start the LLM server and pull the model (one-time ~5.2 GB)
+# Start the LLM server and pull the model (one-time ~5.2 GB)
 docker compose up -d ollama
 docker compose exec ollama ollama pull qwen3:8b
 
-***REMOVED*** Run the agent - interactive TUI
+# Run the agent - interactive TUI
 docker compose run --rm goose session
 
-***REMOVED*** Run the agent - headless single task
+# Run the agent - headless single task
 docker compose run --rm goose run -t "Which cafes are within 50km of Belize City?"
 
-***REMOVED*** Goose config lives in goose/config/config.yaml (mounted as a DIRECTORY -
-***REMOVED*** goose rewrites it on session start; a file bind-mount fails with EBUSY).
-***REMOVED*** Agent instructions: goose/worldkg-recipe.yaml
+# Goose config lives in goose/config/config.yaml (mounted as a DIRECTORY -
+# goose rewrites it on session start; a file bind-mount fails with EBUSY).
+# Agent instructions: goose/worldkg-recipe.yaml
 
-***REMOVED*** Check what GPUs each container sees (app = 4070 Ti Super, worker = RTX 2070)
+# Check what GPUs each container sees (app = 4070 Ti Super, worker = RTX 2070)
 docker compose exec ollama nvidia-smi -L
 docker compose exec worker nvidia-smi -L
 
 **********************************************************************************************
-***REMOVED******REMOVED*** MCP Tool Surface - 9 tools at /__mcp
+## MCP Tool Surface - 9 tools at /__mcp
 **********************************************************************************************
 
-***REMOVED*** MCP wire smoke test (start a second Vite on 5174 first, then):
+# MCP wire smoke test (start a second Vite on 5174 first, then):
 cd frontend-v3 && npm run dev -- --port 5174 --strictPort
 node frontend-v3/scripts/mcp-smoke-test.mjs 5174
 
-***REMOVED*** Have goose list the tools it sees (via the worldkg-mcp extension)
+# Have goose list the tools it sees (via the worldkg-mcp extension)
 docker compose run --rm goose run -t "List the MCP tools available on the worldkg-mcp server and report their names."
 
-***REMOVED*** MVP demo page - open in the browser
-***REMOVED*** http://localhost:5173/agent
+# MVP demo page - open in the browser
+# http://localhost:5173/agent
 
 **********************************************************************************************
-***REMOVED******REMOVED*** SSE Streaming - execute-query/stream
+## SSE Streaming - execute-query/stream
 **********************************************************************************************
 
-***REMOVED*** Stream the full pipeline as events (parsed → executed → research →
-***REMOVED*** research_out → answer_delta → done). Requires the SSE Accept header.
+# Stream the full pipeline as events (parsed → executed → research →
+# research_out → answer_delta → done). Requires the SSE Accept header.
 curl -sN -H "Accept: text/event-stream" \
   "http://localhost:8000/api/nca/execute-query/stream/?query=Which%20cafes%20are%20within%2050km%20of%20Belize%20City%3F&country_code=Belize"
 
-***REMOVED*** G4 factor-table coverage check (which latent spaces are populated)
+# G4 factor-table coverage check (which latent spaces are populated)
 curl -s "http://localhost:8000/api/nca/factor-availability/?country_code=JM"
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Platform LLM - Warm-up, Enrichment, Caches
+## Platform LLM - Warm-up, Enrichment, Caches
 **********************************************************************************************
 
-***REMOVED*** Load the model into VRAM at container create (entrypoint hook). NOTE:
-***REMOVED*** `docker compose restart` does NOT re-run the entrypoint - use force-recreate.
+# Load the model into VRAM at container create (entrypoint hook). NOTE:
+# `docker compose restart` does NOT re-run the entrypoint - use force-recreate.
 docker compose exec backend python manage.py warm_llm
 docker compose up -d --force-recreate backend
 
-***REMOVED*** LLM config (env): LLM_ENABLED, LLM_BASE_URL (http://ollama:11434/v1),
-***REMOVED*** LLM_MODEL (qwen3:8b), LLM_API_STYLE (native=Ollama /api/chat think:false,
-***REMOVED*** openai=/v1 for cloud swap), LLM_TIMEOUT (60s), LLM_ANSWER_CACHE_TTL_SECONDS (1800s)
+# LLM config (env): LLM_ENABLED, LLM_BASE_URL (http://ollama:11434/v1),
+# LLM_MODEL (qwen3:8b), LLM_API_STYLE (native=Ollama /api/chat think:false,
+# openai=/v1 for cloud swap), LLM_TIMEOUT (60s), LLM_ANSWER_CACHE_TTL_SECONDS (1800s)
 docker compose exec backend printenv LLM_BASE_URL LLM_MODEL LLM_API_STYLE
 
-***REMOVED*** Enriched-answer cache (in-process, cleared on dev-server reload / recreate):
-***REMOVED*** repeated questions replay without LLM calls (~12s → ~2.5s)
+# Enriched-answer cache (in-process, cleared on dev-server reload / recreate):
+# repeated questions replay without LLM calls (~12s → ~2.5s)
 time curl -s -X POST http://localhost:8000/api/nca/execute-query/ \
   -H "Content-Type: application/json" \
   -d '{"query": "Which cafes are within 50km of Belize City?", "country_code": "Belize"}' > /dev/null
@@ -615,8 +615,8 @@ time curl -s -X POST http://localhost:8000/api/nca/execute-query/ \
   -H "Content-Type: application/json" \
   -d '{"query": "Which cafes are within 50km of Belize City?", "country_code": "Belize"}' > /dev/null
 
-***REMOVED*** Snapshot cache (SNAPSHOT_ID_CACHE_TTL_SECONDS=120): the executor hot path.
-***REMOVED*** Call clear_snapshot_cache() after a pipeline backfills a new snapshot.
+# Snapshot cache (SNAPSHOT_ID_CACHE_TTL_SECONDS=120): the executor hot path.
+# Call clear_snapshot_cache() after a pipeline backfills a new snapshot.
 docker compose exec backend python manage.py shell -c "
 import time
 from worldkg_nca.snapshot_utils import get_latest_snapshot_id, clear_snapshot_cache
@@ -627,27 +627,27 @@ t0 = time.monotonic(); get_latest_snapshot_id()
 print(f'cached: {(time.monotonic()-t0)*1000:.0f}ms')
 "
 
-***REMOVED*** Spatial geography expression index (GIST on geom::geography) - makes
-***REMOVED*** ST_DWithin(geom::geography, ...) an Index Scan instead of a partition scan
+# Spatial geography expression index (GIST on geom::geography) - makes
+# ST_DWithin(geom::geography, ...) an Index Scan instead of a partition scan
 docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
   SELECT indexname FROM pg_indexes WHERE indexname='idx_osmentity_geom_geog';
 "
 
-***REMOVED*** LLM / enrichment / snapshot-cache unit tests (all mocked - no Ollama needed)
+# LLM / enrichment / snapshot-cache unit tests (all mocked - no Ollama needed)
 docker compose exec backend python -m pytest tests/unit/test_llm_service.py \
   tests/unit/test_query_enrichment_service.py tests/unit/test_snapshot_cache.py -v
 
 **********************************************************************************************
-***REMOVED******REMOVED*** Verification - System Checks and Syntax Validation
+## Verification - System Checks and Syntax Validation
 **********************************************************************************************
 
-***REMOVED*** Django system check
+# Django system check
 docker compose exec backend python manage.py check
 
-***REMOVED*** Migration consistency check (should report no changes)
+# Migration consistency check (should report no changes)
 docker compose exec backend python manage.py makemigrations --check --dry-run
 
-***REMOVED*** Syntax check all modified Python files
+# Syntax check all modified Python files
 cd backend && python -c "
 import ast, glob
 for f in glob.glob('**/*.py', recursive=True):
@@ -656,25 +656,25 @@ for f in glob.glob('**/*.py', recursive=True):
 print('OK')
 "
 
-***REMOVED*** Stale import check (should return nothing)
+# Stale import check (should return nothing)
 grep -r "from extraction\|import extraction\|from orchestration\|import orchestration" backend/ --include="*.py" | grep -v "/migrations/"
 grep -r "from analysis\|import analysis" backend/ --include="*.py" | grep -v "/migrations/"
 grep -r "TemporalSnapshot\|AssetBundle" backend/ --include="*.py" | grep -v "/migrations/"
 **********************************************************************************************
-***REMOVED******REMOVED*** Self-Hosted Deployment - nginx, Funnel, Login Guard
+## Self-Hosted Deployment - nginx, Funnel, Login Guard
 **********************************************************************************************
 
-***REMOVED*** Rebuild the SPA with the same-origin API base (dist is mounted into nginx, no restart needed)
+# Rebuild the SPA with the same-origin API base (dist is mounted into nginx, no restart needed)
 cd frontend-v3 && VITE_API_BASE_URL=/api npm run build
 
-***REMOVED*** nginx service (serves the SPA, proxies /api + /ws to backend:8000)
+# nginx service (serves the SPA, proxies /api + /ws to backend:8000)
 docker compose up -d nginx
 docker compose logs -f nginx
 
-***REMOVED*** .env changes need a RECREATE, not a restart (restart keeps the old env)
+# .env changes need a RECREATE, not a restart (restart keeps the old env)
 docker compose up -d --force-recreate backend
 
-***REMOVED*** Create a test account from the shell
+# Create a test account from the shell
 docker compose exec backend python manage.py shell -c "
 from django.contrib.auth.models import User
 u, _ = User.objects.get_or_create(username='testfriend')

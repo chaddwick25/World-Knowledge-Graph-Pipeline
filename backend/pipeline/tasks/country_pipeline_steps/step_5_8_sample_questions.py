@@ -72,7 +72,7 @@ def step_5_8_generate_sample_questions(
             result = SampleQuestionService.generate_subdivision(
                 env.iso, sg.wikidata_id, snapshot_date=env.snapshot_date,
             )
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — non-fatal step
+        except Exception as exc:  # noqa: BLE001 — non-fatal step
             _log(
                 logger, "warning",
                 f"Step 5.8: generation failed for {sg.name}",
@@ -96,7 +96,7 @@ def step_5_8_generate_sample_questions(
         )
         cross_generated = cross.get("generated", 0)
         cross_dropped = cross.get("dropped", 0)
-    except Exception as exc:  ***REMOVED*** noqa: BLE001 — non-fatal step
+    except Exception as exc:  # noqa: BLE001 — non-fatal step
         _log(
             logger, "warning",
             "Step 5.8: cross-subdivision generation failed",

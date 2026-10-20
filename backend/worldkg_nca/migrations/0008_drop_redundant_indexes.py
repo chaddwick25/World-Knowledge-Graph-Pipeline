@@ -1,23 +1,23 @@
-***REMOVED*** Drop 9 redundant indexes on OsmEntity (Phase 2 of OSMENTITY_MONOLITH_OPTIMIZATION.md)
-***REMOVED***
-***REMOVED*** Removes db_index=True from 5 fields that also have explicit Meta.indexes entries
-***REMOVED*** (or are covered by a composite index).  This prevents Django from auto-creating
-***REMOVED*** duplicate btree + _like (varchar_pattern_ops) indexes on every makemigrations.
-***REMOVED***
-***REMOVED*** Indexes dropped (9 total):
-***REMOVED***   4 unused _like (varchar_pattern_ops) indexes — zero LIKE queries in codebase
-***REMOVED***   4 duplicate btree indexes (db_index=True + Meta.indexes on same column)
-***REMOVED***   1 covered index (source_snapshot_id single-col, covered by composite)
-***REMOVED***
-***REMOVED*** The AlterField operations below handle dropping the db_index=True auto-created
-***REMOVED*** btree indexes.  The RunSQL block is a safety net that explicitly drops the
-***REMOVED*** _like indexes and the covered index (Django versions differ on whether
-***REMOVED*** AlterField drops _like indexes automatically).
-***REMOVED***
-***REMOVED*** After this migration: 14 indexes remain (down from 23), saving ~380 MB now
-***REMOVED*** (~51 GB at 400M rows).  See OSMENTITY_MONOLITH_OPTIMIZATION Phase 2.
-***REMOVED***
-***REMOVED*** IMPORTANT: Run with --database=vectors (OsmEntity lives in the vectors DB).
+# Drop 9 redundant indexes on OsmEntity (Phase 2 of OSMENTITY_MONOLITH_OPTIMIZATION.md)
+#
+# Removes db_index=True from 5 fields that also have explicit Meta.indexes entries
+# (or are covered by a composite index).  This prevents Django from auto-creating
+# duplicate btree + _like (varchar_pattern_ops) indexes on every makemigrations.
+#
+# Indexes dropped (9 total):
+#   4 unused _like (varchar_pattern_ops) indexes — zero LIKE queries in codebase
+#   4 duplicate btree indexes (db_index=True + Meta.indexes on same column)
+#   1 covered index (source_snapshot_id single-col, covered by composite)
+#
+# The AlterField operations below handle dropping the db_index=True auto-created
+# btree indexes.  The RunSQL block is a safety net that explicitly drops the
+# _like indexes and the covered index (Django versions differ on whether
+# AlterField drops _like indexes automatically).
+#
+# After this migration: 14 indexes remain (down from 23), saving ~380 MB now
+# (~51 GB at 400M rows).  See OSMENTITY_MONOLITH_OPTIMIZATION Phase 2.
+#
+# IMPORTANT: Run with --database=vectors (OsmEntity lives in the vectors DB).
 
 from django.db import migrations, models
 
@@ -29,7 +29,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        ***REMOVED*** ── Normalize Meta.indexes names (Django auto-generated → stable names) ──
+        # ── Normalize Meta.indexes names (Django auto-generated → stable names) ──
         migrations.RenameIndex(
             model_name='osmentity',
             new_name='semantic_se_snapsho_4f8970_idx',
@@ -45,12 +45,12 @@ class Migration(migrations.Migration):
             new_name='semantic_se_snapsho_c9aad4_idx',
             old_name='osmentity_snap_cc_idx',
         ),
-        ***REMOVED*** ── Remove db_index=True from 5 fields ──────────────────────────────────
-        ***REMOVED*** Each AlterField drops the auto-created btree index on that column.
-        ***REMOVED*** The Meta.indexes entries (for wkg_class, wikidata_uri, country_code,
-        ***REMOVED*** snapshot_id) ensure one properly-named index remains per column.
-        ***REMOVED*** source_snapshot_id has no single-column Meta entry — it's covered by
-        ***REMOVED*** the composite index (source_snapshot_id, gv_nle_trained).
+        # ── Remove db_index=True from 5 fields ──────────────────────────────────
+        # Each AlterField drops the auto-created btree index on that column.
+        # The Meta.indexes entries (for wkg_class, wikidata_uri, country_code,
+        # snapshot_id) ensure one properly-named index remains per column.
+        # source_snapshot_id has no single-column Meta entry — it's covered by
+        # the composite index (source_snapshot_id, gv_nle_trained).
         migrations.AlterField(
             model_name='osmentity',
             name='country_code',
@@ -76,9 +76,9 @@ class Migration(migrations.Migration):
             name='wkg_class',
             field=models.CharField(blank=True, help_text="WorldKG ontological class using wkgs: namespace (e.g., 'wkgs:Cafe', 'wkgs:Hospital'). Corresponds to rdf:type assertion in WorldKG RDF triples.", max_length=200, null=True),
         ),
-        ***REMOVED*** ── Safety net: explicitly drop _like + covered indexes ──────────────────
-        ***REMOVED*** The AlterField operations above should drop these, but Django versions
-        ***REMOVED*** differ on _like index handling.  IF EXISTS makes this idempotent.
+        # ── Safety net: explicitly drop _like + covered indexes ──────────────────
+        # The AlterField operations above should drop these, but Django versions
+        # differ on _like index handling.  IF EXISTS makes this idempotent.
         migrations.RunSQL(
             sql="""
                 -- 4 unused _like (varchar_pattern_ops) indexes (219 MB)

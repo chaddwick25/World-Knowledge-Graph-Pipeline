@@ -27,7 +27,7 @@ class OsmEntity(models.Model):
         ('relation', 'Relation'),
     ]
     
-    ***REMOVED*** Composite primary key: osm_type + osm_id
+    # Composite primary key: osm_type + osm_id
     osm_type = models.CharField(
         max_length=10,
         choices=OSM_TYPE_CHOICES,
@@ -37,16 +37,16 @@ class OsmEntity(models.Model):
         help_text="OSM element ID"
     )
     
-    ***REMOVED*** OSM tags
+    # OSM tags
     tags = models.JSONField(
         help_text="OSM tags as key-value pairs, e.g., {'amenity': 'cafe', 'name': 'Starbucks'}"
     )
 
-    ***REMOVED*** Romanized name for cross-script similarity search.
-    ***REMOVED*** Populated by the romanize_names management command using the
-    ***REMOVED*** RomanizerRegistry (auto-detects script from the text).  Used with
-    ***REMOVED*** PostgreSQL pg_trgm GIN index for indexed similarity matching.
-    ***REMOVED*** NULL for entities without a name= tag or before romanization.
+    # Romanized name for cross-script similarity search.
+    # Populated by the romanize_names management command using the
+    # RomanizerRegistry (auto-detects script from the text).  Used with
+    # PostgreSQL pg_trgm GIN index for indexed similarity matching.
+    # NULL for entities without a name= tag or before romanization.
     name_romanized = models.CharField(
         max_length=500,
         null=True,
@@ -55,12 +55,12 @@ class OsmEntity(models.Model):
                   "Populated by romanize_names command. NULL before romanization."
     )
 
-    ***REMOVED*** DUAL EMBEDDINGS: GV-Tags (semantic) + GV-NLE (spatial)
-    ***REMOVED*** GV-Tags: 300D (FastText)  |  GV-NLE: 100D (GeoVectors-master implementation)
+    # DUAL EMBEDDINGS: GV-Tags (semantic) + GV-NLE (spatial)
+    # GV-Tags: 300D (FastText)  |  GV-NLE: 100D (GeoVectors-master implementation)
     
-    ***REMOVED*** GV-Tags: Semantic embedding from FastText
-    ***REMOVED*** Captures: "What you are" - functional similarity (cafe ≈ restaurant ≈ bar)
-    ***REMOVED*** Formula: GV-Tags(entity) = (1/2|tags|) × Σ(FastText(key) + FastText(value))
+    # GV-Tags: Semantic embedding from FastText
+    # Captures: "What you are" - functional similarity (cafe ≈ restaurant ≈ bar)
+    # Formula: GV-Tags(entity) = (1/2|tags|) × Σ(FastText(key) + FastText(value))
     gv_tags_embedding = VectorField(
         dimensions=300,
         null=True,
@@ -68,9 +68,9 @@ class OsmEntity(models.Model):
         help_text="GV-Tags: Semantic embedding from FastText (What you are)"
     )
     
-    ***REMOVED*** GV-NLE: Spatial embedding from k-NN weighted DeepWalk
-    ***REMOVED*** Captures: "Where you are" - geographic similarity (nearby entities similar)
-    ***REMOVED*** Formula: k-NN graph (k=50) + weighted DeepWalk with w(o,o') = ln(1 + 1/distance)
+    # GV-NLE: Spatial embedding from k-NN weighted DeepWalk
+    # Captures: "Where you are" - geographic similarity (nearby entities similar)
+    # Formula: k-NN graph (k=50) + weighted DeepWalk with w(o,o') = ln(1 + 1/distance)
     gv_nle_embedding = VectorField(
         dimensions=100,
         null=True,
@@ -78,7 +78,7 @@ class OsmEntity(models.Model):
         help_text="GV-NLE: Spatial embedding from k-NN graph (Where you are)"
     )
 
-    ***REMOVED*** Static embedding for ANN search (concatenated GV-Tags + GV-NLE, 300D + 100D = 400D)
+    # Static embedding for ANN search (concatenated GV-Tags + GV-NLE, 300D + 100D = 400D)
     static_embedding = VectorField(
         dimensions=400,
         null=True,
@@ -86,9 +86,9 @@ class OsmEntity(models.Model):
         help_text="Static embedding approximating fused geo+name+class score for ANN search (GV-Tags+GV-NLE)"
     )
 
-    ***REMOVED*** WorldKG Semantic Type Assertions
-    ***REMOVED*** Provides hierarchical ontological class from WorldKG knowledge graph
-    ***REMOVED*** Enables subsumption queries and type-aware reasoning
+    # WorldKG Semantic Type Assertions
+    # Provides hierarchical ontological class from WorldKG knowledge graph
+    # Enables subsumption queries and type-aware reasoning
     wkg_class = models.CharField(
         max_length=200,
         null=True,
@@ -136,7 +136,7 @@ class OsmEntity(models.Model):
         help_text="Timestamp when WorldKG enrichment was performed"
     )
     
-    ***REMOVED*** Backward compatibility: alias for gv_tags_embedding
+    # Backward compatibility: alias for gv_tags_embedding
     @property
     def embedding(self):
         """Alias for gv_tags_embedding for backward compatibility."""
@@ -151,7 +151,7 @@ class OsmEntity(models.Model):
         """
         return f"https://www.openstreetmap.org/node/{self.osm_id}"
     
-    ***REMOVED*** Optional geometry
+    # Optional geometry
     geom = gis_models.PointField(
         srid=4326,
         null=True,
@@ -159,7 +159,7 @@ class OsmEntity(models.Model):
         help_text="WGS84 Point geometry (for nodes)"
     )
     
-    ***REMOVED*** Metadata
+    # Metadata
     version = models.IntegerField(
         null=True,
         blank=True,
@@ -171,7 +171,7 @@ class OsmEntity(models.Model):
         help_text="OSM element timestamp"
     )
     
-    ***REMOVED*** Embedding version tracking
+    # Embedding version tracking
     gv_tags_version = models.CharField(
         max_length=50,
         default='1.0',
@@ -193,13 +193,13 @@ class OsmEntity(models.Model):
         blank=True,
         help_text="UUID of source Snapshot (cross-database reference)"
     )
-    ***REMOVED*** ── Phase 6 partition keys (temporal + geographic) ──────────────────
-    ***REMOVED*** These are nullable on the monolith and populated via backfill.
-    ***REMOVED*** After cutover they become NOT NULL partition keys on the
-    ***REMOVED*** partitioned table (embeddings_partitioned).
-    ***REMOVED*** NOTE: source_snapshot_id (UUID FK) ≠ snapshot_id (VARCHAR partition key).
-    ***REMOVED***   source_snapshot_id = UUID of Snapshot row (default DB)
-    ***REMOVED***   snapshot_id         = human-readable 'YYYY_MM_DD' partition key
+    # ── Phase 6 partition keys (temporal + geographic) ──────────────────
+    # These are nullable on the monolith and populated via backfill.
+    # After cutover they become NOT NULL partition keys on the
+    # partitioned table (embeddings_partitioned).
+    # NOTE: source_snapshot_id (UUID FK) ≠ snapshot_id (VARCHAR partition key).
+    #   source_snapshot_id = UUID of Snapshot row (default DB)
+    #   snapshot_id         = human-readable 'YYYY_MM_DD' partition key
     snapshot_id = models.CharField(
         max_length=20,
         null=True,
@@ -220,11 +220,11 @@ class OsmEntity(models.Model):
 
     class Meta:
         db_table = 'semantic_search_osmentity'
-        ***REMOVED*** Phase 6 cutover: widened to include partition keys (snapshot_id,
-        ***REMOVED*** country_code).  The monolith's old constraint was
-        ***REMOVED*** (osm_type, osm_id, gv_tags_version).  Migration 0009 applies this
-        ***REMOVED*** change — it must only be run AFTER the table rename cutover
-        ***REMOVED*** (cutover Step 4).
+        # Phase 6 cutover: widened to include partition keys (snapshot_id,
+        # country_code).  The monolith's old constraint was
+        # (osm_type, osm_id, gv_tags_version).  Migration 0009 applies this
+        # change — it must only be run AFTER the table rename cutover
+        # (cutover Step 4).
         unique_together = [['osm_type', 'osm_id', 'gv_tags_version', 'snapshot_id', 'country_code']]
         indexes = [
             models.Index(fields=['osm_type', 'osm_id']),
@@ -234,14 +234,14 @@ class OsmEntity(models.Model):
             models.Index(fields=['wikidata_uri']),
             models.Index(fields=['wkg_depth']),
             models.Index(fields=['wkg_type_key', 'wkg_type_value']),
-            ***REMOVED*** Phase 6 partition-key indexes (added for snapshot/country scoping)
+            # Phase 6 partition-key indexes (added for snapshot/country scoping)
             models.Index(fields=['snapshot_id']),
             models.Index(fields=['country_code']),
             models.Index(fields=['snapshot_id', 'country_code']),
-            ***REMOVED*** GIN index on tags jsonb — accelerates tags ? 'key' and
-            ***REMOVED*** tags ?| ARRAY[...] queries used by USLP head filtering and
-            ***REMOVED*** semantic search tag matching.  On CA (53M rows) this drops
-            ***REMOVED*** tag-existence queries from ~85s seq scan to <100ms.
+            # GIN index on tags jsonb — accelerates tags ? 'key' and
+            # tags ?| ARRAY[...] queries used by USLP head filtering and
+            # semantic search tag matching.  On CA (53M rows) this drops
+            # tag-existence queries from ~85s seq scan to <100ms.
             GinIndex(
                 fields=['tags'],
                 name='osmentity_tags_gin_idx',
@@ -288,7 +288,7 @@ class OsmEntity(models.Model):
         Returns:
             OsmEntity instance with dual embeddings
         """
-        ***REMOVED*** Convert numpy arrays to lists for pgvector
+        # Convert numpy arrays to lists for pgvector
         if gv_tags_embedding is not None:
             gv_tags_embedding = gv_tags_embedding.tolist() if hasattr(gv_tags_embedding, 'tolist') else gv_tags_embedding
         
@@ -308,24 +308,24 @@ class OsmEntity(models.Model):
         )
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Factor-node metric tables (per-entity spectral/drift metrics)
-***REMOVED***
-***REMOVED*** Per-entity, snapshot-pinned metrics written by batch pipeline steps
-***REMOVED*** (5c/5d) and consumed at query time via SQL joins — the materialized
-***REMOVED*** "factor nodes" of the Spatial-Agent paper's factorized GeoFlow Graph G′
-***REMOVED*** (§3.3).  All tables live on the ``vectors`` DB so they can join
-***REMOVED*** ``OsmEntity`` without FDW.
-***REMOVED***
-***REMOVED*** Key convention: the k-NN graph's node keyspace is ``osm_id`` only
-***REMOVED*** (KNNGraphService.build_graph), so these tables key on
-***REMOVED*** (snapshot_id, country_code, osm_id) — no osm_type.
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Factor-node metric tables (per-entity spectral/drift metrics)
+#
+# Per-entity, snapshot-pinned metrics written by batch pipeline steps
+# (5c/5d) and consumed at query time via SQL joins — the materialized
+# "factor nodes" of the Spatial-Agent paper's factorized GeoFlow Graph G′
+# (§3.3).  All tables live on the ``vectors`` DB so they can join
+# ``OsmEntity`` without FDW.
+#
+# Key convention: the k-NN graph's node keyspace is ``osm_id`` only
+# (KNNGraphService.build_graph), so these tables key on
+# (snapshot_id, country_code, osm_id) — no osm_type.
+# ---------------------------------------------------------------------------
 
-***REMOVED*** Fixed width of the eigen_loadings vector column.  Small countries compute
-***REMOVED*** K=128 non-trivial eigenvectors; large countries (≥500k nodes) compute
-***REMOVED*** K=64 and are zero-padded to 128 (both vectors share the padding, so
-***REMOVED*** pgvector inner products remain correct).
+# Fixed width of the eigen_loadings vector column.  Small countries compute
+# K=128 non-trivial eigenvectors; large countries (≥500k nodes) compute
+# K=64 and are zero-padded to 128 (both vectors share the padding, so
+# pgvector inner products remain correct).
 EIGEN_LOADING_DIM = 128
 
 
@@ -395,7 +395,7 @@ class SpectralNodeMetric(models.Model):
                   "wkg_class graph signal",
     )
 
-    ***REMOVED*** Structural metrics (derived from the same k-NN graph)
+    # Structural metrics (derived from the same k-NN graph)
     degree = models.IntegerField(
         null=True, blank=True,
         help_text="Node degree in the k-NN graph",
@@ -421,8 +421,8 @@ class SpectralNodeMetric(models.Model):
         indexes = [
             models.Index(fields=['snapshot_id', 'country_code', 'louvain_community'],
                          name='factor_spec_community_idx'),
-            ***REMOVED*** Composite index for subgraph-scoped pgvector <***REMOVED***> queries —
-            ***REMOVED*** lets the planner prune to the subgraph before the distance scan.
+            # Composite index for subgraph-scoped pgvector <#> queries —
+            # lets the planner prune to the subgraph before the distance scan.
             models.Index(
                 fields=['snapshot_id', 'country_code', 'subgraph_slug'],
                 name='factor_spec_subgraph_idx',

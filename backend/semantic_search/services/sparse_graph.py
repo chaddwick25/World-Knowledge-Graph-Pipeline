@@ -35,9 +35,9 @@ class SparseGraph:
     edge_weight: np.ndarray
     class_map: Dict = field(default_factory=dict)
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Basic properties
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Basic properties
+    # ------------------------------------------------------------------
 
     @property
     def n_nodes(self) -> int:
@@ -75,9 +75,9 @@ class SparseGraph:
             self._degrees_cache = deg
         return self._degrees_cache
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** scipy sparse conversions
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # scipy sparse conversions
+    # ------------------------------------------------------------------
 
     @property
     def _canonical_edges(self):
@@ -104,7 +104,7 @@ class SparseGraph:
             order = np.argsort(key, kind="stable")
             key_s = key[order]
             w_s = self.edge_weight[order]
-            ***REMOVED*** Segment boundaries → max-reduce within each duplicate run
+            # Segment boundaries → max-reduce within each duplicate run
             starts = np.r_[0, np.flatnonzero(np.diff(key_s)) + 1]
             uniq_key = key_s[starts]
             uniq_w = np.maximum.reduceat(w_s, starts)
@@ -149,13 +149,13 @@ class SparseGraph:
         A = self.to_csr(symmetrize=True)
         deg = np.asarray(A.sum(axis=1)).ravel()
         isolated = deg == 0
-        deg[isolated] = 1.0  ***REMOVED*** avoid div-by-zero; zeroed out below
+        deg[isolated] = 1.0  # avoid div-by-zero; zeroed out below
         d_inv_sqrt = 1.0 / np.sqrt(deg)
         D = sp.diags(d_inv_sqrt)
         n = self.n_nodes
         L = (sp.identity(n, format="csr") - D @ A @ D).tocsr()
         if isolated.any():
-            ***REMOVED*** nx sets L[i,i] = 0 for isolated nodes
+            # nx sets L[i,i] = 0 for isolated nodes
             L = (L - sp.diags(isolated.astype(float))).tocsr()
         return L
 
@@ -189,9 +189,9 @@ class SparseGraph:
         }
         return component_of, component_size_of
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Interop
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Interop
+    # ------------------------------------------------------------------
 
     @classmethod
     def from_nx(cls, G) -> "SparseGraph":
@@ -231,7 +231,7 @@ class SparseGraph:
         for osm_id in self.node_ids:
             G.add_node(int(osm_id))
         for i in range(self.n_edges):
-            ***REMOVED*** edge_index holds *row indices* into node_ids, not osm_ids
+            # edge_index holds *row indices* into node_ids, not osm_ids
             u = int(self.node_ids[self.edge_index[0, i]])
             v = int(self.node_ids[self.edge_index[1, i]])
             w = float(self.edge_weight[i])

@@ -23,7 +23,7 @@ from django.core.management.base import BaseCommand, CommandError
 logger = logging.getLogger(__name__)
 
 
-***REMOVED*** ── The targets we care about (derived from embedding_splits.json) ─────
+# ── The targets we care about (derived from embedding_splits.json) ─────
 
 from core.services.snapshot.embedding_spatial_split_service import load_embedding_splits_config
 
@@ -45,8 +45,8 @@ def _build_targets_from_config():
     for split in splits:
         continent = split.get('continent')
         source_rel = split.get('source_tsv') or ''
-        ***REMOVED*** Directory name is everything up to the last path component
-        ***REMOVED*** (e.g. europe/great-britain-location/great-britain-location.tsv.gz)
+        # Directory name is everything up to the last path component
+        # (e.g. europe/great-britain-location/great-britain-location.tsv.gz)
         parts = source_rel.split('/')
         if len(parts) < 2:
             continue
@@ -137,7 +137,7 @@ class Command(BaseCommand):
             ).delete()
             self.stdout.write(f'Cleared {deleted} existing row(s) for {snapshot_date}')
 
-        ***REMOVED*** ── Check each target country ──────────────────────────────
+        # ── Check each target country ──────────────────────────────
         results = []
 
         for name, info in SPLIT_TARGETS.items():
@@ -208,7 +208,7 @@ class Command(BaseCommand):
                 ),
             })
 
-        ***REMOVED*** ── Report ─────────────────────────────────────────────────
+        # ── Report ─────────────────────────────────────────────────
         self.stdout.write(f'\n{"─" * 50}')
         status_counts = {}
         for r in results:
@@ -230,12 +230,12 @@ class Command(BaseCommand):
             self.stdout.write('\n[DRY-RUN] No rows written.')
             return
 
-        ***REMOVED*** ── Persist ────────────────────────────────────────────────
+        # ── Persist ────────────────────────────────────────────────
         created = 0
         updated = 0
         for r in results:
-            ***REMOVED*** Resolve ISO code: try non-sovereign synthetic ISO first,
-            ***REMOVED*** then fall back to existing iso_code from DB (if any).
+            # Resolve ISO code: try non-sovereign synthetic ISO first,
+            # then fall back to existing iso_code from DB (if any).
             from core.services.planet_init.non_sovereign_territories import (
                 resolve_non_sovereign_iso,
             )

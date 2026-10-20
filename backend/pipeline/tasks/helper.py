@@ -14,13 +14,13 @@ from asgiref.sync import async_to_sync
 if TYPE_CHECKING:
     from pipeline.envelopes import CountryEnvelope, PlanetEnvelope
 
-***REMOVED*** Type alias — helper functions accept either envelope (duck-typed).
+# Type alias — helper functions accept either envelope (duck-typed).
 CfgLike = Union["CountryEnvelope", "PlanetEnvelope"]
 
 
-***REMOVED*** Configuration Driven Development
-***REMOVED*** Functions as first class objects with argument keyword capture via **kwargs
-***REMOVED*** _log: consistent logging dispatcher for pipeline steps
+# Configuration Driven Development
+# Functions as first class objects with argument keyword capture via **kwargs
+# _log: consistent logging dispatcher for pipeline steps
 def _log(logger: logging.Logger, level: str, message: str, **kwargs) -> None:
     """Internal logging helper to mirror the v1 formatting.
     Formats messages as ``"msg [k1=v1 k2=v2]"`` when extra context is given.
@@ -29,9 +29,9 @@ def _log(logger: logging.Logger, level: str, message: str, **kwargs) -> None:
     getattr(logger, level)(f"{message} [{extra}]" if extra else message)
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** WebSocket Update
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# WebSocket Update
+# ---------------------------------------------------------------------------
 def _push_update(pipeline_run_id: str, name: str, status: str, message: str,
                  pct: int = 0, step: int = 0, total: int = 6) -> None:
     """Send a step update via WebSocket.
@@ -45,7 +45,7 @@ def _push_update(pipeline_run_id: str, name: str, status: str, message: str,
         total: Total number of steps in this pipeline (default 6 for WorldKG v2).
     """
     try:
-        ***REMOVED*** private logger for this function :)
+        # private logger for this function :)
         _logger = logging.getLogger("pipeline")
         channel_layer = get_channel_layer()
         _logger.info(
@@ -106,12 +106,12 @@ def _send_pipeline_complete(
         )
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** WorldKG Enrichment
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# WorldKG Enrichment
+# ---------------------------------------------------------------------------
 def enrich_worldkg_classes(cfg: CfgLike, logger: logging.Logger) -> None:
     """Populate wkg_class via Redis ontology matching """
-    ***REMOVED*** Guard: skip enrichment if requested
+    # Guard: skip enrichment if requested
     if getattr(cfg, "skip_enrich", False):
         _log(
             logger,
@@ -129,7 +129,7 @@ def enrich_worldkg_classes(cfg: CfgLike, logger: logging.Logger) -> None:
         country=cfg.iso,
         pipeline_run_id=cfg.pipeline_run_id,
     )
-    ***REMOVED*** TODO: remove the if statement, the validation logic should be done before calling this function
+    # TODO: remove the if statement, the validation logic should be done before calling this function
     poly_path = cfg.poly_path
     if not poly_path:
         if cfg.snapshot_pbf_path:
@@ -148,14 +148,14 @@ def enrich_worldkg_classes(cfg: CfgLike, logger: logging.Logger) -> None:
             if candidate.exists():
                 poly_path = str(candidate)
 
-    from semantic_search.services.worldkg_enrichment_service import (  ***REMOVED*** type: ignore
+    from semantic_search.services.worldkg_enrichment_service import (  # type: ignore
         get_worldkg_enrichment_service,
     )
 
     svc = get_worldkg_enrichment_service()
-    ***REMOVED*** Use SQL-side enrichment (UPDATE...FROM join) — ~10x faster
-    ***REMOVED*** than the Python ThreadPoolExecutor path for large countries.
-    ***REMOVED*** Falls back to batch_enrich_region if ontology not loaded.
+    # Use SQL-side enrichment (UPDATE...FROM join) — ~10x faster
+    # than the Python ThreadPoolExecutor path for large countries.
+    # Falls back to batch_enrich_region if ontology not loaded.
     svc.sql_enrich_region(
         region=cfg.iso,
         poly_file=poly_path,
@@ -163,10 +163,10 @@ def enrich_worldkg_classes(cfg: CfgLike, logger: logging.Logger) -> None:
     )
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Entropy Computation (v2)
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** TODO: Review the math for this function
+# ---------------------------------------------------------------------------
+# Entropy Computation (v2)
+# ---------------------------------------------------------------------------
+# TODO: Review the math for this function
 def compute_entropy(cfg: CfgLike, logger: logging.Logger) -> float:
     """Compute Shannon entropy of WorldKG class distribution (v2 helper)."""
     import numpy as np
@@ -217,13 +217,13 @@ def compute_entropy(cfg: CfgLike, logger: logging.Logger) -> float:
     return entropy
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** GV-NLE Training (v2)
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# GV-NLE Training (v2)
+# ---------------------------------------------------------------------------
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════
-***REMOVED*** Planet Record
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
+# Planet Record
+# ══════════════════════════════════════════════════════════════════════════
 def _ensure_snapshot_row(cfg: CfgLike, logger: logging.Logger) -> None:
     """Idempotently register a Snapshot row when the PBF already exists on disk.
 
@@ -268,7 +268,7 @@ def _ensure_snapshot_row(cfg: CfgLike, logger: logging.Logger) -> None:
         )
 
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
 def create_planet_run_record(cfg: CfgLike) -> None:
     """Create or update a PlanetSnapshot record for tracking."""
     from core.models import PlanetSnapshot
@@ -339,12 +339,12 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> CfgLike:
             continent=cfg.continent,
             snapshot_date=cfg.snapshot_date,
             osm_relation_id=cfg.osm_relation_id,
-            ***REMOVED*** Pass the canonical_slug gate (identity.slug) so the extraction
-            ***REMOVED*** writes to the SAME directory the envelope's snapshot_pbf_path
-            ***REMOVED*** points at. Without this, countries whose canonical_name
-            ***REMOVED*** slugifies differently from canonical_slug (e.g. NL:
-            ***REMOVED*** "Kingdom of the Netherlands" vs "netherlands") extracted to a
-            ***REMOVED*** different directory and Step 1 crashed on a missing file.
+            # Pass the canonical_slug gate (identity.slug) so the extraction
+            # writes to the SAME directory the envelope's snapshot_pbf_path
+            # points at. Without this, countries whose canonical_name
+            # slugifies differently from canonical_slug (e.g. NL:
+            # "Kingdom of the Netherlands" vs "netherlands") extracted to a
+            # different directory and Step 1 crashed on a missing file.
             country_slug=cfg.slug,
         )
 
@@ -373,9 +373,9 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> CfgLike:
             pipeline_run_id=cfg.pipeline_run_id,
         )
 
-        ***REMOVED*** The envelope is a frozen dataclass — rebuild it with the ACTUAL
-        ***REMOVED*** extraction paths instead of mutating in place (mutation previously
-        ***REMOVED*** raised AttributeError that was silently swallowed by a bare except).
+        # The envelope is a frozen dataclass — rebuild it with the ACTUAL
+        # extraction paths instead of mutating in place (mutation previously
+        # raised AttributeError that was silently swallowed by a bare except).
         snap_path = result.get("snapshot_pbf_path")
         if snap_path:
             new_paths = dataclasses.replace(
@@ -396,10 +396,10 @@ def preprocess_snapshot(cfg: CfgLike, logger: logging.Logger) -> CfgLike:
             country=cfg.iso,
             pipeline_run_id=cfg.pipeline_run_id,
         )
-        ***REMOVED*** The PBF exists on disk, but the Snapshot row may not exist in the
-        ***REMOVED*** DB (e.g. PBF was pre-generated manually or the DB was recreated).
-        ***REMOVED*** Steps 5c (spectral) and 5d (temporal) require a Snapshot row —
-        ***REMOVED*** register it idempotently so downstream steps can find it.
+        # The PBF exists on disk, but the Snapshot row may not exist in the
+        # DB (e.g. PBF was pre-generated manually or the DB was recreated).
+        # Steps 5c (spectral) and 5d (temporal) require a Snapshot row —
+        # register it idempotently so downstream steps can find it.
         _ensure_snapshot_row(cfg, logger)
 
     if cfg.osm_relation_id and snapshot_exists:
@@ -491,7 +491,7 @@ def sync_subgraph_profiles(
         sg_pickle = sg.get("pickle_path", "")
         sg_qid = sg.get("wikidata_qid") or None
         sg_relation_id = sg.get("relation_id")
-        sg_bbox = sg.get("bbox")  ***REMOVED*** [minLon, minLat, maxLon, maxLat] or None
+        sg_bbox = sg.get("bbox")  # [minLon, minLat, maxLon, maxLat] or None
 
         defaults = {
             "name": sg_name,
@@ -501,14 +501,14 @@ def sync_subgraph_profiles(
             "subgraph_pickle_path": sg_pickle or None,
         }
 
-        ***REMOVED*** Persist Wikidata QID and OSM relation ID for subdivision queries
+        # Persist Wikidata QID and OSM relation ID for subdivision queries
         if sg_qid:
             defaults["wikidata_id"] = sg_qid
             defaults["wikidata_uri"] = f"http://www.wikidata.org/entity/{sg_qid}"
         if sg_relation_id:
             defaults["osm_relation_id"] = sg_relation_id
 
-        ***REMOVED*** Persist bbox for spatial filtering by subdivision
+        # Persist bbox for spatial filtering by subdivision
         if sg_bbox and len(sg_bbox) == 4:
             defaults["bbox_min_lon"] = sg_bbox[0]
             defaults["bbox_min_lat"] = sg_bbox[1]

@@ -44,13 +44,13 @@ import networkx as nx
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Node count above which the shift-invert solver is preferred over GPU
-***REMOVED*** LOBPCG (even when CUDA is available) to avoid VRAM exhaustion.
-***REMOVED*** GPU LOBPCG VRAM at k=65, float32: ~2240 bytes/node (sparse tensor +
-***REMOVED*** eigenvectors + LOBPCG workspace).  16 GB VRAM minus ~2 GB torch
-***REMOVED*** overhead ≈ 14 GB available → ~6.25M nodes theoretical max, ~5M with
-***REMOVED*** safety margin for fragmentation and convergence spikes.
-***REMOVED*** IE (~2.47M nodes) fits comfortably; Canada (~12M) does not.
+# Node count above which the shift-invert solver is preferred over GPU
+# LOBPCG (even when CUDA is available) to avoid VRAM exhaustion.
+# GPU LOBPCG VRAM at k=65, float32: ~2240 bytes/node (sparse tensor +
+# eigenvectors + LOBPCG workspace).  16 GB VRAM minus ~2 GB torch
+# overhead ≈ 14 GB available → ~6.25M nodes theoretical max, ~5M with
+# safety margin for fragmentation and convergence spikes.
+# IE (~2.47M nodes) fits comfortably; Canada (~12M) does not.
 SHIFT_INVERT_NODE_THRESHOLD = 5_000_000
 
 
@@ -102,7 +102,7 @@ class SpectralAnalysisService:
             node_order = [int(osm_id) for osm_id in G.node_ids]
             L_builder = G.normalized_laplacian
         else:
-            ***REMOVED*** NetworkX path (small graphs / tests)
+            # NetworkX path (small graphs / tests)
             if G.is_directed():
                 G = G.to_undirected()
             n = G.number_of_nodes()
@@ -124,15 +124,15 @@ class SpectralAnalysisService:
                 "solve_time": 0.0,
             }
 
-        ***REMOVED*** eigsh requires k < n. Clamp k to n-1 (we drop the trivial λ₀=0
-        ***REMOVED*** afterwards, so we request k+1 and keep k).
+        # eigsh requires k < n. Clamp k to n-1 (we drop the trivial λ₀=0
+        # afterwards, so we request k+1 and keep k).
         k_request = min(k + 1, n)
 
-        ***REMOVED*** Compute normalized Laplacian: L = I - D^{-1/2} W D^{-1/2}
+        # Compute normalized Laplacian: L = I - D^{-1/2} W D^{-1/2}
         L = L_builder()
 
         if k_request <= 1:
-            ***REMOVED*** Trivial graph — only the constant eigenvector exists
+            # Trivial graph — only the constant eigenvector exists
             eigenvalues = np.array([0.0])
             eigenvectors = np.ones((n, 1)) / np.sqrt(n)
             solver_name = "trivial"
@@ -144,12 +144,12 @@ class SpectralAnalysisService:
             eigenvalues, eigenvectors = self._eigsh_solve(L, k_request, n)
             solve_time = _time.time() - _t0
 
-        ***REMOVED*** Sort ascending (eigsh doesn't guarantee order)
+        # Sort ascending (eigsh doesn't guarantee order)
         idx = eigenvalues.argsort()
         eigenvalues = eigenvalues[idx]
         eigenvectors = eigenvectors[:, idx]
 
-        ***REMOVED*** Drop the trivial λ₀=0 eigenvalue/eigenvector
+        # Drop the trivial λ₀=0 eigenvalue/eigenvector
         eigenvalues = eigenvalues[1:]
         eigenvectors = eigenvectors[:, 1:]
 
@@ -170,15 +170,15 @@ class SpectralAnalysisService:
             "spectral_gap": spectral_gap,
             "node_count": n,
             "edge_count": edge_count,
-            ***REMOVED*** Node ordering of the eigenvector rows.  FactorNodeWriter
-            ***REMOVED*** uses this to map eigenvector rows back to osm_ids.
+            # Node ordering of the eigenvector rows.  FactorNodeWriter
+            # uses this to map eigenvector rows back to osm_ids.
             "node_order": node_order,
-            ***REMOVED*** Solver metadata for run reports
+            # Solver metadata for run reports
             "solver": solver_name,
             "solve_time": solve_time,
         }
 
-    ***REMOVED*** ── Eigendecomposition solvers ──────────────────────────────────────
+    # ── Eigendecomposition solvers ──────────────────────────────────────
 
     @staticmethod
     def _select_solver(n, k_request, nnz=None):
@@ -205,7 +205,7 @@ class SpectralAnalysisService:
         full solver comparison and why shift-invert replaced Chebyshev.
         """
         if _cuda_available() and n >= 10_000 and n < SHIFT_INVERT_NODE_THRESHOLD:
-            ***REMOVED*** VRAM pre-check: prevent OOM from VRAM fragmentation
+            # VRAM pre-check: prevent OOM from VRAM fragmentation
             if nnz is not None:
                 has_vram, free_bytes, needed_bytes = _check_gpu_vram(n, k_request, nnz)
                 if not has_vram:
@@ -243,7 +243,7 @@ class SpectralAnalysisService:
         nnz = L.nnz if hasattr(L, 'nnz') else None
 
         if _cuda_available() and n >= 10_000 and n < SHIFT_INVERT_NODE_THRESHOLD:
-            ***REMOVED*** VRAM pre-check before attempting GPU
+            # VRAM pre-check before attempting GPU
             if nnz is not None:
                 has_vram, free_bytes, needed_bytes = _check_gpu_vram(n, k_request, nnz)
                 if not has_vram:
@@ -294,7 +294,7 @@ class SpectralAnalysisService:
         if n == 0:
             return {t: [] for t in t_values}
 
-        ***REMOVED*** Use the combinatorial Laplacian for diffusion (mass-preserving)
+        # Use the combinatorial Laplacian for diffusion (mass-preserving)
         L = nx.laplacian_matrix(G).astype(float)
         nodes = list(G.nodes())
         try:
@@ -315,9 +315,9 @@ class SpectralAnalysisService:
         return results
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Eigendecomposition solver helpers
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Eigendecomposition solver helpers
+# ---------------------------------------------------------------------------
 
 def _cuda_available():
     """True when torch is importable and CUDA is available."""
@@ -340,7 +340,7 @@ def _estimate_gpu_vram_needed(n, k_request, nnz):
     sparse_bytes = nnz * 12
     eigvec_bytes = n * k_request * 4
     workspace_bytes = eigvec_bytes * 3
-    overhead_bytes = 2 * 1024**3  ***REMOVED*** 2 GB torch overhead
+    overhead_bytes = 2 * 1024**3  # 2 GB torch overhead
     return sparse_bytes + eigvec_bytes + workspace_bytes + overhead_bytes
 
 
@@ -353,11 +353,11 @@ def _check_gpu_vram(n, k_request, nnz):
         import torch
         free_bytes, total_bytes = torch.cuda.mem_get_info('cuda:0')
         needed = _estimate_gpu_vram_needed(n, k_request, nnz)
-        ***REMOVED*** Require 20% safety margin
+        # Require 20% safety margin
         has_vram = free_bytes > needed * 1.2
         return has_vram, free_bytes, needed
     except Exception:
-        return True, 0, 0  ***REMOVED*** If check fails, let LOBPCG try
+        return True, 0, 0  # If check fails, let LOBPCG try
 
 
 def _eigsh_gpu(L, k_request, n):
@@ -387,7 +387,7 @@ def _eigsh_gpu(L, k_request, n):
     """
     import torch
 
-    ***REMOVED*** ── VRAM pre-check ──
+    # ── VRAM pre-check ──
     nnz = L.nnz
     has_vram, free_bytes, needed_bytes = _check_gpu_vram(n, k_request, nnz)
     if not has_vram:
@@ -399,14 +399,14 @@ def _eigsh_gpu(L, k_request, n):
         )
         return _eigsh_cpu(L, k_request, n)
 
-    ***REMOVED*** ── Aggressive cleanup before allocating ──
+    # ── Aggressive cleanup before allocating ──
     torch.cuda.synchronize()
     torch.cuda.empty_cache()
     import gc
     gc.collect()
     torch.cuda.empty_cache()
 
-    ***REMOVED*** Convert scipy sparse → torch sparse COO
+    # Convert scipy sparse → torch sparse COO
     L_coo = L.tocoo()
     indices = torch.tensor(
         np.vstack([L_coo.row, L_coo.col]), dtype=torch.long,
@@ -416,12 +416,12 @@ def _eigsh_gpu(L, k_request, n):
         indices, values, L_coo.shape,
     ).coalesce().to('cuda:0')
 
-    ***REMOVED*** Free CPU-side conversion tensors
+    # Free CPU-side conversion tensors
     del indices, values, L_coo
 
-    ***REMOVED*** LOBPCG: block eigensolver, no LU factorization needed
-    ***REMOVED*** niter=500 gives eigenvalues accurate to ~1e-8 (float64) or
-    ***REMOVED*** ~1e-4 (float32) — sufficient for pgvector diffusion ranking
+    # LOBPCG: block eigensolver, no LU factorization needed
+    # niter=500 gives eigenvalues accurate to ~1e-8 (float64) or
+    # ~1e-4 (float32) — sufficient for pgvector diffusion ranking
     logger.info(
         "GPU lobpcg: n=%d k=%d device=cuda:0 (VRAM: %.1f GB free, ~%.1f GB needed)",
         n, k_request,
@@ -437,11 +437,11 @@ def _eigsh_gpu(L, k_request, n):
     )
     torch.cuda.synchronize()
 
-    ***REMOVED*** Copy results to CPU immediately, then free GPU tensors
+    # Copy results to CPU immediately, then free GPU tensors
     eigenvalues = eigenvalues_t.cpu().numpy().astype(np.float64)
     eigenvectors = eigenvectors_t.cpu().numpy().astype(np.float64)
 
-    ***REMOVED*** Free GPU memory aggressively
+    # Free GPU memory aggressively
     del L_torch, eigenvalues_t, eigenvectors_t
     torch.cuda.synchronize()
     import gc
@@ -573,17 +573,17 @@ def _shift_invert_solve(
         k_request, ell, sigma, n_power_iter, total_solves,
     )
 
-    ***REMOVED*** ── Per-pass CG iteration instrumentation ──
-    ***REMOVED*** Records iterations and convergence status per column per pass.
-    ***REMOVED*** This reveals whether the ~150-260 average is first-pass-heavy
-    ***REMOVED*** (near-nullspace B helps) or uniform (AMG build knobs matter more).
-    cg_iters_per_pass = []   ***REMOVED*** list of (pass_name, [iters per column])
-    cg_failures_per_pass = []  ***REMOVED*** list of (pass_name, failure count)
+    # ── Per-pass CG iteration instrumentation ──
+    # Records iterations and convergence status per column per pass.
+    # This reveals whether the ~150-260 average is first-pass-heavy
+    # (near-nullspace B helps) or uniform (AMG build knobs matter more).
+    cg_iters_per_pass = []   # list of (pass_name, [iters per column])
+    cg_failures_per_pass = []  # list of (pass_name, failure count)
 
     def _cg_solve(b, pass_name, col_idx):
         """Solve (L + σI) y = b via CG with AMG, record iteration count."""
-        ***REMOVED*** scipy CG doesn't return iteration count directly; we use a
-        ***REMOVED*** callback to count iterations.
+        # scipy CG doesn't return iteration count directly; we use a
+        # callback to count iterations.
         iter_count = [0]
 
         def _callback(xk):
@@ -601,7 +601,7 @@ def _shift_invert_solve(
             )
         return y, iter_count[0], info
 
-    ***REMOVED*** ── Pass 0: initial sketch Y = (L + σI)^{-1} Ω ──
+    # ── Pass 0: initial sketch Y = (L + σI)^{-1} Ω ──
     Y = np.empty((n, ell), dtype=np.float64)
     pass_iters = []
     pass_fails = 0
@@ -618,9 +618,9 @@ def _shift_invert_solve(
         pass_fails, ell,
     )
 
-    ***REMOVED*** ── Power iterations ──
-    ***REMOVED*** Optional periodic QR between passes to prevent numerical rank
-    ***REMOVED*** collapse when n_power_iter > 1 (HMT power iteration stability).
+    # ── Power iterations ──
+    # Optional periodic QR between passes to prevent numerical rank
+    # collapse when n_power_iter > 1 (HMT power iteration stability).
     for p in range(n_power_iter):
         pass_iters = []
         pass_fails = 0
@@ -637,12 +637,12 @@ def _shift_invert_solve(
             min(pass_iters), max(pass_iters), np.mean(pass_iters),
             pass_fails, ell,
         )
-        ***REMOVED*** Periodic re-orthogonalization between power iterations
+        # Periodic re-orthogonalization between power iterations
         if periodic_qr and p < n_power_iter - 1:
             Q_tmp, _ = np.linalg.qr(Y)
             Y = Q_tmp
 
-    ***REMOVED*** ── Summary of CG instrumentation ──
+    # ── Summary of CG instrumentation ──
     all_iters = []
     for pass_name, iters in cg_iters_per_pass:
         all_iters.extend(iters)
@@ -655,19 +655,19 @@ def _shift_invert_solve(
         total_fails, total_solves,
     )
 
-    ***REMOVED*** Orthonormalize
+    # Orthonormalize
     Q, _ = np.linalg.qr(Y)
     del Y, Omega
 
-    ***REMOVED*** Rayleigh-Ritz on the ORIGINAL Laplacian
+    # Rayleigh-Ritz on the ORIGINAL Laplacian
     LQ = L @ Q
     B = Q.T @ LQ
     del LQ
-    B = (B + B.T) / 2.0  ***REMOVED*** symmetrize
+    B = (B + B.T) / 2.0  # symmetrize
 
     ritz_values, ritz_vectors = np.linalg.eigh(B)
 
-    ***REMOVED*** Back-project
+    # Back-project
     eigenvectors = Q @ ritz_vectors
 
     logger.info(

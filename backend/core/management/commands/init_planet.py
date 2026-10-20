@@ -72,9 +72,9 @@ class Command(BaseCommand):
             help="Skip the PlanetSnapshot run-lock check (use with care).",
         )
 
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
-    ***REMOVED*** Step implementations
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # Step implementations
+    # ──────────────────────────────────────────────────────────────────────
 
     def _register_planet(self) -> None:
         """Step 0a — register the planet PBF + Wikidata hierarchy skeleton."""
@@ -276,9 +276,9 @@ class Command(BaseCommand):
             )
         )
 
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
-    ***REMOVED*** Orchestration
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # Orchestration
+    # ──────────────────────────────────────────────────────────────────────
 
     def _all_steps(self) -> Iterable[Tuple[str, Callable[[], None]]]:
         return [
@@ -341,9 +341,9 @@ class Command(BaseCommand):
             return False
         return True
 
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
-    ***REMOVED*** handle()
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # handle()
+    # ──────────────────────────────────────────────────────────────────────
 
     def handle(self, *args, **options):
         self._planet_pbf = options["planet_pbf"]
@@ -372,7 +372,7 @@ class Command(BaseCommand):
             try:
                 fn()
                 self.stdout.write(self.style.SUCCESS(f"  [ok]   {name}"))
-            except Exception as exc:  ***REMOVED*** noqa: BLE001 — best-effort init chain
+            except Exception as exc:  # noqa: BLE001 — best-effort init chain
                 failed.append(name)
                 self.stderr.write(
                     self.style.ERROR(f"  [fail] {name}: {exc!r}")

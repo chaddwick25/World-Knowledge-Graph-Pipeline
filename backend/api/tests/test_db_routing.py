@@ -12,7 +12,7 @@ class ApiRoutingTest(TestCase):
 
         self.assertTrue(User.objects.using('default').filter(pk=test_object.pk).exists())
 
-        ***REMOVED*** Querying on 'vectors' raises an error because auth only migrates
-        ***REMOVED*** on 'default' — the auth_user table does not exist there.
+        # Querying on 'vectors' raises an error because auth only migrates
+        # on 'default' — the auth_user table does not exist there.
         with self.assertRaises(ProgrammingError):
             User.objects.using('vectors').filter(pk=test_object.pk).exists()

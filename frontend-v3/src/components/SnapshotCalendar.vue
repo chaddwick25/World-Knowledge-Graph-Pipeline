@@ -319,9 +319,9 @@ export default {
 .pipeline__run-btn {
   padding: 0.3rem 0.6rem;
   border-radius: 0.5rem;
-  border: 1px solid var(--bs-success, ***REMOVED***22c55e);
-  background: var(--bs-success, ***REMOVED***22c55e);
-  color: ***REMOVED***fff;
+  border: 1px solid var(--bs-success, #22c55e);
+  background: var(--bs-success, #22c55e);
+  color: #fff;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
@@ -330,8 +330,8 @@ export default {
 }
 
 .pipeline__run-btn:hover:not(:disabled) {
-  background: var(--bs-success-text-emphasis, ***REMOVED***4ade80);
-  border-color: var(--bs-success-text-emphasis, ***REMOVED***4ade80);
+  background: var(--bs-success-text-emphasis, #4ade80);
+  border-color: var(--bs-success-text-emphasis, #4ade80);
 }
 
 .pipeline__run-btn:disabled {

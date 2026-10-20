@@ -1,4 +1,4 @@
-***REMOVED*** MCP Tool Surface: 10 Tools, Two Execution Homes
+# MCP Tool Surface: 10 Tools, Two Execution Homes
 
 > **Focus:** how the three query modes (structured JSON, name search, Kuhn's
 > template) become MCP tools an agent can call, and how those tools are split
@@ -13,7 +13,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Why This Exists
+## 1. Why This Exists
 
 The frontend's `SemanticSearchPanel.vue` already exposed three independently
 testable query modes. The MCP layer makes those same modes callable by an
@@ -23,7 +23,7 @@ are thin wrappers over the same endpoints the human UI uses.
 
 ---
 
-***REMOVED******REMOVED*** 2. Architecture: One Agent, Two Transports
+## 2. Architecture: One Agent, Two Transports
 
 - **Goose agent (Docker)** → JSON-RPC over HTTP (MCP Streamable HTTP) →
   `/__mcp` (`vite-middleware.ts`, `mcp-server.ts` with 10 tools,
@@ -51,7 +51,7 @@ Mechanics (all from the vendored vue-mcp-server, reused unchanged):
 
 ---
 
-***REMOVED******REMOVED*** 3. The Tool Surface (10 Tools)
+## 3. The Tool Surface (10 Tools)
 
 | Tool | Execution home | Backend |
 |---|---|---|
@@ -65,7 +65,7 @@ Mechanics (all from the vendored vue-mcp-server, reused unchanged):
 
 ---
 
-***REMOVED******REMOVED*** 4. The Execution-Home Rule
+## 4. The Execution-Home Rule
 
 | Tool depends on… | Must run in… | Why |
 |---|---|---|
@@ -79,7 +79,7 @@ No shared implementation to drift.
 
 ---
 
-***REMOVED******REMOVED*** 5. The Overlay Layer
+## 5. The Overlay Layer
 
 `renderToolOverlay` pushes overlay descriptors into the Pinia `overlayStore`
 (`frontend-v3/src/stores/overlayStore.js`). `WorldKGMap.vue` subscribes and
@@ -92,7 +92,7 @@ exercised via the MCP bridge and `mcp-smoke-test.mjs`.)
 
 ---
 
-***REMOVED******REMOVED*** 6. Key Files
+## 6. Key Files
 
 - `frontend-v3/src/mcp/index.ts`, Vite plugin: `transform()` injects the
   client runtime into `main.js`; `configureServer()` mounts `/__mcp`

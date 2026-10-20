@@ -98,7 +98,7 @@ class TestLLMTier:
         stub = StubLLM(responses=[{
             "paraphrases": [
                 "What is the closest restaurant near Union Station?",
-                "What is the nearest cafe to Downtown?",  ***REMOVED*** drops both slots
+                "What is the nearest cafe to Downtown?",  # drops both slots
             ],
         }])
         p = paraphraser(llm_enabled=True, llm_service=stub)
@@ -109,7 +109,7 @@ class TestLLMTier:
         assert stub.calls == 1
         assert "What is the closest restaurant near Union Station?" in out
         assert "What is the nearest cafe to Downtown?" not in out
-        ***REMOVED*** Rule-based tier still present
+        # Rule-based tier still present
         assert "What is the closest restaurant to Union Station?" in out
 
     def test_llm_unavailable_falls_back_to_rule_based(self, paraphraser):
@@ -141,7 +141,7 @@ class TestLLMTier:
         )
         assert stub.calls == 0, "no LLM calls when the tier is disabled"
         assert out
-        ***REMOVED*** Every output is a rule-based transform (nearest ↔ closest etc.)
+        # Every output is a rule-based transform (nearest ↔ closest etc.)
         assert all("restaurant" in o and "Union Station" in o for o in out)
 
     def test_llm_enabled_default_reads_settings(self, paraphraser):

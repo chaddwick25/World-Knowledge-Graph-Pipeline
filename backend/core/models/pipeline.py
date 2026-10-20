@@ -23,7 +23,7 @@ class PipelineRun(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
-    ***REMOVED*** Configuration reference
+    # Configuration reference
     osm_wikidata_hierarchy = models.ForeignKey(
         'core.OSMWikiDataHierarchy',
         on_delete=models.SET_NULL,
@@ -54,7 +54,7 @@ class PipelineRun(models.Model):
     
     configuration = models.JSONField(default=dict)
     
-    ***REMOVED*** Stage tracking
+    # Stage tracking
     current_stage = models.CharField(max_length=50, null=True, blank=True)
     completed_stages = ArrayField(
         models.CharField(max_length=50),
@@ -62,7 +62,7 @@ class PipelineRun(models.Model):
         blank=True
     )
     
-    ***REMOVED*** Metrics per stage
+    # Metrics per stage
     stage_metrics = models.JSONField(
         default=dict,
         help_text="Metrics tracked per pipeline stage"
@@ -167,8 +167,8 @@ class PipelineLogEntry(models.Model):
         CRITICAL = 'CRITICAL', 'Critical'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    ***REMOVED*** FK is named `run` (auto-column `run_id`) so the denormalized
-    ***REMOVED*** `pipeline_run_id` UUID field below can coexist for shard routing.
+    # FK is named `run` (auto-column `run_id`) so the denormalized
+    # `pipeline_run_id` UUID field below can coexist for shard routing.
     run = models.ForeignKey(
         PipelineRun,
         on_delete=models.CASCADE,
@@ -181,13 +181,13 @@ class PipelineLogEntry(models.Model):
         null=True, blank=True, db_index=True,
         help_text="Denormalized for shard routing without JOIN",
     )
-    ***REMOVED*** Step context
+    # Step context
     step_name = models.CharField(max_length=100, null=True, blank=True, db_index=True)
     step_index = models.FloatField(null=True, blank=True)
-    ***REMOVED*** Country context (denormalized for shard routing)
+    # Country context (denormalized for shard routing)
     country_code = models.CharField(max_length=3, null=True, blank=True, db_index=True)
     continent = models.CharField(max_length=50, null=True, blank=True, db_index=True)
-    ***REMOVED*** Log content
+    # Log content
     level = models.CharField(
         max_length=10, choices=Level.choices, default=Level.INFO, db_index=True
     )
@@ -196,7 +196,7 @@ class PipelineLogEntry(models.Model):
         default=dict, blank=True,
         help_text="Structured metadata: duration_ms, entity_count, error_traceback, etc."
     )
-    ***REMOVED*** Celery task linkage
+    # Celery task linkage
     task_id = models.CharField(
         max_length=255, null=True, blank=True, db_index=True,
         help_text="Celery task ID (links to TaskResult.task_id)"
@@ -265,7 +265,7 @@ class PipelineAsset(models.Model):
     file_size_bytes = models.BigIntegerField(null=True, blank=True)
     record_count = models.BigIntegerField(null=True, blank=True)
     
-    ***REMOVED*** Lineage tracking for process proximity
+    # Lineage tracking for process proximity
     parent_asset = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
@@ -279,10 +279,10 @@ class PipelineAsset(models.Model):
     
     metadata = models.JSONField(default=dict)
 
-    ***REMOVED*** Denormalized for ShardRouter routing (same pattern as PipelineLogEntry).
-    ***REMOVED*** Backfilled from PipelineRun.country_code -> CountryPipelineProfile ->
-    ***REMOVED*** country_relations_payload["continent"]. Lets ShardRouter route writes to
-    ***REMOVED*** the continent-scoped shard DB without a JOIN to PipelineRun.
+    # Denormalized for ShardRouter routing (same pattern as PipelineLogEntry).
+    # Backfilled from PipelineRun.country_code -> CountryPipelineProfile ->
+    # country_relations_payload["continent"]. Lets ShardRouter route writes to
+    # the continent-scoped shard DB without a JOIN to PipelineRun.
     continent = models.CharField(
         max_length=50, null=True, blank=True, db_index=True,
         help_text="Denormalized for shard routing without JOIN",
@@ -302,6 +302,6 @@ class PipelineAsset(models.Model):
         return f"{self.asset_name} ({self.get_asset_type_display()})"
 
 
-***REMOVED*** SnapshotJob has been moved to osmsnapshot.models.SnapshotJob.
-***REMOVED*** The DB table 'snapshot_jobs' is unchanged; only the Django app label changed
-***REMOVED*** from 'orchestration' to 'osmsnapshot'. See osmsnapshot/migrations/0002_*.py.
+# SnapshotJob has been moved to osmsnapshot.models.SnapshotJob.
+# The DB table 'snapshot_jobs' is unchanged; only the Django app label changed
+# from 'orchestration' to 'osmsnapshot'. See osmsnapshot/migrations/0002_*.py.

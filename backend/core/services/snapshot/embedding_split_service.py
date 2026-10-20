@@ -18,13 +18,13 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Map continent → source PBF name
+# Map continent → source PBF name
 _CONTINENT_TO_PBF = {
     "europe": "europe.pbf",
     "asia": "asia.pbf",
 }
 
-***REMOVED*** Map continent_pbf slug → region polygon path (relative to POLYGON_FILES_DIR)
+# Map continent_pbf slug → region polygon path (relative to POLYGON_FILES_DIR)
 _REGION_POLY_MAP = {
     "great-britain": "europe/united_kingdom.poly",
     "malaysia-singapore-brunei": "asia/malaysia_singapore_brunei.poly",
@@ -64,9 +64,9 @@ class EmbeddingSplitService:
         split_config = load_embedding_splits_config()
         splits = split_config.get("splits", [])
 
-        ***REMOVED*** Check if all output TSVs already exist — skip if so.
-        ***REMOVED*** Output path pattern: embeddings_root / continent / target_slug / output_filename
-        ***REMOVED*** (must match the pattern used by EmbeddingSpatialSplitService)
+        # Check if all output TSVs already exist — skip if so.
+        # Output path pattern: embeddings_root / continent / target_slug / output_filename
+        # (must match the pattern used by EmbeddingSpatialSplitService)
         all_outputs_exist = True
         for split_def in splits:
             continent = split_def.get("continent", "")
@@ -111,7 +111,7 @@ class EmbeddingSplitService:
                     skipped.append(continent_pbf)
                     continue
 
-                ***REMOVED*** Use snapshot PBF (regular, not history) for extraction
+                # Use snapshot PBF (regular, not history) for extraction
                 src_pbf = self.continents_root / f"{continent}_snapshot.pbf"
                 if not src_pbf.exists():
                     logger.warning("Continent snapshot PBF not found: %s", src_pbf)
@@ -132,7 +132,7 @@ class EmbeddingSplitService:
                     skipped.append(continent_pbf)
                     continue
 
-                ***REMOVED*** Extract once using the region polygon to RAM disk
+                # Extract once using the region polygon to RAM disk
                 ram_pbf = ram_continents / f"{continent_pbf}.pbf"
                 if ram_pbf.exists():
                     logger.info("Region PBF already in RAM: %s", ram_pbf.name)
@@ -158,7 +158,7 @@ class EmbeddingSplitService:
                 extracted_pbfs.append(ram_pbf)
                 split.append(continent_pbf)
 
-            ***REMOVED*** Run the shapely spatial splitter on the RAM extracts
+            # Run the shapely spatial splitter on the RAM extracts
             from django.core.management import call_command
             call_command(
                 "preprocess_embeddings",
@@ -166,7 +166,7 @@ class EmbeddingSplitService:
                 continents_root=str(ram_continents),
             )
         finally:
-            ***REMOVED*** Cleanup RAM disk extracts
+            # Cleanup RAM disk extracts
             for ram_pbf in extracted_pbfs:
                 try:
                     if ram_pbf.exists():

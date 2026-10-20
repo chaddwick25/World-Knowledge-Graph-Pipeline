@@ -14,7 +14,7 @@ class BoundingBoxHandler(osmium.SimpleHandler):
     """
     def __init__(self):
         super().__init__()
-        ***REMOVED*** [minlon, minlat, maxlon, maxlat]
+        # [minlon, minlat, maxlon, maxlat]
         self.bounds = [180.0, 90.0, -180.0, -90.0]
         self.has_data = False
 
@@ -55,13 +55,13 @@ class PbfBoundingBoxService:
         if not Path(pbf_file).exists():
             raise FileNotFoundError(f"PBF file not found: {pbf_file}")
 
-        ***REMOVED*** --- Fast path: C++ CLI (reads PBF header — typically sub-second) ---
+        # --- Fast path: C++ CLI (reads PBF header — typically sub-second) ---
         bbox = self._osmium.get_bbox(pbf_file)
         if bbox and len(bbox) == 4:
             logger.debug(f"Fast bbox for {pbf_file}: {bbox}")
             return tuple(bbox)
 
-        ***REMOVED*** --- Fallback: Python handler (full node scan) ---
+        # --- Fallback: Python handler (full node scan) ---
         logger.debug(f"CLI bbox failed for {pbf_file}, falling back to Python handler")
         handler = BoundingBoxHandler()
         reader = osmium.io.Reader(
@@ -87,24 +87,24 @@ class PbfBoundingBoxService:
             logger.warning(f"Skipping poly generation — PBF not found: {pbf_file}")
             return None
 
-        ***REMOVED*** Guard against empty/invalid files
+        # Guard against empty/invalid files
         if minlon == maxlon == minlat == maxlat == 0.0:
             logger.warning(f"Skipping poly generation — empty bounds for: {pbf_file}")
             return None
 
-        ***REMOVED*** Ensure target directory exists
+        # Ensure target directory exists
         Path(output_poly).parent.mkdir(parents=True, exist_ok=True)
 
         poly_name = Path(output_poly).stem
 
         with open(output_poly, 'w') as f:
-            f.write(f"{poly_name}\n")           ***REMOVED*** Header (poly name)
-            f.write("1\n")                       ***REMOVED*** Single ring
+            f.write(f"{poly_name}\n")           # Header (poly name)
+            f.write("1\n")                       # Single ring
             f.write(f"  {minlon:.6f}  {minlat:.6f}\n")
             f.write(f"  {maxlon:.6f}  {minlat:.6f}\n")
             f.write(f"  {maxlon:.6f}  {maxlat:.6f}\n")
             f.write(f"  {minlon:.6f}  {maxlat:.6f}\n")
-            f.write(f"  {minlon:.6f}  {minlat:.6f}\n")  ***REMOVED*** Close the ring
+            f.write(f"  {minlon:.6f}  {minlat:.6f}\n")  # Close the ring
             f.write("END\n")
             f.write("END\n")
 
@@ -124,13 +124,13 @@ class PbfBoundingBoxService:
         import tempfile
         from django.conf import settings
 
-        ***REMOVED*** Validate relation_id
+        # Validate relation_id
         if not relation_id or relation_id == '':
             logger.error(f"Phase 3: Invalid relation_id: '{relation_id}'. Cannot generate poly.")
             return False
 
         try:
-            ***REMOVED*** 1. Extract relation into a temp PBF
+            # 1. Extract relation into a temp PBF
             with tempfile.NamedTemporaryFile(suffix='.pbf', delete=False) as tmp:
                 tmp_pbf = tmp.name
 
@@ -150,7 +150,7 @@ class PbfBoundingBoxService:
                 logger.error(f"Osmium getid FAILED for r{relation_id}: {e.stderr} (stdout: {e.stdout})")
                 return False
             
-            ***REMOVED*** 2. Export to GeoJSON
+            # 2. Export to GeoJSON
             export_cmd = [
                 settings.OSMIUM_BINARY_PATH, 'export',
                 '-f', 'geojson',
@@ -164,19 +164,19 @@ class PbfBoundingBoxService:
                 
             geojson = json.loads(res.stdout)
             
-            ***REMOVED*** 3. Parse GeoJSON and write .poly
+            # 3. Parse GeoJSON and write .poly
             features = geojson.get('features', [])
             if not features:
                 logger.warning(f"No features found for r{relation_id} in {pbf_file}")
                 return False
                 
-            ***REMOVED*** Find the actual boundary feature (Polygon or MultiPolygon)
+            # Find the actual boundary feature (Polygon or MultiPolygon)
             boundary_feature = None
             for f in features:
                 geom_type = f.get('geometry', {}).get('type')
                 if geom_type in ['Polygon', 'MultiPolygon']:
                     boundary_feature = f
-                    ***REMOVED*** If we find the country level (admin_level=2), stop immediately
+                    # If we find the country level (admin_level=2), stop immediately
                     if f.get('properties', {}).get('admin_level') == '2':
                         break
             
@@ -190,8 +190,8 @@ class PbfBoundingBoxService:
             if geom.get('type') == 'Polygon':
                 coords_list = geom.get('coordinates', [])
             elif geom.get('type') == 'MultiPolygon':
-                ***REMOVED*** Use all polygons in the multipolygon
-                ***REMOVED*** GeoJSON MultiPolygon is list of polygons, each polygon is list of rings
+                # Use all polygons in the multipolygon
+                # GeoJSON MultiPolygon is list of polygons, each polygon is list of rings
                 all_rings = []
                 for poly in geom.get('coordinates', []):
                     for ring in poly:
@@ -214,7 +214,7 @@ class PbfBoundingBoxService:
                     f.write("END\n")
                 f.write("END\n")
             
-            ***REMOVED*** Save GeoJSON as a 'simple file' backup/verification
+            # Save GeoJSON as a 'simple file' backup/verification
             geojson_path = Path(output_poly).with_suffix('.json')
             with open(geojson_path, 'w') as f:
                 json.dump(boundary_feature, f, indent=2)

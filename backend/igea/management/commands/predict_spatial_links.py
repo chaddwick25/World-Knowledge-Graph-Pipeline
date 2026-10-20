@@ -14,7 +14,7 @@ Usage:
     python manage.py predict_spatial_links --snapshot-id <uuid>
 """
 
-***REMOVED*** TODO: Refactor and take notes
+# TODO: Refactor and take notes
 from django.core.management.base import BaseCommand
 from igea.services.spatial_link_prediction import (
     SpatialLinkPredictionService,
@@ -32,9 +32,9 @@ def _lazy_import_torch():
     actually requested.
     """
     try:
-        import torch  ***REMOVED*** type: ignore
+        import torch  # type: ignore
         return torch
-    except Exception as e:  ***REMOVED*** ImportError or lower-level CUDA errors
+    except Exception as e:  # ImportError or lower-level CUDA errors
         logger.error(
             "USLP: Failed to import torch/CUDA stack; GPU mode will be disabled. "
             "Error: %s",
@@ -138,7 +138,7 @@ class Command(BaseCommand):
         use_fp64 = options.get('fp64', False)
         session_id = options.get('session_id')
 
-        ***REMOVED*** WebSocket support
+        # WebSocket support
         if session_id:
             from asgiref.sync import async_to_sync
             from channels.layers import get_channel_layer
@@ -156,7 +156,7 @@ class Command(BaseCommand):
         else:
             _push_ws = None
 
-        ***REMOVED*** GPU availability check
+        # GPU availability check
         torch_mod = None
         if use_gpu:
             torch_mod = _lazy_import_torch()
@@ -175,7 +175,7 @@ class Command(BaseCommand):
             f"{'='*60}\n"
         ))
 
-        ***REMOVED*** Send websocket start event
+        # Send websocket start event
         if _push_ws:
             _push_ws('step_update',
                     name='predict_triples',
@@ -183,12 +183,12 @@ class Command(BaseCommand):
                     message='Starting USLP spatial link prediction',
                     pct=0)
 
-        ***REMOVED*** Initialize service (GPU or CPU)
+        # Initialize service (GPU or CPU)
         if use_gpu:
             from igea.services.torch_uslp_service import TorchUSLP
             service = TorchUSLP(device=gpu_device, use_fp64=use_fp64)
             
-            ***REMOVED*** Print GPU info
+            # Print GPU info
             gpu_info = service.get_gpu_info()
             if gpu_info.get('cuda_available'):
                 self.stdout.write(self.style.SUCCESS(
@@ -199,7 +199,7 @@ class Command(BaseCommand):
         else:
             service = SpatialLinkPredictionService()
 
-        ***REMOVED*** Parse poly-file to WKT if provided (must happen before pool load)
+        # Parse poly-file to WKT if provided (must happen before pool load)
         polygon_wkt = None
         if poly_file:
             from worldkg_nca.services.wikidata_service import parse_poly_to_wkt
@@ -211,7 +211,7 @@ class Command(BaseCommand):
                     f"Could not parse poly-file for geofencing: {poly_file}"
                 ))
 
-        ***REMOVED*** Load candidate pool (scoped by polygon or country if provided)
+        # Load candidate pool (scoped by polygon or country if provided)
         self.stdout.write("[1/3] Loading candidate entity pool from DB...")
         pool_size = service.load_candidate_pool_from_db(
             limit=limit, polygon_wkt=polygon_wkt, country=country,
@@ -238,41 +238,41 @@ class Command(BaseCommand):
                         pct=0)
             return
 
-        ***REMOVED*** Load head entities (those with spatial literal tags)
+        # Load head entities (those with spatial literal tags)
         self.stdout.write("[2/3] Loading head entities with spatial literal tags...")
         
         from worldkg_nca.models import OsmEntity
         from django.contrib.gis.geos import GEOSGeometry
 
-        ***REMOVED*** Spatial literal tag keys used to identify head entities
+        # Spatial literal tag keys used to identify head entities
         spatial_keys = {
             'is_in', 'is_in:country', 'is_in:state', 'is_in:county',
             'addr:country', 'addr:state', 'addr:county', 'addr:city',
             'addr:suburb', 'addr:hamlet', 'addr:village', 'addr:town',
         }
 
-        ***REMOVED*** Only fetch fields needed for head-entity filtering
+        # Only fetch fields needed for head-entity filtering
         qs = (
             OsmEntity.objects.using('vectors')
             .only('osm_id', 'geom', 'tags', 'source_snapshot_id')
             .filter(geom__isnull=False)
         )
 
-        ***REMOVED*** Phase 6: use VARCHAR snapshot_id partition key for pruning
+        # Phase 6: use VARCHAR snapshot_id partition key for pruning
         if snapshot_date:
             qs = qs.filter(snapshot_id=snapshot_date)
         elif snapshot_id:
             qs = qs.filter(source_snapshot_id=snapshot_id)
 
-        ***REMOVED*** Apply polygon filter if provided
+        # Apply polygon filter if provided
         if polygon_wkt:
             poly = GEOSGeometry(polygon_wkt, srid=4326)
             qs = qs.filter(geom__within=poly)
 
-        ***REMOVED*** Apply bbox filter from CountryPipelineProfile when --country is specified
-        ***REMOVED*** (same logic as load_candidate_pool_from_db to avoid scanning all 32M entities).
-        ***REMOVED*** We now apply this even when snapshot_id is provided so snapshot-scoped runs
-        ***REMOVED*** still benefit from country-level spatial filtering.
+        # Apply bbox filter from CountryPipelineProfile when --country is specified
+        # (same logic as load_candidate_pool_from_db to avoid scanning all 32M entities).
+        # We now apply this even when snapshot_id is provided so snapshot-scoped runs
+        # still benefit from country-level spatial filtering.
         if country and not polygon_wkt:
             from core.services.planet_init import osm_wikidata_resolver
             try:
@@ -337,15 +337,15 @@ class Command(BaseCommand):
                             f"  Bbox filter failed for {iso_code}: {exc}"
                         ))
 
-        ***REMOVED*** Push spatial tag existence filter into the DB to avoid scanning
-        ***REMOVED*** rows that cannot possibly be head entities. On PostgreSQL JSONField
-        ***REMOVED*** maps to jsonb, so tags__has_any_keys uses jsonb ?| operator and can
-        ***REMOVED*** leverage a GIN index when present.
+        # Push spatial tag existence filter into the DB to avoid scanning
+        # rows that cannot possibly be head entities. On PostgreSQL JSONField
+        # maps to jsonb, so tags__has_any_keys uses jsonb ?| operator and can
+        # leverage a GIN index when present.
         qs = qs.filter(tags__has_any_keys=list(spatial_keys))
 
         head_entities = []
 
-        ***REMOVED*** Pre-resolve country/ISO once instead of per-row to avoid redundant work
+        # Pre-resolve country/ISO once instead of per-row to avoid redundant work
         from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
         country_upper = country.upper() if country else None
         iso_code_for_tags = (
@@ -358,10 +358,10 @@ class Command(BaseCommand):
             matches = (country_upper, iso_code_for_tags) if iso_code_for_tags else (country_upper,)
 
         for e in qs.iterator(chunk_size=10_000):
-            ***REMOVED*** Only include if entity has at least one spatial literal tag
+            # Only include if entity has at least one spatial literal tag
             tags = e.tags or {}
 
-            ***REMOVED*** Apply country filter if specified (fallback if no polygon)
+            # Apply country filter if specified (fallback if no polygon)
             if country and not polygon_wkt and matches:
                 tag_country = (tags.get('addr:country') or '').upper()
                 is_in_country = (tags.get('is_in:country') or '').upper()
@@ -377,7 +377,7 @@ class Command(BaseCommand):
                     'tags': tags,
                 })
 
-                ***REMOVED*** Apply head limit
+                # Apply head limit
                 if len(head_entities) >= max_heads:
                     self.stdout.write(self.style.WARNING(
                         f"  → Limiting to {max_heads:,} head entities"
@@ -395,7 +395,7 @@ class Command(BaseCommand):
                     message=f'Loaded {len(head_entities):,} head entities with spatial tags',
                     pct=60)
 
-        ***REMOVED*** Predict
+        # Predict
         self.stdout.write("[3/3] Scoring candidate tail entities (USLP)...")
         links = service.predict_links_batch(
             head_entities, threshold=threshold, top_k=top_k
@@ -410,9 +410,9 @@ class Command(BaseCommand):
                     pct=90)
 
         if not dry_run:
-            ***REMOVED*** Use snapshot_date (YYYY_MM_DD) as the snapshot_id for
-            ***REMOVED*** partition-scoped spatial link queries.  Falls back to the
-            ***REMOVED*** legacy UUID snapshot_id if snapshot_date is not provided.
+            # Use snapshot_date (YYYY_MM_DD) as the snapshot_id for
+            # partition-scoped spatial link queries.  Falls back to the
+            # legacy UUID snapshot_id if snapshot_date is not provided.
             persist_snapshot_id = snapshot_date or snapshot_id
             n_saved = service.persist_links(links, snapshot_id=persist_snapshot_id, country_name=country)
             self.stdout.write(self.style.SUCCESS(
@@ -428,7 +428,7 @@ class Command(BaseCommand):
                     f"{link['tail_osm_id']}  score={link['score']:.3f}"
                 )
 
-        ***REMOVED*** Send websocket completion event
+        # Send websocket completion event
         if _push_ws:
             _push_ws('step_update',
                     name='predict_triples',
@@ -442,11 +442,11 @@ class Command(BaseCommand):
             f"{'='*60}\n"
         ))
 
-        ***REMOVED*** Clean up GPU memory for the Celery worker (only if torch was imported)
+        # Clean up GPU memory for the Celery worker (only if torch was imported)
         if use_gpu and 'torch_mod' in locals() and torch_mod is not None:
             try:
                 torch_mod.cuda.empty_cache()
                 self.stdout.write(self.style.SUCCESS("  ✓ Cleared PyTorch CUDA cache"))
             except Exception as e:
-                ***REMOVED*** Don't let cleanup failures break the pipeline
+                # Don't let cleanup failures break the pipeline
                 logger.warning("USLP: Failed to clear CUDA cache: %s", e)

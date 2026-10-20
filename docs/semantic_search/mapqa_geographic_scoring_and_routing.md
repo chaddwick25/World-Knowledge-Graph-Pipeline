@@ -1,4 +1,4 @@
-***REMOVED*** MapQA Geographic Scoring and Routing: USLP, Radius Guards, Tag Filtering
+# MapQA Geographic Scoring and Routing: USLP, Radius Guards, Tag Filtering
 
 > **Focus:** how the MapQA executor and semantic search view score
 > candidates geographically, route radius-bearing queries away from
@@ -16,7 +16,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Geographic Scoring (USLP Formula)
+## 1. Geographic Scoring (USLP Formula)
 
 **Source:** <ref_file file="backend/semantic_search/services/query_executor_service/" />
 
@@ -34,7 +34,7 @@ This replaces the old `1/(1+d_km)` decay, which treated all distances
 uniformly. The USLP formula is scale-aware: entities in the same geohash
 cell score 1.0, and scores decay linearly to 0.0 at `d_max`.
 
-***REMOVED******REMOVED******REMOVED*** 1.1 Template-Specific Behavior
+### 1.1 Template-Specific Behavior
 
 | Template | Scoring | Rationale |
 |---|---|---|
@@ -42,7 +42,7 @@ cell score 1.0, and scores decay linearly to 0.0 at `d_max`.
 | `OBJECT-FIELD-MEASURE` | Returns 0.0 | Distance IS the answer, not a ranking signal |
 | All other templates | P4 geohash, `d_max` = 39km (P4 cell width) | Scale-aware default |
 
-***REMOVED******REMOVED******REMOVED*** 1.2 Fallback When No Precomputed Pool Exists
+### 1.2 Fallback When No Precomputed Pool Exists
 
 When no precomputed candidate pool is available, `d_max` falls back to
 the P4 cell width (~39km). This keeps scoring well-defined even before
@@ -50,7 +50,7 @@ the first pipeline run materializes a pool.
 
 ---
 
-***REMOVED******REMOVED*** 2. USLP Signal Boost
+## 2. USLP Signal Boost
 
 When the USLP pipeline has predicted spatial links for the anchor entity
 (`SpatialTripletScore.predicted=True`, normalized score >= 0.7), entities
@@ -65,7 +65,7 @@ near a bus station". It is a complementary signal, not a primary ranker.
 
 ---
 
-***REMOVED******REMOVED*** 3. Radius Query Routing
+## 3. Radius Query Routing
 
 **Source:** <ref_file file="backend/semantic_search/services/query_parser_service.py" />
 
@@ -76,7 +76,7 @@ radius-bearing queries from being misrouted to `PLACE-ATTRIBUTE-QUERY`,
 which uses heat kernel diffusion, a graph connectivity measure that does
 not enforce geographic distance.
 
-***REMOVED******REMOVED******REMOVED*** 3.1 Safety Guard in PLACE-ATTRIBUTE-QUERY
+### 3.1 Safety Guard in PLACE-ATTRIBUTE-QUERY
 
 A safety guard in the `PLACE-ATTRIBUTE-QUERY` executor also filters heat
 kernel results by haversine distance when an `AMOUNT` concept is present.
@@ -86,7 +86,7 @@ the deterministic routing override.
 
 ---
 
-***REMOVED******REMOVED*** 4. Tag Filtering
+## 4. Tag Filtering
 
 **Source:** <ref_file file="backend/semantic_search/services/query_executor_service/" />
 
@@ -103,7 +103,7 @@ embeddings are semantically similar.
 
 ---
 
-***REMOVED******REMOVED*** 5. Invariants
+## 5. Invariants
 
 - Geographic scoring is scale-aware (P4 geohash default, raw haversine
   when the user gives an exact radius).

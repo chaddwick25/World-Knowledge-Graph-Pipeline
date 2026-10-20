@@ -11,7 +11,7 @@
     back-to="/"
     leaf-base="/agents/doppelganger"
   >
-    <template ***REMOVED***default="{ country, snapshotDate, setSeedOverlay, setTwinsOverlay }">
+    <template #default="{ country, snapshotDate, setSeedOverlay, setTwinsOverlay }">
       <ResearchPanel
         v-if="country"
         :country-name="country.name"

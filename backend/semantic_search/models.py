@@ -2,9 +2,9 @@ from django.db import models
 import uuid
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Temporal diff tracker — records what changed between two snapshots
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Temporal diff tracker — records what changed between two snapshots
+# ---------------------------------------------------------------------------
 
 class SnapshotDiff(models.Model):
     """
@@ -30,7 +30,7 @@ class SnapshotDiff(models.Model):
     country_code = models.CharField(max_length=10, blank=True, default='')
     country_name = models.CharField(max_length=100, blank=True, default='')
 
-    ***REMOVED*** Entity change counts
+    # Entity change counts
     entities_added = models.IntegerField(default=0,
         help_text="New OSM entity rows inserted")
     entities_modified = models.IntegerField(default=0,
@@ -40,17 +40,17 @@ class SnapshotDiff(models.Model):
     entities_re_embedded = models.IntegerField(default=0,
         help_text="Entities whose GV-Tags embedding was refreshed")
 
-    ***REMOVED*** GV-NLE specifics
+    # GV-NLE specifics
     gv_nle_inductive_count = models.IntegerField(default=0,
         help_text="Entities that received an inductive (provisional) GV-NLE embedding")
     gv_nle_retrained = models.BooleanField(default=False,
         help_text="True if full DeepWalk retraining was run this cycle")
 
-    ***REMOVED*** Spatial links produced
+    # Spatial links produced
     spatial_links_predicted = models.IntegerField(default=0,
         help_text="SpatialLink records created by USLP this cycle")
 
-    ***REMOVED*** Entity alignment
+    # Entity alignment
     wikidata_links_added = models.IntegerField(default=0,
         help_text="OsmEntity.wikidata_uri fields updated by IGEA this cycle")
 
@@ -71,9 +71,9 @@ class SnapshotDiff(models.Model):
                 f"+{self.entities_added}/-{self.entities_deleted}")
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Predicted spatial links (USLP output)
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Predicted spatial links (USLP output)
+# ---------------------------------------------------------------------------
 
 class SpatialLink(models.Model):
     """
@@ -157,9 +157,9 @@ class SpatialLink(models.Model):
                 f"@{self.confidence:.2f})")
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Graph spectral analysis (Step 5c / 5d)
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Graph spectral analysis (Step 5c / 5d)
+# ---------------------------------------------------------------------------
 
 class GraphSpectralFingerprint(models.Model):
     """Spectral features of the k-NN graph per snapshot.
@@ -338,7 +338,7 @@ class SampleQuestion(models.Model):
     """
 
     country_code = models.CharField(max_length=8, db_index=True)
-    ***REMOVED*** '' = country scope; otherwise the Wikidata QID of a subdivision.
+    # '' = country scope; otherwise the Wikidata QID of a subdivision.
     subdivision_qid = models.CharField(max_length=16, default='', blank=True,
                                        db_index=True)
     subdivision_name = models.CharField(max_length=255, default='',
@@ -346,7 +346,7 @@ class SampleQuestion(models.Model):
     question = models.TextField()
     template = models.CharField(max_length=64, default='')
     anchor = models.CharField(max_length=255, default='', blank=True)
-    ***REMOVED*** 'curated' (seeded from the CSV manifest) | 'generated' (geometry-scoped)
+    # 'curated' (seeded from the CSV manifest) | 'generated' (geometry-scoped)
     source = models.CharField(max_length=16, default='generated')
     snapshot_date = models.CharField(max_length=16, default='', blank=True)
 

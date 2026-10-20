@@ -59,7 +59,7 @@ class WorldKGPipelineCountryStateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        ***REMOVED*** Find the latest ProcessingSession for this country
+        # Find the latest ProcessingSession for this country
         session = ProcessingSession.objects.filter(
             session_name__icontains=country_name,
             session_type__in=['WORLDKG_PIPELINE', 'TEMPORAL_CORPUS', 'GEOVECTORS_ENCODING']
@@ -73,7 +73,7 @@ class WorldKGPipelineCountryStateView(APIView):
                 'message': 'No pipeline session found for this country'
             })
 
-        ***REMOVED*** Find associated PipelineRun if exists
+        # Find associated PipelineRun if exists
         pipeline_run = PipelineRun.objects.filter(
             _country_filter(country_name)
         ).order_by('-created_at').first()
@@ -101,15 +101,15 @@ class WorldKGPipelineCountryStateView(APIView):
                 'is_complete': pipeline_run.status == 'COMPLETED'
             })
         else:
-            ***REMOVED*** Fallback: check session status for completion
+            # Fallback: check session status for completion
             response_data['is_complete'] = session.status == 'COMPLETED'
 
         return Response(response_data)
 
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════
-***REMOVED*** Planet / Continent Initialization (Async via Celery Canvas)
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
+# Planet / Continent Initialization (Async via Celery Canvas)
+# ══════════════════════════════════════════════════════════════════════════
 
 
 def build_snapshot_dates_payload() -> dict:
@@ -194,7 +194,7 @@ class SnapshotJobStatusView(APIView):
             qs = qs.filter(country_code__iexact=country_code)
         if snapshot_date:
             qs = qs.filter(snapshot_date=snapshot_date)
-        ***REMOVED*** Query-param fallbacks
+        # Query-param fallbacks
         qp_date = request.query_params.get('snapshot_date')
         if qp_date and not snapshot_date:
             qs = qs.filter(snapshot_date=qp_date)
@@ -222,11 +222,11 @@ class SnapshotJobStatusView(APIView):
             for j in qs.iterator()
         ]
 
-        ***REMOVED*** Single-job detail path
+        # Single-job detail path
         if country_code and snapshot_date and jobs:
             return Response(jobs[0])
 
-        ***REMOVED*** Country-grouped shape (matches the plan's response example)
+        # Country-grouped shape (matches the plan's response example)
         if country_code and not snapshot_date:
             return Response({
                 'country_code': country_code,

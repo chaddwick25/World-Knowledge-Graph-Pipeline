@@ -62,7 +62,7 @@ def test_spectral_distance_symmetric():
     np.testing.assert_allclose(
         d_ab["spectral_distance"], d_ba["spectral_distance"], atol=1e-9
     )
-    ***REMOVED*** Fiedler cosine distance is symmetric
+    # Fiedler cosine distance is symmetric
     np.testing.assert_allclose(
         d_ab["fiedler_drift"], d_ba["fiedler_drift"], atol=1e-9
     )
@@ -94,7 +94,7 @@ def test_pads_unequal_eigenvalue_counts():
     a = _fp([0.1, 0.2, 0.3])
     b = _fp([0.1, 0.2, 0.3, 0.4, 0.5])
     drift = svc.compute_spectral_drift(a, b)
-    ***REMOVED*** The padded entries contribute their full value to the distance
+    # The padded entries contribute their full value to the distance
     expected = float(np.linalg.norm(np.array([0.0, 0.0, 0.0, 0.4, 0.5])))
     np.testing.assert_allclose(drift["spectral_distance"], expected, atol=1e-9)
 

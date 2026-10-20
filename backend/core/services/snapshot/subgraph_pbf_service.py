@@ -60,7 +60,7 @@ class SubgraphPbfService:
                 'generated': int,
                 'failed': int,
                 'skipped': int,
-                'subgraphs': List[Dict]  ***REMOVED*** per-subgraph results
+                'subgraphs': List[Dict]  # per-subgraph results
             }
         """
         if snapshot_date is None:
@@ -68,8 +68,8 @@ class SubgraphPbfService:
 
         iso = (iso or '').upper()
 
-        ***REMOVED*** Resolve country metadata if relation_id / wikidata_uri / country_name were
-        ***REMOVED*** not explicitly provided.
+        # Resolve country metadata if relation_id / wikidata_uri / country_name were
+        # not explicitly provided.
         if not relation_id or not wikidata_uri or not country_name:
             relations = get_country_relations_dict()
             entry = (
@@ -78,7 +78,7 @@ class SubgraphPbfService:
                 or relations.get(iso.lower())
             )
 
-            ***REMOVED*** Fallback: check non-sovereign synthetic registry for ISOs like WL, XS, EN
+            # Fallback: check non-sovereign synthetic registry for ISOs like WL, XS, EN
             if not entry:
                 try:
                     from core.services.planet_init.non_sovereign_territories import (
@@ -138,7 +138,7 @@ class SubgraphPbfService:
                 'subgraphs': [],
             }
 
-        ***REMOVED*** Build hierarchy in-memory via Wikidata P150/P402 (no JSON cache)
+        # Build hierarchy in-memory via Wikidata P150/P402 (no JSON cache)
         hierarchy = osm_relation_hierarchy_service.build_hierarchy_for_country(
             iso=iso,
             root_relation_id=relation_id,
@@ -163,11 +163,11 @@ class SubgraphPbfService:
                 'subgraphs': [],
             }
 
-        ***REMOVED*** Limit to max_subgraphs if specified
+        # Limit to max_subgraphs if specified
         if max_subgraphs is not None and max_subgraphs > 0:
             children = children[:max_subgraphs]
 
-        ***REMOVED*** Get country snapshot PBF as source
+        # Get country snapshot PBF as source
         source_pbf = regional_path_service.get_single_snapshot_pbf_path(
             continent, country, snapshot_date
         )
@@ -218,11 +218,11 @@ class SubgraphPbfService:
                 continent, country, subgraph_slug, snapshot_date
             )
 
-            ***REMOVED*** Skip if already exists (unless overwrite is True)
+            # Skip if already exists (unless overwrite is True)
             if not overwrite and output_pbf.exists() and output_poly.exists():
                 logger.info(f"Skipping {subgraph_name} - files already exist")
-                ***REMOVED*** Still compute bbox for skipped subgraphs so SubgraphProfile
-                ***REMOVED*** can be populated with spatial metadata.
+                # Still compute bbox for skipped subgraphs so SubgraphProfile
+                # can be populated with spatial metadata.
                 bbox = None
                 try:
                     bbox = parse_poly_bbox(str(output_poly))
@@ -242,7 +242,7 @@ class SubgraphPbfService:
                 })
                 continue
 
-            ***REMOVED*** Generate subgraph PBF
+            # Generate subgraph PBF
             pbf_success = self._extract_relation_pbf(
                 str(source_pbf), relation_id, str(output_pbf)
             )
@@ -259,7 +259,7 @@ class SubgraphPbfService:
                 })
                 continue
 
-            ***REMOVED*** Generate subgraph poly
+            # Generate subgraph poly
             poly_success = pbf_bounding_box_service.generate_high_res_poly(
                 str(output_pbf), relation_id, str(output_poly)
             )
@@ -320,7 +320,7 @@ class SubgraphPbfService:
         import tempfile
 
         try:
-            ***REMOVED*** Extract relation into a temp PBF
+            # Extract relation into a temp PBF
             with tempfile.NamedTemporaryFile(suffix='.pbf', delete=False) as tmp:
                 tmp_pbf = tmp.name
 
@@ -342,12 +342,12 @@ class SubgraphPbfService:
                 logger.error(f"Osmium getid FAILED for r{relation_id}: {result.stderr}")
                 return False
 
-            ***REMOVED*** Move temp file to final location (handle cross-device move)
+            # Move temp file to final location (handle cross-device move)
             try:
                 Path(tmp_pbf).rename(output_pbf)
             except OSError as e:
                 if "Invalid cross-device link" in str(e):
-                    ***REMOVED*** Cross-device move: copy then delete
+                    # Cross-device move: copy then delete
                     shutil.copy2(tmp_pbf, output_pbf)
                     Path(tmp_pbf).unlink()
                 else:

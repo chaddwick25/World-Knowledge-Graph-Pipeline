@@ -37,7 +37,7 @@ class SystemSummaryView(APIView):
         }
         return Response(data)
 
-    ***REMOVED*** ── Planet ──────────────────────────────────────────────────────────
+    # ── Planet ──────────────────────────────────────────────────────────
 
     def _get_planet_info(self):
         from api.models import PbfFile
@@ -50,7 +50,7 @@ class SystemSummaryView(APIView):
         if not planet:
             return {"available": False, "path": None, "size_gb": None}
 
-        ***REMOVED*** Use actual file size as fallback
+        # Use actual file size as fallback
         size_bytes = planet.size_bytes
         if not size_bytes and planet.path:
             try:
@@ -64,14 +64,14 @@ class SystemSummaryView(APIView):
             "size_gb": round(size_bytes / (1024 ** 3), 1) if size_bytes else 0,
         }
 
-    ***REMOVED*** ── Storage ──────────────────────────────────────────────────────────
+    # ── Storage ──────────────────────────────────────────────────────────
 
     def _get_storage_info(self):
         from django.conf import settings
         hot_path = Path(settings.BASE_DATA_DIR) if settings.BASE_DATA_DIR else Path(settings.BASE_DIR)
         cold_path = Path(settings.COLD_STORAGE_BASE_DIR) if settings.COLD_STORAGE_BASE_DIR else Path(settings.BASE_DIR)
 
-        ***REMOVED*** Hot storage (SSD/NVME — working files)
+        # Hot storage (SSD/NVME — working files)
         hot_info = self._path_summary(hot_path)
         cold_info = self._path_summary(cold_path)
 
@@ -92,7 +92,7 @@ class SystemSummaryView(APIView):
             },
         }
 
-    ***REMOVED*** ── Embeddings ──────────────────────────────────────────────────────
+    # ── Embeddings ──────────────────────────────────────────────────────
 
     def _get_embeddings_info(self):
         from core.models import CountryPipelineProfile, PipelineRun
@@ -105,7 +105,7 @@ class SystemSummaryView(APIView):
         total = CountryPipelineProfile.objects.count()
         with_embeddings = CountryPipelineProfile.objects.filter(has_embeddings=True).count()
 
-        ***REMOVED*** GeoVectors TSV count
+        # GeoVectors TSV count
         with_tsv = sum(
             1
             for p in CountryPipelineProfile.objects.iterator()
@@ -113,13 +113,13 @@ class SystemSummaryView(APIView):
             and p.country_relations_payload.get("geovectors_location_tsv")
         )
 
-        ***REMOVED*** By continent using OSMWikiDataHierarchy parent_slug
+        # By continent using OSMWikiDataHierarchy parent_slug
         hierarchy_parents = {}
         for h in OSMWikiDataHierarchy.objects.values("slug", "parent_slug"):
             slug = h["slug"]
-            ***REMOVED*** Normalize to the canonical 7-continent set (continent_hierarchy
-            ***REMOVED*** is the ground truth; raw parent_slug may be a Geofabrik
-            ***REMOVED*** subregion like france/china/australia or a naming variant).
+            # Normalize to the canonical 7-continent set (continent_hierarchy
+            # is the ground truth; raw parent_slug may be a Geofabrik
+            # subregion like france/china/australia or a naming variant).
             parent = normalize_continent(h["parent_slug"])
             if parent not in hierarchy_parents:
                 hierarchy_parents[parent] = {"total": 0, "with_emb": 0, "pipelines": 0}
@@ -127,7 +127,7 @@ class SystemSummaryView(APIView):
         for p in CountryPipelineProfile.objects.all().only("embedding_slug", "has_embeddings"):
             slug = p.embedding_slug
             if not slug:
-                ***REMOVED*** Try resolving slug from canonical_slug or iso
+                # Try resolving slug from canonical_slug or iso
                 slug = p.canonical_slug or p.iso2.lower()
             parent = None
             for h in OSMWikiDataHierarchy.objects.filter(slug=slug).values("parent_slug"):
@@ -140,11 +140,11 @@ class SystemSummaryView(APIView):
             if p.has_embeddings:
                 hierarchy_parents[parent]["with_emb"] += 1
 
-        ***REMOVED*** Count completed pipelines per continent
+        # Count completed pipelines per continent
         for p in PipelineRun.objects.filter(status="COMPLETED").values(
             "country_code", "country_name"
         ):
-            ***REMOVED*** Resolve continent for this country
+            # Resolve continent for this country
             iso = p["country_code"]
             profile = CountryPipelineProfile.objects.filter(iso2__iexact=iso).first()
             if profile:
@@ -174,7 +174,7 @@ class SystemSummaryView(APIView):
             "by_continent": by_continent,
         }
 
-    ***REMOVED*** ── Paths (verify_paths-style) ──────────────────────────────────────
+    # ── Paths (verify_paths-style) ──────────────────────────────────────
 
     def _get_paths_info(self):
         path_configs = [
@@ -214,14 +214,14 @@ class SystemSummaryView(APIView):
                             / (1024 * 1024),
                             1,
                         )
-                ***REMOVED*** Check if executable
+                # Check if executable
                 if p.is_file() and p.stat().st_mode & 0o111:
                     info["is_executable"] = True
             results.append(info)
 
         return results
 
-    ***REMOVED*** ── Pipeline runs ───────────────────────────────────────────────────
+    # ── Pipeline runs ───────────────────────────────────────────────────
 
     def _get_pipeline_run_info(self):
         from core.models import PipelineRun
@@ -231,10 +231,10 @@ class SystemSummaryView(APIView):
         ).count()
         failed = PipelineRun.objects.filter(status="FAILED").count()
 
-        ***REMOVED*** ALL runs (no cap) — the History tab scrolls through the full
-        ***REMOVED*** list. `configuration` is stripped after deriving `snapshot`: it
-        ***REMOVED*** only feeds the display field, and shipping full config JSONs per
-        ***REMOVED*** run would bloat the summary payload.
+        # ALL runs (no cap) — the History tab scrolls through the full
+        # list. `configuration` is stripped after deriving `snapshot`: it
+        # only feeds the display field, and shipping full config JSONs per
+        # run would bloat the summary payload.
         runs = list(
             PipelineRun.objects.filter(pipeline_type="worldkg_v2")
             .exclude(status__in=["PENDING", "RUNNING"])
@@ -255,7 +255,7 @@ class SystemSummaryView(APIView):
             "runs": runs,
         }
 
-    ***REMOVED*** ── Preprocessing steps ─────────────────────────────────────────────
+    # ── Preprocessing steps ─────────────────────────────────────────────
 
     def _get_preprocessing_steps(self):
         """Check status of each pre-build command.
@@ -265,17 +265,17 @@ class SystemSummaryView(APIView):
         """
         from core.models import CountryPipelineProfile, PipelineRun
 
-        ***REMOVED*** enrich_worldkg_classes: check if any entities have worldkg_class in Redis
-        ***REMOVED*** or if the ontology TTL was loaded (we check by seeing if any profiles
-        ***REMOVED*** have country_relations_payload populated)
+        # enrich_worldkg_classes: check if any entities have worldkg_class in Redis
+        # or if the ontology TTL was loaded (we check by seeing if any profiles
+        # have country_relations_payload populated)
         enrich_ok = CountryPipelineProfile.objects.filter(
             country_relations_payload__isnull=False
         ).exists()
 
-        ***REMOVED*** prebuild_structure: CountryPipelineProfile records exist
+        # prebuild_structure: CountryPipelineProfile records exist
         structure_ok = CountryPipelineProfile.objects.count() > 0
 
-        ***REMOVED*** prebuild_country_paths: any path fields populated
+        # prebuild_country_paths: any path fields populated
         paths_ok = (
             CountryPipelineProfile.objects.exclude(
                 country_relations_payload__isnull=True
@@ -283,11 +283,11 @@ class SystemSummaryView(APIView):
             > 0
         )
 
-        ***REMOVED*** prebuild_subgraphs: any SubgraphProfile records exist
+        # prebuild_subgraphs: any SubgraphProfile records exist
         from core.models import SubgraphProfile
         subgraph_ok = SubgraphProfile.objects.count() > 0
 
-        ***REMOVED*** prebuild_wikidata_ids: OSMWikiDataHierarchy has Q-IDs
+        # prebuild_wikidata_ids: OSMWikiDataHierarchy has Q-IDs
         from core.models import OSMWikiDataHierarchy
         wikidata_ok = (
             OSMWikiDataHierarchy.objects.exclude(wikidata_id__isnull=True)
@@ -327,7 +327,7 @@ class SystemSummaryView(APIView):
             },
         }
 
-    ***REMOVED*** ── Helpers ─────────────────────────────────────────────────────────
+    # ── Helpers ─────────────────────────────────────────────────────────
 
     def _path_summary(self, path: Path) -> dict:
         if not path.exists():

@@ -705,7 +705,7 @@ export default {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-  border: 1px solid ***REMOVED***1f2937;
+  border: 1px solid #1f2937;
 }
 
 .map-wrapper__map {
@@ -722,7 +722,7 @@ export default {
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  color: ***REMOVED***e5e7eb;
+  color: #e5e7eb;
   font-size: 0.9rem;
 }
 
@@ -731,7 +731,7 @@ export default {
   height: 28px;
   border-radius: 999px;
   border: 3px solid rgba(148, 163, 184, 0.4);
-  border-top-color: ***REMOVED***6366f1;
+  border-top-color: #6366f1;
   animation: spin 0.8s linear infinite;
 }
 
@@ -748,7 +748,7 @@ export default {
   right: 12px;
   z-index: 1000;
   background: rgba(15, 23, 42, 0.92);
-  border: 1px solid ***REMOVED***1f2937;
+  border: 1px solid #1f2937;
   border-radius: 8px;
   padding: 0.5rem 0.65rem;
   backdrop-filter: blur(8px);
@@ -787,7 +787,7 @@ export default {
 
 .map-legend__label {
   font-size: 0.68rem;
-  color: ***REMOVED***d1d5db;
+  color: #d1d5db;
 }
 
 .map-legend__hint {
@@ -795,8 +795,8 @@ export default {
   align-items: center;
   gap: 0.3rem;
   font-size: 0.62rem;
-  color: ***REMOVED***6b7280;
-  border-top: 1px solid ***REMOVED***1f2937;
+  color: #6b7280;
+  border-top: 1px solid #1f2937;
   padding-top: 0.3rem;
 }
 
@@ -808,11 +808,11 @@ export default {
 }
 
 .map-legend__line--solid {
-  background: ***REMOVED***6b7280;
+  background: #6b7280;
 }
 
 .map-legend__line--dashed {
-  border-top: 2px dashed ***REMOVED***6b7280;
+  border-top: 2px dashed #6b7280;
   height: 0;
 }
 </style>

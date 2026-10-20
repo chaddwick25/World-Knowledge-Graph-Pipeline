@@ -68,7 +68,7 @@ CONTINENTS: Tuple[ContinentDefinition, ...] = (
 
 CANONICAL_SLUGS = frozenset(c.slug for c in CONTINENTS)
 
-***REMOVED*** Derived alias index — the dataclasses are the single source of truth.
+# Derived alias index — the dataclasses are the single source of truth.
 _ALIAS_INDEX = {}
 for _continent in CONTINENTS:
     for _alias in _continent.aliases:

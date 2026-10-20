@@ -180,8 +180,8 @@ export default {
 }
 
 .qcm-modal {
-  background: ***REMOVED***0f172a;
-  border: 1px solid ***REMOVED***334155;
+  background: #0f172a;
+  border: 1px solid #334155;
   border-radius: 0.75rem;
   width: 90%;
   max-width: 540px;
@@ -195,20 +195,20 @@ export default {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border-bottom: 1px solid ***REMOVED***1e293b;
+  border-bottom: 1px solid #1e293b;
 }
 
 .qcm-modal__title {
   margin: 0;
   font-size: 1.1rem;
   font-weight: 600;
-  color: ***REMOVED***f1f5f9;
+  color: #f1f5f9;
 }
 
 .qcm-modal__close {
   background: none;
   border: none;
-  color: ***REMOVED***94a3b8;
+  color: #94a3b8;
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
@@ -216,7 +216,7 @@ export default {
 }
 
 .qcm-modal__close:hover {
-  color: ***REMOVED***f1f5f9;
+  color: #f1f5f9;
 }
 
 .qcm-modal__body {
@@ -235,7 +235,7 @@ export default {
 .qcm-modal__template-name {
   font-size: 0.875rem;
   font-weight: 600;
-  color: ***REMOVED***a5b4fc;
+  color: #a5b4fc;
 }
 
 .qcm-modal__confidence {
@@ -245,18 +245,18 @@ export default {
 }
 
 .qcm-modal__confidence--high {
-  background: ***REMOVED***064e3b;
-  color: ***REMOVED***6ee7b7;
+  background: #064e3b;
+  color: #6ee7b7;
 }
 
 .qcm-modal__confidence--medium {
-  background: ***REMOVED***78350f;
-  color: ***REMOVED***fcd34d;
+  background: #78350f;
+  color: #fcd34d;
 }
 
 .qcm-modal__confidence--low {
-  background: ***REMOVED***7f1d1d;
-  color: ***REMOVED***fca5a5;
+  background: #7f1d1d;
+  color: #fca5a5;
 }
 
 .qcm-modal__concepts {
@@ -275,8 +275,8 @@ export default {
   min-width: 80px;
   padding: 0.2rem 0.5rem;
   border-radius: 0.3rem;
-  background: ***REMOVED***1e293b;
-  color: ***REMOVED***93c5fd;
+  background: #1e293b;
+  color: #93c5fd;
   font-size: 0.75rem;
   font-weight: 600;
   text-align: center;
@@ -286,8 +286,8 @@ export default {
   min-width: 70px;
   padding: 0.15rem 0.4rem;
   border-radius: 0.3rem;
-  background: ***REMOVED***312e81;
-  color: ***REMOVED***c7d2fe;
+  background: #312e81;
+  color: #c7d2fe;
   font-size: 0.68rem;
   font-weight: 600;
   text-align: center;
@@ -297,34 +297,34 @@ export default {
   flex: 1;
   padding: 0.35rem 0.6rem;
   border-radius: 0.4rem;
-  border: 1px solid ***REMOVED***334155;
-  background: ***REMOVED***020617;
-  color: ***REMOVED***e2e8f0;
+  border: 1px solid #334155;
+  background: #020617;
+  color: #e2e8f0;
   font-size: 0.78rem;
 }
 
 .qcm-modal__concept-input:focus {
   outline: none;
-  border-color: ***REMOVED***6366f1;
+  border-color: #6366f1;
 }
 
 .qcm-modal__summary {
   padding: 0.6rem 0.75rem;
   border-radius: 0.4rem;
-  background: ***REMOVED***1e293b;
+  background: #1e293b;
   font-size: 0.78rem;
-  color: ***REMOVED***cbd5e1;
+  color: #cbd5e1;
 }
 
 .qcm-modal__summary strong {
-  color: ***REMOVED***f1f5f9;
+  color: #f1f5f9;
 }
 
 .qcm-modal__footer {
   display: flex;
   gap: 0.5rem;
   padding: 1rem 1.25rem;
-  border-top: 1px solid ***REMOVED***1e293b;
+  border-top: 1px solid #1e293b;
   justify-content: flex-end;
 }
 
@@ -339,30 +339,30 @@ export default {
 
 .qcm-modal__btn--reject {
   background: transparent;
-  border: 1px solid ***REMOVED***475569;
-  color: ***REMOVED***94a3b8;
+  border: 1px solid #475569;
+  color: #94a3b8;
 }
 
 .qcm-modal__btn--reject:hover {
-  background: ***REMOVED***1e293b;
-  color: ***REMOVED***f1f5f9;
+  background: #1e293b;
+  color: #f1f5f9;
 }
 
 .qcm-modal__btn--edit {
-  background: ***REMOVED***1e293b;
-  color: ***REMOVED***c7d2fe;
+  background: #1e293b;
+  color: #c7d2fe;
 }
 
 .qcm-modal__btn--edit:hover {
-  background: ***REMOVED***312e81;
+  background: #312e81;
 }
 
 .qcm-modal__btn--approve {
-  background: ***REMOVED***4f46e5;
-  color: ***REMOVED***f9fafb;
+  background: #4f46e5;
+  color: #f9fafb;
 }
 
 .qcm-modal__btn--approve:hover {
-  background: ***REMOVED***4338ca;
+  background: #4338ca;
 }
 </style>

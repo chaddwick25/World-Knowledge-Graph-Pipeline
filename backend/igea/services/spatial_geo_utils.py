@@ -13,15 +13,15 @@ logger = logging.getLogger(__name__)
 
 _GEOHASH_ALPHABET = "0123456789bcdefghjkmnpqrstuvwxyz"
 
-***REMOVED*** Fallback d_max values derived from geohash cell widths at the equator.
-***REMOVED*** Used only when the pool has not been loaded (e.g. unit tests) or a tail
-***REMOVED*** cluster is missing from _D_MAX_PER_CLUSTER (single-cluster precision
-***REMOVED*** level).  NOTE: these are NOT upper bounds on cluster-center distance —
-***REMOVED*** a pool spanning two cells already has centers up to ~2 cell-widths
-***REMOVED*** apart.  They are arbitrary scale constants that keep the score sane for
-***REMOVED*** degenerate pools (a single-cluster pool yields d ≈ 0 → sim ≈ 1.0
-***REMOVED*** regardless of the normalizer).
-***REMOVED*** Source: geohash cell dimensions — P1 ≈ 5000km, P3 ≈ 156km, P4 ≈ 39km.
+# Fallback d_max values derived from geohash cell widths at the equator.
+# Used only when the pool has not been loaded (e.g. unit tests) or a tail
+# cluster is missing from _D_MAX_PER_CLUSTER (single-cluster precision
+# level).  NOTE: these are NOT upper bounds on cluster-center distance —
+# a pool spanning two cells already has centers up to ~2 cell-widths
+# apart.  They are arbitrary scale constants that keep the score sane for
+# degenerate pools (a single-cluster pool yields d ≈ 0 → sim ≈ 1.0
+# regardless of the normalizer).
+# Source: geohash cell dimensions — P1 ≈ 5000km, P3 ≈ 156km, P4 ≈ 39km.
 _FALLBACK_D_MAX: Dict[int, float] = {1: 5000.0, 3: 156.0, 4: 39.0}
 
 
@@ -48,7 +48,7 @@ def _compute_d_max_per_precision(pool: List[Dict]) -> Dict[int, Dict[str, float]
     result: Dict[int, Dict[str, float]] = {}
     coords = [(e['lat'], e['lon']) for e in pool]
     for precision in (1, 3, 4):
-        ***REMOVED*** Unique cluster centers at this precision
+        # Unique cluster centers at this precision
         centers: Dict[str, Tuple[float, float]] = {}
         for lat, lon in coords:
             gh = geohash2.encode(lat, lon, precision=precision)
@@ -58,9 +58,9 @@ def _compute_d_max_per_precision(pool: List[Dict]) -> Dict[int, Dict[str, float]
         if len(centers) <= 1:
             continue
         ghs = list(centers.keys())
-        pts = np.radians(np.array([centers[g] for g in ghs]))  ***REMOVED*** (K, 2)
-        ***REMOVED*** Vectorized pairwise Haversine in row-blocks (bounds peak memory
-        ***REMOVED*** to BLOCK × K instead of K² — matters when K ~ 10^4 at P4).
+        pts = np.radians(np.array([centers[g] for g in ghs]))  # (K, 2)
+        # Vectorized pairwise Haversine in row-blocks (bounds peak memory
+        # to BLOCK × K instead of K² — matters when K ~ 10^4 at P4).
         per_cluster_max = np.zeros(len(ghs))
         BLOCK = 1024
         for start in range(0, len(ghs), BLOCK):
@@ -74,15 +74,15 @@ def _compute_d_max_per_precision(pool: List[Dict]) -> Dict[int, Dict[str, float]
             dist = 6371.0 * 2 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
             per_cluster_max[start:start + BLOCK] = dist.max(axis=1)
         result[precision] = {
-            gh: max(float(m), 1e-6)  ***REMOVED*** avoid div-by-zero
+            gh: max(float(m), 1e-6)  # avoid div-by-zero
             for gh, m in zip(ghs, per_cluster_max)
         }
     return result
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Geohash helpers (no external dependency)
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Geohash helpers (no external dependency)
+# ---------------------------------------------------------------------------
 
 def _encode_geohash(lat: float, lon: float, precision: int) -> str:
     lat_range = [-90.0, 90.0]

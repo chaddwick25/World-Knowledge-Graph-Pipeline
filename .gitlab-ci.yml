@@ -1,10 +1,10 @@
-***REMOVED*** CI: unit tests on MR + dev pushes; Release object on v* tags.
-***REMOVED***
-***REMOVED*** The DB-backed unit tests (django_db) need BOTH test databases with
-***REMOVED*** postgis + vector + pg_trgm extensions - no stock image has them - so CI
-***REMOVED*** runs the hermetic subset (`unit and not django_db`) and the DB tests
-***REMOVED*** stay covered by the local pre-push hook (267 tests green there).
-***REMOVED*** See plans/BETA_ROADMAP_PLAN.md §4 CI design notes.
+# CI: unit tests on MR + dev pushes; Release object on v* tags.
+#
+# The DB-backed unit tests (django_db) need BOTH test databases with
+# postgis + vector + pg_trgm extensions - no stock image has them - so CI
+# runs the hermetic subset (`unit and not django_db`) and the DB tests
+# stay covered by the local pre-push hook (267 tests green there).
+# See plans/BETA_ROADMAP_PLAN.md §4 CI design notes.
 
 stages:
   - test
@@ -45,7 +45,10 @@ release:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
   script:
-    - echo "Creating release for $CI_COMMIT_TAG"
-  release:
-    name: "Release $CI_COMMIT_TAG"
-    description: "$CI_COMMIT_TAG_MESSAGE"
+    # Script-based (not the release: keyword): the keyword's config
+    # validation fails on branch pipelines where $CI_COMMIT_TAG is empty
+    # ("tag name should be a string", 2026-10-20).
+    - release-cli create
+        --name "Release $CI_COMMIT_TAG"
+        --tag-name "$CI_COMMIT_TAG"
+        --description "$CI_COMMIT_TAG_MESSAGE"

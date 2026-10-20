@@ -12,7 +12,7 @@ from semantic_search.services.romanizing_names.diacritic_romanizer import Diacri
 from semantic_search.services.romanizing_names.registry import RomanizerRegistry
 
 
-***REMOVED*** ── IdentityRomanizer ────────────────────────────────────────────────
+# ── IdentityRomanizer ────────────────────────────────────────────────
 
 class TestIdentityRomanizer:
     def test_basic_lowercase(self):
@@ -38,7 +38,7 @@ class TestIdentityRomanizer:
         assert IdentityRomanizer.romanize("O'Brien's") == "o'brien's"
 
 
-***REMOVED*** ── HangulRomanizer ──────────────────────────────────────────────────
+# ── HangulRomanizer ──────────────────────────────────────────────────
 
 class TestHangulRomanizer:
     def test_paris_baguette(self):
@@ -80,7 +80,7 @@ class TestHangulRomanizer:
         assert "  " not in result
 
 
-***REMOVED*** ── DiacriticRomanizer ───────────────────────────────────────────────
+# ── DiacriticRomanizer ───────────────────────────────────────────────
 
 class TestDiacriticRomanizer:
     def test_french_cafe(self):
@@ -141,7 +141,7 @@ class TestDiacriticRomanizer:
         assert DiacriticRomanizer.romanize("") == ""
 
 
-***REMOVED*** ── RomanizerRegistry ────────────────────────────────────────────────
+# ── RomanizerRegistry ────────────────────────────────────────────────
 
 class TestRomanizerRegistry:
     def test_auto_romanize_korean(self):

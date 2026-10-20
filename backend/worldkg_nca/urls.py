@@ -2,16 +2,16 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    ***REMOVED*** Ontology endpoints
+    # Ontology endpoints
     path('ontology/info/', views.worldkg_ontology_info, name='nca_ontology_info'),
     path('ontology/class/<str:class_name>/', views.worldkg_class_hierarchy, name='nca_class_hierarchy'),
     
-    ***REMOVED*** Entity enrichment
+    # Entity enrichment
     path('enrich/entity/', views.worldkg_enrich_entity, name='nca_enrich_entity'),
     
-    ***REMOVED*** Entity queries
+    # Entity queries
     path('entities/', views.worldkg_entities_by_class, name='nca_query_entities'),
-    ***REMOVED*** Visualization data (DECKGL_VISUALIZATION_INTEGRATION_PLAN_V2.md Phase 1)
+    # Visualization data (DECKGL_VISUALIZATION_INTEGRATION_PLAN_V2.md Phase 1)
     path('class-centroids/', views.worldkg_class_centroids, name='nca_class_centroids'),
     path('entities/detail/<str:osm_type>/<int:osm_id>/', views.worldkg_entity_detail, name='nca_entity_detail'),
     path('distribution/', views.worldkg_class_distribution, name='nca_class_distribution'),
@@ -29,7 +29,7 @@ urlpatterns = [
     path('factor-availability/', views.factor_availability, name='nca_factor_availability'),
     path('subdivisions/', views.worldkg_subdivisions, name='nca_subdivisions'),
     path('sample-questions/', views.sample_questions, name='nca_sample_questions'),
-    ***REMOVED*** Graph / spectral / community / event queries (Phase 4)
+    # Graph / spectral / community / event queries (Phase 4)
     path('spectral-query/', views.spectral_query, name='nca_spectral_query'),
     path('temporal-query/', views.temporal_query, name='nca_temporal_query'),
     path('community-query/', views.community_query, name='nca_community_query'),
@@ -37,7 +37,7 @@ urlpatterns = [
     path('link-candidates/', views.worldkg_link_candidates, name='nca_link_candidates'),
     path('apply-link/', views.worldkg_apply_link, name='nca_apply_link'),
     
-    ***REMOVED*** Temporal analysis (read-only; computation is pipeline-side — Step 6
-    ***REMOVED*** + the compute_class_drift backfill command)
+    # Temporal analysis (read-only; computation is pipeline-side — Step 6
+    # + the compute_class_drift backfill command)
     path('drift/', views.worldkg_drift_list, name='nca_list_drift'),
 ]

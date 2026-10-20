@@ -1,4 +1,4 @@
-***REMOVED***!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 PBF Cache Manager
 
@@ -20,7 +20,7 @@ from collections import defaultdict
 from django.utils import timezone
 import logging
 
-***REMOVED*** Configure logging
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -35,27 +35,27 @@ class PBFCacheManager:
         self.max_ram_cache = max_ram_cache_gb * 1024**3
         self.max_disk_cache = max_disk_cache_gb * 1024**3
         
-        ***REMOVED*** Cache storage directories
+        # Cache storage directories
         self.hot_cache_dir = self.cache_dir / "hot_cache"
         self.warm_cache_dir = self.cache_dir / "warm_cache"
         self.metadata_dir = self.cache_dir / "metadata"
         
-        ***REMOVED*** Create directories
+        # Create directories
         for dir_path in [self.hot_cache_dir, self.warm_cache_dir, self.metadata_dir]:
             dir_path.mkdir(parents=True, exist_ok=True)
         
-        ***REMOVED*** Memory management
+        # Memory management
         self.memory_maps: Dict[str, mmap.mmap] = {}
         self.file_handles: Dict[str, object] = {}
         self.access_times: Dict[str, float] = {}
         self.access_counts: Dict[str, int] = defaultdict(int)
         self.cache_sizes: Dict[str, int] = {}
         
-        ***REMOVED*** Thread safety
+        # Thread safety
         self.cache_lock = threading.RLock()
         self.file_locks: Dict[str, threading.RLock] = {}
         
-        ***REMOVED*** Load existing cache metadata
+        # Load existing cache metadata
         self.load_cache_metadata()
         
         logger.info(f"PBF Cache Manager initialized:")
@@ -110,12 +110,12 @@ class PBFCacheManager:
         """Check if PBF file is cached."""
         cache_key = self.get_cache_key(pbf_path, job_id)
         
-        ***REMOVED*** Check hot cache first
+        # Check hot cache first
         hot_path = self.get_cached_pbf_path(cache_key, "hot")
         if hot_path.exists():
             return True, hot_path
         
-        ***REMOVED*** Check warm cache
+        # Check warm cache
         warm_path = self.get_cached_pbf_path(cache_key, "warm")
         if warm_path.exists():
             return True, warm_path
@@ -130,12 +130,12 @@ class PBFCacheManager:
         
         cached_path = self.get_cached_pbf_path(cache_key, cache_tier)
         
-        ***REMOVED*** Copy file to cache if not already cached
+        # Copy file to cache if not already cached
         if not cached_path.exists():
             logger.info(f"Caching {source_path.name} to {cache_tier} cache...")
             shutil.copy2(source_path, cached_path)
             
-            ***REMOVED*** Update metadata
+            # Update metadata
             with self.cache_lock:
                 self.cache_sizes[cache_key] = cached_path.stat().st_size
                 self.access_times[cache_key] = time.time()
@@ -148,21 +148,21 @@ class PBFCacheManager:
         cache_key = self.get_cache_key(pbf_path, job_id)
         
         with self.cache_lock:
-            ***REMOVED*** Check if already memory-mapped
+            # Check if already memory-mapped
             if cache_key in self.memory_maps:
                 self.access_times[cache_key] = time.time()
                 self.access_counts[cache_key] += 1
                 return self.memory_maps[cache_key]
             
-            ***REMOVED*** Check available RAM
+            # Check available RAM
             available_ram = psutil.virtual_memory().available
             file_size = os.path.getsize(pbf_path)
             
-            if file_size > available_ram * 0.8:  ***REMOVED*** Don't use more than 80% of available RAM
+            if file_size > available_ram * 0.8:  # Don't use more than 80% of available RAM
                 logger.warning(f"File too large for memory mapping: {file_size / 1024**3:.2f}GB")
                 return None
             
-            ***REMOVED*** Create memory map
+            # Create memory map
             try:
                 file_handle = open(pbf_path, 'rb')
                 memory_map = mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ)
@@ -183,7 +183,7 @@ class PBFCacheManager:
         """Find the best cached source for a polygon extraction."""
         poly_name = Path(target_poly).stem
         
-        ***REMOVED*** Check for region-specific cached extracts
+        # Check for region-specific cached extracts
         potential_sources = [
             f"temporal_snapshot_{poly_name}",
             f"continent_{poly_name}",
@@ -206,7 +206,7 @@ class PBFCacheManager:
         
         if warm_path.exists() and not hot_path.exists():
             try:
-                ***REMOVED*** Check hot cache space
+                # Check hot cache space
                 hot_cache_usage = sum(f.stat().st_size for f in self.hot_cache_dir.glob("*.pbf"))
                 file_size = warm_path.stat().st_size
                 
@@ -228,7 +228,7 @@ class PBFCacheManager:
             to_remove = []
             
             for cache_key, last_access in self.access_times.items():
-                ***REMOVED*** Remove memory maps not accessed in last hour
+                # Remove memory maps not accessed in last hour
                 if current_time - last_access > 3600 and cache_key in self.memory_maps:
                     to_remove.append(cache_key)
             
@@ -299,22 +299,22 @@ class ConcurrentPBFAccess:
         cache_key = self.cache_manager.get_cache_key(pbf_path, job_id)
         
         with self.lock:
-            ***REMOVED*** Get or create file lock
+            # Get or create file lock
             if cache_key not in self.file_locks:
                 self.file_locks[cache_key] = threading.RLock()
             
-            ***REMOVED*** Track active job
+            # Track active job
             self.active_jobs[cache_key].add(job_id)
             self.reader_counts[cache_key] += 1
         
-        ***REMOVED*** Try to get cached version first
+        # Try to get cached version first
         is_cached, cached_path = self.cache_manager.is_cached(pbf_path, job_id)
         if is_cached:
             actual_path = str(cached_path)
         else:
             actual_path = pbf_path
         
-        ***REMOVED*** Get memory-mapped access if possible
+        # Get memory-mapped access if possible
         memory_map = self.cache_manager.get_memory_mapped_pbf(actual_path, job_id)
         
         logger.info(f"Job {job_id} acquired read access to {Path(actual_path).name}")
@@ -344,8 +344,8 @@ class CacheCleanupManager:
     
     def __init__(self, cache_manager: PBFCacheManager):
         self.cache_manager = cache_manager
-        self.cleanup_threshold = 0.8  ***REMOVED*** Start cleanup at 80% capacity
-        self.target_usage = 0.6       ***REMOVED*** Clean down to 60% capacity
+        self.cleanup_threshold = 0.8  # Start cleanup at 80% capacity
+        self.target_usage = 0.6       # Clean down to 60% capacity
     
     def should_cleanup(self) -> bool:
         """Check if cleanup is needed."""
@@ -368,7 +368,7 @@ class CacheCleanupManager:
         start_time = time.time()
         current_time = time.time()
         
-        ***REMOVED*** Get all cached files with metadata
+        # Get all cached files with metadata
         cached_files = []
         
         for cache_dir in [self.cache_manager.hot_cache_dir, self.cache_manager.warm_cache_dir]:
@@ -388,18 +388,18 @@ class CacheCleanupManager:
                     'is_hot_cache': cache_dir == self.cache_manager.hot_cache_dir
                 })
         
-        ***REMOVED*** Sort by cleanup priority (LRU + access frequency + size)
+        # Sort by cleanup priority (LRU + access frequency + size)
         def cleanup_priority(file_info):
             age_score = file_info['age_hours']
             frequency_score = 1.0 / max(1, file_info['access_count'])
-            size_score = file_info['file_size'] / 1024**3  ***REMOVED*** GB
-            hot_penalty = -10 if file_info['is_hot_cache'] else 0  ***REMOVED*** Keep hot cache longer
+            size_score = file_info['file_size'] / 1024**3  # GB
+            hot_penalty = -10 if file_info['is_hot_cache'] else 0  # Keep hot cache longer
             
             return age_score + frequency_score + size_score + hot_penalty
         
         cached_files.sort(key=cleanup_priority, reverse=True)
         
-        ***REMOVED*** Remove files until we reach target usage
+        # Remove files until we reach target usage
         target_size = self.cache_manager.max_disk_cache * self.target_usage
         current_size = sum(f['file_size'] for f in cached_files)
         
@@ -408,22 +408,22 @@ class CacheCleanupManager:
                 break
             
             try:
-                ***REMOVED*** Don't remove files accessed in last hour
+                # Don't remove files accessed in last hour
                 if file_info['age_hours'] < 1:
                     continue
                 
                 file_path = file_info['path']
                 file_size = file_info['file_size']
                 
-                ***REMOVED*** Remove file
+                # Remove file
                 file_path.unlink()
                 
-                ***REMOVED*** Update tracking
+                # Update tracking
                 current_size -= file_size
                 cleanup_stats['files_removed'] += 1
                 cleanup_stats['space_freed_gb'] += file_size / 1024**3
                 
-                ***REMOVED*** Clean up metadata
+                # Clean up metadata
                 cache_key = file_info['cache_key']
                 self.cache_manager.access_times.pop(cache_key, None)
                 self.cache_manager.access_counts.pop(cache_key, None)
@@ -436,10 +436,10 @@ class CacheCleanupManager:
         
         cleanup_stats['cleanup_duration_seconds'] = time.time() - start_time
         
-        ***REMOVED*** Clean up memory maps
+        # Clean up memory maps
         self.cache_manager.cleanup_memory_maps()
         
-        ***REMOVED*** Save updated metadata
+        # Save updated metadata
         self.cache_manager.save_cache_metadata()
         
         logger.info(f"Cache cleanup completed: {cleanup_stats}")
@@ -469,7 +469,7 @@ class MultiJobCacheCoordinator:
     
     def coordinate_pbf_access(self, jobs: List[Dict]) -> Dict[str, str]:
         """Coordinate PBF access across multiple jobs."""
-        ***REMOVED*** Group jobs by source PBF
+        # Group jobs by source PBF
         pbf_groups = defaultdict(list)
         for job in jobs:
             pbf_path = job['source_pbf']
@@ -479,20 +479,20 @@ class MultiJobCacheCoordinator:
         
         for pbf_path, job_group in pbf_groups.items():
             if len(job_group) > 1:
-                ***REMOVED*** Multiple jobs - set up shared caching
+                # Multiple jobs - set up shared caching
                 logger.info(f"Setting up shared cache for {len(job_group)} jobs on {Path(pbf_path).name}")
                 
-                ***REMOVED*** Pre-cache the file
+                # Pre-cache the file
                 cache_key = self.cache_manager.get_cache_key(pbf_path, "shared")
                 cached_path = self.cache_manager.cache_pbf_file(pbf_path, cache_key, "hot")
                 
-                ***REMOVED*** Memory map for shared access
+                # Memory map for shared access
                 self.cache_manager.get_memory_mapped_pbf(str(cached_path), "shared")
                 
                 for job in job_group:
                     access_plan[job['job_id']] = str(cached_path)
             else:
-                ***REMOVED*** Single job - direct access
+                # Single job - direct access
                 job = job_group[0]
                 access_plan[job['job_id']] = pbf_path
         

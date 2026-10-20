@@ -11,9 +11,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        ***REMOVED*** fuzzystrmatch provides levenshtein()/difference() — the
-        ***REMOVED*** edit-distance tier of the misspelled-amenity correction layer
-        ***REMOVED*** (pg_trgm, added in 0017, provides the similarity tier).
+        # fuzzystrmatch provides levenshtein()/difference() — the
+        # edit-distance tier of the misspelled-amenity correction layer
+        # (pg_trgm, added in 0017, provides the similarity tier).
         migrations.RunSQL(
             sql="CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;",
             reverse_sql="DROP EXTENSION IF EXISTS fuzzystrmatch;",

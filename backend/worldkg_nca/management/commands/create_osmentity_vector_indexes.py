@@ -65,7 +65,7 @@ class Command(BaseCommand):
             ))
             return
 
-        ***REMOVED*** Global mode: existing behavior (all leaves missing HNSW)
+        # Global mode: existing behavior (all leaves missing HNSW)
         self.stdout.write(self.style.WARNING(
             "Global mode: creating HNSW indexes on semantic_search_osmentity "
             "(vectors DB)..."
@@ -75,9 +75,9 @@ class Command(BaseCommand):
             f"Created {created} HNSW index(es) on leaf partitions."
         ))
 
-    ***REMOVED*** ------------------------------------------------------------------ ***REMOVED***
-    ***REMOVED*** Per-leaf mode
-    ***REMOVED*** ------------------------------------------------------------------ ***REMOVED***
+    # ------------------------------------------------------------------ #
+    # Per-leaf mode
+    # ------------------------------------------------------------------ #
     @staticmethod
     def _default_categories():
         """The guaranteed Step 6 slice: GENERIC_AMENITY_KEYS.
@@ -154,7 +154,7 @@ class Command(BaseCommand):
         conn = connections['vectors']
         created = 0
 
-        ***REMOVED*** ---- 1. HNSW vector indexes (CONCURRENTLY required) ----
+        # ---- 1. HNSW vector indexes (CONCURRENTLY required) ----
         old_autocommit = conn.get_autocommit()
         conn.set_autocommit(True)
         try:
@@ -198,14 +198,14 @@ class Command(BaseCommand):
                 self.stdout.write(f"    Created {idx_name}")
                 created += 1
 
-            ***REMOVED*** ---- 2. Value-vocabulary indexes (CONCURRENTLY) ----
-            ***REMOVED*** Partial composite expression index per category key:
-            ***REMOVED***   ((tags->>'<key>'), snapshot_id, country_code)
-            ***REMOVED***   WHERE tags ? '<key>'
-            ***REMOVED*** turns the DISTINCT tags->>'<key>' census into an
-            ***REMOVED*** index-only scan over the key's tagged rows instead of a
-            ***REMOVED*** heap fetch of every match (correct_amenity's 1.3M-row
-            ***REMOVED*** stall on the PL leaf is the reference incident).
+            # ---- 2. Value-vocabulary indexes (CONCURRENTLY) ----
+            # Partial composite expression index per category key:
+            #   ((tags->>'<key>'), snapshot_id, country_code)
+            #   WHERE tags ? '<key>'
+            # turns the DISTINCT tags->>'<key>' census into an
+            # index-only scan over the key's tagged rows instead of a
+            # heap fetch of every match (correct_amenity's 1.3M-row
+            # stall on the PL leaf is the reference incident).
             for key in categories:
                 idx_name = f"idx_{leaf_name}_{key}_vocab"
                 with conn.cursor() as cursor:
@@ -227,9 +227,9 @@ class Command(BaseCommand):
         finally:
             conn.set_autocommit(old_autocommit)
 
-        ***REMOVED*** ---- 3. GIST geometry index + auxiliary B-tree indexes ----
-        ***REMOVED*** These are plain CREATE INDEX (no CONCURRENTLY needed — no live
-        ***REMOVED*** readers during Step 1 rebuild window).
+        # ---- 3. GIST geometry index + auxiliary B-tree indexes ----
+        # These are plain CREATE INDEX (no CONCURRENTLY needed — no live
+        # readers during Step 1 rebuild window).
         aux_indexes = [
             (
                 f"idx_{leaf_name}_geom",
@@ -254,7 +254,7 @@ class Command(BaseCommand):
         ]
         with conn.cursor() as cursor:
             for idx_name, idx_sql in aux_indexes:
-                ***REMOVED*** Only create if missing.
+                # Only create if missing.
                 cursor.execute(
                     "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = %s);",
                     [idx_name],
@@ -267,26 +267,26 @@ class Command(BaseCommand):
 
         return created
 
-    ***REMOVED*** kept for backward compatibility (global mode calls this)
+    # kept for backward compatibility (global mode calls this)
     def _create_leaf_hnsw(self, leaf_name: str) -> int:
         """Alias: create only HNSW indexes (used by global mode)."""
         return self._create_leaf_indexes(leaf_name)
 
-    ***REMOVED*** ------------------------------------------------------------------ ***REMOVED***
-    ***REMOVED*** Global mode (existing behavior, refactored into a method)
-    ***REMOVED*** ------------------------------------------------------------------ ***REMOVED***
+    # ------------------------------------------------------------------ #
+    # Global mode (existing behavior, refactored into a method)
+    # ------------------------------------------------------------------ #
     def _create_all_missing_hnsw(self) -> int:
         conn = connections['vectors']
-        ***REMOVED*** CONCURRENTLY requires autocommit (no transaction block).
+        # CONCURRENTLY requires autocommit (no transaction block).
         old_autocommit = conn.get_autocommit()
         conn.set_autocommit(True)
         try:
             with conn.cursor() as cursor:
-                ***REMOVED*** Ensure pgvector extension is available in this database
+                # Ensure pgvector extension is available in this database
                 cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
 
-                ***REMOVED*** Create HNSW indexes on all leaf partitions that have
-                ***REMOVED*** vector columns but no HNSW index yet.
+                # Create HNSW indexes on all leaf partitions that have
+                # vector columns but no HNSW index yet.
                 cursor.execute("""
                     SELECT t.relname AS table_name,
                            a.attname AS column_name
@@ -309,7 +309,7 @@ class Command(BaseCommand):
                 """)
                 missing = cursor.fetchall()
 
-            ***REMOVED*** Create each HNSW index in its own autocommit statement
+            # Create each HNSW index in its own autocommit statement
             created = 0
             for table_name, col_name in missing:
                 idx_name = f"idx_{table_name}_{col_name}_hnsw"

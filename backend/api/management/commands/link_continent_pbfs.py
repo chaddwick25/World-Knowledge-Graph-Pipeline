@@ -35,7 +35,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('DRY RUN MODE - No changes will be made'))
             self.stdout.write('')
         
-        ***REMOVED*** Get all continent-level nodes (region_type=CONTINENT)
+        # Get all continent-level nodes (region_type=CONTINENT)
         continents = RegionHierarchy.objects.filter(region_type=RegionHierarchy.RegionType.CONTINENT)
         
         if not continents.exists():
@@ -48,7 +48,7 @@ class Command(BaseCommand):
             self.stdout.write(f'  - {continent.name}')
         self.stdout.write('')
         
-        ***REMOVED*** Strategy 0: Proactive Disk Scan & Auto-Registration
+        # Strategy 0: Proactive Disk Scan & Auto-Registration
         from core.models import PbfFile
         from core.services.snapshot.regional_path_service import regional_path_service, normalize_continent_slug
         for continent in continents:
@@ -60,7 +60,7 @@ class Command(BaseCommand):
                         self.stdout.write(self.style.WARNING(f'Discovered unregistered file: {pbf_path}. Registering...'))
                         pbf_record = PbfFile.objects.create(
                             path=str(pbf_path),
-                            pbf_file_type='REGION',  ***REMOVED*** Logic expects REGION for standard extracts
+                            pbf_file_type='REGION',  # Logic expects REGION for standard extracts
                             status='COMPLETED',
                             has_history=True,
                             size_bytes=pbf_path.stat().st_size
@@ -68,7 +68,7 @@ class Command(BaseCommand):
                     else:
                         self.stdout.write(self.style.NOTICE(f'[DRY RUN] Would register: {pbf_path}'))
         
-        ***REMOVED*** Refresh PBF list after potential discovery
+        # Refresh PBF list after potential discovery
         continent_pbfs = PbfFile.objects.filter(
             status='COMPLETED'
         ).filter(Q(pbf_file_type='CONTINENT') | Q(pbf_file_type='REGION'))
@@ -78,15 +78,15 @@ class Command(BaseCommand):
             self.stdout.write(f'  - {pbf.path}')
         self.stdout.write('')
         
-        ***REMOVED*** Link continents to PBFs
+        # Link continents to PBFs
         linked_count = 0
         already_linked_count = 0
         not_found_count = 0
         
         for continent in continents:
-            continent_name = normalize_continent_slug(continent.name)  ***REMOVED*** Standardize to underscores (DB convention)
+            continent_name = normalize_continent_slug(continent.name)  # Standardize to underscores (DB convention)
             
-            ***REMOVED*** Check if already linked
+            # Check if already linked
             if continent.corresponding_pbf:
                 self.stdout.write(
                     self.style.SUCCESS(
@@ -96,24 +96,24 @@ class Command(BaseCommand):
                 already_linked_count += 1
                 continue
             
-            ***REMOVED*** Try to find matching PBF by name
+            # Try to find matching PBF by name
             matching_pbf = None
             
-            ***REMOVED*** Strategy 1: Strict Exact Filename Match (Best)
+            # Strategy 1: Strict Exact Filename Match (Best)
             for pbf in continent_pbfs:
                 pbf_stem = Path(pbf.path).stem.lower()
                 if pbf_stem == continent_name or pbf_stem == continent.name.lower():
-                    ***REMOVED*** Ensure this PBF isn't already assigned to someone else
+                    # Ensure this PBF isn't already assigned to someone else
                     if not RegionHierarchy.objects.filter(corresponding_pbf=pbf).exclude(id=continent.id).exists():
                         matching_pbf = pbf
                         break
             
-            ***REMOVED*** Strategy 2: Contained Name Match (Fallback)
+            # Strategy 2: Contained Name Match (Fallback)
             if not matching_pbf:
                 for pbf in continent_pbfs:
                     pbf_path_lower = pbf.path.lower()
                     if f"/{continent_name}/" in pbf_path_lower or f"/{continent.name.lower()}/" in pbf_path_lower:
-                        ***REMOVED*** Ensure this PBF isn't already assigned to someone else
+                        # Ensure this PBF isn't already assigned to someone else
                         if not RegionHierarchy.objects.filter(corresponding_pbf=pbf).exclude(id=continent.id).exists():
                             matching_pbf = pbf
                             break
@@ -147,7 +147,7 @@ class Command(BaseCommand):
                 self.stdout.write(f'  Tried matching: {continent_name}, {continent.name.lower()}')
                 not_found_count += 1
         
-        ***REMOVED*** Summary
+        # Summary
         self.stdout.write('')
         self.stdout.write(self.style.SUCCESS('=' * 80))
         self.stdout.write(self.style.SUCCESS('Summary'))

@@ -42,7 +42,7 @@ class HierarchyCacheService:
     """
 
     def __init__(self, cache_dir: Optional[Path] = None) -> None:
-        ***REMOVED*** Deprecated: we keep the interface but no longer persist caches to disk.
+        # Deprecated: we keep the interface but no longer persist caches to disk.
         base_dir = Path(settings.BASE_DIR).parent
         default_cache_dir = base_dir / "backend" / "data" / "osm_wikidata_hierarchy_cache"
         self.cache_dir = cache_dir or default_cache_dir
@@ -69,7 +69,7 @@ class HierarchyCacheService:
         return entry
 
     def _get_cache_path(self, iso: str) -> Path:
-        ***REMOVED*** Deprecated: retained for backwards compatibility, but not used for I/O.
+        # Deprecated: retained for backwards compatibility, but not used for I/O.
         iso = (iso or "").upper()
         return self.cache_dir / f"{iso}_hierarchy.json"
 
@@ -112,11 +112,11 @@ class HierarchyCacheService:
                 "error": "missing_fields",
             }
 
-        ***REMOVED*** Derive country_slug using JSON-based ISO overrides where needed
+        # Derive country_slug using JSON-based ISO overrides where needed
         default_slug = entry.get("slug", normalize_country_slug(country_name))
         country_slug = get_country_slug(iso, default_slug)
 
-        ***REMOVED*** Build hierarchy via OsmRelationHierarchyService (in-memory only)
+        # Build hierarchy via OsmRelationHierarchyService (in-memory only)
         start_ts = time.time()
         try:
             hierarchy = osm_relation_hierarchy_service.build_hierarchy_for_country(
@@ -147,7 +147,7 @@ class HierarchyCacheService:
             duration,
         )
 
-        ***REMOVED*** Update DB tracking
+        # Update DB tracking
         self._update_db_tracking(
             iso,
             cache_path=None,
@@ -175,12 +175,12 @@ class HierarchyCacheService:
     ) -> None:
         try:
             iso = (iso or "").upper()
-            ***REMOVED*** We expect one country-level OSMWikiDataHierarchy per slug/admin_level=2
+            # We expect one country-level OSMWikiDataHierarchy per slug/admin_level=2
             hierarchy = OSMWikiDataHierarchy.objects.filter(admin_level=2).filter(
                 slug__iexact=iso
             ).first()
             if not hierarchy:
-                ***REMOVED*** Fall back to wikidata_id/uri-based heuristic
+                # Fall back to wikidata_id/uri-based heuristic
                 hierarchy = OSMWikiDataHierarchy.objects.filter(admin_level=2).filter(
                     wikidata_id__icontains=iso
                 ).first()

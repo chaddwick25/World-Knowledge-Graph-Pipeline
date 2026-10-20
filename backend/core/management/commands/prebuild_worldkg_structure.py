@@ -65,7 +65,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("WorldKG Structure Pre-Build"))
         self.stdout.write(self.style.SUCCESS("=" * 60))
 
-        ***REMOVED*** ── Phase 1: Planet ──────────────────────────────────────────────
+        # ── Phase 1: Planet ──────────────────────────────────────────────
         self.stdout.write(self.style.MIGRATE_HEADING("\n[1/4] Planet Level"))
         planet_snapshot = self._prebuild_planet(osmium, planet_pbf, skip_osmium, dry_run)
 
@@ -73,21 +73,21 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("Planet pre-build failed — aborting."))
             return
 
-        ***REMOVED*** ── Phase 2: Continents ──────────────────────────────────────────
+        # ── Phase 2: Continents ──────────────────────────────────────────
         self.stdout.write(self.style.MIGRATE_HEADING("\n[2/4] Continent Level"))
         continent_count = self._prebuild_continents(
             osmium, planet_snapshot, skip_osmium, dry_run
         )
         self.stdout.write(f"  ✓ {continent_count} continents processed")
 
-        ***REMOVED*** ── Phase 3: Countries ───────────────────────────────────────────
+        # ── Phase 3: Countries ───────────────────────────────────────────
         self.stdout.write(self.style.MIGRATE_HEADING("\n[3/4] Country Level"))
         country_count = self._prebuild_countries(
             osmium, planet_snapshot, skip_osmium, dry_run
         )
         self.stdout.write(f"  ✓ {country_count} countries processed")
 
-        ***REMOVED*** ── Phase 4: Subgraphs ───────────────────────────────────────────
+        # ── Phase 4: Subgraphs ───────────────────────────────────────────
         self.stdout.write(self.style.MIGRATE_HEADING("\n[4/4] Subgraph Level"))
         subgraph_count = self._prebuild_subgraphs(osmium, skip_osmium, dry_run)
         self.stdout.write(f"  ✓ {subgraph_count} subgraphs processed")
@@ -96,9 +96,9 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("WorldKG Structure Pre-Build Complete"))
         self.stdout.write(self.style.SUCCESS("=" * 60))
 
-    ***REMOVED*** ══════════════════════════════════════════════════════════════════════
-    ***REMOVED*** Phase 1: Planet
-    ***REMOVED*** ══════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════════
+    # Phase 1: Planet
+    # ══════════════════════════════════════════════════════════════════════
 
     def _prebuild_planet(self, osmium, planet_pbf, skip_osmium, dry_run):
         """Create/update PlanetSnapshot with osmium fileinfo metrics."""
@@ -131,9 +131,9 @@ class Command(BaseCommand):
         self.stdout.write(f"  {'+' if created else '✓'} PlanetSnapshot: {snapshot.id}")
         return snapshot
 
-    ***REMOVED*** ══════════════════════════════════════════════════════════════════════
-    ***REMOVED*** Phase 2: Continents
-    ***REMOVED*** ══════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════════
+    # Phase 2: Continents
+    # ══════════════════════════════════════════════════════════════════════
 
     def _prebuild_continents(self, osmium, planet_snapshot, skip_osmium, dry_run):
         """Scan continent PBF directory and create/update ContinentProfile rows."""
@@ -179,9 +179,9 @@ class Command(BaseCommand):
 
         return count
 
-    ***REMOVED*** ══════════════════════════════════════════════════════════════════════
-    ***REMOVED*** Phase 3: Countries
-    ***REMOVED*** ══════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════════
+    # Phase 3: Countries
+    # ══════════════════════════════════════════════════════════════════════
 
     def _prebuild_countries(self, osmium, planet_snapshot, skip_osmium, dry_run):
         """
@@ -206,7 +206,7 @@ class Command(BaseCommand):
         with open(relations_path) as f:
             country_relations = json.load(f)
 
-        ***REMOVED*** Determine country PBF directory
+        # Determine country PBF directory
         country_pbf_dir = Path(settings.BASE_DATA_DIR) / 'OSM-PBF-FILES' / \
             'osm_wikidata_extractions'
 
@@ -219,7 +219,7 @@ class Command(BaseCommand):
             name = country_data.get('name', slug)
             continent_name = country_data.get('continent_name', '')
 
-            ***REMOVED*** Resolve continent profile
+            # Resolve continent profile
             continent_profile = None
             if continent_name:
                 cont_slug = continent_name.lower().replace(' ', '_')
@@ -228,7 +228,7 @@ class Command(BaseCommand):
                     slug=cont_slug,
                 ).first()
 
-            ***REMOVED*** Find country PBF on disk
+            # Find country PBF on disk
             country_pbf_path = None
             for candidate in [
                 country_pbf_dir / slug / f"{slug}.osm.pbf",
@@ -240,7 +240,7 @@ class Command(BaseCommand):
                     country_pbf_path = str(candidate)
                     break
 
-            ***REMOVED*** Osmium fileinfo
+            # Osmium fileinfo
             metrics = None
             if not skip_osmium and country_pbf_path:
                 metrics = self._fileinfo(osmium, country_pbf_path)
@@ -280,9 +280,9 @@ class Command(BaseCommand):
 
         return count
 
-    ***REMOVED*** ══════════════════════════════════════════════════════════════════════
-    ***REMOVED*** Phase 4: Subgraphs
-    ***REMOVED*** ══════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════════
+    # Phase 4: Subgraphs
+    # ══════════════════════════════════════════════════════════════════════
 
     def _prebuild_subgraphs(self, osmium, skip_osmium, dry_run):
         """Scan existing SubgraphProfile rows and populate osmium metrics."""
@@ -310,9 +310,9 @@ class Command(BaseCommand):
                 subgraph.bbox_min_lat = metrics.get('bbox_min_lat')
                 subgraph.bbox_max_lon = metrics.get('bbox_max_lon')
                 subgraph.bbox_max_lat = metrics.get('bbox_max_lat')
-                ***REMOVED*** Provenance: the pipeline harvest path (SPARQL hierarchy →
-                ***REMOVED*** subgraph PBF → osmium bbox). Backfills stamp
-                ***REMOVED*** 'osm_boundary'/'nominatim' instead.
+                # Provenance: the pipeline harvest path (SPARQL hierarchy →
+                # subgraph PBF → osmium bbox). Backfills stamp
+                # 'osm_boundary'/'nominatim' instead.
                 from django.utils import timezone
                 subgraph.bbox_source = 'sparql'
                 subgraph.bbox_updated_at = timezone.now()
@@ -321,9 +321,9 @@ class Command(BaseCommand):
 
         return count
 
-    ***REMOVED*** ══════════════════════════════════════════════════════════════════════
-    ***REMOVED*** Utilities
-    ***REMOVED*** ══════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════════
+    # Utilities
+    # ══════════════════════════════════════════════════════════════════════
     def _resolve_osmium(self):
         """Find osmium-tool executable."""
         candidates = [
@@ -368,22 +368,22 @@ class Command(BaseCommand):
         header = info.get('header', info)
         file_info = info.get('file', {})
         
-        ***REMOVED*** History PBFs don't have nested data — use top-level fields
+        # History PBFs don't have nested data — use top-level fields
         data = header.get('data', {})
 
-        ***REMOVED*** Timestamps: history files put it in header.option
+        # Timestamps: history files put it in header.option
         timestamps = data.get('timestamp', {})
         if not timestamps and header.get('option', {}).get('timestamp'):
             t = header['option']['timestamp']
             timestamps = {'max': t, 'min': t}
 
-        ***REMOVED*** Bbox: history files use header.boxes
+        # Bbox: history files use header.boxes
         box = data.get('box', {})
         if not box and header.get('boxes'):
             b = header['boxes'][0]
             box = {'minlon': b[0], 'minlat': b[1], 'maxlon': b[2], 'maxlat': b[3]}
 
-        ***REMOVED*** Entity counts: may be absent in history files
+        # Entity counts: may be absent in history files
         nodes_data = data.get('nodes', {}) or {}
         ways_data = data.get('ways', {}) or {}
         rels_data = data.get('relations', {}) or {}

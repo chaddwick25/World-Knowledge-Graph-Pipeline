@@ -1,4 +1,4 @@
-***REMOVED*** IGEA: Iterative Geographic Entity Alignment (Step 3)
+# IGEA: Iterative Geographic Entity Alignment (Step 3)
 
 > **Focus:** how IGEA iteratively aligns OSM entities with Wikidata knowledge
 > graph entries using semantic + geo-spatial features, a per-country
@@ -14,7 +14,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Where IGEA Sits in the Pipeline
+## 1. Where IGEA Sits in the Pipeline
 
 **Step 1: Embed OSM entities** (FastText + optional NLE) → `OsmEntity` rows
 with `gv_tags_embedding`, `tags`, `geom`, `wkg_class`.
@@ -34,7 +34,7 @@ entities to predict spatial relationships.
 
 ---
 
-***REMOVED******REMOVED*** 2. The Iterative Bootstrapping Loop
+## 2. The Iterative Bootstrapping Loop
 
 1. **Harvest candidates.** `WikidataCandidateService.harvest_by_country(
    iso, limit=50K)` → `PrecomputedLinkCandidate` rows (`wikidata_uri`,
@@ -66,11 +66,11 @@ entities to predict spatial relationships.
 
 ---
 
-***REMOVED******REMOVED*** 3. The Three Feature Spaces
+## 3. The Three Feature Spaces
 
 IGEA uses three feature spaces to score OSM↔Wikidata pairs.
 
-***REMOVED******REMOVED******REMOVED*** 3.1 Semantic (`gv_tags_embedding`, 300D)
+### 3.1 Semantic (`gv_tags_embedding`, 300D)
 
 - **OSM side**: `OsmEntity.gv_tags_embedding`, FastText weighted average of
   tag key/value embeddings (from Step 1).
@@ -78,14 +78,14 @@ IGEA uses three feature spaces to score OSM↔Wikidata pairs.
   (backfilled in step 2 of the IGEA flow).
 - **Comparison**: cosine similarity or cross-attention probability.
 
-***REMOVED******REMOVED******REMOVED*** 3.2 Geo-Spatial (Haversine Distance)
+### 3.2 Geo-Spatial (Haversine Distance)
 
 - **Max distance**: 2500 meters (hardcoded default).
 - **Filter**: pairs beyond `max_distance_m` are not candidate pairs.
 - **Polygon filter**: only entities within the country's polygon WKT are
   considered (prevents cross-border false positives).
 
-***REMOVED******REMOVED******REMOVED*** 3.3 Class (`wkg_class`)
+### 3.3 Class (`wkg_class`)
 
 - **OSM side**: `OsmEntity.wkg_class`, from Step 1 SQL enrichment or NCA.
 - **Wikidata side**: `PrecomputedLinkCandidate.wkg_class`, from Step 2
@@ -95,14 +95,14 @@ IGEA uses three feature spaces to score OSM↔Wikidata pairs.
 
 ---
 
-***REMOVED******REMOVED*** 4. Cross-Attention BiLSTM
+## 4. Cross-Attention BiLSTM
 
 **Source:** `backend/igea/services/iterative_alignment_service.py` (`_train_cross_attention`)
 
 The cross-attention model is a **BiLSTM** (Bidirectional Long Short-Term
 Memory) network trained per-country on matched/unmatched pairs.
 
-***REMOVED******REMOVED******REMOVED*** 4.1 Architecture
+### 4.1 Architecture
 
 1. Input: `(osm_embedding(300D), wikidata_embedding(300D))`
 2. **BiLSTM layer** (bidirectional, hidden_size=128), captures sequential
@@ -112,7 +112,7 @@ Memory) network trained per-country on matched/unmatched pairs.
 4. **Dense layer** (sigmoid activation) → probability [0, 1].
 5. Output: alignment probability.
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Training
+### 4.2 Training
 
 - **Optimizer**: Adam
 - **Loss**: Binary Cross-Entropy (BCE)
@@ -123,7 +123,7 @@ Memory) network trained per-country on matched/unmatched pairs.
 - **Per-country**: the model is trained fresh for each country run. It
   learns country-specific alignment patterns.
 
-***REMOVED******REMOVED******REMOVED*** 4.3 Fallback
+### 4.3 Fallback
 
 If cross-attention training fails (e.g. not enough seed pairs), the scorer
 falls back to **cosine similarity** between `gv_tags_embedding` and the
@@ -131,14 +131,14 @@ candidate embedding. Less accurate but always available.
 
 ---
 
-***REMOVED******REMOVED*** 5. NCA: Neural Class Alignment
+## 5. NCA: Neural Class Alignment
 
 **Source:** `backend/igea/services/iterative_alignment_service.py` (`_run_nca`)
 
 NCA runs **inside** the iterative loop (step 4g). It learns tag→class
 mappings from the growing seed set and applies them to unaligned entities.
 
-***REMOVED******REMOVED******REMOVED*** 5.1 Lifecycle
+### 5.1 Lifecycle
 
 1. `build_vocabularies(linked_entities)` → extract tag keys/values and
    Wikidata classes from linked entities
@@ -150,7 +150,7 @@ mappings from the growing seed set and applies them to unaligned entities.
 5. `apply_mappings(osm_entities)` → assign `wkg_class` to entities using
    learned mappings
 
-***REMOVED******REMOVED******REMOVED*** 5.2 The wikidata_uri Attachment Fix
+### 5.2 The wikidata_uri Attachment Fix
 
 **Source:** `iterative_alignment_service.py` lines 257-265
 
@@ -164,18 +164,18 @@ for e in osm_entities:
     osm_id = e.get('osm_id')
     if osm_id in seed_map:
         ent = dict(e)
-        ent['wikidata_uri'] = seed_map[osm_id]  ***REMOVED*** ← the fix
+        ent['wikidata_uri'] = seed_map[osm_id]  # ← the fix
         linked.append(ent)
 ```
 
-***REMOVED******REMOVED******REMOVED*** 5.3 Minimum Entities
+### 5.3 Minimum Entities
 
 NCA requires at least 10 linked entities to train. Below that, the
 vocabularies are too sparse and NCA is skipped.
 
 ---
 
-***REMOVED******REMOVED*** 6. The EntityAlignment Audit Model
+## 6. The EntityAlignment Audit Model
 
 **Source:** <ref_file file="backend/igea/models.py" />
 
@@ -187,13 +187,13 @@ class EntityAlignment(models.Model):
     wikidata_uri = CharField(max_length=200, indexed)
     wikidata_label = CharField(max_length=500, null=True)
     alignment_method = CharField(choices=[
-        ('SEED', 'Seed'),           ***REMOVED*** from OSM wikidata= tag
-        ('COSINE', 'Cosine'),       ***REMOVED*** fallback cosine similarity
-        ('CROSS_ATTN', 'CrossAttn') ***REMOVED*** cross-attention BiLSTM
+        ('SEED', 'Seed'),           # from OSM wikidata= tag
+        ('COSINE', 'Cosine'),       # fallback cosine similarity
+        ('CROSS_ATTN', 'CrossAttn') # cross-attention BiLSTM
     ])
-    confidence = FloatField()       ***REMOVED*** 0.0-1.0
-    iteration = IntegerField()      ***REMOVED*** which IGEA iteration found this
-    distance_meters = FloatField()  ***REMOVED*** Haversine distance
+    confidence = FloatField()       # 0.0-1.0
+    iteration = IntegerField()      # which IGEA iteration found this
+    distance_meters = FloatField()  # Haversine distance
     created_at, updated_at = DateTimeFields()
     unique_together = [['osm_type', 'osm_id', 'wikidata_uri']]
 ```
@@ -210,9 +210,9 @@ method, confidence, and iteration.
 
 ---
 
-***REMOVED******REMOVED*** 7. Configuration
+## 7. Configuration
 
-***REMOVED******REMOVED******REMOVED*** 7.1 Hardcoded Defaults (NOT in hyperparams.yaml)
+### 7.1 Hardcoded Defaults (NOT in hyperparams.yaml)
 
 IGEA does **not** use `hyperparams.yaml`. Its defaults are hardcoded in
 `igea_pipeline_service.py`:
@@ -225,7 +225,7 @@ IGEA does **not** use `hyperparams.yaml`. Its defaults are hardcoded in
 | `enable_nca` | True | Run NCA inside the loop |
 | `enable_cross_attention_training` | True | Train BiLSTM per country |
 
-***REMOVED******REMOVED******REMOVED*** 7.2 Envelope Fields
+### 7.2 Envelope Fields
 
 | Field | Source | Purpose |
 |---|---|---|
@@ -236,7 +236,7 @@ IGEA does **not** use `hyperparams.yaml`. Its defaults are hardcoded in
 
 ---
 
-***REMOVED******REMOVED*** 8. Data Flow
+## 8. Data Flow
 
 **Inputs:**
 - `OsmEntity` (vectors DB): `gv_tags_embedding` (300D, from Step 1), `tags`
@@ -257,7 +257,7 @@ IGEA does **not** use `hyperparams.yaml`. Its defaults are hardcoded in
 
 ---
 
-***REMOVED******REMOVED*** 9. USLP Independence
+## 9. USLP Independence
 
 USLP (Step 4) runs **independently**. It is no longer gated on IGEA
 acceptance count. The `total_accepted == 0` checks were removed from
@@ -270,7 +270,7 @@ acceptance count. The `total_accepted == 0` checks were removed from
 
 ---
 
-***REMOVED******REMOVED*** 10. Invariants
+## 10. Invariants
 
 - IGEA is an iterative bootstrapping loop: seed → train → score → accept →
   expand seed → repeat (max 3 iterations).

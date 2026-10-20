@@ -1,4 +1,4 @@
-***REMOVED*** TODO: remember to move the docstrings to the notebook
+# TODO: remember to move the docstrings to the notebook
 """
 Spatial Link Prediction Service (USLP)
 
@@ -68,9 +68,9 @@ from typing import List, Dict, Optional, Tuple
 from haversine import haversine, Unit
 from core.services.snapshot.regional_path_service import normalize_country_name
 
-***REMOVED*** Geohash / geo helpers extracted to spatial_geo_utils.py (monolith split).
-***REMOVED*** _FALLBACK_D_MAX and _compute_d_max_per_precision are re-exported here —
-***REMOVED*** GPU / TorchUSLP services and tests import them from this module.
+# Geohash / geo helpers extracted to spatial_geo_utils.py (monolith split).
+# _FALLBACK_D_MAX and _compute_d_max_per_precision are re-exported here —
+# GPU / TorchUSLP services and tests import them from this module.
 from igea.services.spatial_geo_utils import (
     _FALLBACK_D_MAX,
     _compute_d_max_per_precision,
@@ -78,12 +78,12 @@ from igea.services.spatial_geo_utils import (
 )
 
 logger = logging.getLogger(__name__)
-***REMOVED*** TODO Maybe load these params in a yaml file, that way we can use them in the notebook.
+# TODO Maybe load these params in a yaml file, that way we can use them in the notebook.
 ACCEPTANCE_THRESHOLD = 0.7
-***REMOVED*** Geohash precision per relation type (shorter = accepts larger spatial distance)
-***REMOVED*** Aligned with USLP paper: SSLPandUSLP-main/USLP/USLP_main.py:120-135
+# Geohash precision per relation type (shorter = accepts larger spatial distance)
+# Aligned with USLP paper: SSLPandUSLP-main/USLP/USLP_main.py:120-135
 RELATION_GEOHASH_PRECISION: Dict[str, int] = {
-    ***REMOVED*** Precision 1 — country/continent level (~5,000 km)
+    # Precision 1 — country/continent level (~5,000 km)
     'isIn':           1,
     'addrPlace':      1,
     'isInContinent':  1,
@@ -91,14 +91,14 @@ RELATION_GEOHASH_PRECISION: Dict[str, int] = {
     'isInCountry':    1,
     'addrCountry':    1,
     'capitalCity':    1,
-    ***REMOVED*** Precision 3 — state/county/district level (~156 km)
+    # Precision 3 — state/county/district level (~156 km)
     'addrState':      3,
     'addrDistrict':   3,
     'addrProvince':   3,
     'isInCounty':     3,
     'isInState':      3,
     'isInDistrict':   3,
-    ***REMOVED*** Precision 4 — local level (~39 km)
+    # Precision 4 — local level (~39 km)
     'addrSubdistrict': 4,
     'addrSuburb':     4,
     'addrHamlet':     4,
@@ -109,24 +109,24 @@ RELATION_GEOHASH_PRECISION: Dict[str, int] = {
 }
 DEFAULT_GEOHASH_PRECISION = 4
 
-***REMOVED*** Per-cluster max Haversine distance: (precision, cluster_geohash) -> km.
-***REMOVED*** Mirrors the reference repo's distance_matrix.max(axis=0): each cluster
-***REMOVED*** center is normalized by the distance to ITS farthest cluster center
-***REMOVED*** (dataprep_utils.py:83).  Populated at pool-load time by
-***REMOVED*** _compute_d_max_per_precision() and read by _geo_score and the GPU /
-***REMOVED*** TorchUSLP scoring paths.
-***REMOVED***
-***REMOVED*** LOAD-BEFORE-SCORE INVARIANT: this module global is shared by the CPU,
-***REMOVED*** GPU, and TorchUSLP services.  Safe under the Celery prefork model
-***REMOVED*** because every task loads its pool before scoring; never score against a
-***REMOVED*** global populated by a different service's pool.
+# Per-cluster max Haversine distance: (precision, cluster_geohash) -> km.
+# Mirrors the reference repo's distance_matrix.max(axis=0): each cluster
+# center is normalized by the distance to ITS farthest cluster center
+# (dataprep_utils.py:83).  Populated at pool-load time by
+# _compute_d_max_per_precision() and read by _geo_score and the GPU /
+# TorchUSLP scoring paths.
+#
+# LOAD-BEFORE-SCORE INVARIANT: this module global is shared by the CPU,
+# GPU, and TorchUSLP services.  Safe under the Celery prefork model
+# because every task loads its pool before scoring; never score against a
+# global populated by a different service's pool.
 _D_MAX_PER_CLUSTER: Dict[int, Dict[str, float]] = {}
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Spatial relations that carry string literals about geographic entities
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** TODO: double check these values
+# ---------------------------------------------------------------------------
+# Spatial relations that carry string literals about geographic entities
+# ---------------------------------------------------------------------------
+# TODO: double check these values
 SPATIAL_LITERAL_TAGS = {
     'is_in', 'is_in:country', 'is_in:state', 'is_in:county',
     'is_in:continent', 'is_in:district',
@@ -138,12 +138,12 @@ SPATIAL_LITERAL_TAGS = {
 }
 
 TAG_TO_RELATION = {
-    ***REMOVED*** Country-level (precision 1)
+    # Country-level (precision 1)
     'is_in':              'isIn',
     'is_in:country':      'isInCountry',
     'addr:country':       'addrCountry',
     'is_in:continent':    'isInContinent',
-    ***REMOVED*** State/province/county/district level (precision 3)
+    # State/province/county/district level (precision 3)
     'is_in:state':        'isInState',
     'addr:state':         'addrState',
     'is_in:county':       'isInCounty',
@@ -151,7 +151,7 @@ TAG_TO_RELATION = {
     'addr:province':      'addrProvince',
     'addr:district':      'addrDistrict',
     'is_in:district':     'isInDistrict',
-    ***REMOVED*** Local level (precision 4)
+    # Local level (precision 4)
     'addr:city':          'addrCity',
     'addr:suburb':        'addrSuburb',
     'addr:hamlet':        'addrHamlet',
@@ -164,9 +164,9 @@ TAG_TO_RELATION = {
     'capital':            'capitalCity',
 }
 
-***REMOVED*** Map relation names to natural language terms for FastText embedding.
-***REMOVED*** Compound OSM keys like "addrCity" are not in FastText's vocabulary,
-***REMOVED*** so we map them to natural words that capture the semantic intent.
+# Map relation names to natural language terms for FastText embedding.
+# Compound OSM keys like "addrCity" are not in FastText's vocabulary,
+# so we map them to natural words that capture the semantic intent.
 RELATION_TO_NATURAL_TEXT = {
     'isIn':             'located in',
     'isInCountry':      'country',
@@ -190,9 +190,9 @@ RELATION_TO_NATURAL_TEXT = {
 }
 
 
-***REMOVED*** ---------------------------------------------------------------------------
-***REMOVED*** Main service
-***REMOVED*** ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Main service
+# ---------------------------------------------------------------------------
 
 class SpatialLinkPredictionService:
     """
@@ -210,10 +210,10 @@ class SpatialLinkPredictionService:
     """
 
     def __init__(self, transe_model_path: Optional[str] = None, entity2id: Optional[Dict] = None, rel2id: Optional[Dict] = None):
-        self._pool: List[Dict] = []           ***REMOVED*** candidate tail entities
-        self._ft_model = None                 ***REMOVED*** lazy FastText model
-        self._spatial_index = None            ***REMOVED*** BallTree for spatial queries
-        self._embedding_cache: Dict[str, np.ndarray] = {}  ***REMOVED*** Cache for FastText embeddings
+        self._pool: List[Dict] = []           # candidate tail entities
+        self._ft_model = None                 # lazy FastText model
+        self._spatial_index = None            # BallTree for spatial queries
+        self._embedding_cache: Dict[str, np.ndarray] = {}  # Cache for FastText embeddings
         
         self.transe_service = None
         if transe_model_path and entity2id and rel2id:
@@ -225,9 +225,9 @@ class SpatialLinkPredictionService:
             except ImportError:
                 logger.error("Failed to import TransE service.")
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** FastText
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # FastText
+    # ------------------------------------------------------------------
 
     def _get_fasttext(self):
         if self._ft_model is None:
@@ -237,7 +237,7 @@ class SpatialLinkPredictionService:
 
     def _embed_text(self, text: str) -> np.ndarray:
         """Embed a free-form text string as FastText weighted average (with caching)."""
-        ***REMOVED*** Check cache first
+        # Check cache first
         if text in self._embedding_cache:
             return self._embedding_cache[text]
         
@@ -248,13 +248,13 @@ class SpatialLinkPredictionService:
         else:
             emb = self._get_fasttext().calculate_embedding(tag_counts)
         
-        ***REMOVED*** Cache the result
+        # Cache the result
         self._embedding_cache[text] = emb
         return emb
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Pool management
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Pool management
+    # ------------------------------------------------------------------
 
     def _build_spatial_index(self):
         """Build BallTree spatial index for fast radius queries."""
@@ -276,10 +276,10 @@ class SpatialLinkPredictionService:
                 gv_tags_embedding (list[float] or None)
         """
         self._pool = entities
-        self._build_spatial_index()  ***REMOVED*** Build spatial index after loading
-        ***REMOVED*** Precompute per-cluster d_max for the paper's geo formula
-        ***REMOVED*** (1 - d/d_max).  Module global — see LOAD-BEFORE-SCORE INVARIANT
-        ***REMOVED*** at _D_MAX_PER_CLUSTER's definition.
+        self._build_spatial_index()  # Build spatial index after loading
+        # Precompute per-cluster d_max for the paper's geo formula
+        # (1 - d/d_max).  Module global — see LOAD-BEFORE-SCORE INVARIANT
+        # at _D_MAX_PER_CLUSTER's definition.
         global _D_MAX_PER_CLUSTER
         _D_MAX_PER_CLUSTER = _compute_d_max_per_precision(self._pool)
         logger.info(f"SpatialLinkPredictionService: pool={len(self._pool)} candidates")
@@ -302,16 +302,16 @@ class SpatialLinkPredictionService:
 
         qs = OsmEntity.objects.using('vectors').filter(geom__isnull=False)
 
-        ***REMOVED*** Phase 6: partition key filter for pruning
+        # Phase 6: partition key filter for pruning
         if snapshot_id:
             qs = qs.filter(snapshot_id=snapshot_id)
         
-        ***REMOVED*** If polygon provided, filter candidates to within the polygon
+        # If polygon provided, filter candidates to within the polygon
         if polygon_wkt:
             poly_geom = GEOSGeometry(polygon_wkt, srid=4326)
             qs = qs.filter(geom__within=poly_geom)
 
-        ***REMOVED*** Pre-compute country tokens (ISO/name/QID) and optional bbox using centralized resolver
+        # Pre-compute country tokens (ISO/name/QID) and optional bbox using centralized resolver
         country_tokens = None
         bbox_applied = False
         if country and not polygon_wkt:
@@ -322,7 +322,7 @@ class SpatialLinkPredictionService:
             iso_for_bbox = None
 
             try:
-                ***REMOVED*** Prefer DB-backed relations (handles ISO2 + Wikidata QIDs)
+                # Prefer DB-backed relations (handles ISO2 + Wikidata QIDs)
                 relations = osm_wikidata_resolver.get_country_relations_dict()
                 meta = relations.get(country_upper) or relations.get(country)
             except Exception as exc:
@@ -333,7 +333,7 @@ class SpatialLinkPredictionService:
                 )
                 meta = None
 
-            ***REMOVED*** Fallback to direct lookups if relations lookup missed
+            # Fallback to direct lookups if relations lookup missed
             if not meta:
                 meta = (
                     osm_wikidata_resolver.get_country_by_iso(country)
@@ -341,29 +341,29 @@ class SpatialLinkPredictionService:
                 )
 
             if meta:
-                ***REMOVED*** Canonical country name
+                # Canonical country name
                 name_val = meta.get("name")
                 if name_val:
                     country_tokens.add(str(name_val).upper())
 
-                ***REMOVED*** ISO2 / canonical code when available — use for CountryPipelineProfile lookup
+                # ISO2 / canonical code when available — use for CountryPipelineProfile lookup
                 iso_code = meta.get("iso_code")
                 if iso_code:
                     iso_code_str = str(iso_code).upper()
                     country_tokens.add(iso_code_str)
                     iso_for_bbox = iso_code_str
 
-                ***REMOVED*** Wikidata ID as a last-resort token
+                # Wikidata ID as a last-resort token
                 wikidata_id = meta.get("wikidata_id")
                 if wikidata_id:
                     wikidata_upper = str(wikidata_id).upper()
                     country_tokens.add(wikidata_upper)
 
-            ***REMOVED*** Always include the raw input token so callers like 'jamaica' or 'Q766' still work
+            # Always include the raw input token so callers like 'jamaica' or 'Q766' still work
             country_tokens.add(country_upper)
 
-            ***REMOVED*** If we resolved an ISO code, resolve bbox via the canonical
-            ***REMOVED*** CountryPipelineProfile store (populate_bbox_for_profile).
+            # If we resolved an ISO code, resolve bbox via the canonical
+            # CountryPipelineProfile store (populate_bbox_for_profile).
             if iso_for_bbox:
                 bbox = None
                 try:
@@ -385,8 +385,8 @@ class SpatialLinkPredictionService:
                     profile = None
 
                 if profile:
-                    ***REMOVED*** Use the canonical bbox population function which resolves
-                    ***REMOVED*** from the best available source and persists the result.
+                    # Use the canonical bbox population function which resolves
+                    # from the best available source and persists the result.
                     bbox = osm_wikidata_resolver.populate_bbox_for_profile(profile)
 
                 if bbox:
@@ -422,8 +422,8 @@ class SpatialLinkPredictionService:
         for e in qs.iterator(chunk_size=1_000):
             tags = e.tags or {}
             
-            ***REMOVED*** Apply country tag filter in Python (JSONField doesn't support efficient key-value filtering).
-            ***REMOVED*** If a bbox filter has already been applied, skip tag-based filtering to avoid over-restricting.
+            # Apply country tag filter in Python (JSONField doesn't support efficient key-value filtering).
+            # If a bbox filter has already been applied, skip tag-based filtering to avoid over-restricting.
             if country and not polygon_wkt and country_tokens and not bbox_applied:
                 tag_country = (tags.get('addr:country') or '').upper()
                 is_in_country = (tags.get('is_in:country') or '').upper()
@@ -446,9 +446,9 @@ class SpatialLinkPredictionService:
             })
         return self.load_candidate_pool(entities)
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Three-space scoring (USLP Section 3.3)
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Three-space scoring (USLP Section 3.3)
+    # ------------------------------------------------------------------
 
     def _geo_score(self, head_lat: float, head_lon: float,
                    tail_lat: float, tail_lon: float,
@@ -472,27 +472,27 @@ class SpatialLinkPredictionService:
         """
         precision = RELATION_GEOHASH_PRECISION.get(relation, DEFAULT_GEOHASH_PRECISION)
 
-        ***REMOVED*** Use geohash2 library for fast encoding (C-based, 100x faster than pure Python)
+        # Use geohash2 library for fast encoding (C-based, 100x faster than pure Python)
         gh_h = geohash2.encode(head_lat, head_lon, precision=precision)
         gh_t = geohash2.encode(tail_lat, tail_lon, precision=precision)
 
-        ***REMOVED*** Decode to centers (returns strings, need to convert to floats)
+        # Decode to centers (returns strings, need to convert to floats)
         lat_h_str, lon_h_str = geohash2.decode(gh_h)
         lat_t_str, lon_t_str = geohash2.decode(gh_t)
         c_h = (float(lat_h_str), float(lon_h_str))
         c_t = (float(lat_t_str), float(lon_t_str))
 
-        ***REMOVED*** Calculate haversine distance between cluster centers
+        # Calculate haversine distance between cluster centers
         dist_km = haversine(c_h, c_t, unit=Unit.KILOMETERS)
-        ***REMOVED*** Per-tail-cluster d_max (reference: column max at the tail index).
-        ***REMOVED*** Tails are pool members, so this lookup hits whenever the pool was
-        ***REMOVED*** loaded; the fallback covers unit tests and degenerate pools.
+        # Per-tail-cluster d_max (reference: column max at the tail index).
+        # Tails are pool members, so this lookup hits whenever the pool was
+        # loaded; the fallback covers unit tests and degenerate pools.
         d_max = _D_MAX_PER_CLUSTER.get(precision, {}).get(gh_t) \
             or _FALLBACK_D_MAX.get(precision, 39.0)
         sim = 1.0 - (dist_km / d_max)
-        ***REMOVED*** Clamp to [0, 1] — d can exceed d_max when the head lies outside the
-        ***REMOVED*** tail cluster's span (heads need not be pool members, so this is more
-        ***REMOVED*** common than in the reference repo's closed-world matrix lookup).
+        # Clamp to [0, 1] — d can exceed d_max when the head lies outside the
+        # tail cluster's span (heads need not be pool members, so this is more
+        # common than in the reference repo's closed-world matrix lookup).
         return max(0.0, min(1.0, sim))
 
     def _name_score(self, literal_string: str, candidate: Dict) -> float:
@@ -507,8 +507,8 @@ class SpatialLinkPredictionService:
         if not name:
             return 0.0
         emb_name = self._embed_text(name)
-        ***REMOVED*** Paper (space2_score): raw cosine_similarity, no clamping.
-        ***REMOVED*** Negative cosine means antonym relation—preserve that signal.
+        # Paper (space2_score): raw cosine_similarity, no clamping.
+        # Negative cosine means antonym relation—preserve that signal.
         return float(_cosine(emb_literal, emb_name))
 
     def _class_score(self, relation: str, candidate: Dict) -> float:
@@ -536,22 +536,22 @@ class SpatialLinkPredictionService:
         if wkg_class:
             class_text = wkg_class.replace('wkgs:', '').replace(':', ' ')
         else:
-            ***REMOVED*** Fallback: derive class-like text from OSM tags
+            # Fallback: derive class-like text from OSM tags
             class_text = self._derive_class_text_from_tags(candidate.get('tags', {}))
             if not class_text:
                 return 0.0
-        ***REMOVED*** Map relation to natural language text for FastText
+        # Map relation to natural language text for FastText
         rel_text = RELATION_TO_NATURAL_TEXT.get(relation, relation)
         emb_rel = self._embed_text(rel_text)
         emb_cls = self._embed_text(class_text)
-        ***REMOVED*** Paper (space3_score): raw cosine_similarity, no clamping.
-        ***REMOVED*** Negative cosine means relation and type are semantically opposite.
+        # Paper (space3_score): raw cosine_similarity, no clamping.
+        # Negative cosine means relation and type are semantically opposite.
         return float(_cosine(emb_rel, emb_cls))
 
     @staticmethod
     def _derive_class_text_from_tags(tags: Dict) -> str:
         """Derive a class-like text from OSM tags for embedding when wkg_class is missing."""
-        ***REMOVED*** Priority order: type-indicating keys
+        # Priority order: type-indicating keys
         type_keys = ['amenity', 'building', 'highway', 'leisure', 'landuse',
                      'natural', 'waterway', 'railway', 'aeroway', 'place',
                      'tourism', 'historic', 'shop', 'office', 'craft', 'sport']
@@ -588,13 +588,13 @@ class SpatialLinkPredictionService:
         n = self._name_score(literal, candidate)
 
         c = 0.0
-        ***REMOVED*** Restore OpenKE Mathematical intent!
+        # Restore OpenKE Mathematical intent!
         if self.transe_service:
-            ***REMOVED*** TransE returns distance (lower = better). We invert to similarity probability.
+            # TransE returns distance (lower = better). We invert to similarity probability.
             dist = self.transe_service.score_triple(
                 str(head_osm_id), relation, str(candidate['osm_id'])
             )
-            ***REMOVED*** Normalize to [0,1] space using basic inverse distance mapping
+            # Normalize to [0,1] space using basic inverse distance mapping
             c = 1.0 / (1.0 + dist)
         else:
             c = self._class_score(relation, candidate)
@@ -603,9 +603,9 @@ class SpatialLinkPredictionService:
         normalized = unnormalized / 3.0
         return unnormalized, normalized, g, n, c
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Entity-level prediction
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Entity-level prediction
+    # ------------------------------------------------------------------
 
     def predict_links_for_entity(
         self,
@@ -637,7 +637,7 @@ class SpatialLinkPredictionService:
             logger.warning("SpatialLinkPredictionService: pool is empty")
             return []
 
-        all_scored = []  ***REMOVED*** Collect all candidates across all tags
+        all_scored = []  # Collect all candidates across all tags
 
         for tag_key, tag_value in head_tags.items():
             if tag_key not in SPATIAL_LITERAL_TAGS and tag_key not in TAG_TO_RELATION:
@@ -648,26 +648,26 @@ class SpatialLinkPredictionService:
             relation = TAG_TO_RELATION.get(tag_key, tag_key)
             literal = tag_value.strip()
 
-            ***REMOVED*** Get spatial search radius based on relation type
-            ***REMOVED*** Use geohash precision to determine search radius
+            # Get spatial search radius based on relation type
+            # Use geohash precision to determine search radius
             precision = RELATION_GEOHASH_PRECISION.get(relation, DEFAULT_GEOHASH_PRECISION)
             radius_km = {1: 5000, 3: 156, 4: 39}.get(precision, 156)
             
-            ***REMOVED*** Use BallTree to find candidates within radius
+            # Use BallTree to find candidates within radius
             if self._spatial_index is not None:
                 query_point = np.radians([[head_lat, head_lon]])
-                radius_rad = radius_km / 6371.0  ***REMOVED*** Earth radius in km
+                radius_rad = radius_km / 6371.0  # Earth radius in km
                 indices = self._spatial_index.query_radius(query_point, r=radius_rad)[0]
                 candidates_to_score = [self._pool[i] for i in indices if self._pool[i]['osm_id'] != head_osm_id]
             else:
-                ***REMOVED*** Fallback to full scan if no index
+                # Fallback to full scan if no index
                 candidates_to_score = [c for c in self._pool if c['osm_id'] != head_osm_id]
             
-            ***REMOVED*** Debug: log spatial filtering results for first few entities
+            # Debug: log spatial filtering results for first few entities
             if len(all_scored) == 0:
                 logger.info(f"CPU USLP: Entity {head_osm_id} at ({head_lat:.4f}, {head_lon:.4f}), relation={relation}, radius={radius_km}km, candidates_in_radius={len(candidates_to_score)}/{len(self._pool)}")
             
-            ***REMOVED*** Score filtered candidates
+            # Score filtered candidates
             scored_candidates = []
             for candidate in candidates_to_score:
                 unnormalized, normalized, g, n, c = self._total_score(
@@ -683,14 +683,14 @@ class SpatialLinkPredictionService:
                     'tail_osm_id': candidate['osm_id'],
                     'unnormalized_score': round(unnormalized, 4),
                     'normalized_score': round(normalized, 4),
-                    'score': round(normalized, 4),  ***REMOVED*** backward-compat alias
+                    'score': round(normalized, 4),  # backward-compat alias
                     'geo_score': round(g, 4),
                     'name_score': round(n, 4),
                     'topo_score': round(c, 4),
                     'literal': literal,
                 })
 
-            ***REMOVED*** Debug: log top scores for first few entities (regardless of threshold)
+            # Debug: log top scores for first few entities (regardless of threshold)
             if len(all_scored) < 5 and scored_candidates:
                 scored_candidates.sort(key=lambda x: x['normalized'], reverse=True)
                 top3 = scored_candidates[:3]
@@ -701,7 +701,7 @@ class SpatialLinkPredictionService:
                     c = self._class_score(relation, sc['candidate'])
                     logger.info(f"CPU USLP:   - [{i}] geo={g:.3f}, name={n:.3f}, class={c:.3f}, total={sc['unnormalized']:.3f}, norm={sc['normalized']:.3f}")
 
-        ***REMOVED*** Sort all candidates by normalized_score and take top_k overall (not per tag)
+        # Sort all candidates by normalized_score and take top_k overall (not per tag)
         all_scored.sort(key=lambda x: x['normalized_score'], reverse=True)
         return all_scored[:top_k]
 
@@ -728,9 +728,9 @@ class SpatialLinkPredictionService:
         logger.info(f"USLP: Starting batch prediction for {total:,} entities")
         
         for idx, entity in enumerate(entities, 1):
-            ***REMOVED*** Early logging to verify processing starts
+            # Early logging to verify processing starts
             if idx in [1, 10]:
-                logger.info(f"USLP: Processing entity ***REMOVED***{idx}...")
+                logger.info(f"USLP: Processing entity #{idx}...")
             
             links = self.predict_links_for_entity(
                 head_osm_id=entity['osm_id'],
@@ -742,7 +742,7 @@ class SpatialLinkPredictionService:
             )
             all_links.extend(links)
             
-            ***REMOVED*** Progress logging every 100 entities for faster feedback
+            # Progress logging every 100 entities for faster feedback
             if idx % 100 == 0:
                 logger.info(f"USLP: Processed {idx:,}/{total:,} entities ({100*idx/total:.1f}%), {len(all_links):,} links found, cache size: {len(self._embedding_cache):,}")
         
@@ -781,12 +781,12 @@ class SpatialLinkPredictionService:
         rejected_buf = []
 
         for link in links:
-            ***REMOVED*** Parse OSM ID to extract type and numeric ID
+            # Parse OSM ID to extract type and numeric ID
             head_osm_id = str(link['head_osm_id'])
             tail_osm_id = str(link['tail_osm_id'])
 
-            ***REMOVED*** Extract OSM type (node/way/relation) and numeric ID
-            ***REMOVED*** Format: "node/123456" or just "123456"
+            # Extract OSM type (node/way/relation) and numeric ID
+            # Format: "node/123456" or just "123456"
             if '/' in head_osm_id:
                 head_type, head_id = head_osm_id.split('/', 1)
             else:
@@ -837,7 +837,7 @@ class SpatialLinkPredictionService:
                 rejected_count += len(rejected_buf)
                 rejected_buf.clear()
 
-        ***REMOVED*** Flush remaining
+        # Flush remaining
         if accepted_buf:
             SpatialTripletScore.objects.bulk_create(accepted_buf, ignore_conflicts=True)
             accepted_count += len(accepted_buf)

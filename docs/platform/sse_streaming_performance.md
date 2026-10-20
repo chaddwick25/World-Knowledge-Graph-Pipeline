@@ -1,4 +1,4 @@
-***REMOVED*** SSE Streaming & Request-Path Performance
+# SSE Streaming & Request-Path Performance
 
 > **Focus:** how `execute-query` streams as Server-Sent Events so the user
 > watches the query run instead of a spinner, and the latency levers that
@@ -12,7 +12,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. SSE Endpoint: `execute_query_stream`
+## 1. SSE Endpoint: `execute_query_stream`
 
 `GET /api/nca/execute-query/stream/?query=…&country_code=…&snapshot_date=…`
 (`worldkg_nca/views/search.py`) is a **plain Django view** (`@require_GET`,
@@ -50,7 +50,7 @@ the search panel's template mode.)
 
 ---
 
-***REMOVED******REMOVED*** 2. `get_latest_snapshot_id()`: The Hot Path
+## 2. `get_latest_snapshot_id()`: The Hot Path
 
 The query (`worldkg_nca/snapshot_utils.py`) is
 `OsmEntity…order_by("-snapshot_id").values_list(…).first()`, an Append over
@@ -66,7 +66,7 @@ was purely the snapshot lookup.
 
 ---
 
-***REMOVED******REMOVED*** 3. Other Levers
+## 3. Other Levers
 
 - **Answer cache**: `query_enrichment_service.py` TTL cache replays events
   without LLM calls. Repeated questions ~12s → ~2.5s.
@@ -85,7 +85,7 @@ was purely the snapshot lookup.
 
 ---
 
-***REMOVED******REMOVED*** 4. Measured Budget (Belize, 2026-08-24)
+## 4. Measured Budget (Belize, 2026-08-24)
 
 | Phase | Before | After |
 |---|---|---|
@@ -101,7 +101,7 @@ agent path additionally does one selection call) + cold-model reload
 
 ---
 
-***REMOVED******REMOVED*** 5. Files
+## 5. Files
 
 - `backend/worldkg_nca/views/search.py`, `execute_query_stream`
 - `backend/worldkg_nca/snapshot_utils.py`, snapshot cache

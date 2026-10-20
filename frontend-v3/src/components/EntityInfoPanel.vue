@@ -229,7 +229,7 @@ export default {
   min-width: 190px;
   max-width: 260px;
   background: rgba(15, 23, 42, 0.94);
-  border: 1px solid ***REMOVED***1f2937;
+  border: 1px solid #1f2937;
   border-radius: 8px;
   padding: 0.5rem 0.6rem;
   backdrop-filter: blur(8px);
@@ -245,8 +245,8 @@ export default {
   width: 10px;
   height: 10px;
   background: rgba(15, 23, 42, 0.94);
-  border-right: 1px solid ***REMOVED***1f2937;
-  border-bottom: 1px solid ***REMOVED***1f2937;
+  border-right: 1px solid #1f2937;
+  border-bottom: 1px solid #1f2937;
   transform: translateX(-50%) rotate(45deg);
   border-radius: 0 0 2px 0;
 }
@@ -255,8 +255,8 @@ export default {
   top: -6px;
   bottom: auto;
   border: none;
-  border-left: 1px solid ***REMOVED***1f2937;
-  border-top: 1px solid ***REMOVED***1f2937;
+  border-left: 1px solid #1f2937;
+  border-top: 1px solid #1f2937;
   border-radius: 2px 0 0 0;
 }
 

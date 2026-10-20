@@ -29,19 +29,19 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** ── get_latest_snapshot_id cache ─────────────────────────────────────────
-***REMOVED*** The underlying query is an Append over EVERY snapshot partition's primary
-***REMOVED*** key (3-4M heap fetches, ~850-980ms) and it is called 3-4x per request
-***REMOVED*** (executor spatial search, geocode, result enrichment). The value only
-***REMOVED*** changes when a pipeline run backfills a new snapshot, so a short TTL
-***REMOVED*** cache removes ~2.5-3s per request. Invalidate with clear_snapshot_cache()
-***REMOVED*** after a pipeline run, or let the TTL expire.
+# ── get_latest_snapshot_id cache ─────────────────────────────────────────
+# The underlying query is an Append over EVERY snapshot partition's primary
+# key (3-4M heap fetches, ~850-980ms) and it is called 3-4x per request
+# (executor spatial search, geocode, result enrichment). The value only
+# changes when a pipeline run backfills a new snapshot, so a short TTL
+# cache removes ~2.5-3s per request. Invalidate with clear_snapshot_cache()
+# after a pipeline run, or let the TTL expire.
 _SNAPSHOT_CACHE = {}
 _SNAPSHOT_CACHE_LOCK = threading.Lock()
-***REMOVED*** 300s (2026-10-01 — was 120): the snapshot-registry Append (~850ms-20s
-***REMOVED*** under load, 3.9M heap fetches) re-fires after 2 idle minutes; 5 keeps it
-***REMOVED*** out of the request path for a working session while still expiring after
-***REMOVED*** a pipeline run (clear_snapshot_cache() runs on backfill regardless).
+# 300s (2026-10-01 — was 120): the snapshot-registry Append (~850ms-20s
+# under load, 3.9M heap fetches) re-fires after 2 idle minutes; 5 keeps it
+# out of the request path for a working session while still expiring after
+# a pipeline run (clear_snapshot_cache() runs on backfill regardless).
 _SNAPSHOT_CACHE_DEFAULT_TTL = 300.0
 
 
@@ -60,7 +60,7 @@ def clear_snapshot_cache() -> None:
     with _SNAPSHOT_CACHE_LOCK:
         _SNAPSHOT_CACHE.pop("latest", None)
 
-***REMOVED*** Default snapshot_id used when no Snapshot can be resolved.
+# Default snapshot_id used when no Snapshot can be resolved.
 DEFAULT_SNAPSHOT_ID = "2025_12_31"
 
 
@@ -109,7 +109,7 @@ def get_latest_snapshot_id() -> Optional[str]:
     Returns:
         Partition-key string like ``'2025_12_31'``, or ``None``.
     """
-    ***REMOVED*** Cache hit — the snapshot only changes on a pipeline run.
+    # Cache hit — the snapshot only changes on a pipeline run.
     now = time.monotonic()
     with _SNAPSHOT_CACHE_LOCK:
         cached = _SNAPSHOT_CACHE.get("latest")

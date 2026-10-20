@@ -37,16 +37,16 @@ class QueryExecutorService(
     def _get_executors(cls):
         if cls._executors is None:
             cls._executors = {
-                "GEOCODE-BATCH-COMPARE (***REMOVED***4)": cls._execute_geocode_batch_compare,
-                "FILTER-AGGREGATE-MEASURE (***REMOVED***1)": cls._execute_filter_aggregate_measure,
-                "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)": cls._execute_place_attribute_query,
-                "LOCATION-BEARING-CLASSIFY (***REMOVED***5)": cls._execute_location_bearing_classify,
-                "OBJECT-FIELD-MEASURE (***REMOVED***2)": cls._execute_object_field_measure,
-                ***REMOVED*** New graph/spectral templates (Phase 4)
-                "SPECTRAL-ANALYSIS (***REMOVED***11)": cls._execute_spectral_analysis,
-                "TEMPORAL-DRIFT (***REMOVED***12)": cls._execute_temporal_drift,
-                "COMMUNITY-DETECT (***REMOVED***13)": cls._execute_community_detect,
-                "EVENT-DIFFUSION (***REMOVED***14)": cls._execute_event_diffusion,
+                "GEOCODE-BATCH-COMPARE (#4)": cls._execute_geocode_batch_compare,
+                "FILTER-AGGREGATE-MEASURE (#1)": cls._execute_filter_aggregate_measure,
+                "PLACE-ATTRIBUTE-QUERY (#8)": cls._execute_place_attribute_query,
+                "LOCATION-BEARING-CLASSIFY (#5)": cls._execute_location_bearing_classify,
+                "OBJECT-FIELD-MEASURE (#2)": cls._execute_object_field_measure,
+                # New graph/spectral templates (Phase 4)
+                "SPECTRAL-ANALYSIS (#11)": cls._execute_spectral_analysis,
+                "TEMPORAL-DRIFT (#12)": cls._execute_temporal_drift,
+                "COMMUNITY-DETECT (#13)": cls._execute_community_detect,
+                "EVENT-DIFFUSION (#14)": cls._execute_event_diffusion,
             }
         return cls._executors
     @classmethod
@@ -81,33 +81,33 @@ class QueryExecutorService(
         template = parsed["template"]
         concepts = parsed["concepts"]
 
-        ***REMOVED*** For multi-entity templates, supplement concepts with full entity
-        ***REMOVED*** extraction. LOCATION-BEARING-CLASSIFY (***REMOVED***5) is intentionally NOT in
-        ***REMOVED*** this set: its cone path needs ONE anchor + a direction, and the
-        ***REMOVED*** regex extraction over-splits names ("the Spire of Dublin" →
-        ***REMOVED*** ["Spire", "Dublin"]) which hijacks cone questions into the
-        ***REMOVED*** two-location bearing path. The parser's own LOCATION concepts
-        ***REMOVED*** already cover the 5a bearing case ("Which direction is X from Y?").
+        # For multi-entity templates, supplement concepts with full entity
+        # extraction. LOCATION-BEARING-CLASSIFY (#5) is intentionally NOT in
+        # this set: its cone path needs ONE anchor + a direction, and the
+        # regex extraction over-splits names ("the Spire of Dublin" →
+        # ["Spire", "Dublin"]) which hijacks cone questions into the
+        # two-location bearing path. The parser's own LOCATION concepts
+        # already cover the 5a bearing case ("Which direction is X from Y?").
         if question and template in (
-            "OBJECT-FIELD-MEASURE (***REMOVED***2)",
-            "GEOCODE-BATCH-COMPARE (***REMOVED***4)",
+            "OBJECT-FIELD-MEASURE (#2)",
+            "GEOCODE-BATCH-COMPARE (#4)",
         ):
             from semantic_search.services.query_parser_service import QueryParserService
             all_entities = QueryParserService.extract_all_entities(question)
             existing_locations = cls._get_concepts_by_type(concepts, "LOCATION")
-            ***REMOVED*** Filter out interrogative / non-entity tokens the regex fallback can emit.
+            # Filter out interrogative / non-entity tokens the regex fallback can emit.
             stop_words = getattr(QueryParserService, "_QUESTION_WORDS", set())
             clean_entities = [e for e in all_entities if e not in stop_words]
             if len(clean_entities) >= 2 and len(existing_locations) < 2:
-                ***REMOVED*** Only replace/augment when the regex extraction ADDS entities
-                ***REMOVED*** the parser missed. Over-split fragments of a complete parser
-                ***REMOVED*** anchor must NOT clobber it: "Cliffs of Moher" extracts as
-                ***REMOVED*** ['Cliffs', 'Moher'] — replacing "the Cliff of Moher" (conf
-                ***REMOVED*** 0.996) with "Cliffs" geocodes the wrong place ("Cliffort",
-                ***REMOVED*** Co. Cork — ~140km from the actual cliffs) and the "nearest
-                ***REMOVED*** restaurant" answer becomes geographically absurd (2026-10-06).
-                ***REMOVED*** The compare pattern ("closer to Dublin: Cork or Limerick?")
-                ***REMOVED*** still fires — Cork/Limerick are not covered by "Dublin".
+                # Only replace/augment when the regex extraction ADDS entities
+                # the parser missed. Over-split fragments of a complete parser
+                # anchor must NOT clobber it: "Cliffs of Moher" extracts as
+                # ['Cliffs', 'Moher'] — replacing "the Cliff of Moher" (conf
+                # 0.996) with "Cliffs" geocodes the wrong place ("Cliffort",
+                # Co. Cork — ~140km from the actual cliffs) and the "nearest
+                # restaurant" answer becomes geographically absurd (2026-10-06).
+                # The compare pattern ("closer to Dublin: Cork or Limerick?")
+                # still fires — Cork/Limerick are not covered by "Dublin".
                 parser_words = {
                     w.lower()
                     for loc in existing_locations
@@ -122,7 +122,7 @@ class QueryExecutorService(
                     )
 
                 if not all(_covered(e) for e in clean_entities):
-                    ***REMOVED*** Replace/augment LOCATION concepts with full extraction
+                    # Replace/augment LOCATION concepts with full extraction
                     concepts = [c for c in concepts if c["type"] != "LOCATION"]
                     for entity_name in clean_entities:
                         concepts.append({
@@ -146,25 +146,25 @@ class QueryExecutorService(
             else:
                 results = executor(concepts, country_code, snapshot_date, trace)
 
-            ***REMOVED*** Subdivision scope (2026-10-01): the research loop can bound a
-            ***REMOVED*** run to a district — the hard polygon filter on results.
+            # Subdivision scope (2026-10-01): the research loop can bound a
+            # run to a district — the hard polygon filter on results.
             if subdivision_qid:
                 results = cls._scope_to_subdivision(
                     results, subdivision_qid, trace,
                 )
 
-            ***REMOVED*** Name dedup (2026-10-01): collapse co-located same-name
-            ***REMOVED*** duplicates and cap same-name domination — a chain must not
-            ***REMOVED*** fill the list.
+            # Name dedup (2026-10-01): collapse co-located same-name
+            # duplicates and cap same-name domination — a chain must not
+            # fill the list.
             results = cls._dedupe_results(results, trace)
 
-            ***REMOVED*** Enrich results with augmented data (IGEA links, USLP predictions)
+            # Enrich results with augmented data (IGEA links, USLP predictions)
             if isinstance(results, list) and results:
                 results = cls._enrich_results(results, trace)
 
-            ***REMOVED*** When a question is present the enrichment research loop is the
-            ***REMOVED*** LLM synthesis step — skip the standalone LLM pass here to avoid
-            ***REMOVED*** paying for two answer rewrites (one redundant LLM call).
+            # When a question is present the enrichment research loop is the
+            # LLM synthesis step — skip the standalone LLM pass here to avoid
+            # paying for two answer rewrites (one redundant LLM call).
             answer = cls._synthesize_answer(
                 template, concepts, results, trace, skip_llm=bool(question),
             )
@@ -177,25 +177,25 @@ class QueryExecutorService(
                     "trace": trace,
                 })
 
-            ***REMOVED*** Deterministic factor-join answer (the raw, non-AI result) —
-            ***REMOVED*** emit it immediately so the client renders it before the LLM
-            ***REMOVED*** synthesis finishes; the enriched answer_delta stream replaces
-            ***REMOVED*** it when ready.
+            # Deterministic factor-join answer (the raw, non-AI result) —
+            # emit it immediately so the client renders it before the LLM
+            # synthesis finishes; the enriched answer_delta stream replaces
+            # it when ready.
             if event_callback and question:
                 event_callback({"event": "answer", "answer": answer})
 
-            ***REMOVED*** Enrichment (direct path): fetch deterministic entity context
-            ***REMOVED*** (USLP links + communities + class distribution — no LLM
-            ***REMOVED*** selection step), then a single grounded synthesis call.
-            ***REMOVED*** Fail-soft — the templated answer is kept on any failure (see
-            ***REMOVED*** entity_context_service.py / query_enrichment_service.py).
+            # Enrichment (direct path): fetch deterministic entity context
+            # (USLP links + communities + class distribution — no LLM
+            # selection step), then a single grounded synthesis call.
+            # Fail-soft — the templated answer is kept on any failure (see
+            # entity_context_service.py / query_enrichment_service.py).
             enrichment = None
-            ***REMOVED*** Enrichment requires deterministic entity context — the context
-            ***REMOVED*** sources (uslp/communities/classes) are all keyed by osm_id.
-            ***REMOVED*** With none, the LLM synthesizes from empty context and
-            ***REMOVED*** contradicts the deterministic answer (observed twice:
-            ***REMOVED*** "no entities to the west" on an error result, and "distance
-            ***REMOVED*** not provided" vs "Distance: 0.44 km" on a distance result).
+            # Enrichment requires deterministic entity context — the context
+            # sources (uslp/communities/classes) are all keyed by osm_id.
+            # With none, the LLM synthesizes from empty context and
+            # contradicts the deterministic answer (observed twice:
+            # "no entities to the west" on an error result, and "distance
+            # not provided" vs "Distance: 0.44 km" on a distance result).
             error_result = (
                 isinstance(results, list)
                 and results
@@ -223,13 +223,13 @@ class QueryExecutorService(
                     QueryEnrichmentService,
                 )
 
-                ***REMOVED*** Deterministic context — no LLM tool selection.
+                # Deterministic context — no LLM tool selection.
                 osm_ids = [r["osm_id"] for r in results if r.get("osm_id")]
-                ***REMOVED*** Resolve the effective country from the result entities when
-                ***REMOVED*** the request has none: the class-distribution context query
-                ***REMOVED*** otherwise Appends over EVERY country partition of the
-                ***REMOVED*** snapshot (measured 3.4-12.4s on 2025_12_31 vs ~295ms
-                ***REMOVED*** pruned to one leaf — rules §6.6 partitioning).
+                # Resolve the effective country from the result entities when
+                # the request has none: the class-distribution context query
+                # otherwise Appends over EVERY country partition of the
+                # snapshot (measured 3.4-12.4s on 2025_12_31 vs ~295ms
+                # pruned to one leaf — rules §6.6 partitioning).
                 effective_country = country_code
                 if not effective_country:
                     countries = {
@@ -245,7 +245,7 @@ class QueryExecutorService(
                 if event_callback:
                     event_callback({"event": "context", "context": context})
 
-                ***REMOVED*** Single LLM call — synthesis with context.
+                # Single LLM call — synthesis with context.
                 enrichment = QueryEnrichmentService.synthesize(
                     question, template, concepts, results, context,
                     effective_country, snapshot_date,
@@ -279,7 +279,7 @@ class QueryExecutorService(
             })
             return {"error": str(exc), "template": template, "trace": trace}
 
-    ***REMOVED*** ── Helpers ─────────────────────────────────────────────────────────────
+    # ── Helpers ─────────────────────────────────────────────────────────────
     @staticmethod
     def _get_concept(concepts: list, ctype: str) -> dict:
         for c in concepts:
@@ -290,10 +290,10 @@ class QueryExecutorService(
     def _get_concepts_by_type(concepts: list, ctype: str) -> list:
         return [c for c in concepts if c["type"] == ctype]
 
-    ***REMOVED*** ── Factor-node tables ────────────────────────────
-    ***REMOVED*** The table path is authoritative; the legacy runtime graph path
-    ***REMOVED*** (GraphML → NetworkX → SciPy) has been removed.  PostGIS remains as
-    ***REMOVED*** a spatial fallback for templates without factor-table coverage.
+    # ── Factor-node tables ────────────────────────────
+    # The table path is authoritative; the legacy runtime graph path
+    # (GraphML → NetworkX → SciPy) has been removed.  PostGIS remains as
+    # a spatial fallback for templates without factor-table coverage.
     @classmethod
     def _amenity_query_embedding(cls, amenity_type: str):
         """Query-side amenity embedding: precomputed row first, runtime
@@ -333,9 +333,9 @@ class QueryExecutorService(
         if ids:
             return ids, "exact_tag"
         
-        ***REMOVED*** DB-driven resolution (rule 6.2 — hardening Phase 5): the
-        ***REMOVED*** factor_amenity_class_mapping table, populated by
-        ***REMOVED*** compute_amenity_class_mappings (data + ontology tiers).
+        # DB-driven resolution (rule 6.2 — hardening Phase 5): the
+        # factor_amenity_class_mapping table, populated by
+        # compute_amenity_class_mappings (data + ontology tiers).
         from semantic_search.services.factor_resolution_service import (
             FactorResolutionService,
         )
@@ -352,10 +352,10 @@ class QueryExecutorService(
             if ids:
                 return ids, "ontology_class"
 
-        ***REMOVED*** Fuzzy correction tier (Kuhn's Template correction layer): a
-        ***REMOVED*** misspelled phrase fails both exact tiers above. Correct against
-        ***REMOVED*** the snapshot's real tag vocabulary (pg_trgm + fuzzystrmatch) and
-        ***REMOVED*** retry the exact-tag tier with the canonical tag.
+        # Fuzzy correction tier (Kuhn's Template correction layer): a
+        # misspelled phrase fails both exact tiers above. Correct against
+        # the snapshot's real tag vocabulary (pg_trgm + fuzzystrmatch) and
+        # retry the exact-tag tier with the canonical tag.
         from semantic_search.services.query_correction_service import (
             QueryCorrectionService,
         )
@@ -485,8 +485,8 @@ class QueryExecutorService(
         if summary is None:
             return None
 
-        ***REMOVED*** 0c: persisted modularity from the country-level fingerprint (default
-        ***REMOVED*** DB). Subdivision countries without a country-level row keep None.
+        # 0c: persisted modularity from the country-level fingerprint (default
+        # DB). Subdivision countries without a country-level row keep None.
         modularity = None
         from osmsnapshot.models import Snapshot
         from semantic_search.models import GraphSpectralFingerprint
@@ -568,7 +568,7 @@ class QueryExecutorService(
                     "output_count": len(scoped),
                 })
             return scoped
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — scoping must never break execute
+        except Exception as exc:  # noqa: BLE001 — scoping must never break execute
             logger.warning(
                 "Subdivision scoping failed for %s: %s",
                 subdivision_qid, exc,
@@ -652,7 +652,7 @@ class QueryExecutorService(
                     r["augmented"] = augmented
                     enriched_count += 1
             except Exception:
-                pass  ***REMOVED*** non-fatal
+                pass  # non-fatal
 
         if trace is not None and enriched_count > 0:
             trace.append({"step": "augmented_enrichment",
@@ -676,11 +676,11 @@ class QueryExecutorService(
             "country_code": entity.country_code,
         }
 
-    ***REMOVED*** ── Template 1: GEOCODE-BATCH-COMPARE (***REMOVED***4) ──────────────────────────────
-    ***REMOVED*** "Which X is nearest to Y?" / "Which is closer to Y: X1, X2, or X3?"
-    ***REMOVED***
-    ***REMOVED*** Graph-grounded execution ([SPATIAL_AGENT:§3.5]):
-    ***REMOVED***   1. SUPPORT: geocode the anchor → find its node in the k-NN graph
-    ***REMOVED***   2. SUB_COND: Dijkstra single-source shortest path from anchor
-    ***REMOVED***   3. Filter by amenity type, rank by graph distance (network proximity)
-    ***REMOVED***   4. MEASURE: report top-k nearest by graph distance
+    # ── Template 1: GEOCODE-BATCH-COMPARE (#4) ──────────────────────────────
+    # "Which X is nearest to Y?" / "Which is closer to Y: X1, X2, or X3?"
+    #
+    # Graph-grounded execution ([SPATIAL_AGENT:§3.5]):
+    #   1. SUPPORT: geocode the anchor → find its node in the k-NN graph
+    #   2. SUB_COND: Dijkstra single-source shortest path from anchor
+    #   3. Filter by amenity type, rank by graph distance (network proximity)
+    #   4. MEASURE: report top-k nearest by graph distance

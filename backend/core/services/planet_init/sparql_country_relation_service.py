@@ -18,8 +18,8 @@ class SparqlCountryRelationService:
         """
         query = """
 SELECT ?country ?name ?iso ?relId WHERE {
-  ?country wdt:P297 ?iso ;             ***REMOVED*** ISO 3166-1 alpha-2
-           wdt:P402 ?relId ;           ***REMOVED*** OSM relation ID (P402)
+  ?country wdt:P297 ?iso ;             # ISO 3166-1 alpha-2
+           wdt:P402 ?relId ;           # OSM relation ID (P402)
            rdfs:label ?name .
   FILTER(LANG(?name) = "en")
 }

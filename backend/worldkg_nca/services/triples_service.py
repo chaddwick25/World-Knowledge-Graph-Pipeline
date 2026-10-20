@@ -6,12 +6,12 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** WorldKG 1.0 schema namespace — MUST match the actual WorldKG TTL dumps
-***REMOVED*** (verified 2026-08-26: the ontology TTL declares
-***REMOVED*** `wkgs: <http://www.worldkg.org/schema/>`). The legacy
-***REMOVED*** `http://schema.worldkg.org/` variant and the GeoVectors v2 namespace
-***REMOVED*** (geovectors.l3s.uni-hannover.de/...) both match ZERO triples.
-***REMOVED*** See docs/core/slug_gate_and_rdf_namespaces.md.
+# WorldKG 1.0 schema namespace — MUST match the actual WorldKG TTL dumps
+# (verified 2026-08-26: the ontology TTL declares
+# `wkgs: <http://www.worldkg.org/schema/>`). The legacy
+# `http://schema.worldkg.org/` variant and the GeoVectors v2 namespace
+# (geovectors.l3s.uni-hannover.de/...) both match ZERO triples.
+# See docs/core/slug_gate_and_rdf_namespaces.md.
 WKGS_BASE_URI = "http://www.worldkg.org/schema/"
 OSMN_BASE_URI = "https://www.openstreetmap.org/node/"
 
@@ -43,7 +43,7 @@ class WorldKGTriplesService:
         ok = service.run_create_triples('/path/to/region.osm.pbf', '/tmp/region.ttl')
         if ok:
             enrichments = service.parse_ttl_to_enrichment('/tmp/region.ttl')
-            ***REMOVED*** enrichments: {osm_id: {wkg_class, wkg_type_key, wkg_type_value, ...}}
+            # enrichments: {osm_id: {wkg_class, wkg_type_key, wkg_type_value, ...}}
 
     Prerequisites:
         - Python >= 3.7 in the worldkg_dir virtualenv
@@ -90,7 +90,7 @@ class WorldKGTriplesService:
                 cwd=str(self.worldkg_dir),
                 capture_output=True,
                 text=True,
-                timeout=3600  ***REMOVED*** 1 hour max for large PBF files
+                timeout=3600  # 1 hour max for large PBF files
             )
 
             if result.returncode != 0:
@@ -161,7 +161,7 @@ class WorldKGTriplesService:
 
             class_short = 'wkgs:' + wkgs_uri_str[len(WKGS_BASE_URI):]
 
-            ***REMOVED*** Get OSM node ID via wkgs:osmLink
+            # Get OSM node ID via wkgs:osmLink
             osm_id = None
             for osm_link in g.objects(entity, WKGS.osmLink):
                 link_str = str(osm_link)
@@ -175,7 +175,7 @@ class WorldKGTriplesService:
             if osm_id is None:
                 continue
 
-            ***REMOVED*** Resolve class hierarchy and metadata from ontology service if available
+            # Resolve class hierarchy and metadata from ontology service if available
             superclasses = []
             depth = 2 if class_short != 'wkgs:WKGObject' else 0
             wkg_type_key = None
@@ -189,7 +189,7 @@ class WorldKGTriplesService:
                 wkg_type_value = ontology_service.get_canonical_osm_value(class_short)
                 wikidata_uri = ontology_service.get_wikidata_equivalent(class_short)
             else:
-                ***REMOVED*** Try to infer from owl:equivalentClass in the TTL itself
+                # Try to infer from owl:equivalentClass in the TTL itself
                 for equiv in g.objects(wkgs_class_uri, OWL.equivalentClass):
                     equiv_str = str(equiv)
                     if 'wikidata.org' in equiv_str:
@@ -238,7 +238,7 @@ class WorldKGTriplesService:
             qs = OsmEntity.objects.using('vectors').filter(
                 osm_id__in=batch_ids, osm_type='node'
             )
-            ***REMOVED*** Phase 6: scope to snapshot partition when provided
+            # Phase 6: scope to snapshot partition when provided
             if snapshot_id:
                 qs = qs.filter(snapshot_id=snapshot_id)
             entities = {

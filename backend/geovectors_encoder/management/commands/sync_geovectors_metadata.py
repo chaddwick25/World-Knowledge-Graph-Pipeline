@@ -18,7 +18,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         base_dir = Path(options['dir'])
-        ***REMOVED*** Canonical location: BASE_DATA_DIR (env-driven, /app/data in Docker).
+        # Canonical location: BASE_DATA_DIR (env-driven, /app/data in Docker).
         json_path = Path(settings.BASE_DATA_DIR) / 'country_relations.json'
         
         if not json_path.exists():
@@ -31,7 +31,7 @@ class Command(BaseCommand):
         count = 0
         self.stdout.write(f"Scanning {base_dir} for embeddings...")
 
-        ***REMOVED*** 1. Map slugs to multiple codes (Handles shared slugs like Haiti/DomRep)
+        # 1. Map slugs to multiple codes (Handles shared slugs like Haiti/DomRep)
         slug_to_codes = {}
         for k, v in data.items():
             slug = v.get('slug')
@@ -40,7 +40,7 @@ class Command(BaseCommand):
                     slug_to_codes[slug] = []
                 slug_to_codes[slug].append(k)
 
-        ***REMOVED*** 2. Walk the embeddings directory for strict matching
+        # 2. Walk the embeddings directory for strict matching
         for root, dirs, files in os.walk(base_dir):
             for file in files:
                 if not file.endswith('.tsv.gz'):
@@ -48,7 +48,7 @@ class Command(BaseCommand):
                 
                 full_path = os.path.join(root, file)
                 
-                ***REMOVED*** Determine type and slug
+                # Determine type and slug
                 if '-location.tsv.gz' in file:
                     slug = file.replace('-location.tsv.gz', '')
                     field = 'geovectors_location_tsv'
@@ -58,10 +58,10 @@ class Command(BaseCommand):
                 else:
                     continue
 
-                ***REMOVED*** Normalize slug - TSVs use hyphens, JSON slugs now use hyphens too
+                # Normalize slug - TSVs use hyphens, JSON slugs now use hyphens too
                 codes = slug_to_codes.get(slug)
                 if not codes:
-                    ***REMOVED*** Try replacing hyphens with underscores as fallback
+                    # Try replacing hyphens with underscores as fallback
                     codes = slug_to_codes.get(slug.replace('-', '_'))
                 
                 if codes:
@@ -70,8 +70,8 @@ class Command(BaseCommand):
                         self.stdout.write(self.style.SUCCESS(f"Mapped {slug} -> {code} ({field})"))
                         count += 1
 
-        ***REMOVED*** 3. Apply Procedural Location Overrides (Aliases)
-        ***REMOVED*** Format: { 'target_slug': 'source_slug' }
+        # 3. Apply Procedural Location Overrides (Aliases)
+        # Format: { 'target_slug': 'source_slug' }
         LOCATION_OVERRIDES = {
             "poland": "europe-east",
             "us-other": "us-west",
@@ -84,13 +84,13 @@ class Command(BaseCommand):
             source_codes = slug_to_codes.get(source_slug)
             
             if target_codes and source_codes:
-                ***REMOVED*** Use the first available source code's location
+                # Use the first available source code's location
                 source_code = source_codes[0]
                 source_path = data[source_code].get('geovectors_location_tsv')
                 
                 if source_path:
                     for t_code in target_codes:
-                        ***REMOVED*** Only override if target doesn't already have its own location
+                        # Only override if target doesn't already have its own location
                         if not data[t_code].get('geovectors_location_tsv'):
                             data[t_code]['geovectors_location_tsv'] = source_path
                             self.stdout.write(self.style.SUCCESS(f"Override: {target_slug} -> {source_slug} (location)"))

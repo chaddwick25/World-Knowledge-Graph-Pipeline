@@ -1,4 +1,4 @@
-***REMOVED*** Factor-Node Runtime Joins: Batch Compute, Runtime Serve
+# Factor-Node Runtime Joins: Batch Compute, Runtime Serve
 
 > **Architecture principle** (Chip Huyen, *Designing Machine Learning
 > Systems*, Ch. 6 "Model Inference", Batch vs. Online Prediction):
@@ -15,12 +15,12 @@
 > eigen-loadings, community assignments, and Dirichlet contributions. The
 > batch job (Step 5c) computes them once per snapshot and writes them to
 > flat pgvector tables. The runtime path (`FactorResolutionService`) is pure
-> SQL: it serves the precomputed values via indexed joins and pgvector `<***REMOVED***>`
+> SQL: it serves the precomputed values via indexed joins and pgvector `<#>`
 > lookups. No NetworkX, SciPy, sklearn, or GPU at request time.
 
 ---
 
-***REMOVED******REMOVED*** 1. The Batch-Then-Serve Architecture
+## 1. The Batch-Then-Serve Architecture
 
 The core insight, following Huyen's batch prediction pattern: **move all
 expensive computation to the batch pipeline, and make runtime a lookup**.
@@ -37,7 +37,7 @@ expensive computation to the batch pipeline, and make runtime a lookup**.
 **Serve phase (request, ms):**
 - MapQA query arrives → `FactorResolutionService` (pure SQL, no graph ops)
   - `check_availability()`: `SELECT EXISTS` (G4 gate)
-  - `diffusion_rank()`: `ORDER BY eigen_loadings <***REMOVED***> :w` (one pgvector
+  - `diffusion_rank()`: `ORDER BY eigen_loadings <#> :w` (one pgvector
     query = heat kernel)
   - `community_summary()`: `GROUP BY louvain_community`
   - `amenity_embedding()`: `SELECT embedding WHERE text = :q`
@@ -60,11 +60,11 @@ sub-second SQL lookup.
 
 ---
 
-***REMOVED******REMOVED*** 2. The Batch Pipeline (Step 5c)
+## 2. The Batch Pipeline (Step 5c)
 
 **Source:** <ref_file file="backend/pipeline/tasks/country_pipeline_steps/step_5c_graph_spectral/" />
 
-***REMOVED******REMOVED******REMOVED*** 2.1 Pipeline Flow
+### 2.1 Pipeline Flow
 
 1. **5c.pre: process hygiene.** `gc.collect()` + guarded
    `torch.cuda.empty_cache()` (clears Step 5 GV-NLE residual memory).
@@ -98,7 +98,7 @@ sub-second SQL lookup.
    builds a 20-40 GB ElementTree → OOM risk. Factor tables are
    authoritative; GraphML is never read at runtime.
 
-***REMOVED******REMOVED******REMOVED*** 2.2 Why the Graph Representation Matters
+### 2.2 Why the Graph Representation Matters
 
 The original implementation used `networkx.Graph` (dict-of-dicts) as the
 intermediate representation. For IE's 2.47M nodes / 73.8M edges, this cost
@@ -114,7 +114,7 @@ graph is never materialized for large countries.
 
 <ref_file file="backend/semantic_search/services/knn_graph_service.py" />
 
-***REMOVED******REMOVED******REMOVED*** 2.3 Why GPU lobpcg, Not scipy eigsh
+### 2.3 Why GPU lobpcg, Not scipy eigsh
 
 The eigendecomposition is the most expensive batch computation. Three
 approaches were tested:
@@ -132,7 +132,7 @@ GPU parallelism makes it fast enough for a batch step.
 
 <ref_file file="backend/semantic_search/services/spectral_analysis_service.py" />
 
-***REMOVED******REMOVED******REMOVED*** 2.4 Why networkit, Not NetworkX Louvain
+### 2.4 Why networkit, Not NetworkX Louvain
 
 NetworkX's `louvain_communities` is pure Python. For IE's 2.47M nodes it
 allocated ~25+ GB of Python objects (dicts, sets, lists for the modularity
@@ -149,7 +149,7 @@ graphs).
 
 ---
 
-***REMOVED******REMOVED*** 3. The Three Factor Tables (the "Cached Predictions")
+## 3. The Three Factor Tables (the "Cached Predictions")
 
 **Source:** <ref_file file="backend/worldkg_nca/models.py" />
 
@@ -158,7 +158,7 @@ All three tables live in the `worldkg_nca` app → `vectors` database (via
 family schema (not EAV) because keys, cadences, and vector dimensions
 differ between metric families.
 
-***REMOVED******REMOVED******REMOVED*** 3.1 SpectralNodeMetric: `factor_spectral_node_metric`
+### 3.1 SpectralNodeMetric: `factor_spectral_node_metric`
 
 One row per `(snapshot_id, country_code, osm_id)`. Written by Step 5c. This
 is the "prediction cache": each row holds the precomputed eigen-loadings
@@ -183,13 +183,13 @@ UNIQUE: (snapshot_id, country_code, osm_id). INDEX:
 (snapshot_id, country_code, louvain_community),
 (snapshot_id, country_code, subgraph_slug), fingerprint_id.
 
-***REMOVED******REMOVED******REMOVED*** 3.2 DriftNodeMetric: `factor_drift_node_metric`
+### 3.2 DriftNodeMetric: `factor_drift_node_metric`
 
 One row per `(country_code, snapshot_from_id, snapshot_to_id, osm_id)`.
 Written by Step 5d. The "temporal prediction cache": precomputed per-entity
 drift between snapshot pairs.
 
-***REMOVED******REMOVED******REMOVED*** 3.3 AmenityEmbedding: `factor_amenity_embedding`
+### 3.3 AmenityEmbedding: `factor_amenity_embedding`
 
 One row per amenity vocabulary term (621 rows). Written by
 `compute_amenity_embeddings` (init_planet step). Precomputed FastText
@@ -197,7 +197,7 @@ embeddings, removes the last runtime sklearn/FastText import.
 
 ---
 
-***REMOVED******REMOVED*** 4. The Serve Path (Runtime, SQL-Only)
+## 4. The Serve Path (Runtime, SQL-Only)
 
 **Source:** <ref_file file="backend/semantic_search/services/factor_resolution_service.py" />
 
@@ -207,17 +207,17 @@ The expensive graph operations (eigendecomposition, community detection,
 Dirichlet energy) happened in the batch phase and are never repeated at
 request time.
 
-***REMOVED******REMOVED******REMOVED*** 4.1 FactorResolutionService Methods
+### 4.1 FactorResolutionService Methods
 
 | Method | SQL pattern (what the "serve" does) |
 |---|---|
 | `check_availability()` | `SELECT osm_id FROM factor_spectral_node_metric WHERE ... AND osm_id IN (...)` → G4 data availability gate (batch produced?) |
 | `resolve_metrics()` | `SELECT ... FROM factor_spectral_node_metric WHERE snapshot_id=... AND country_code=...` → serve precomputed per-node metrics |
-| `diffusion_rank()` | `SELECT osm_id, (eigen_loadings <***REMOVED***> :w) AS neg_ip FROM factor_spectral_node_metric WHERE ... ORDER BY neg_ip ASC LIMIT :limit` → serve heat kernel diffusion (one query) |
+| `diffusion_rank()` | `SELECT osm_id, (eigen_loadings <#> :w) AS neg_ip FROM factor_spectral_node_metric WHERE ... ORDER BY neg_ip ASC LIMIT :limit` → serve heat kernel diffusion (one query) |
 | `community_summary()` | `SELECT louvain_community, count(*), ... GROUP BY louvain_community` → serve community aggregation |
 | `amenity_embedding()` | `SELECT embedding FROM factor_amenity_embedding WHERE amenity_text = ...` → serve precomputed FastText embedding |
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Heat Kernel Diffusion as One pgvector Query
+### 4.2 Heat Kernel Diffusion as One pgvector Query
 
 This is the key transformation that makes batch-then-serve work for
 spectral operators. The heat kernel score:
@@ -240,28 +240,28 @@ At serve time:
 **Serve (per query, ms):**
 - Fetch the anchor's eigen-loadings (one index lookup)
 - Compute `w_k = e^{-t·λ_k} · φ_k(anchor)` (K=64 numpy ops, microseconds)
-- `SELECT osm_id, (eigen_loadings <***REMOVED***> :w) AS neg_ip FROM
+- `SELECT osm_id, (eigen_loadings <#> :w) AS neg_ip FROM
   factor_spectral_node_metric WHERE snapshot_id = :snap AND country_code =
   :cc ORDER BY neg_ip ASC LIMIT :limit` → ranked results (ms)
 
 The entire heat kernel diffusion, which was a scipy sparse matrix
-exponential over the full graph per request, is now one pgvector `<***REMOVED***>`
+exponential over the full graph per request, is now one pgvector `<#>`
 (negative inner product) query. This is Huyen's batch prediction pattern in
 its purest form: the "prediction" (diffusion ranking) is fully determined
 by the precomputed eigen-loadings and eigenvalues; the serve path just
 computes a weight vector and lets the vector index do the ranking.
 
-***REMOVED******REMOVED******REMOVED*** 4.3 Executor Integration
+### 4.3 Executor Integration
 
 | Template | Serve path (factor tables authoritative) |
 |---|---|
-| EVENT-DIFFUSION | `diffusion_rank()`, pgvector `<***REMOVED***>` per t |
+| EVENT-DIFFUSION | `diffusion_rank()`, pgvector `<#>` per t |
 | PLACE-ATTRIBUTE-QUERY | `diffusion_rank()` + amenity filter |
 | COMMUNITY-DETECT | `community_summary()`, SQL GROUP BY |
 | DISTANCE / RADIUS | PostGIS ST_DWithin (no factor coverage) |
 | Amenity FastText lookup | `factor_amenity_embedding` first, then FT |
 
-***REMOVED******REMOVED******REMOVED*** 4.4 Feature Flag
+### 4.4 Feature Flag
 
 | Flag | Default | Effect |
 |---|---|---|
@@ -272,9 +272,9 @@ gone, so there is nothing to shadow-compare against.
 
 ---
 
-***REMOVED******REMOVED*** 5. The Batch Writers
+## 5. The Batch Writers
 
-***REMOVED******REMOVED******REMOVED*** 5.1 FactorNodeWriter: Spectral Nodes
+### 5.1 FactorNodeWriter: Spectral Nodes
 
 **Source:** <ref_file file="backend/semantic_search/services/factor_node_writer.py" />
 
@@ -291,11 +291,11 @@ node i (osm_id = node_order[i]):
 
 Written in 5k-row ORM batches → `factor_spectral_node_metric`.
 
-***REMOVED******REMOVED******REMOVED*** 5.2 FactorNodeWriter: Drift Nodes
+### 5.2 FactorNodeWriter: Drift Nodes
 
 <ref_snippet file="backend/semantic_search/services/factor_node_writer.py" lines="144-200" />
 
-***REMOVED******REMOVED******REMOVED*** 5.3 compute_amenity_embeddings Command
+### 5.3 compute_amenity_embeddings Command
 
 **Source:** <ref_file file="backend/semantic_search/management/commands/compute_amenity_embeddings.py" />
 
@@ -309,7 +309,7 @@ Written in 5k-row ORM batches → `factor_spectral_node_metric`.
 
 ---
 
-***REMOVED******REMOVED*** 6. Database Routing
+## 6. Database Routing
 
 **Source:** <ref_file file="backend/backend/database_router.py" />
 
@@ -325,12 +325,12 @@ colocates them with `OsmEntity` for runtime joins.
 
 ---
 
-***REMOVED******REMOVED*** 7. IE E2E Verification (2026-08-19)
+## 7. IE E2E Verification (2026-08-19)
 
 The batch-then-serve architecture was verified end-to-end on Ireland
 (IE/2025_12_31), the country that originally OOM-killed the pipeline.
 
-***REMOVED******REMOVED******REMOVED*** 7.1 Batch Phase Results
+### 7.1 Batch Phase Results
 
 ```
 Run ID: 0818cccb-a371-4d94-a1ef-ab62d007e2d4
@@ -355,7 +355,7 @@ GPU memory: freed to 0 after lobpcg completion
 Kernel OOM events: none
 ```
 
-***REMOVED******REMOVED******REMOVED*** 7.2 Serve Phase Verification
+### 7.2 Serve Phase Verification
 
 ```sql
 -- Factor rows exist (the "predictions" are cached)
@@ -379,7 +379,7 @@ LIMIT 5;
 -- → 308 communities, largest ~50K nodes
 ```
 
-***REMOVED******REMOVED******REMOVED*** 7.3 Before vs. After
+### 7.3 Before vs. After
 
 | Metric | Before (OOM-killed) | After (batch-then-serve) |
 |---|---|---|
@@ -390,11 +390,11 @@ LIMIT 5;
 | Factor rows written | 0 (process killed) | 2,477,070 |
 | Fingerprint stored | No | Yes (64 eigenvalues) |
 | Peak RSS | 58-61 GB (OOM-killed) | ~27 GB |
-| Runtime diffusion query | N/A (no factor rows) | One pgvector `<***REMOVED***>` query (ms) |
+| Runtime diffusion query | N/A (no factor rows) | One pgvector `<#>` query (ms) |
 
 ---
 
-***REMOVED******REMOVED*** 8. Country-Level vs Subdivision + Functional Maps
+## 8. Country-Level vs Subdivision + Functional Maps
 
 Step 5c routes between two modes based on the country's entity count
 (`SUBDIVISION_NODE_THRESHOLD = 5_000_000`):
@@ -407,7 +407,7 @@ Step 5c routes between two modes based on the country's entity count
 Both paths are sequential (one solve at a time) and automatic (routing is
 based on a live `OsmEntity` count query at runtime). Both are non-fatal.
 
-***REMOVED******REMOVED******REMOVED*** 8.1 Current Country Routing
+### 8.1 Current Country Routing
 
 | Country | Entity count | Route |
 |---|---|---|
@@ -417,7 +417,7 @@ based on a live `OsmEntity` count query at runtime). Both are non-fatal.
 | IE (Ireland) | ~9.7M | Subdivision + functional maps |
 | CA (Canada) | ~53M | Subdivision + functional maps |
 
-***REMOVED******REMOVED******REMOVED*** 8.2 Artifact Comparison
+### 8.2 Artifact Comparison
 
 | Artifact | Country-level (< 5M) | Subdivision + functional maps (≥ 5M) |
 |---|---|---|
@@ -430,10 +430,10 @@ based on a live `OsmEntity` count query at runtime). Both are non-fatal.
 | Fingerprint | One row per country (`region="BZ"`), unique (region, snapshot) | One row per subgraph (`region="belize_district"`), unique (region, snapshot) |
 | `factor_subgraph_transport` | ❌ NOT PRODUCED | One row per adjacent (directed) pair: `subgraph_from`, `subgraph_to`, `transport_matrix` (128×128 JSON), `k_dim`, `shared_entity_count`, `fit_residual`, `commutativity_residual`, unique (snapshot, country, from, to) |
 | GraphML (debug) | Only if < 200K nodes, not read at runtime | Only if < 200K nodes per subgraph, not read at runtime |
-| Runtime diffusion | `score(node) = Σ_k e^{-tλ_k} · φ_k(anchor) · φ_k(node)`, one pgvector `<***REMOVED***>` query over all entities (`subgraph_slug IS NULL`) | 1. Query the anchor's subgraph; 2. pgvector `<***REMOVED***>` in that subgraph; 3. load transport matrices to adjacents; 4. transport heat-kernel coefficients; 5. query adjacent subgraphs; 6. merge + re-rank |
+| Runtime diffusion | `score(node) = Σ_k e^{-tλ_k} · φ_k(anchor) · φ_k(node)`, one pgvector `<#>` query over all entities (`subgraph_slug IS NULL`) | 1. Query the anchor's subgraph; 2. pgvector `<#>` in that subgraph; 3. load transport matrices to adjacents; 4. transport heat-kernel coefficients; 5. query adjacent subgraphs; 6. merge + re-rank |
 | Eigenbasis comparability | Global, comparable | Local per subgraph, comparable via C matrices |
 
-***REMOVED******REMOVED******REMOVED*** 8.3 Key Differences Summary
+### 8.3 Key Differences Summary
 
 | Aspect | Country-Level (< 5M) | Subdivision + Functional Maps (≥ 5M) |
 |---|---|---|
@@ -443,7 +443,7 @@ based on a live `OsmEntity` count query at runtime). Both are non-fatal.
 | **Factor rows** | All entities, `subgraph_slug=NULL` | Core entities only, `subgraph_slug="district_name"` |
 | **Fingerprints** | 1 row (region=country code) | N rows (region=subgraph slug) |
 | **Transport matrices** | None | N×(adjacent pairs) rows in `factor_subgraph_transport` |
-| **Runtime diffusion** | Single pgvector `<***REMOVED***>` query | Subgraph-scoped query + transport to adjacents |
+| **Runtime diffusion** | Single pgvector `<#>` query | Subgraph-scoped query + transport to adjacents |
 | **Cross-region diffusion** | Natural (one eigenbasis) | Via C matrix multiplication |
 
 The eigen-loadings in `factor_spectral_node_metric` are **not directly
@@ -451,7 +451,7 @@ comparable** between the two paths. Country-level loadings are in the global
 eigenbasis; subdivision loadings are in each subgraph's local eigenbasis.
 The transport matrices bridge this gap at runtime.
 
-***REMOVED******REMOVED******REMOVED*** 8.4 GPU Resource Management
+### 8.4 GPU Resource Management
 
 Both paths use GPU LOBPCG with the following resource management:
 - **VRAM pre-check** (`_check_gpu_vram`): estimates needed VRAM (sparse
@@ -468,7 +468,7 @@ Both paths use GPU LOBPCG with the following resource management:
 - **CPU-side tensor cleanup**: conversion tensors (`indices`, `values`,
   `L_coo`) are `del`'d after moving to GPU.
 
-***REMOVED******REMOVED******REMOVED*** 8.5 BZ Subdivision Validation (2026-08-20)
+### 8.5 BZ Subdivision Validation (2026-08-20)
 
 Belize (308K entities, 5 districts) was run through the forced subdivision
 path to validate the full pipeline end-to-end:
@@ -507,11 +507,11 @@ and passing. No OOM, no fragmentation issues.
 
 ---
 
-***REMOVED******REMOVED*** 9. Testing
+## 9. Testing
 
 **Source:** <ref_file file="backend/tests/unit/test_factor_node_tables.py" />
 
-***REMOVED******REMOVED******REMOVED*** 9.1 Factor-Node Tests (16 tests)
+### 9.1 Factor-Node Tests (16 tests)
 
 | Test | Coverage |
 |---|---|
@@ -524,7 +524,7 @@ and passing. No OOM, no fragmentation issues.
 | test_factor_availability | G4 check_availability |
 | test_factor_metric_resolution | resolve_metrics |
 | test_community_summary | community_summary aggregation |
-| test_diffusion_rank_pgvector | Heat kernel <***REMOVED***> vs numpy ref |
+| test_diffusion_rank_pgvector | Heat kernel <#> vs numpy ref |
 | test_diffusion_rank_candidate_filter | Positive-score threshold |
 | test_diffusion_rank_missing_anchor | Returns None when anchor absent |
 | test_amenity_embedding_lookup | amenity_embedding retrieval |
@@ -532,7 +532,7 @@ and passing. No OOM, no fragmentation issues.
 | test_executor_event_diffusion_table_path | EVENT-DIFFUSION with flag on |
 | test_executor_event_diffusion_flag_off_unchanged | Flag off → graph path unchanged |
 
-***REMOVED******REMOVED******REMOVED*** 9.2 SparseGraph + Step 5c Tests (15 tests)
+### 9.2 SparseGraph + Step 5c Tests (15 tests)
 
 **Source:** <ref_file file="backend/tests/unit/test_sparse_graph.py" />
 
@@ -555,7 +555,7 @@ and passing. No OOM, no fragmentation issues.
 | test_serialize_graph_no_graph_artifact_dir | Missing GRAPH_ARTIFACT_DIR |
 
 ```bash
-***REMOVED*** All tests (40+ across spectral, sparse graph, community, factor, step 5c)
+# All tests (40+ across spectral, sparse graph, community, factor, step 5c)
 docker compose exec backend python -m pytest \
     tests/unit/test_sparse_graph.py \
     tests/unit/test_spectral_analysis_service.py \
@@ -567,7 +567,7 @@ docker compose exec backend python -m pytest \
 
 ---
 
-***REMOVED******REMOVED*** 10. Relationship to the Spatial-Agent Paper
+## 10. Relationship to the Spatial-Agent Paper
 
 The batch-then-serve pattern maps directly onto the paper's factorization
 step (§3.3). The paper's factor nodes are transient computation artifacts;
@@ -578,14 +578,14 @@ this implementation **persists** them as queryable table rows.
 | Factorization (concept graph → factor graph) | Batch writers materialize factor nodes as table rows (the "predictions") |
 | Factor nodes (supplementary parameters) | `SpectralNodeMetric`, `DriftNodeMetric`, `AmenityEmbedding` |
 | G4 data availability | `check_availability()`, `SELECT EXISTS` (was the factor produced by batch?) |
-| SUPPORT resolution | `diffusion_rank()`, pgvector `<***REMOVED***>` (serve the precomputed diffusion) |
+| SUPPORT resolution | `diffusion_rank()`, pgvector `<#>` (serve the precomputed diffusion) |
 | COND resolution | `community_summary()` + amenity lookup |
 | Grounded execution (Σ state, F trace) | Executor trace + `factor_join` steps (Algorithm 1's F) |
 | GeoFlow constraints (G1-G5) | Parser validates G2; G1/G3/G5 by construction; G4 via `check_availability` |
 
 ---
 
-***REMOVED******REMOVED*** 11. Invariants
+## 11. Invariants
 
 - **Batch computes, runtime serves.** No NetworkX, SciPy, sklearn, or GPU
   at request time. All expensive computation is in Step 5c/5d (batch).

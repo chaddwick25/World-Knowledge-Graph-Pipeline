@@ -55,7 +55,7 @@ def _train_subgraph_worker(task_data):
     use_gpu = options.get('gpu', False)
     gpu_device = options.get('gpu_device', 'cuda:0')
 
-    ***REMOVED*** Build command args for single subgraph
+    # Build command args for single subgraph
     subgraph_options = {
         'region': subgraph_name,
         'k': k,
@@ -78,10 +78,10 @@ def _train_subgraph_worker(task_data):
         'gpu': use_gpu,
         'gpu_device': gpu_device,
         'use_pyg': options.get('use_pyg', True),
-        'isos': None,  ***REMOVED*** Prevent recursion
+        'isos': None,  # Prevent recursion
     }
 
-    ***REMOVED*** Capture output
+    # Capture output
     old_stdout = sys.stdout
     sys.stdout = StringIO()
 
@@ -135,10 +135,10 @@ class GVNLETrainingService:
         use_gpu = options.get('gpu', False)
         gpu_device = options.get('gpu_device', 'cuda:0')
 
-        ***REMOVED*** ── Geo-fence setup ────────────────────────────────────────────────
-        strict_wkt = None   ***REMOVED*** WKT for the exact target area (write-back scope)
-        buffer_wkt = None   ***REMOVED*** WKT for the expanded area (k-NN graph scope)
-        core_ids = None     ***REMOVED*** set of osm_ids strictly inside strict polygon
+        # ── Geo-fence setup ────────────────────────────────────────────────
+        strict_wkt = None   # WKT for the exact target area (write-back scope)
+        buffer_wkt = None   # WKT for the expanded area (k-NN graph scope)
+        core_ids = None     # set of osm_ids strictly inside strict polygon
 
         if country or poly_file:
             if poly_file:
@@ -155,7 +155,7 @@ class GVNLETrainingService:
                 code = country.upper()
                 bbox = None
 
-                ***REMOVED*** 1. Prefer canonical bbox via CountryPipelineProfile + populate_bbox_for_profile
+                # 1. Prefer canonical bbox via CountryPipelineProfile + populate_bbox_for_profile
                 try:
                     from django.db import models
                     from core.models import CountryPipelineProfile
@@ -179,7 +179,7 @@ class GVNLETrainingService:
                             f'GV-NLE: populate_bbox_for_profile failed for {code}: {exc}'
                         ))
 
-                ***REMOVED*** 2. No canonical bbox in DB — load all entities (no geo-filter)
+                # 2. No canonical bbox in DB — load all entities (no geo-filter)
                 if bbox:
                     strict_wkt = bbox_to_wkt(*bbox)
                 else:
@@ -216,20 +216,20 @@ class GVNLETrainingService:
             f"{'='*60}\n"
         ))
 
-        ***REMOVED*** Step 1: Build k-NN graph
+        # Step 1: Build k-NN graph
         self.stdout.write(self.style.SUCCESS(
             f"\n[1/3] Building k-NN Graph (k={k})...\n"
         ))
 
         knn_service = KNNGraphService(k=k)
 
-        ***REMOVED*** Query entities with geometry
+        # Query entities with geometry
         if buffer_wkt:
             from django.contrib.gis.geos import GEOSGeometry
             queryset = OsmEntity.objects.using('vectors').filter(
                 geom__isnull=False,
                 geom__within=GEOSGeometry(buffer_wkt, srid=4326),
-            ).order_by('osm_id').distinct('osm_id')  ***REMOVED*** Remove 10x duplicates
+            ).order_by('osm_id').distinct('osm_id')  # Remove 10x duplicates
             self.stdout.write(
                 f'Geo-fence active: loading buffer-zone entities for k-NN graph '
                 f'(includes {buffer_deg}° border margin, deduplicated by osm_id).'
@@ -238,9 +238,9 @@ class GVNLETrainingService:
             queryset = OsmEntity.objects.using('vectors').filter(
                 geom__isnull=False
             )
-            ***REMOVED*** Scope to country_code / snapshot_id to avoid scanning all
-            ***REMOVED*** partitions after cutover.  Falls back to full scan on the
-            ***REMOVED*** monolith when neither is provided (backward compatible).
+            # Scope to country_code / snapshot_id to avoid scanning all
+            # partitions after cutover.  Falls back to full scan on the
+            # monolith when neither is provided (backward compatible).
             if country:
                 queryset = queryset.filter(country_code=country)
             if snapshot_date:
@@ -250,20 +250,20 @@ class GVNLETrainingService:
                 snap_key = snapshot_id_from_uuid(source_snapshot_id)
                 if snap_key:
                     queryset = queryset.filter(snapshot_id=snap_key)
-            queryset = queryset.order_by('osm_id').distinct('osm_id')  ***REMOVED*** Remove 10x duplicates
+            queryset = queryset.order_by('osm_id').distinct('osm_id')  # Remove 10x duplicates
 
         if region and not buffer_wkt:
-            ***REMOVED*** Legacy text label (non-spatial) — kept for backward compatibility
+            # Legacy text label (non-spatial) — kept for backward compatibility
             self.stdout.write(f'Filtering by region label: {region} (non-spatial text match).')
 
-        ***REMOVED*** Optimized bulk loading: Use annotate + values_list for coordinate extraction
+        # Optimized bulk loading: Use annotate + values_list for coordinate extraction
         entity_count = queryset.count()
         self.stdout.write(f"Loading {entity_count} entities from database (optimized bulk extraction)...")
 
-        ***REMOVED*** Use PostGIS ST_Y and ST_X functions to extract coordinates
+        # Use PostGIS ST_Y and ST_X functions to extract coordinates
         from django.db.models.expressions import RawSQL
 
-        ***REMOVED*** Extract coordinates using raw SQL for maximum performance
+        # Extract coordinates using raw SQL for maximum performance
         raw_entities = list(
             queryset.annotate(
                 lat=RawSQL('ST_Y(geom::geometry)', []),
@@ -271,7 +271,7 @@ class GVNLETrainingService:
             ).values_list('osm_id', 'lat', 'lon')
         )
 
-        ***REMOVED*** Convert to dict format for graph service
+        # Convert to dict format for graph service
         entities = [
             {'osm_id': osm_id, 'lat': lat, 'lon': lon}
             for osm_id, lat, lon in raw_entities
@@ -281,13 +281,13 @@ class GVNLETrainingService:
             f"✓ Loaded {len(entities)} entities with coordinates (optimized bulk extraction)\n"
         ))
 
-        ***REMOVED*** Build graph
+        # Build graph
         graph = knn_service.build_knn_graph(entities)
         if not graph:
             self.stdout.write(self.style.WARNING("  ⚠️ No graph nodes created. Stopping training pipeline."))
             return
 
-        ***REMOVED*** Guard: skip training for degenerate graphs (single node, no edges).
+        # Guard: skip training for degenerate graphs (single node, no edges).
         total_edges = sum(len(neighbors) for neighbors in graph.values())
         if len(graph) < 2 or total_edges == 0:
             self.stdout.write(self.style.WARNING(
@@ -297,7 +297,7 @@ class GVNLETrainingService:
             ))
             return
 
-        ***REMOVED*** Show statistics
+        # Show statistics
         stats = knn_service.get_graph_statistics(graph)
         self.stdout.write(self.style.SUCCESS(
             f"✓ Graph Statistics:\n"
@@ -308,7 +308,7 @@ class GVNLETrainingService:
             f"max={stats['weight_max']:.3f}, mean={stats['weight_mean']:.3f}\n"
         ))
 
-        ***REMOVED*** Save graph if requested
+        # Save graph if requested
         if save_graph:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             graph_path = f"data/graphs/knn_graph_{region or 'all'}_{timestamp}.edgelist"
@@ -316,7 +316,7 @@ class GVNLETrainingService:
             knn_service.export_graph_to_edgelist(graph, graph_path)
             self.stdout.write(self.style.SUCCESS(f"✓ Graph saved to {graph_path}\n"))
 
-        ***REMOVED*** Step 2: Train DeepWalk (GPU or CPU)
+        # Step 2: Train DeepWalk (GPU or CPU)
         if use_gpu:
             use_pyg = options.get('use_pyg', True)
 
@@ -332,12 +332,12 @@ class GVNLETrainingService:
                     device=gpu_device
                 )
 
-                ***REMOVED*** PyG training (memory-safe, 10-20x faster)
-                ***REMOVED*** batch_size: 256 for 16GB+ GPUs (cuda:0), 128 for 8GB (cuda:1).
-                ***REMOVED*** Conservative default stays at 128; bumped to 256 for the 4070
-                ***REMOVED*** since GPU memory logs show max ~8 GB reserved at 128 batch —
-                ***REMOVED*** doubling the batch better fills the 16 GB card and reduces
-                ***REMOVED*** per-batch overhead.
+                # PyG training (memory-safe, 10-20x faster)
+                # batch_size: 256 for 16GB+ GPUs (cuda:0), 128 for 8GB (cuda:1).
+                # Conservative default stays at 128; bumped to 256 for the 4070
+                # since GPU memory logs show max ~8 GB reserved at 128 batch —
+                # doubling the batch better fills the 16 GB card and reduces
+                # per-batch overhead.
                 _batch = 256 if "cuda:0" in gpu_device else 128
                 embeddings = pyg_service.train(
                     graph=graph,
@@ -357,7 +357,7 @@ class GVNLETrainingService:
                     f"  Memory-safe: <5GB GPU RAM\n"
                 ))
 
-                ***REMOVED*** Save model if requested
+                # Save model if requested
                 if save_model:
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                     model_path = f"data/models/deepwalk/gv_nle_{region or 'all'}_{timestamp}_pyg.pt"
@@ -368,7 +368,7 @@ class GVNLETrainingService:
                 pyg_service.cleanup()
 
             else:
-                ***REMOVED*** Legacy GPU implementation (may cause OOM)
+                # Legacy GPU implementation (may cause OOM)
                 self.stdout.write(self.style.SUCCESS(
                     f"\n[2/3] Training Weighted DeepWalk (Legacy GPU on {gpu_device})...\n"
                 ))
@@ -416,15 +416,15 @@ class GVNLETrainingService:
                 workers=workers,
                 epochs=epochs,
 
-                ***REMOVED*** Optimization hyperparameters (GeoVectors paper §5.1)
+                # Optimization hyperparameters (GeoVectors paper §5.1)
                 negative=options['negative'],
                 alpha=0.025,
                 min_alpha=0.0001,
                 sample=options['sample'],
                 ns_exponent=options['ns_exponent'],
 
-                ***REMOVED*** Enhanced features
-                apply_damping=False,     ***REMOVED*** Damping already applied in KNNGraphService
+                # Enhanced features
+                apply_damping=False,     # Damping already applied in KNNGraphService
                 compute_loss=True,
                 seed=42
             )
@@ -432,7 +432,7 @@ class GVNLETrainingService:
             model = deepwalk_service.train(graph)
             embeddings = deepwalk_service.get_all_embeddings()
 
-            ***REMOVED*** Get optimization report
+            # Get optimization report
             report = deepwalk_service.get_optimization_report()
 
             self.stdout.write(self.style.SUCCESS(
@@ -441,14 +441,14 @@ class GVNLETrainingService:
                 f"  Embedding dimension: {embedding_dim}\n"
             ))
 
-            ***REMOVED*** Show optimization metrics
+            # Show optimization metrics
             if 'losses' in report and report['losses']:
                 self.stdout.write(
                     f"  Loss trajectory: {report['losses'][:3]}... → {report['losses'][-1]:.1f}\n"
                     f"  Final loss: {report['final_loss']:.2f}\n"
                 )
 
-            ***REMOVED*** Save model if requested
+            # Save model if requested
             if save_model:
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 model_path = f"data/models/deepwalk/gv_nle_{region or 'all'}_{timestamp}.model"
@@ -456,12 +456,12 @@ class GVNLETrainingService:
                 deepwalk_service.save_model(model_path)
                 self.stdout.write(self.style.SUCCESS(f"✓ Model saved to {model_path}\n"))
 
-        ***REMOVED*** Step 3: Update database with embeddings
+        # Step 3: Update database with embeddings
         self.stdout.write(self.style.SUCCESS(
             f"\n[3/3] Updating Database with GV-NLE Embeddings...\n"
         ))
 
-        ***REMOVED*** embeddings already set in GPU or CPU branch above
+        # embeddings already set in GPU or CPU branch above
         version = datetime.now().strftime('%Y%m%d')
 
         updated_count = 0
@@ -542,11 +542,11 @@ class GVNLETrainingService:
                     buffer.close()
                     self.stdout.write(f"  Staged {staged_count}/{write_back_total}...")
 
-                ***REMOVED*** Scope the UPDATE by partition keys (snapshot_id,
-                ***REMOVED*** country_code) to prevent cross-partition writes on the
-                ***REMOVED*** partitioned table.  Without these filters the UPDATE would
-                ***REMOVED*** hit every partition that contains a matching osm_id,
-                ***REMOVED*** silently overwriting NLE embeddings in other snapshots.
+                # Scope the UPDATE by partition keys (snapshot_id,
+                # country_code) to prevent cross-partition writes on the
+                # partitioned table.  Without these filters the UPDATE would
+                # hit every partition that contains a matching osm_id,
+                # silently overwriting NLE embeddings in other snapshots.
                 partition_where = "entity.osm_id = updates.osm_id"
                 params = []
                 if snapshot_date:
@@ -595,7 +595,7 @@ class GVNLETrainingService:
             f"{'='*60}\n"
         ))
 
-        ***REMOVED*** Ensure total VRAM cleanup for the Celery worker
+        # Ensure total VRAM cleanup for the Celery worker
         if use_gpu:
             import torch
             import gc
@@ -623,7 +623,7 @@ class GVNLETrainingService:
             f"{'='*60}\n"
         ))
 
-        ***REMOVED*** Load hierarchy JSON
+        # Load hierarchy JSON
         base_dir = Path(settings.BASE_DIR).parent
         cache_dir = base_dir / "backend" / "data" / "osm_wikidata_hierarchy_cache"
         cache_path = cache_dir / f"{iso}_hierarchy.json"
@@ -638,7 +638,7 @@ class GVNLETrainingService:
         with open(cache_path, 'r') as f:
             hierarchy = json.load(f)
 
-        ***REMOVED*** Get subgraph nodes from admin tree
+        # Get subgraph nodes from admin tree
         admin_tree = hierarchy.get('admin_tree', [])
         root = admin_tree[0] if admin_tree else {}
         children = root.get('children', [])
@@ -648,12 +648,12 @@ class GVNLETrainingService:
                 f"No subgraphs found in hierarchy for {iso}. "
                 f"Falling back to single poly-file mode."
             ))
-            ***REMOVED*** Fall back to single country mode
+            # Fall back to single country mode
             options['country'] = iso
             options['isos'] = None
             return self.run(**options)
 
-        ***REMOVED*** Get continent and country from OSMWikiDataHierarchy
+        # Get continent and country from OSMWikiDataHierarchy
         country_relations = get_country_relations_dict()
 
         if not country_relations:
@@ -662,10 +662,10 @@ class GVNLETrainingService:
             ))
             return
 
-        ***REMOVED*** Find country mapping (case-insensitive)
+        # Find country mapping (case-insensitive)
         mapping = None
         for k, v in country_relations.items():
-            ***REMOVED*** Match either by the key (Wikidata ID) or the embedded ISO code
+            # Match either by the key (Wikidata ID) or the embedded ISO code
             if k.upper() == iso or v.get('iso_code', '').upper() == iso:
                 mapping = v
                 break
@@ -676,7 +676,7 @@ class GVNLETrainingService:
             ))
             return
 
-        ***REMOVED*** Get continent from RegionHierarchy
+        # Get continent from RegionHierarchy
         country_name = mapping.get('name')
         from api.models import RegionHierarchy
         region = RegionHierarchy.objects.filter(name__iexact=country_name).first()
@@ -688,14 +688,14 @@ class GVNLETrainingService:
 
         continent = region.parent.name
 
-        ***REMOVED*** Derive country slug using JSON-based ISO overrides where needed
+        # Derive country slug using JSON-based ISO overrides where needed
         default_slug = mapping.get('slug', normalize_country_slug(country_name))
         country = get_country_slug(iso, default_slug)
 
         self.stdout.write(f"Found {len(children)} subgraphs for {iso}")
         self.stdout.write(f"Continent: {continent}, Country: {country}")
 
-        ***REMOVED*** Prepare subgraph poly files
+        # Prepare subgraph poly files
         subgraph_tasks = []
         for child in children:
             subgraph_name = child.get('name')
@@ -722,7 +722,7 @@ class GVNLETrainingService:
 
         if use_gpu:
             self.stdout.write(f"Processing {len(subgraph_tasks)} subgraphs sequentially (GPU mode)...")
-            ***REMOVED*** Process sequentially to avoid GPU memory conflicts
+            # Process sequentially to avoid GPU memory conflicts
             start_time = datetime.now()
             results = []
             for task_data in subgraph_tasks:
@@ -731,12 +731,12 @@ class GVNLETrainingService:
         else:
             self.stdout.write(f"Processing {len(subgraph_tasks)} subgraphs in parallel (CPU mode)...")
 
-            ***REMOVED*** Extract workers from options
+            # Extract workers from options
             workers = options.get('workers', 4)
 
-            ***REMOVED*** Process in parallel
+            # Process in parallel
             from django.db import connections
-            connections.close_all()  ***REMOVED*** Close connections before fork
+            connections.close_all()  # Close connections before fork
 
             start_time = datetime.now()
             with Pool(processes=workers) as pool:
@@ -744,7 +744,7 @@ class GVNLETrainingService:
 
             duration = (datetime.now() - start_time).total_seconds()
 
-        ***REMOVED*** Report results
+        # Report results
         success_count = sum(1 for r in results if r['success'])
         failure_count = len(results) - success_count
 

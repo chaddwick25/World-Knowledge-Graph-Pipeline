@@ -1,14 +1,14 @@
-***REMOVED*** Phase 6 — Add partition-key fields to OsmEntity (non-destructive)
-***REMOVED***
-***REMOVED*** Adds nullable `snapshot_id` (VARCHAR partition key, e.g. '2025_12_31') and
-***REMOVED*** `country_code` (ISO 3166-1 alpha-2) to the monolith table.  These are
-***REMOVED*** populated by the `backfill_partition_keys` management command and become
-***REMOVED*** NOT NULL partition keys after the production cutover (Step 4 of
-***REMOVED*** PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md).
-***REMOVED***
-***REMOVED*** The existing unique_together (osm_type, osm_id, gv_tags_version) is NOT
-***REMOVED*** changed here — that happens during the cutover when the constraint is
-***REMOVED*** widened to include the partition keys.
+# Phase 6 — Add partition-key fields to OsmEntity (non-destructive)
+#
+# Adds nullable `snapshot_id` (VARCHAR partition key, e.g. '2025_12_31') and
+# `country_code` (ISO 3166-1 alpha-2) to the monolith table.  These are
+# populated by the `backfill_partition_keys` management command and become
+# NOT NULL partition keys after the production cutover (Step 4 of
+# PHASE6_OSMID_AUDIT_AND_CUTOVER_PLAN.md).
+#
+# The existing unique_together (osm_type, osm_id, gv_tags_version) is NOT
+# changed here — that happens during the cutover when the constraint is
+# widened to include the partition keys.
 
 from django.db import migrations, models
 

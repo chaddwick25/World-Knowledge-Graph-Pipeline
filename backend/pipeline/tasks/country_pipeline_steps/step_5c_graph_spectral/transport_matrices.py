@@ -55,7 +55,7 @@ def _compute_transport_matrices(
 
     transport_svc = SubgraphTransportService()
 
-    ***REMOVED*** Determine adjacent subgraph pairs
+    # Determine adjacent subgraph pairs
     try:
         adjacency = transport_svc.compute_adjacency(list(env.subgraphs))
     except Exception as exc:
@@ -86,7 +86,7 @@ def _compute_transport_matrices(
     shared_counts = []
 
     for slug_a, slug_b in adjacency:
-        ***REMOVED*** Both subgraphs must have been solved successfully in Phase A
+        # Both subgraphs must have been solved successfully in Phase A
         if slug_a not in subgraph_solve_data or slug_b not in subgraph_solve_data:
             report["pairs_skipped"] += 1
             report["details"].append({
@@ -99,7 +99,7 @@ def _compute_transport_matrices(
         data_b = subgraph_solve_data[slug_b]
 
         try:
-            ***REMOVED*** Shared entities: in both buffered graphs (Option A)
+            # Shared entities: in both buffered graphs (Option A)
             node_ids_a = set(int(oid) for oid in data_a["node_ids"])
             node_ids_b = set(int(oid) for oid in data_b["node_ids"])
             shared_ids = np.array(sorted(node_ids_a & node_ids_b), dtype=np.int64)
@@ -157,7 +157,7 @@ def _compute_transport_matrices(
                  error=str(exc),
                  pipeline_run_id=env.pipeline_run_id)
 
-    ***REMOVED*** Batch-write all transport matrices
+    # Batch-write all transport matrices
     if transport_data:
         try:
             written = transport_svc.write_transport_matrices(

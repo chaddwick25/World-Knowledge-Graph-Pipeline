@@ -47,7 +47,7 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Discovered {len(embedding_dirs)} embedding country directories")
 
-        ***REMOVED*** Load overrides.json if present
+        # Load overrides.json if present
         overrides: Dict[str, dict] = {}
         if overrides_path and overrides_path.exists():
             try:
@@ -59,7 +59,7 @@ class Command(BaseCommand):
         else:
             self.stdout.write("No overrides.json found; proceeding without explicit overrides.")
 
-        ***REMOVED*** Ensure Geofabrik index is available for enrichment (best-effort)
+        # Ensure Geofabrik index is available for enrichment (best-effort)
         try:
             geofabrik_index_service.fetch_index(force_refresh=False)
         except Exception:
@@ -72,7 +72,7 @@ class Command(BaseCommand):
             embedding_slug = country_dir.name
             rel_path = country_dir.relative_to(embeddings_root)
 
-            ***REMOVED*** Minimal initial identity; enrichment is intentionally conservative here
+            # Minimal initial identity; enrichment is intentionally conservative here
             canonical_name = embedding_slug.replace("_", " ").replace("-", " ")
             canonical_slug = embedding_slug
 
@@ -84,8 +84,8 @@ class Command(BaseCommand):
             }
 
             if dry_run:
-                ***REMOVED*** Do not hit the database in dry-run mode so this command can be
-                ***REMOVED*** exercised even before migrations for the new tables are applied.
+                # Do not hit the database in dry-run mode so this command can be
+                # exercised even before migrations for the new tables are applied.
                 self.stdout.write(
                     f"[DRY-RUN] Would create or update CountryPipelineProfile for {embedding_slug}"
                 )
@@ -96,10 +96,10 @@ class Command(BaseCommand):
                 defaults=defaults,
             )
 
-            ***REMOVED*** Attempt to resolve and persist a BBOX for this profile using the
-            ***REMOVED*** shared extraction-level resolver. This ties profiles to concrete
-            ***REMOVED*** geometry (PolygonFile / PBF metrics / ISO fallback) without
-            ***REMOVED*** introducing new schema in Phase 1.
+            # Attempt to resolve and persist a BBOX for this profile using the
+            # shared extraction-level resolver. This ties profiles to concrete
+            # geometry (PolygonFile / PBF metrics / ISO fallback) without
+            # introducing new schema in Phase 1.
             bbox = resolve_bbox_for_profile(profile)
             if bbox is not None:
                 min_lon, min_lat, max_lon, max_lat = bbox

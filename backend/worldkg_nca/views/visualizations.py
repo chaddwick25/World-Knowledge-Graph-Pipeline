@@ -25,15 +25,15 @@ from rest_framework.response import Response
 from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
 from worldkg_nca.snapshot_utils import get_latest_snapshot_id
 
-***REMOVED*** Cap on the number of class-centroid rows returned.  The plan limits the
-***REMOVED*** label view to the top classes per country (a couple of hundred at most).
+# Cap on the number of class-centroid rows returned.  The plan limits the
+# label view to the top classes per country (a couple of hundred at most).
 CLASS_CENTROIDS_LIMIT = 200
 
-***REMOVED*** Display labels for the OSM GIS key classes.  The generic pluralizer
-***REMOVED*** produces nonsense for these ("Naturals", "Powers", "Amenitys"), and they
-***REMOVED*** are exactly the classes the label view surfaces at low zoom.
-***REMOVED*** Keys are the camelCase-split, title-joined class names (see
-***REMOVED*** humanize_class_label); values are the display labels.
+# Display labels for the OSM GIS key classes.  The generic pluralizer
+# produces nonsense for these ("Naturals", "Powers", "Amenitys"), and they
+# are exactly the classes the label view surfaces at low zoom.
+# Keys are the camelCase-split, title-joined class names (see
+# humanize_class_label); values are the display labels.
 CLASS_LABEL_OVERRIDES = {
     "Amenity": "Amenities",
     "Natural": "Natural Features",
@@ -141,8 +141,8 @@ def worldkg_class_centroids(request):
             {"error": "country_code required"},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    ***REMOVED*** Normalize to ISO first (override-aware — handles region names like
-    ***REMOVED*** "Ireland And Northern Ireland" → IE), mirroring factor_availability.
+    # Normalize to ISO first (override-aware — handles region names like
+    # "Ireland And Northern Ireland" → IE), mirroring factor_availability.
     try:
         resolved = resolve_iso_code(country_code)
         if resolved:

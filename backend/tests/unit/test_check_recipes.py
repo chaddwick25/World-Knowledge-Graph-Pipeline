@@ -36,7 +36,7 @@ def _write(path, text):
     return path
 
 
-def _fixture_root(tmp_path, recipe_text=VALID_RECIPE, plan_text="***REMOVED*** Plan\n[[DEC-100]]\n"):
+def _fixture_root(tmp_path, recipe_text=VALID_RECIPE, plan_text="# Plan\n[[DEC-100]]\n"):
     root = tmp_path / "repo"
     _write(root / "recipes" / "DEC-100-test.md", recipe_text)
     _write(root / "plans" / "PLAN.md", plan_text)
@@ -52,7 +52,7 @@ def test_parse_front_matter_extracts_fields_and_citations():
 
 
 def test_parse_front_matter_returns_none_without_block():
-    assert parse_front_matter("***REMOVED*** just prose\n") is None
+    assert parse_front_matter("# just prose\n") is None
 
 
 def test_recipe_missing_field_is_an_error(tmp_path):
@@ -71,7 +71,7 @@ def test_recipe_id_filename_mismatch_is_an_error(tmp_path):
 
 def test_recipe_citation_line_out_of_range(tmp_path):
     root = tmp_path
-    _write(root / "plans" / "PLAN.md", "***REMOVED*** one line\n")
+    _write(root / "plans" / "PLAN.md", "# one line\n")
     recipe = _write(
         root / "DEC-100-test.md",
         VALID_RECIPE.replace("plans/PLAN.md:2", "plans/PLAN.md:99"),
@@ -91,7 +91,7 @@ def test_recipe_citation_missing_path(tmp_path):
 
 
 def test_unresolved_recipe_ref_is_an_error(tmp_path):
-    root = _fixture_root(tmp_path, plan_text="***REMOVED*** Plan\n[[DEC-999]]\n")
+    root = _fixture_root(tmp_path, plan_text="# Plan\n[[DEC-999]]\n")
     errors, _, _ = run_check(root, recipes_dir="recipes", plans_glob="plans/*.md")
     assert any("[[DEC-999]]" in e for e in errors)
 
@@ -100,7 +100,7 @@ def test_orphan_recipe_is_a_warning_not_an_error(tmp_path):
     root = _fixture_root(
         tmp_path,
         recipe_text=VALID_RECIPE.replace("citations:\n  - plans/PLAN.md:2\n", "citations:\n"),
-        plan_text="***REMOVED*** Plan, no citations\n",
+        plan_text="# Plan, no citations\n",
     )
     errors, warnings, _ = run_check(root, recipes_dir="recipes", plans_glob="plans/*.md")
     assert errors == []
@@ -108,7 +108,7 @@ def test_orphan_recipe_is_a_warning_not_an_error(tmp_path):
 
 
 def test_bare_md_mention_warns_and_strict_fails(tmp_path):
-    root = _fixture_root(tmp_path, plan_text="***REMOVED*** Plan\nSee MISSING.md.\n")
+    root = _fixture_root(tmp_path, plan_text="# Plan\nSee MISSING.md.\n")
     errors, warnings, _ = run_check(root, recipes_dir="recipes", plans_glob="plans/*.md")
     assert errors == []
     assert any("MISSING.md" in w for w in warnings)
@@ -120,12 +120,12 @@ def test_bare_md_mention_warns_and_strict_fails(tmp_path):
 
 def test_non_recipe_md_in_recipes_dir_is_not_parsed_as_recipe(tmp_path):
     root = _fixture_root(tmp_path)
-    _write(root / "recipes" / "README.md", "***REMOVED*** Recipes docs, no front matter\n")
+    _write(root / "recipes" / "README.md", "# Recipes docs, no front matter\n")
     errors, _, _ = run_check(root, recipes_dir="recipes", plans_glob="plans/*.md")
     assert not any("README.md" in e for e in errors)
 
 
 def test_fenced_code_blocks_are_skipped(tmp_path):
-    root = _fixture_root(tmp_path, plan_text="***REMOVED*** Plan\n```\n[[DEC-999]]\n```\n")
+    root = _fixture_root(tmp_path, plan_text="# Plan\n```\n[[DEC-999]]\n```\n")
     plan = root / "plans" / "PLAN.md"
     assert scan_recipe_refs([plan], {"DEC-100"}) == []

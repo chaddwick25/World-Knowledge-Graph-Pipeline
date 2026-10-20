@@ -43,20 +43,20 @@ OTHER_CC = "YX"
 SNAP_A = "9999_01_01"
 SNAP_B = "9999_02_01"
 
-***REMOVED*** Seeded rows: (osm_id, wkg_class, lon, lat, country_code, snapshot_id)
+# Seeded rows: (osm_id, wkg_class, lon, lat, country_code, snapshot_id)
 SEED = [
-    ***REMOVED*** Cafe x3 in scope — centroid (2/3, 2/3), count 3 (top class)
+    # Cafe x3 in scope — centroid (2/3, 2/3), count 3 (top class)
     (9101, "wkgs:Cafe", 0.0, 0.0, TEST_CC, SNAP_A),
     (9102, "wkgs:Cafe", 2.0, 0.0, TEST_CC, SNAP_A),
     (9103, "wkgs:Cafe", 0.0, 2.0, TEST_CC, SNAP_A),
-    ***REMOVED*** Restaurant x2 in scope — centroid (0, 1), count 2
+    # Restaurant x2 in scope — centroid (0, 1), count 2
     (9104, "wkgs:Restaurant", 1.0, 1.0, TEST_CC, SNAP_A),
     (9105, "wkgs:Restaurant", -1.0, 1.0, TEST_CC, SNAP_A),
-    ***REMOVED*** NULL geometry — must be excluded from centroids
+    # NULL geometry — must be excluded from centroids
     (9106, "wkgs:Cafe", None, None, TEST_CC, SNAP_A),
-    ***REMOVED*** NULL wkg_class — must be excluded from centroids
+    # NULL wkg_class — must be excluded from centroids
     (9107, None, 3.0, 3.0, TEST_CC, SNAP_A),
-    ***REMOVED*** Out-of-scope rows — must not leak into ZZ/SNAP_A results
+    # Out-of-scope rows — must not leak into ZZ/SNAP_A results
     (9108, "wkgs:Hotel", 5.0, 5.0, TEST_CC, SNAP_B),
     (9109, "wkgs:Bar", 7.0, 7.0, OTHER_CC, SNAP_A),
 ]
@@ -84,7 +84,7 @@ def _cleanup():
 
 @pytest.fixture(autouse=True)
 def _seeded():
-    clear_snapshot_cache()  ***REMOVED*** class-centroids default-snapshot path reads it
+    clear_snapshot_cache()  # class-centroids default-snapshot path reads it
     _seed()
     yield
     _cleanup()
@@ -100,18 +100,18 @@ def client(client):
     yield client
 
 
-***REMOVED*** ── Label humanization ───────────────────────────────────────────────────
+# ── Label humanization ───────────────────────────────────────────────────
 
 
 def test_humanize_class_label():
-    ***REMOVED*** Generic pluralization
+    # Generic pluralization
     assert humanize_class_label("wkgs:Cafe") == "Cafes"
     assert humanize_class_label("wkgs:Restaurant") == "Restaurants"
     assert humanize_class_label("wkgs:BusStation") == "Bus Stations"
     assert humanize_class_label("wkgs:Bar") == "Bars"
-    assert humanize_class_label("wkgs:Pharmacy") == "Pharmacies"  ***REMOVED*** y → ies
-    assert humanize_class_label("wkgs:Church") == "Churches"  ***REMOVED*** sibilant → es
-    ***REMOVED*** GIS key-class overrides (DECKGL v2 — the label view surfaces these)
+    assert humanize_class_label("wkgs:Pharmacy") == "Pharmacies"  # y → ies
+    assert humanize_class_label("wkgs:Church") == "Churches"  # sibilant → es
+    # GIS key-class overrides (DECKGL v2 — the label view surfaces these)
     assert humanize_class_label("wkgs:Amenity") == "Amenities"
     assert humanize_class_label("wkgs:Natural") == "Natural Features"
     assert humanize_class_label("wkgs:Power") == "Power Lines"
@@ -120,11 +120,11 @@ def test_humanize_class_label():
     assert humanize_class_label("wkgs:Landuse") == "Land Use"
     assert humanize_class_label("wkgs:Man_made") == "Man-Made"
     assert humanize_class_label("wkgs:Public_transport") == "Public Transport"
-    ***REMOVED*** Non-wkgs input passes through deterministically
+    # Non-wkgs input passes through deterministically
     assert humanize_class_label("wkgs:") == "wkgs:"
 
 
-***REMOVED*** ── class-centroids endpoint ─────────────────────────────────────────────
+# ── class-centroids endpoint ─────────────────────────────────────────────
 
 
 def test_class_centroids_grouping_and_centroid(client):
@@ -160,7 +160,7 @@ def test_class_centroids_ordered_by_count_desc(client):
     classes = resp.json()["classes"]
     counts = [c["count"] for c in classes]
     assert counts == sorted(counts, reverse=True)
-    assert classes[0]["wkg_class"] == "wkgs:Cafe"  ***REMOVED*** count 3 > 2
+    assert classes[0]["wkg_class"] == "wkgs:Cafe"  # count 3 > 2
 
 
 def test_class_centroids_scoped_to_partition(client):
@@ -171,9 +171,9 @@ def test_class_centroids_scoped_to_partition(client):
     )
     classes = resp.json()["classes"]
     by_class = {c["wkg_class"]: c for c in classes}
-    ***REMOVED*** 9106 (NULL geom) and 9107 (NULL class) are inside scope but excluded
-    assert by_class["wkgs:Cafe"]["count"] == 3  ***REMOVED*** not 4
-    ***REMOVED*** 9108 (SNAP_B) and 9109 (OTHER_CC) never appear
+    # 9106 (NULL geom) and 9107 (NULL class) are inside scope but excluded
+    assert by_class["wkgs:Cafe"]["count"] == 3  # not 4
+    # 9108 (SNAP_B) and 9109 (OTHER_CC) never appear
     assert "wkgs:Hotel" not in by_class
     assert "wkgs:Bar" not in by_class
 
@@ -196,13 +196,13 @@ def test_class_centroids_defaults_to_latest_snapshot(client):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["snapshot_date"] == SNAP_B  ***REMOVED*** '9999_02_01' > '9999_01_01'
+    assert data["snapshot_date"] == SNAP_B  # '9999_02_01' > '9999_01_01'
     by_class = {c["wkg_class"]: c for c in data["classes"]}
     assert set(by_class) == {"wkgs:Hotel"}
     assert by_class["wkgs:Hotel"]["count"] == 1
 
 
-***REMOVED*** ── entities endpoint scoping + limit cap ────────────────────────────────
+# ── entities endpoint scoping + limit cap ────────────────────────────────
 
 
 def _fake_service():
@@ -236,7 +236,7 @@ def test_entities_endpoint_scoping(client):
     data = resp.json()
     assert data["country_code"] == TEST_CC
     assert data["snapshot_date"] == SNAP_A
-    assert data["total"] == 4  ***REMOVED*** 9101–9103 + 9106 (NULL geom is still a row)
+    assert data["total"] == 4  # 9101–9103 + 9106 (NULL geom is still a row)
     ids = {e["osm_id"] for e in data["entities"]}
     assert ids == {9101, 9102, 9103, 9106}
 
@@ -277,8 +277,8 @@ def test_entities_endpoint_limit_clamped(client):
             },
         )
     assert small.status_code == 200 and small.json()["total"] == 1
-    assert zero.status_code == 200 and zero.json()["total"] == 1  ***REMOVED*** clamped up
-    assert huge.status_code == 200 and huge.json()["total"] == 4  ***REMOVED*** clamped, not error
+    assert zero.status_code == 200 and zero.json()["total"] == 1  # clamped up
+    assert huge.status_code == 200 and huge.json()["total"] == 4  # clamped, not error
 
 
 def test_entities_endpoint_requires_class(client):
@@ -286,14 +286,14 @@ def test_entities_endpoint_requires_class(client):
     assert resp.status_code == 400
 
 
-***REMOVED*** ── service method (subclass branch + scoping) ───────────────────────────
+# ── service method (subclass branch + scoping) ───────────────────────────
 
 
 def test_get_entities_by_class_scoping_with_subclasses():
     """include_subclasses=True expands via ontology, then scopes by partition."""
     service = _fake_service()
     service.ontology.get_subclasses.return_value = ["wkgs:Bar"]
-    ***REMOVED*** Seed a subclass row inside scope (Bar lives in OTHER_CC/SNAP_A too)
+    # Seed a subclass row inside scope (Bar lives in OTHER_CC/SNAP_A too)
     OsmEntity.objects.using("vectors").create(
         osm_type="node",
         osm_id=9201,
@@ -315,6 +315,6 @@ def test_get_entities_by_class_scoping_with_subclasses():
         OsmEntity.objects.using("vectors").filter(osm_id=9201).delete()
 
     ids = {e.osm_id for e in entities}
-    ***REMOVED*** Cafe (9101–9103, + 9106 with NULL geom) + Bar (9201) in scope;
-    ***REMOVED*** never Hotel (9108) or OTHER_CC Bar (9109)
+    # Cafe (9101–9103, + 9106 with NULL geom) + Bar (9201) in scope;
+    # never Hotel (9108) or OTHER_CC Bar (9109)
     assert ids == {9101, 9102, 9103, 9106, 9201}

@@ -95,7 +95,7 @@ class Command(BaseCommand):
         ontology_service = get_worldkg_ontology_service()
         enrichment_service = get_worldkg_enrichment_service()
 
-        ***REMOVED*** Handle cache clearing first (can combine with other flags)
+        # Handle cache clearing first (can combine with other flags)
         if options['clear_cache']:
             self.stdout.write("Clearing WorldKG ontology cache...")
             ontology_service.clear_cache()
@@ -104,22 +104,22 @@ class Command(BaseCommand):
                         options.get('use_create_triples')]):
                 return
 
-        ***REMOVED*** Handle ontology loading from JSON
+        # Handle ontology loading from JSON
         if options['load_ontology']:
             self._load_ontology(ontology_service, options)
             return
 
-        ***REMOVED*** Handle ontology loading from TTL (Zenodo/official RDF dump)
+        # Handle ontology loading from TTL (Zenodo/official RDF dump)
         if options.get('load_from_ttl'):
             self._load_ontology_from_ttl(ontology_service, options)
             return
 
-        ***REMOVED*** Handle official CreateTriples.py pipeline
+        # Handle official CreateTriples.py pipeline
         if options.get('use_create_triples'):
             self._run_create_triples_pipeline(ontology_service, options)
             return
 
-        ***REMOVED*** Validate ontology is loaded
+        # Validate ontology is loaded
         all_classes = ontology_service.get_all_classes()
         if not all_classes:
             raise CommandError(
@@ -130,7 +130,7 @@ class Command(BaseCommand):
 
         self.stdout.write(f"WorldKG ontology loaded: {len(all_classes)} classes")
 
-        ***REMOVED*** Run batch enrichment
+        # Run batch enrichment
         self.stdout.write("Starting batch enrichment...")
         self.stdout.write(f"  Region: {options['region'] or 'all'}")
         self.stdout.write(f"  Snapshot ID: {options['snapshot_id'] or 'all'}")
@@ -147,7 +147,7 @@ class Command(BaseCommand):
             skip_enriched=options['skip_enriched']
         )
 
-        ***REMOVED*** Display results
+        # Display results
         self.stdout.write(self.style.SUCCESS("\nEnrichment complete!"))
         self.stdout.write(f"  Enriched:          {stats['enriched']}")
         self.stdout.write(f"  Failed:            {stats['failed']}")
@@ -174,7 +174,7 @@ class Command(BaseCommand):
             with open(ontology_path, 'r') as f:
                 ontology_dict = json.load(f)
 
-            ***REMOVED*** Strip comment key if present
+            # Strip comment key if present
             ontology_dict.pop('_comment', None)
 
             ontology_service.load_ontology_from_dict(ontology_dict)
@@ -201,7 +201,7 @@ class Command(BaseCommand):
             ontology_service.load_ontology_from_dict(ontology_dict)
             self._print_ontology_summary(ontology_service)
 
-            ***REMOVED*** Optionally save as JSON for faster future loads
+            # Optionally save as JSON for faster future loads
             json_cache = ttl_path.replace('.ttl', '_cache.json')
             loader.save_to_json(ontology_dict, json_cache)
             self.stdout.write(f"  Cached as JSON: {json_cache}")

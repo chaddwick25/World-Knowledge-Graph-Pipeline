@@ -1,4 +1,4 @@
-***REMOVED*** World KG & Geo Spatial Reasoning
+# World KG & Geo Spatial Reasoning
 
 Search places worldwide and get AI-powered answers. The app turns raw
 OpenStreetMap data into a searchable knowledge base, then lets you ask
@@ -11,7 +11,7 @@ matching places, shows them on the map, and writes a short AI summary
 that explains what it found and why.
 
 
-***REMOVED******REMOVED*** What it does
+## What it does
 
 Three things, each building on the last:
 
@@ -35,9 +35,9 @@ Three things, each building on the last:
    selected.
 
 
-***REMOVED******REMOVED*** Three ways to search
+## Three ways to search
 
-***REMOVED******REMOVED******REMOVED*** 1. Search by OSM tag
+### 1. Search by OSM tag
 
 Semantic name search: type a name in any language or script, like
 "Friar's Tavern", and the search matches it without the exact string
@@ -48,7 +48,7 @@ auto-detects the script for cross-script matching.
 
 ![Query by OSM Tag](frontend-v3/src/assets/Query_By_OSM_Tag.png)
 
-***REMOVED******REMOVED******REMOVED*** 2. Search by a structured sentence
+### 2. Search by a structured sentence
 
 Type a full geospatial question (e.g. "Which bars are within 50m of
 Hollywood Blvd?"). The app shows you what it understood, you approve
@@ -83,7 +83,7 @@ semantic similarity, and cross-script names.
 Routing and navigation questions ("What turns do I take to get to the
 pub?") are future work; there is no training data for those yet.
 
-***REMOVED******REMOVED******REMOVED*** 3. The research planner
+### 3. The research planner
 
 One open-ended prompt (e.g. "How well is Galway served by food and
 drink?") is decomposed into structured questions, each executed
@@ -93,7 +93,7 @@ back to a query. The planner can also reach for the OSM tag search
 when a question needs it.
 
 
-***REMOVED******REMOVED*** What's next
+## What's next
 
 The project is in beta. Ireland, Jamaica, and Mexico are processed and
 queryable today; the queryable snapshots go up to December 2025.
@@ -112,7 +112,7 @@ If there's a country you want in the regularly maintained list,
 suggestions are welcome.
 
 
-***REMOVED******REMOVED*** Documentation
+## Documentation
 
 Setup and operation: `docs/SETUP.md` (Docker Compose, database
 extensions, migrations, planet init, workers). Implementation details

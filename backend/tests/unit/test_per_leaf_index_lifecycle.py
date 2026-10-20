@@ -28,9 +28,9 @@ import pytest
 from django.core.management import call_command
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Stub infrastructure
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Stub infrastructure
+# --------------------------------------------------------------------------- #
 
 class StubCursor:
     """Captures executed SQL and returns canned result sets.
@@ -43,7 +43,7 @@ class StubCursor:
     """
 
     def __init__(self, results=None):
-        self.executed = []          ***REMOVED*** list of (sql, params)
+        self.executed = []          # list of (sql, params)
         self.results = list(results or [])
         self._next = 0
 
@@ -79,9 +79,9 @@ class StubConnection:
         self._autocommit = False
 
     def cursor(self):
-        ***REMOVED*** Each ``with conn.cursor()`` returns a fresh view onto the same
-        ***REMOVED*** captured-execution list.  The commands open multiple cursors
-        ***REMOVED*** (one per CREATE INDEX CONCURRENTLY) — they should all share state.
+        # Each ``with conn.cursor()`` returns a fresh view onto the same
+        # captured-execution list.  The commands open multiple cursors
+        # (one per CREATE INDEX CONCURRENTLY) — they should all share state.
         return self._cursor
 
     def get_autocommit(self):
@@ -119,16 +119,16 @@ def stub_vectors(monkeypatch):
     return conn
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** drop_osmentity_vector_indexes
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# drop_osmentity_vector_indexes
+# --------------------------------------------------------------------------- #
 
 class TestDropPerLeaf:
     """``--country`` + ``--snapshot`` scopes the drop to one leaf."""
 
     @pytest.mark.unit
     def test_per_leaf_drop_only_targets_specified_leaf(self, stub_vectors, monkeypatch):
-        ***REMOVED*** The leaf-index query returns one HNSW index on the NI leaf.
+        # The leaf-index query returns one HNSW index on the NI leaf.
         stub_vectors._cursor.results = [
             [("idx_embeddings_2025_12_31_ni_gv_tags_embedding_hnsw",)],
         ]
@@ -141,14 +141,14 @@ class TestDropPerLeaf:
         sqls = [sql for sql, _ in stub_vectors._cursor.executed]
         params = [p for _, p in stub_vectors._cursor.executed]
 
-        ***REMOVED*** The WHERE clause must pin the leaf by name (parameterised).
+        # The WHERE clause must pin the leaf by name (parameterised).
         leaf_lookup = any(
             "%s" in sql and p == ["embeddings_2025_12_31_ni"]
             for sql, p in stub_vectors._cursor.executed
         )
         assert leaf_lookup, "per-leaf drop must query the specific leaf table"
 
-        ***REMOVED*** The DROP INDEX must target the NI index, never JM.
+        # The DROP INDEX must target the NI index, never JM.
         drop_sqls = [s for s in sqls if s.startswith("DROP INDEX")]
         assert drop_sqls, "expected at least one DROP INDEX"
         assert any("idx_embeddings_2025_12_31_ni" in s for s in drop_sqls)
@@ -167,7 +167,7 @@ class TestDropPerLeaf:
             country="NI", snapshot="2025_12_31",
             stdout=out,
         )
-        ***REMOVED*** The parameterised lookup must use the lowercased leaf name.
+        # The parameterised lookup must use the lowercased leaf name.
         assert any(
             p == ["embeddings_2025_12_31_ni"]
             for _, p in stub_vectors._cursor.executed
@@ -194,7 +194,7 @@ class TestDropGlobal:
 
     @pytest.mark.unit
     def test_global_drop_queries_root_table(self, stub_vectors):
-        ***REMOVED*** Three sequential result sets: root (1 col), snapshot (2 cols), leaf (3 cols).
+        # Three sequential result sets: root (1 col), snapshot (2 cols), leaf (3 cols).
         stub_vectors._cursor.results = [
             [("osmentity_static_embedding_hnsw_idx",)],
             [],
@@ -206,12 +206,12 @@ class TestDropGlobal:
         call_command("drop_osmentity_vector_indexes", stdout=out)
         sqls = [sql for sql, _ in stub_vectors._cursor.executed]
 
-        ***REMOVED*** The global path queries the root table by name.
+        # The global path queries the root table by name.
         assert any(
             "semantic_search_osmentity" in s and "pg_indexes" in s
             for s in sqls
         ), "global drop must query the root partitioned table"
-        ***REMOVED*** And it issues DROPs for both root and leaf indexes.
+        # And it issues DROPs for both root and leaf indexes.
         drop_sqls = [s for s in sqls if s.startswith("DROP INDEX")]
         assert any("osmentity_static_embedding_hnsw_idx" in s for s in drop_sqls)
         assert any("embeddings_2025_12_31_jm" in s for s in drop_sqls)
@@ -227,16 +227,16 @@ class TestDropGlobal:
         assert "together" in err.getvalue()
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** create_osmentity_vector_indexes
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# create_osmentity_vector_indexes
+# --------------------------------------------------------------------------- #
 
 class TestCreatePerLeaf:
     """``--country`` + ``--snapshot`` scopes creation to one leaf."""
 
     @pytest.mark.unit
     def test_per_leaf_create_only_targets_specified_leaf(self, stub_vectors):
-        ***REMOVED*** The missing-index query returns two columns to build.
+        # The missing-index query returns two columns to build.
         stub_vectors._cursor.results = [
             [("gv_tags_embedding",), ("gv_nle_embedding",)],
         ]
@@ -248,21 +248,21 @@ class TestCreatePerLeaf:
         )
         sqls = [sql for sql, _ in stub_vectors._cursor.executed]
 
-        ***REMOVED*** The lookup must be parameterised by the leaf name.
+        # The lookup must be parameterised by the leaf name.
         assert any(
             params == ["embeddings_2025_12_31_ni"]
             for _, params in stub_vectors._cursor.executed
         ), "per-leaf create must query the specific leaf table"
 
         create_sqls = [s for s in sqls if "CREATE INDEX CONCURRENTLY" in s]
-        ***REMOVED*** Two HNSW + the default amenity vocab index.
+        # Two HNSW + the default amenity vocab index.
         hnsw_sqls = [s for s in create_sqls if "hnsw" in s.lower()]
         assert len(hnsw_sqls) == 2
-        ***REMOVED*** All indexes must be on the NI leaf.
+        # All indexes must be on the NI leaf.
         for s in create_sqls:
             assert "embeddings_2025_12_31_ni" in s
             assert "embeddings_2025_12_31_jm" not in s
-        ***REMOVED*** Names follow the idx_{leaf}_{col}_hnsw convention.
+        # Names follow the idx_{leaf}_{col}_hnsw convention.
         assert any("idx_embeddings_2025_12_31_ni_gv_tags_embedding_hnsw" in s
                    for s in create_sqls)
         assert any("idx_embeddings_2025_12_31_ni_gv_nle_embedding_hnsw" in s
@@ -298,7 +298,7 @@ class TestCreatePerLeaf:
             country="ni", snapshot="2025_12_31",
             stdout=StringIO(),
         )
-        ***REMOVED*** set_autocommit(True) was called, then restored to False.
+        # set_autocommit(True) was called, then restored to False.
         assert stub_vectors._autocommit is False
 
 
@@ -307,8 +307,8 @@ class TestCreateGlobal:
 
     @pytest.mark.unit
     def test_global_create_scans_all_leaves(self, stub_vectors):
-        ***REMOVED*** Global mode uses a LIKE 'embeddings\_%' scan, not a parameterised
-        ***REMOVED*** lookup.  Return one missing index on JM.
+        # Global mode uses a LIKE 'embeddings\_%' scan, not a parameterised
+        # lookup.  Return one missing index on JM.
         stub_vectors._cursor.results = [
             [("embeddings_2025_12_31_jm", "gv_tags_embedding")],
         ]
@@ -316,7 +316,7 @@ class TestCreateGlobal:
         call_command("create_osmentity_vector_indexes", stdout=out)
         sqls = [sql for sql, _ in stub_vectors._cursor.executed]
 
-        ***REMOVED*** The global lookup uses LIKE 'embeddings\_%' (no %s parameter).
+        # The global lookup uses LIKE 'embeddings\_%' (no %s parameter).
         assert any(
             "embeddings\\_%" in s and "%s" not in s
             for s in sqls
@@ -390,7 +390,7 @@ class TestVocabIndexes:
             stdout=StringIO(), stderr=err,
         )
         assert "Unknown categor" in err.getvalue()
-        ***REMOVED*** Rejected before any DDL runs.
+        # Rejected before any DDL runs.
         create_sqls = [
             s for s, _ in stub_vectors._cursor.executed
             if s.startswith("CREATE INDEX")
@@ -409,9 +409,9 @@ class TestVocabIndexes:
 
     @pytest.mark.unit
     def test_existing_vocab_index_is_skipped(self, stub_vectors):
-        ***REMOVED*** First fetchall: missing-HNSW query → none.
-        ***REMOVED*** First fetchone (amenity vocab exists check) → already present;
-        ***REMOVED*** the remaining checks default to (False,) so they still build.
+        # First fetchall: missing-HNSW query → none.
+        # First fetchone (amenity vocab exists check) → already present;
+        # the remaining checks default to (False,) so they still build.
         stub_vectors._cursor.results = [[], [(True,)]]
         call_command(
             "create_osmentity_vector_indexes",

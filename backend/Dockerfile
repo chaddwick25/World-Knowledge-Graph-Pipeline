@@ -1,4 +1,4 @@
-***REMOVED*** Backend/worker image with CUDA 11.8 + cuDNN 8 runtime, Python 3.8, venv, GDAL, and osmium-tool
+# Backend/worker image with CUDA 11.8 + cuDNN 8 runtime, Python 3.8, venv, GDAL, and osmium-tool
 
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu20.04
 
@@ -47,13 +47,13 @@ RUN python -m pip install --upgrade packaging setuptools wheel
 
 WORKDIR /app
 
-***REMOVED*** Copy requirements and entrypoint script
+# Copy requirements and entrypoint script
 COPY requirements.txt ./
 COPY docker-entrypoint.sh ./
 
-***REMOVED*** Create a virtual environment and install runtime dependencies.
-***REMOVED*** Keep a bootstrap copy under /opt so the ./backend:/app bind mount does not
-***REMOVED*** hide it; the entrypoint seeds /app/.venv from this copy on first run.
+# Create a virtual environment and install runtime dependencies.
+# Keep a bootstrap copy under /opt so the ./backend:/app bind mount does not
+# hide it; the entrypoint seeds /app/.venv from this copy on first run.
 RUN python -m venv .venv && \
     .venv/bin/pip install --upgrade "pip<24.1" setuptools wheel && \
     .venv/bin/pip install -r requirements.txt && \
@@ -63,7 +63,7 @@ RUN python -m venv .venv && \
       -f https://data.pyg.org/whl/torch-2.0.1+cu118.html && \
     cp -a .venv /opt/venv_bootstrap
 
-***REMOVED*** Make entrypoint script executable
+# Make entrypoint script executable
 RUN chmod +x docker-entrypoint.sh
 
 ENV PATH="/app/.venv/bin:${PATH}"

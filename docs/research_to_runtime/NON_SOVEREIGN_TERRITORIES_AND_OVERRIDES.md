@@ -1,6 +1,6 @@
-***REMOVED*** Non-Sovereign Territories & JSON Overrides Architecture
+# Non-Sovereign Territories & JSON Overrides Architecture
 
-***REMOVED******REMOVED*** Overview
+## Overview
 
 This document describes how the pipeline handles **non-sovereign territories** (Wales, Scotland, England, Crown Dependencies) and **configuration overrides** through a unified JSON-driven architecture. The system uses two primary files:
 
@@ -9,7 +9,7 @@ This document describes how the pipeline handles **non-sovereign territories** (
 
 ---
 
-***REMOVED******REMOVED*** 1. File Locations
+## 1. File Locations
 
 | File | Path | Purpose |
 |------|------|---------|
@@ -18,7 +18,7 @@ This document describes how the pipeline handles **non-sovereign territories** (
 
 ---
 
-***REMOVED******REMOVED*** 2. `overrides.json` Structure
+## 2. `overrides.json` Structure
 
 ```json
 {
@@ -29,7 +29,7 @@ This document describes how the pipeline handles **non-sovereign territories** (
 }
 ```
 
-***REMOVED******REMOVED******REMOVED*** 2.1 `country_iso_overrides`
+### 2.1 `country_iso_overrides`
 
 Maps **official ISO codes** to pipeline-specific slugs for Geofabrik/embedding alignment.
 
@@ -50,7 +50,7 @@ Maps **official ISO codes** to pipeline-specific slugs for Geofabrik/embedding a
 
 ---
 
-***REMOVED******REMOVED******REMOVED*** 2.2 `embedding_edge_cases`
+### 2.2 `embedding_edge_cases`
 
 Handles **shared embedding shards** across countries (memory optimization).
 
@@ -93,7 +93,7 @@ Handles **shared embedding shards** across countries (memory optimization).
 
 ---
 
-***REMOVED******REMOVED******REMOVED*** 2.3 `embedding_splits`: **Core Split/Merge Configuration**
+### 2.3 `embedding_splits`: **Core Split/Merge Configuration**
 
 Defines **spatial splits** (one TSV → many) and **merges** (many TSVs → one).
 
@@ -105,7 +105,7 @@ Defines **spatial splits** (one TSV → many) and **merges** (many TSVs → one)
 > parent dirs (auto-created). Missing polys are ✗ errors; `--strict` exits 1.
 > A broken overrides.json is now caught at boot, not mid-pipeline.
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** Splits
+#### Splits
 
 ```json
 "embedding_splits": {
@@ -178,17 +178,17 @@ Defines **spatial splits** (one TSV → many) and **merges** (many TSVs → one)
 
 ---
 
-***REMOVED******REMOVED*** 3. Non-Sovereign Territories Registry
+## 3. Non-Sovereign Territories Registry
 
 **File**: `backend/core/services/planet_init/non_sovereign_territories.py`
 
 Maps territories without official ISO 3166-1 codes to **synthetic 2-letter codes**.
 
-***REMOVED******REMOVED******REMOVED*** Registry
+### Registry
 
 ```python
 NON_SOVEREIGN_TERRITORIES = {
-    "WL": {  ***REMOVED*** Wales
+    "WL": {  # Wales
         "name": "Wales",
         "slug": "wales",
         "continent": "europe",
@@ -196,7 +196,7 @@ NON_SOVEREIGN_TERRITORIES = {
         "wikidata_qid": "Q25",
         "osm_relation_id": 58437,
     },
-    "XS": {  ***REMOVED*** Scotland
+    "XS": {  # Scotland
         "name": "Scotland",
         "slug": "scotland",
         "continent": "europe",
@@ -204,7 +204,7 @@ NON_SOVEREIGN_TERRITORIES = {
         "wikidata_qid": "Q22",
         "osm_relation_id": 58446,
     },
-    "EN": {  ***REMOVED*** England
+    "EN": {  # England
         "name": "England",
         "slug": "england",
         "continent": "europe",
@@ -212,7 +212,7 @@ NON_SOVEREIGN_TERRITORIES = {
         "wikidata_qid": "Q21",
         "osm_relation_id": 58447,
     },
-    "IM": {  ***REMOVED*** Isle of Man (real ISO: IM)
+    "IM": {  # Isle of Man (real ISO: IM)
         "name": "Isle of Man",
         "slug": "im",
         "continent": "europe-west",
@@ -220,7 +220,7 @@ NON_SOVEREIGN_TERRITORIES = {
         "wikidata_qid": "Q9676",
         "osm_relation_id": 62269,
     },
-    "GG": {  ***REMOVED*** Guernsey (real ISO: GG)
+    "GG": {  # Guernsey (real ISO: GG)
         "name": "Guernsey",
         "slug": "gg",
         "continent": "europe-west",
@@ -228,7 +228,7 @@ NON_SOVEREIGN_TERRITORIES = {
         "wikidata_qid": "Q423",
         "osm_relation_id": 270747,
     },
-    "JE": {  ***REMOVED*** Jersey (real ISO: JE)
+    "JE": {  # Jersey (real ISO: JE)
         "name": "Jersey",
         "slug": "je",
         "continent": "europe-west",
@@ -239,7 +239,7 @@ NON_SOVEREIGN_TERRITORIES = {
 }
 ```
 
-***REMOVED******REMOVED******REMOVED*** Public API
+### Public API
 
 ```python
 from core.services.planet_init.non_sovereign_territories import (
@@ -249,41 +249,41 @@ from core.services.planet_init.non_sovereign_territories import (
     get_all_synthetic_isos,
 )
 
-***REMOVED*** Check if code is synthetic
-is_non_sovereign_synthetic_iso("WL")  ***REMOVED*** True
-is_non_sovereign_synthetic_iso("GB")  ***REMOVED*** False
+# Check if code is synthetic
+is_non_sovereign_synthetic_iso("WL")  # True
+is_non_sovereign_synthetic_iso("GB")  # False
 
-***REMOVED*** Resolve name/slug to synthetic ISO
-resolve_non_sovereign_iso("wales")      ***REMOVED*** "WL"
-resolve_non_sovereign_iso("scotland")   ***REMOVED*** "XS"
-resolve_non_sovereign_iso("im")         ***REMOVED*** "IM"
-resolve_non_sovereign_iso("gg")         ***REMOVED*** "GG"
-resolve_non_sovereign_iso("je")         ***REMOVED*** "JE"
+# Resolve name/slug to synthetic ISO
+resolve_non_sovereign_iso("wales")      # "WL"
+resolve_non_sovereign_iso("scotland")   # "XS"
+resolve_non_sovereign_iso("im")         # "IM"
+resolve_non_sovereign_iso("gg")         # "GG"
+resolve_non_sovereign_iso("je")         # "JE"
 
-***REMOVED*** Get metadata
-synthetic_iso_to_info("WL")  ***REMOVED*** {name, slug, continent, parent_iso, wikidata_qid, osm_relation_id}
+# Get metadata
+synthetic_iso_to_info("WL")  # {name, slug, continent, parent_iso, wikidata_qid, osm_relation_id}
 ```
 
 ---
 
-***REMOVED******REMOVED*** 4. Integration Points
+## 4. Integration Points
 
-***REMOVED******REMOVED******REMOVED*** 4.1 ISO Resolution Flow (API → Pipeline)
+### 4.1 ISO Resolution Flow (API → Pipeline)
 
 ```python
-***REMOVED*** backend/api/views/pipeline_start.py: WorldKGPipelineV2StartView.post()
+# backend/api/views/pipeline_start.py: WorldKGPipelineV2StartView.post()
 
 def resolve_iso(country_name):
-    ***REMOVED*** Tier 1: CountryPipelineProfile.canonical_name__iexact
+    # Tier 1: CountryPipelineProfile.canonical_name__iexact
     profile = CountryPipelineProfile.objects.filter(canonical_name__iexact=country_name).first()
     if profile: return profile.iso_code
 
-    ***REMOVED*** Tier 2: resolve_iso_code()
+    # Tier 2: resolve_iso_code()
     from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
     iso = resolve_iso_code(country_name)
     if iso: return iso
 
-    ***REMOVED*** Tier 3: EligibleCountry lookup
+    # Tier 3: EligibleCountry lookup
     from core.models import EligibleCountry
     ec = EligibleCountry.objects.filter(country_name__iexact=country_name).first()
     if ec: return ec.iso_code
@@ -293,12 +293,12 @@ def resolve_iso(country_name):
 
 **`resolve_iso_code()`** now checks non-sovereign registry:
 ```python
-***REMOVED*** backend/core/services/planet_init/country_iso.py
+# backend/core/services/planet_init/country_iso.py
 
 def resolve_iso_code(name):
-    ***REMOVED*** ... existing logic ...
+    # ... existing logic ...
 
-    ***REMOVED*** Check non-sovereign territories
+    # Check non-sovereign territories
     try:
         from core.services.planet_init.non_sovereign_territories import resolve_non_sovereign_iso
         synthetic_iso = resolve_non_sovereign_iso(name)
@@ -307,24 +307,24 @@ def resolve_iso_code(name):
     except Exception:
         pass
 
-    ***REMOVED*** ... legacy name maps ...
+    # ... legacy name maps ...
 ```
 
 ---
 
-***REMOVED******REMOVED******REMOVED*** 4.2 `CountryEnvelope.from_db()`: Synthetic ISO Handling
+### 4.2 `CountryEnvelope.from_db()`: Synthetic ISO Handling
 
 ```python
-***REMOVED*** backend/pipeline/envelopes.py
+# backend/pipeline/envelopes.py
 
 @classmethod
 def from_db(cls, iso_code: str) -> "CountryEnvelope":
-    ***REMOVED*** Detect synthetic ISO
+    # Detect synthetic ISO
     if is_non_sovereign_synthetic_iso(iso_code):
         iso_upper = iso_code.upper()
         info = synthetic_iso_to_info(iso_upper)
         if info:
-            ***REMOVED*** Create synthetic CountryPipelineProfile on-the-fly
+            # Create synthetic CountryPipelineProfile on-the-fly
             profile, _ = CountryPipelineProfile.objects.get_or_create(
                 iso2=iso_upper,
                 defaults={
@@ -338,25 +338,25 @@ def from_db(cls, iso_code: str) -> "CountryEnvelope":
             )
             return cls.from_profile(profile)
 
-    ***REMOVED*** ... normal sovereign country flow ...
+    # ... normal sovereign country flow ...
 ```
 
 ---
 
-***REMOVED******REMOVED******REMOVED*** 4.3 `preprocess_snapshot()`: Extraction
+### 4.3 `preprocess_snapshot()`: Extraction
 
 When `SnapshotExtractionService` fails with "not found in mapping":
 
 ```python
-***REMOVED*** backend/pipeline/tasks/helper.py
+# backend/pipeline/tasks/helper.py
 
 def preprocess_snapshot(cfg, logger):
     try:
         return SnapshotExtractionService.run_pipeline(cfg)
     except Exception as exc:
         if "not found in mapping" in str(exc) and is_non_sovereign_synthetic_iso(cfg.iso):
-            ***REMOVED*** Non-sovereign territories bypass the sovereign-only hierarchy.
-            ***REMOVED*** Extraction uses the territory's OSM relation ID directly.
+            # Non-sovereign territories bypass the sovereign-only hierarchy.
+            # Extraction uses the territory's OSM relation ID directly.
             ...
         raise
 ```
@@ -365,30 +365,30 @@ The previous `_preprocess_synthetic_territory` fallback has been removed. The he
 
 ---
 
-***REMOVED******REMOVED******REMOVED*** 4.4 `scan_embeddings`: Auto-Populate ISO Codes
+### 4.4 `scan_embeddings`: Auto-Populate ISO Codes
 
 ```python
-***REMOVED*** backend/core/management/commands/scan_embeddings.py
+# backend/core/management/commands/scan_embeddings.py
 
 def _build_targets_from_config():
     cfg = load_embedding_splits_config()
     for split in cfg.get("splits", []):
         for target in split.get("targets", []):
-            slug = target["slug"]  ***REMOVED*** e.g., "wales", "im", "gg"
-            iso = resolve_non_sovereign_iso(slug)  ***REMOVED*** Returns "WL", "IM", "GG"
-            ***REMOVED*** Creates/updates EligibleCountry with iso_code=iso
+            slug = target["slug"]  # e.g., "wales", "im", "gg"
+            iso = resolve_non_sovereign_iso(slug)  # Returns "WL", "IM", "GG"
+            # Creates/updates EligibleCountry with iso_code=iso
 ```
 
 ---
 
-***REMOVED******REMOVED******REMOVED*** 4.5 Split Execution: `EmbeddingSpatialSplitService`
+### 4.5 Split Execution: `EmbeddingSpatialSplitService`
 
 ```python
-***REMOVED*** backend/core/services/snapshot/embedding_spatial_split_service.py
+# backend/core/services/snapshot/embedding_spatial_split_service.py
 
 def load_embedding_splits_config():
     """Reads embedding_splits from overrides.json via load_overrides()."""
-    overrides = load_overrides()  ***REMOVED*** Loads settings.OVERRIDES_JSON_PATH
+    overrides = load_overrides()  # Loads settings.OVERRIDES_JSON_PATH
     return overrides.get("embedding_splits", {"splits": [], "merges": []})
 ```
 
@@ -399,12 +399,12 @@ docker compose exec backend python manage.py preprocess_embeddings
 
 ---
 
-***REMOVED******REMOVED*** 5. Running the Pipeline
+## 5. Running the Pipeline
 
-***REMOVED******REMOVED******REMOVED*** Clean End-to-End Test
+### Clean End-to-End Test
 
 ```bash
-***REMOVED*** 1. Clean generated files
+# 1. Clean generated files
 rm -rf /media/.../OSM/embeddings/europe/scotland/
 rm -rf /media/.../OSM/embeddings/europe/england/
 rm -rf /media/.../OSM/embeddings/europe/wales/
@@ -413,20 +413,20 @@ rm -rf /media/.../OSM/embeddings/asia/singapore/
 rm -rf /media/.../OSM/embeddings/asia/brunei/
 rm -rf /media/.../OSM/embeddings/north-america/us/
 
-***REMOVED*** 2. Clear DB
+# 2. Clear DB
 docker compose exec backend python manage.py shell -c "
 from core.models import EligibleCountry
 EligibleCountry.objects.all().delete()
 "
 
-***REMOVED*** 3. Run splits (GB + MSB)
+# 3. Run splits (GB + MSB)
 docker compose exec backend python manage.py preprocess_embeddings
 
-***REMOVED*** 4. Validate
+# 4. Validate
 docker compose exec backend python manage.py scan_embeddings
 ```
 
-***REMOVED******REMOVED******REMOVED*** Expected Output
+### Expected Output
 
 ```
 Scotland  → READY ✓ location
@@ -443,14 +443,14 @@ Je        → NO_EMBEDDINGS   (source TSV not available)
 
 ---
 
-***REMOVED******REMOVED*** 6. Adding New Non-Sovereign Territories
+## 6. Adding New Non-Sovereign Territories
 
-***REMOVED******REMOVED******REMOVED*** Step 1: Add to `non_sovereign_territories.py`
+### Step 1: Add to `non_sovereign_territories.py`
 
 ```python
-"XX": {  ***REMOVED*** New territory
+"XX": {  # New territory
     "name": "Territory Name",
-    "slug": "xx",  ***REMOVED*** lowercase ISO or mnemonic
+    "slug": "xx",  # lowercase ISO or mnemonic
     "continent": "europe-west",
     "parent_iso": "GB",
     "wikidata_qid": "QXXXXX",
@@ -458,7 +458,7 @@ Je        → NO_EMBEDDINGS   (source TSV not available)
 },
 ```
 
-***REMOVED******REMOVED******REMOVED*** Step 2: Add Split Config to `overrides.json`
+### Step 2: Add Split Config to `overrides.json`
 
 ```json
 {
@@ -472,7 +472,7 @@ Je        → NO_EMBEDDINGS   (source TSV not available)
 }
 ```
 
-***REMOVED******REMOVED******REMOVED*** Step 3: Ensure Files Exist
+### Step 3: Ensure Files Exist
 
 | File | Location |
 |------|----------|
@@ -481,7 +481,7 @@ Je        → NO_EMBEDDINGS   (source TSV not available)
 
 ---
 
-***REMOVED******REMOVED*** 7. Key Design Decisions
+## 7. Key Design Decisions
 
 | Decision | Rationale |
 |----------|-----------|
@@ -494,7 +494,7 @@ Je        → NO_EMBEDDINGS   (source TSV not available)
 
 ---
 
-***REMOVED******REMOVED*** 8. Troubleshooting
+## 8. Troubleshooting
 
 | Issue | Resolution |
 |-------|------------|
@@ -505,7 +505,7 @@ Je        → NO_EMBEDDINGS   (source TSV not available)
 
 ---
 
-***REMOVED******REMOVED*** 9. Files Summary
+## 9. Files Summary
 
 | File | Path |
 |------|------|

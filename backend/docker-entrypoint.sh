@@ -1,4 +1,4 @@
-***REMOVED***!/bin/bash
+#!/bin/bash
 set -e
 
 echo "Waiting for postgres-default to be ready..."
@@ -24,10 +24,10 @@ echo "Creating extensions in postgres-vectors..."
 PGPASSWORD="$PGVECTOR_PASSWORD" psql -h "$PGVECTOR_HOST" -p 5432 -U "$PGVECTOR_USER" -d "$PGVECTOR_DB" \
   -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
-***REMOVED*** Clean up orphaned pg_type entries from crashed migrations.
-***REMOVED*** A previous migration crash can leave an orphaned composite type in pg_type
-***REMOVED*** without a matching pg_class entry, causing UniqueViolation on
-***REMOVED*** pg_type_typname_nsp_index when Django retries CREATE TABLE.
+# Clean up orphaned pg_type entries from crashed migrations.
+# A previous migration crash can leave an orphaned composite type in pg_type
+# without a matching pg_class entry, causing UniqueViolation on
+# pg_type_typname_nsp_index when Django retries CREATE TABLE.
 echo "Cleaning orphaned pg_type entries..."
 for db_host in "$POSTGRES_HOST:$POSTGRES_DB:$POSTGRES_USER:$POSTGRES_PASSWORD" "$PGVECTOR_HOST:$PGVECTOR_DB:$PGVECTOR_USER:$PGVECTOR_PASSWORD"; do
   IFS=':' read -r host db user pass <<< "$db_host"
@@ -51,18 +51,18 @@ for db_host in "$POSTGRES_HOST:$POSTGRES_DB:$POSTGRES_USER:$POSTGRES_PASSWORD" "
   " 2>/dev/null || true
 done
 
-***REMOVED*** Seed /app/.venv from the image bootstrap if the named volume is empty
-***REMOVED*** (e.g. on first run or after a volume wipe). The bootstrap lives under /opt
-***REMOVED*** so it is not hidden by the ./backend:/app bind mount.
+# Seed /app/.venv from the image bootstrap if the named volume is empty
+# (e.g. on first run or after a volume wipe). The bootstrap lives under /opt
+# so it is not hidden by the ./backend:/app bind mount.
 if [ ! -f "/app/.venv/bin/python" ]; then
     echo "/app/.venv is empty; seeding from image bootstrap..."
     cp -a /opt/venv_bootstrap/. /app/.venv/
 fi
 
-***REMOVED*** Only the backend container runs migrations.  The worker waits for the
-***REMOVED*** backend to finish by polling the django_migrations table.
-***REMOVED*** Both containers share the same entrypoint; the RUN_MIGRATIONS env var
-***REMOVED*** (set in docker-compose.yml) controls which role we play.
+# Only the backend container runs migrations.  The worker waits for the
+# backend to finish by polling the django_migrations table.
+# Both containers share the same entrypoint; the RUN_MIGRATIONS env var
+# (set in docker-compose.yml) controls which role we play.
 if [ "$RUN_MIGRATIONS" = "false" ]; then
   echo "Worker container — skipping migrations, waiting for backend..."
   MAX_WAIT=300
@@ -85,10 +85,10 @@ if [ "$RUN_MIGRATIONS" = "false" ]; then
 else
   echo "Backend container — running migrations..."
 
-  ***REMOVED*** makemigrations is opt-in (default: off).  Generating migration files is a
-  ***REMOVED*** build/CI concern, not a runtime one — running it on every boot adds a full
-  ***REMOVED*** Django model-introspection pass that stalls startup.  Set RUN_MAKEMIGRATIONS=true
-  ***REMOVED*** in dev or CI when schema changes need to be detected.
+  # makemigrations is opt-in (default: off).  Generating migration files is a
+  # build/CI concern, not a runtime one — running it on every boot adds a full
+  # Django model-introspection pass that stalls startup.  Set RUN_MAKEMIGRATIONS=true
+  # in dev or CI when schema changes need to be detected.
   if [ "$RUN_MAKEMIGRATIONS" = "true" ]; then
     echo "Running makemigrations..."
     python manage.py makemigrations
@@ -102,19 +102,19 @@ else
   echo "Running migrations for vectors database..."
   python manage.py migrate --database=vectors
 
-  ***REMOVED*** Planet initialization now runs as a Docker startup step (replaces the
-  ***REMOVED*** former Celery canvas of step_0a..step_0m tasks). Idempotent — safe to
-  ***REMOVED*** run on every boot; short-circuits via the PlanetSnapshot lock if a
-  ***REMOVED*** COMPLETED row already exists for today. Disable with RUN_INIT_PLANET=false
-  ***REMOVED*** (e.g. for the worker container, which reuses this entrypoint).
+  # Planet initialization now runs as a Docker startup step (replaces the
+  # former Celery canvas of step_0a..step_0m tasks). Idempotent — safe to
+  # run on every boot; short-circuits via the PlanetSnapshot lock if a
+  # COMPLETED row already exists for today. Disable with RUN_INIT_PLANET=false
+  # (e.g. for the worker container, which reuses this entrypoint).
   if [ "$RUN_INIT_PLANET" = "false" ]; then
     echo "Skipping init_planet (RUN_INIT_PLANET=false)."
   else
-    ***REMOVED*** Cheap DB pre-check: skip the full command (Django process + step
-    ***REMOVED*** registration) when planet init is already complete. Mirrors the worker
-    ***REMOVED*** migration-poll style above; best-effort — if the DB is unreachable we
-    ***REMOVED*** fall through and run init_planet as before. Table is planet_snapshots
-    ***REMOVED*** (see core/models/infrastructure.py PlanetSnapshot).
+    # Cheap DB pre-check: skip the full command (Django process + step
+    # registration) when planet init is already complete. Mirrors the worker
+    # migration-poll style above; best-effort — if the DB is unreachable we
+    # fall through and run init_planet as before. Table is planet_snapshots
+    # (see core/models/infrastructure.py PlanetSnapshot).
     PLANET_COMPLETE=$(PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "
       SELECT 1 FROM planet_snapshots WHERE status = 'COMPLETED' LIMIT 1;
     " 2>/dev/null || echo "")
@@ -122,8 +122,8 @@ else
       echo "Planet init already complete; skipping init_planet."
     else
       echo "Running init_planet..."
-      ***REMOVED*** Best-effort: failures don't abort container startup (matches the old
-      ***REMOVED*** Celery chain's max_retries=1 semantics). Logs are surfaced via stderr.
+      # Best-effort: failures don't abort container startup (matches the old
+      # Celery chain's max_retries=1 semantics). Logs are surfaced via stderr.
       python manage.py init_planet || echo "WARNING: init_planet reported failures; see logs above."
     fi
   fi
@@ -131,10 +131,10 @@ fi
 
 echo "Entrypoint setup complete!"
 
-***REMOVED*** Warm the platform LLM (Ollama) so the first user query does not pay the
-***REMOVED*** 5-15s cold model-reload penalty. Fail-soft — skips when the LLM is
-***REMOVED*** disabled or Ollama is not up yet.
+# Warm the platform LLM (Ollama) so the first user query does not pay the
+# 5-15s cold model-reload penalty. Fail-soft — skips when the LLM is
+# disabled or Ollama is not up yet.
 python manage.py warm_llm 2>/dev/null || echo "LLM warm-up skipped/failed."
 
-***REMOVED*** Execute the main command
+# Execute the main command
 exec "$@"

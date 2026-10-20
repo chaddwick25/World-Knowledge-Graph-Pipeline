@@ -15,9 +15,9 @@ from core.models import RegionHierarchy
 from core.services.snapshot.regional_path_service import regional_path_service, normalize_country_slug, normalize_continent_slug
 from core.services.planet_init.osm_wikidata_resolver import get_country_by_name, get_country_relations_dict
 
-***REMOVED*** Snapshot processors + DBOnlyWriter moved to snapshot_processors.py
-***REMOVED*** (monolith split, Phase 5).  DBOnlyWriter re-exported for compatibility —
-***REMOVED*** embedding_service and step_1_embed import it from this module.
+# Snapshot processors + DBOnlyWriter moved to snapshot_processors.py
+# (monolith split, Phase 5).  DBOnlyWriter re-exported for compatibility —
+# embedding_service and step_1_embed import it from this module.
 from geovectors_encoder.services.snapshot_processors import (
     DBOnlyWriter,
     process_single_snapshot,
@@ -27,10 +27,10 @@ from geovectors_encoder.services.snapshot_processors import (
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Feature flag: enable single-pass PBF encoding (FastText+NLE in one traversal)
+# Feature flag: enable single-pass PBF encoding (FastText+NLE in one traversal)
 GEOVECTORS_SINGLE_PASS = getattr(settings, "GEOVECTORS_SINGLE_PASS", True)
 
-***REMOVED*** Simple class to mimic the NLEModel expectation
+# Simple class to mimic the NLEModel expectation
 class WDWStore(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -73,7 +73,7 @@ class GeoVectorsEncoderService:
         if not iso:
             return False
 
-        ***REMOVED*** ── 1. DB check using CountryPipelineProfile/SubgraphProfile ──
+        # ── 1. DB check using CountryPipelineProfile/SubgraphProfile ──
         try:
             country_profile = (
                 CountryPipelineProfile.objects.filter(
@@ -101,7 +101,7 @@ class GeoVectorsEncoderService:
                 e,
             )
 
-        ***REMOVED*** ── 2. Filesystem fallback ──
+        # ── 2. Filesystem fallback ──
         try:
             from core.services.snapshot.subgraph_list_service import build_subgraph_list
             subgraphs = build_subgraph_list(country_name, auto_all=True)
@@ -129,7 +129,7 @@ class GeoVectorsEncoderService:
         iso = (iso_code or "").upper()
         subgraphs = []
 
-        ***REMOVED*** ── 1. DB resolution ──
+        # ── 1. DB resolution ──
         try:
             country_profile = (
                 CountryPipelineProfile.objects.filter(
@@ -166,7 +166,7 @@ class GeoVectorsEncoderService:
                 e,
             )
 
-        ***REMOVED*** ── 2. Filesystem fallback ──
+        # ── 2. Filesystem fallback ──
         try:
             from core.services.snapshot.subgraph_list_service import build_subgraph_list
             fs_subgraphs = build_subgraph_list(country_name, auto_all=True)
@@ -219,7 +219,7 @@ class GeoVectorsEncoderService:
         from pathlib import Path
         from django.db import models
 
-        ***REMOVED*** Normalized identifiers
+        # Normalized identifiers
         country_slug = normalize_country_slug(country_name)
         subgraph_normalized = normalize_country_slug(subgraph_name)
 
@@ -229,7 +229,7 @@ class GeoVectorsEncoderService:
         subgraph_pbf = None
         poly_file = None
 
-        ***REMOVED*** 1. DB-first resolution: CountryPipelineProfile + SubgraphProfile
+        # 1. DB-first resolution: CountryPipelineProfile + SubgraphProfile
         try:
             country_profile = (
                 CountryPipelineProfile.objects.filter(
@@ -253,7 +253,7 @@ class GeoVectorsEncoderService:
             )
 
         if country_profile and subgraph_profile:
-            ***REMOVED*** Resolve TSV path from CountryPipelineProfile payload when available
+            # Resolve TSV path from CountryPipelineProfile payload when available
             rel_payload = country_profile.country_relations_payload or {}
             tsv_rel = rel_payload.get("geovectors_location_tsv")
             if tsv_rel:
@@ -261,7 +261,7 @@ class GeoVectorsEncoderService:
                 if not tsv_path.is_absolute():
                     tsv_path = Path(settings.EMBEDDINGS_ROOT) / tsv_path
             else:
-                ***REMOVED*** Fallback: derive from embedding_root_path conventionally
+                # Fallback: derive from embedding_root_path conventionally
                 try:
                     root_rel = country_profile.embedding_root_path or ""
                     if root_rel:
@@ -271,17 +271,17 @@ class GeoVectorsEncoderService:
                 except Exception:
                     tsv_path = None
 
-            ***REMOVED*** Resolve subgraph PBF/poly from SubgraphProfile
+            # Resolve subgraph PBF/poly from SubgraphProfile
             if subgraph_profile.subgraph_pbf_path:
                 subgraph_pbf = Path(subgraph_profile.subgraph_pbf_path)
             if subgraph_profile.subgraph_poly_path:
                 poly_file = Path(subgraph_profile.subgraph_poly_path)
 
-            ***REMOVED*** Resolve continent from DB if not provided
+            # Resolve continent from DB if not provided
             if not continent:
                 continent = country_profile.continent_name or None
 
-        ***REMOVED*** 2. Resolve any remaining TSV path from country_relations overlay (DB-backed)
+        # 2. Resolve any remaining TSV path from country_relations overlay (DB-backed)
         if tsv_path is None:
             country_relations = get_country_relations_dict()
             search_term = country_slug
@@ -301,7 +301,7 @@ class GeoVectorsEncoderService:
                             tsv_path = Path(settings.EMBEDDINGS_ROOT) / tsv_path
                     break
 
-        ***REMOVED*** If DB did not provide subgraph PBF/poly, derive paths from regional_path_service
+        # If DB did not provide subgraph PBF/poly, derive paths from regional_path_service
         if subgraph_pbf is None:
             if not continent:
                 region = RegionHierarchy.objects.filter(name__iexact=country_name).first()
@@ -317,7 +317,7 @@ class GeoVectorsEncoderService:
                 continent, country_name, subgraph_normalized
             )
 
-        ***REMOVED*** 3. Compute pickle path: {OSM_WIKIDATA_EXTRACTIONS_DIR}/{continent}/{country}/pickles/{subgraph}/wdw.pickle
+        # 3. Compute pickle path: {OSM_WIKIDATA_EXTRACTIONS_DIR}/{continent}/{country}/pickles/{subgraph}/wdw.pickle
         if not continent:
             region = RegionHierarchy.objects.filter(name__iexact=country_name).first()
             continent = region.parent.name if region and region.parent else "central-america"
@@ -328,7 +328,7 @@ class GeoVectorsEncoderService:
         pickle_dir.mkdir(parents=True, exist_ok=True)
         output_pickle = pickle_dir / "wdw.pickle"
 
-        ***REMOVED*** Skip if already exists (unless overwrite is True)
+        # Skip if already exists (unless overwrite is True)
         if not overwrite and output_pickle.exists():
             logger.info("GeoVectors: Subgraph pickle already exists at %s, skipping", output_pickle)
             return {
@@ -339,7 +339,7 @@ class GeoVectorsEncoderService:
                 "subgraph": subgraph_name,
             }
 
-        ***REMOVED*** 6. Ensure subgraph poly file for geo-fencing is available
+        # 6. Ensure subgraph poly file for geo-fencing is available
         if poly_file is None:
             poly_file = regional_path_service.get_subgraph_poly_path(
                 continent, country_name, subgraph_normalized
@@ -349,7 +349,7 @@ class GeoVectorsEncoderService:
             logger.warning("GeoVectors: Subgraph poly file not found at %s, skipping geo-fenced pickle", poly_file)
             return {"success": True, "skipped": True, "country": country_name, "subgraph": subgraph_name}
 
-        ***REMOVED*** 7. Resolve TSV path (country-level embeddings)
+        # 7. Resolve TSV path (country-level embeddings)
         if tsv_path is None:
             logger.info("GeoVectors: No TSV for country %s, cannot generate subgraph pickle", country_name)
             return {"success": True, "skipped": True, "country": country_name, "subgraph": subgraph_name}
@@ -358,9 +358,9 @@ class GeoVectorsEncoderService:
             logger.warning("GeoVectors: TSV file not found at %s", tsv_path)
             return {"success": False, "error": "TSV file not found"}
 
-        ***REMOVED*** 8. Filter embeddings using subgraph PBF IDs (Existing Pattern: ID-based filtering)
-        ***REMOVED*** Instead of parsing poly files (which requires coordinates not in TSV),
-        ***REMOVED*** we use the subgraph PBF itself as the filter. If it exists in the PBF, it's in the subgraph.
+        # 8. Filter embeddings using subgraph PBF IDs (Existing Pattern: ID-based filtering)
+        # Instead of parsing poly files (which requires coordinates not in TSV),
+        # we use the subgraph PBF itself as the filter. If it exists in the PBF, it's in the subgraph.
         if not subgraph_pbf or not subgraph_pbf.exists():
             logger.warning(
                 "GeoVectors: Subgraph PBF not found at %s, cannot filter. Falling back to country-wide.",
@@ -390,7 +390,7 @@ class GeoVectorsEncoderService:
                 logger.error("GeoVectors: Failed to extract IDs from PBF: %s. Falling back to country-wide.", e)
                 subgraph_ids = None
 
-        ***REMOVED*** 9. Build pickle by filtering country-level embeddings
+        # 9. Build pickle by filtering country-level embeddings
         logger.info(
             "GeoVectors: Building filtered subgraph pickle for %s/%s from %s...",
             country_name,
@@ -410,14 +410,14 @@ class GeoVectorsEncoderService:
 
                 osm_type_code, osm_id = parts[0], parts[1]
                 
-                ***REMOVED*** Map short 'n', 'w', 'r' to 'node', 'way', 'relation' to match PBF IDs
+                # Map short 'n', 'w', 'r' to 'node', 'way', 'relation' to match PBF IDs
                 type_map = {'n': 'node', 'w': 'way', 'r': 'relation'}
                 osm_type = type_map.get(osm_type_code.lower(), osm_type_code)
                 
                 key = f"{osm_type}_{osm_id}"
                 total_count += 1
                 
-                ***REMOVED*** Filter by IDs if available
+                # Filter by IDs if available
                 if subgraph_ids is not None and key not in subgraph_ids:
                     continue
 
@@ -443,7 +443,7 @@ class GeoVectorsEncoderService:
             output_pickle,
         )
 
-        ***REMOVED*** Best-effort DB update for SubgraphProfile
+        # Best-effort DB update for SubgraphProfile
         if country_profile and subgraph_profile:
             try:
                 subgraph_profile.subgraph_pickle_path = str(output_pickle)
@@ -479,31 +479,31 @@ class GeoVectorsEncoderService:
         Args:
             force: If True, skip duplicate checks and process all snapshots
         """
-        ***REMOVED*** Resolve ISO code
+        # Resolve ISO code
         iso_code = self._resolve_iso_code(country_name)
         
-        ***REMOVED*** Normalize name for DB lookup (e.g. "Turks and Caicos Islands" -> "turks_and_caicos_islands")
+        # Normalize name for DB lookup (e.g. "Turks and Caicos Islands" -> "turks_and_caicos_islands")
         norm_name = normalize_country_slug(country_name)
 
-        ***REMOVED*** 1. Identify continent if not provided
+        # 1. Identify continent if not provided
         if not continent:
             from core.models import RegionHierarchy
-            ***REMOVED*** Try exact match first
+            # Try exact match first
             region = RegionHierarchy.objects.filter(name__iexact=norm_name).first()
             if not region:
                 region = RegionHierarchy.objects.filter(name__iexact=country_name).first()
             
-            ***REMOVED*** Try partial match if still not found
+            # Try partial match if still not found
             if not region:
                 region = RegionHierarchy.objects.filter(name__icontains=country_name.split(' ')[0]).first()
 
             if region and region.parent:
                 continent = region.parent.name
             elif region and not region.parent:
-                ***REMOVED*** If it's a top-level node, it might BE the continent
+                # If it's a top-level node, it might BE the continent
                 continent = region.name
         
-        ***REMOVED*** 2. Hardcoded fallbacks for common regions if DB lookup fails
+        # 2. Hardcoded fallbacks for common regions if DB lookup fails
         if not continent:
             if any(x in norm_name for x in ['islands', 'jamaica', 'cuba', 'haiti', 'dominican']):
                 continent = 'central-america'
@@ -513,7 +513,7 @@ class GeoVectorsEncoderService:
         if not continent:
             raise ValueError(f"Could not identify continent for {country_name}. Please specify --continent.")
 
-        ***REMOVED*** 3. Check if country has subgraphs
+        # 3. Check if country has subgraphs
         if iso_code and self._has_subgraphs(country_name, continent, iso_code):
             logger.info(f"Country {country_name} has subgraphs, running per-subgraph encoding")
             return self.run_for_subgraphs(country_name, continent, iso_code, force)
@@ -526,17 +526,17 @@ class GeoVectorsEncoderService:
         Run country-level encoding (original implementation).
         Used as fallback for countries without subgraphs.
         """
-        ***REMOVED*** Normalize name for DB lookup
+        # Normalize name for DB lookup
         norm_name = normalize_country_slug(country_name)
 
-        ***REMOVED*** Find snapshots
+        # Find snapshots
         snapshots = self._find_snapshots(continent, country_name)
 
         if not snapshots:
             logger.warning(f"No snapshots found for {country_name} in {continent}")
             return None
 
-        ***REMOVED*** Create Processing Session
+        # Create Processing Session
         session = ProcessingSession.objects.create(
             session_name=f"GeoVectors Encoding: {country_name}",
             session_type='GEOVECTORS_ENCODING',
@@ -548,7 +548,7 @@ class GeoVectorsEncoderService:
             }
         )
 
-        ***REMOVED*** Run in parallel
+        # Run in parallel
         logger.info(f"Starting GeoVectors encoding for {country_name} with {self.n_jobs} jobs")
         
         tasks_args = []
@@ -576,12 +576,12 @@ class GeoVectorsEncoderService:
                 session.save()
                 raise
 
-        ***REMOVED*** Close old connections that might have been broken by child processes
+        # Close old connections that might have been broken by child processes
         from django.db import connections
         for conn in connections.all():
             conn.close()
 
-        ***REMOVED*** Complete Session
+        # Complete Session
         session.status = 'COMPLETED'
         session.completed_at = timezone.now()
         session.save()
@@ -598,14 +598,14 @@ class GeoVectorsEncoderService:
             iso_code: ISO code (e.g., "CL")
             force: If True, skip duplicate checks
         """
-        ***REMOVED*** Get subgraph list
+        # Get subgraph list
         subgraphs = self._get_subgraphs(country_name, iso_code)
         
         if not subgraphs:
             logger.warning(f"No subgraphs found for {country_name}")
             return None
         
-        ***REMOVED*** Create Processing Session for subgraph encoding
+        # Create Processing Session for subgraph encoding
         session = ProcessingSession.objects.create(
             session_name=f"GeoVectors Subgraph Encoding: {country_name}",
             session_type='GEOVECTORS_SUBGRAPH_ENCODING',
@@ -617,7 +617,7 @@ class GeoVectorsEncoderService:
             }
         )
         
-        ***REMOVED*** Find country snapshot date (used for versioning)
+        # Find country snapshot date (used for versioning)
         snapshots = self._find_snapshots(continent, country_name)
         if not snapshots:
             logger.warning(f"No snapshots found for {country_name}")
@@ -628,16 +628,16 @@ class GeoVectorsEncoderService:
         
         snap_date = list(snapshots.items())[0][0]
         
-        ***REMOVED*** Build task args for multiprocessing
-        ***REMOVED*** Use subgraph-specific PBF files instead of country-level snapshot
+        # Build task args for multiprocessing
+        # Use subgraph-specific PBF files instead of country-level snapshot
         tasks_args = []
         for subgraph in subgraphs:
-            ***REMOVED*** Get subgraph-specific PBF path
+            # Get subgraph-specific PBF path
             subgraph_pbf_path = regional_path_service.get_subgraph_pbf_path(
                 continent, country_name, subgraph["slug"], snap_date
             )
             
-            ***REMOVED*** Fallback to country snapshot if subgraph PBF doesn't exist
+            # Fallback to country snapshot if subgraph PBF doesn't exist
             if not subgraph_pbf_path.exists():
                 logger.warning(f"Subgraph PBF not found at {subgraph_pbf_path}, using country snapshot")
                 snap_path = list(snapshots.items())[0][1]
@@ -655,8 +655,8 @@ class GeoVectorsEncoderService:
                 force
             ))
         
-        ***REMOVED*** Run subgraphs sequentially to prevent memory exhaustion
-        ***REMOVED*** Each subgraph worker loads the entire country PBF + FastText + NLE models
+        # Run subgraphs sequentially to prevent memory exhaustion
+        # Each subgraph worker loads the entire country PBF + FastText + NLE models
         logger.info(f"Starting subgraph encoding for {country_name} sequentially for {len(subgraphs)} subgraphs")
         
         for task_arg in tasks_args:
@@ -669,11 +669,11 @@ class GeoVectorsEncoderService:
                 session.save()
                 raise
         
-        ***REMOVED*** Close connections
+        # Close connections
         for conn in connections.all():
             conn.close()
         
-        ***REMOVED*** Complete session
+        # Complete session
         session.status = 'COMPLETED'
         session.completed_at = timezone.now()
         session.save()
@@ -684,18 +684,18 @@ class GeoVectorsEncoderService:
         """Find only the 2025_12_31 snapshot."""
         snapshots = {}
 
-        ***REMOVED*** Try raw names, then normalized names
+        # Try raw names, then normalized names
         continent_options = [continent, normalize_continent_slug(continent), continent.lower().replace('_', '-')]
         country_options = [country_name, normalize_country_slug(country_name), country_name.lower().replace('_', '-')]
 
-        ***REMOVED*** Deduplicate while preserving order
+        # Deduplicate while preserving order
         continent_options = list(dict.fromkeys(continent_options))
         country_options = list(dict.fromkeys(country_options))
 
-        ***REMOVED*** Also check the single snapshot path (for single_snapshot_mode preprocessing)
+        # Also check the single snapshot path (for single_snapshot_mode preprocessing)
         for c_cont in continent_options:
             for c_count in country_options:
-                ***REMOVED*** Check monthly snapshot path
+                # Check monthly snapshot path
                 snap_path = regional_path_service.get_snapshot_pbf_path(c_cont, c_count, 2025, 12, 31)
                 if snap_path.exists():
                     snap_date = "2025_12_31"
@@ -703,7 +703,7 @@ class GeoVectorsEncoderService:
                     logger.info(f"Found snapshot using continent='{c_cont}' and country='{c_count}'")
                     return snapshots
 
-                ***REMOVED*** Check single snapshot path (temporal_snapshots/)
+                # Check single snapshot path (temporal_snapshots/)
                 single_snap_path = regional_path_service.get_single_snapshot_pbf_path(c_cont, c_count, '2025_12_31')
                 if single_snap_path.exists():
                     snap_date = "2025_12_31"

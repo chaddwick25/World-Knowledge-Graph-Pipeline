@@ -35,7 +35,7 @@ class WorldKGDriftService:
         Returns:
             WorldKGClassFingerprint instance
         """
-        ***REMOVED*** Get all entities for this snapshot
+        # Get all entities for this snapshot
         entities = OsmEntity.objects.using('vectors').filter(
             source_snapshot_id=snapshot.id,
             wkg_class__isnull=False
@@ -45,7 +45,7 @@ class WorldKGDriftService:
         
         if total_entities == 0:
             logger.warning(f"No WorldKG-enriched entities for snapshot {snapshot.id}")
-            ***REMOVED*** Return empty fingerprint
+            # Return empty fingerprint
             return WorldKGClassFingerprint.objects.create(
                 region=snapshot.country_code,
                 snapshot=snapshot,
@@ -60,30 +60,30 @@ class WorldKGDriftService:
                 processing_session=processing_session
             )
         
-        ***REMOVED*** Get class distribution — SQL GROUP BY instead of streaming
-        ***REMOVED*** one row per entity into a Python Counter (Canada-scale).
+        # Get class distribution — SQL GROUP BY instead of streaming
+        # one row per entity into a Python Counter (Canada-scale).
         class_counts = dict(
             entities.values('wkg_class').annotate(n=Count('wkg_class'))
             .values_list('wkg_class', 'n')
         )
         
-        ***REMOVED*** Normalize to percentages
+        # Normalize to percentages
         class_distribution = {
             cls: (count / total_entities) * 100
             for cls, count in class_counts.items()
         }
         
-        ***REMOVED*** Compute depth statistics
+        # Compute depth statistics
         depth_stats = entities.aggregate(
             mean_depth=Avg('wkg_depth'),
             depth_std=StdDev('wkg_depth')
         )
         
-        ***REMOVED*** Compute diversity metrics
+        # Compute diversity metrics
         shannon_entropy = self._compute_shannon_entropy(class_distribution)
         simpson_index = self._compute_simpson_index(class_distribution)
         
-        ***REMOVED*** Top 5 classes
+        # Top 5 classes
         top_5 = dict(
             sorted(class_distribution.items(), key=lambda x: x[1], reverse=True)[:5]
         )
@@ -130,31 +130,31 @@ class WorldKGDriftService:
         Returns:
             WorldKGClassDrift instance
         """
-        ***REMOVED*** Get fingerprints (create if not exist)
+        # Get fingerprints (create if not exist)
         fp_from = self._get_or_create_fingerprint(snapshot_from, processing_session)
         fp_to = self._get_or_create_fingerprint(snapshot_to, processing_session)
         
         dist_from = fp_from.class_distribution
         dist_to = fp_to.class_distribution
         
-        ***REMOVED*** Compute divergence metrics
+        # Compute divergence metrics
         kl_div = self._compute_kl_divergence(dist_from, dist_to)
         js_div = self._compute_js_divergence(dist_from, dist_to)
         
-        ***REMOVED*** Depth delta
+        # Depth delta
         depth_delta = fp_to.mean_depth - fp_from.mean_depth
         
-        ***REMOVED*** Class changes
+        # Class changes
         classes_from = set(dist_from.keys())
         classes_to = set(dist_to.keys())
         
         new_classes = list(classes_to - classes_from)
         lost_classes = list(classes_from - classes_to)
         
-        ***REMOVED*** Dominant shift (largest proportion changes)
+        # Dominant shift (largest proportion changes)
         dominant_shift = self._compute_dominant_shift(dist_from, dist_to)
         
-        ***REMOVED*** Categorize drift magnitude
+        # Categorize drift magnitude
         if js_div < 0.1:
             drift_magnitude = 'low'
         elif js_div < 0.3:
@@ -240,9 +240,9 @@ class WorldKGDriftService:
         if not distribution:
             return 0.0
         
-        ***REMOVED*** Convert percentages to probabilities
+        # Convert percentages to probabilities
         probs = np.array([v / 100.0 for v in distribution.values()])
-        probs = probs[probs > 0]  ***REMOVED*** Remove zeros
+        probs = probs[probs > 0]  # Remove zeros
         
         return -np.sum(probs * np.log2(probs))
     
@@ -257,7 +257,7 @@ class WorldKGDriftService:
         if not distribution:
             return 0.0
         
-        ***REMOVED*** Convert percentages to probabilities
+        # Convert percentages to probabilities
         probs = np.array([v / 100.0 for v in distribution.values()])
         
         return 1.0 - np.sum(probs ** 2)
@@ -275,10 +275,10 @@ class WorldKGDriftService:
         if not dist_p or not dist_q:
             return 0.0
         
-        ***REMOVED*** Get union of classes
+        # Get union of classes
         all_classes = set(dist_p.keys()) | set(dist_q.keys())
         
-        ***REMOVED*** Add smoothing to avoid log(0)
+        # Add smoothing to avoid log(0)
         epsilon = 1e-10
         
         kl = 0.0
@@ -303,17 +303,17 @@ class WorldKGDriftService:
         if not dist_p or not dist_q:
             return 0.0
         
-        ***REMOVED*** Get union of classes
+        # Get union of classes
         all_classes = set(dist_p.keys()) | set(dist_q.keys())
         
-        ***REMOVED*** Compute mixture distribution M
+        # Compute mixture distribution M
         dist_m = {}
         for cls in all_classes:
             p_val = dist_p.get(cls, 0.0)
             q_val = dist_q.get(cls, 0.0)
             dist_m[cls] = 0.5 * (p_val + q_val)
         
-        ***REMOVED*** Compute JS divergence
+        # Compute JS divergence
         kl_pm = self._compute_kl_divergence(dist_p, dist_m)
         kl_qm = self._compute_kl_divergence(dist_q, dist_m)
         
@@ -338,7 +338,7 @@ class WorldKGDriftService:
             to_pct = dist_to.get(cls, 0.0)
             deltas[cls] = to_pct - from_pct
         
-        ***REMOVED*** Sort by absolute change
+        # Sort by absolute change
         sorted_deltas = sorted(
             deltas.items(),
             key=lambda x: abs(x[1]),
@@ -348,7 +348,7 @@ class WorldKGDriftService:
         return dict(sorted_deltas[:top_n])
 
 
-***REMOVED*** Singleton instance
+# Singleton instance
 _drift_service = None
 
 def get_worldkg_drift_service() -> WorldKGDriftService:

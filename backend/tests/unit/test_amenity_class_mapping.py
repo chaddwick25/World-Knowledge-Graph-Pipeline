@@ -31,10 +31,10 @@ SNAP = "9999_01_01"
 def _seed_entities():
     """Insert OsmEntity rows carrying amenity tags + wkg_class."""
     rows = [
-        ***REMOVED*** (osm_id, amenity, wkg_class)
+        # (osm_id, amenity, wkg_class)
         (9001, "cafe", "wkgs:Cafe"),
         (9002, "cafe", "wkgs:Cafe"),
-        (9003, "cafe", "wkgs:Restaurant"),  ***REMOVED*** minority class — ignored
+        (9003, "cafe", "wkgs:Restaurant"),  # minority class — ignored
         (9004, "bar", "wkgs:Bar"),
         (9005, "fuel", "wkgs:FuelStation"),
     ]
@@ -90,7 +90,7 @@ def test_command_populates_data_tier(seeded_amenity_entities, monkeypatch):
     cafe = AmenityClassMapping.objects.using("vectors").get(
         amenity_text="cafe",
     )
-    assert cafe.wkg_class == "wkgs:Cafe"   ***REMOVED*** majority class wins
+    assert cafe.wkg_class == "wkgs:Cafe"   # majority class wins
     assert cafe.support_count == 2
     assert cafe.source == "data"
 
@@ -136,8 +136,8 @@ def test_resolver_mapped_and_unknown(seeded_amenity_entities, monkeypatch):
 
     frs = FactorResolutionService()
     assert frs.amenity_class("cafe") == "wkgs:Cafe"
-    assert frs.amenity_class("CAFE") == "wkgs:Cafe"      ***REMOVED*** case-insensitive
-    assert frs.amenity_class("nonexistent") is None      ***REMOVED*** → PostGIS fallback
+    assert frs.amenity_class("CAFE") == "wkgs:Cafe"      # case-insensitive
+    assert frs.amenity_class("nonexistent") is None      # → PostGIS fallback
 
 
 def test_command_without_data_is_empty(monkeypatch):

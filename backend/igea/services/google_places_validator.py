@@ -27,7 +27,7 @@ class GooglePlacesUsageTracker:
     def __init__(self):
         self.call_count = 0
         self.total_cost = 0.0
-        self.cost_per_call = 0.005  ***REMOVED*** Geocoding starter tier
+        self.cost_per_call = 0.005  # Geocoding starter tier
 
     def record_call(self):
         self.call_count += 1
@@ -110,7 +110,7 @@ class GooglePlacesValidator:
         try:
             self.usage_tracker.record_call()
 
-            ***REMOVED*** Geocode the tail entity name, biased toward head location
+            # Geocode the tail entity name, biased toward head location
             geocode_result = self.client.geocode(
                 tail_name,
                 location=(head_lat, head_lon),
@@ -126,24 +126,24 @@ class GooglePlacesValidator:
             result_lat = result_location['lat']
             result_lng = result_location['lng']
 
-            ***REMOVED*** Compute distance between geocode result and expected tail location
+            # Compute distance between geocode result and expected tail location
             distance_km = self._haversine_km(
                 tail_lat, tail_lon, result_lat, result_lng
             )
 
-            ***REMOVED*** Score based on distance: closer = higher confidence
-            if distance_km < 0.1:  ***REMOVED*** Within 100m — excellent match
+            # Score based on distance: closer = higher confidence
+            if distance_km < 0.1:  # Within 100m — excellent match
                 confidence = 1.0
-            elif distance_km < 1.0:  ***REMOVED*** Within 1km — good match
+            elif distance_km < 1.0:  # Within 1km — good match
                 confidence = 0.8
-            elif distance_km < 5.0:  ***REMOVED*** Within 5km — moderate match
+            elif distance_km < 5.0:  # Within 5km — moderate match
                 confidence = 0.6
-            elif distance_km < 20.0:  ***REMOVED*** Within 20km — weak match
+            elif distance_km < 20.0:  # Within 20km — weak match
                 confidence = 0.4
             else:
                 confidence = 0.2
 
-            ***REMOVED*** Boost if the place type matches the relation semantics
+            # Boost if the place type matches the relation semantics
             place_types = best.get('types', [])
             if self._types_match_relation(place_types, relation):
                 confidence = min(1.0, confidence + 0.1)
@@ -205,7 +205,7 @@ class GooglePlacesValidator:
                 key = (str(head_id), str(tail_id), relation)
                 results[key] = score
 
-            ***REMOVED*** Rate limiting: ~50 calls/sec for starter tier
+            # Rate limiting: ~50 calls/sec for starter tier
             time.sleep(0.02)
 
         return results
@@ -227,7 +227,7 @@ class GooglePlacesValidator:
     @staticmethod
     def _infer_region(lat, lon):
         """Infer a region hint from coordinates (simple heuristic)."""
-        ***REMOVED*** Rough continent mapping for geocoding bias
+        # Rough continent mapping for geocoding bias
         if lon < -30:
             return 'us' if lat > 25 else 'br'
         elif lon < 60:

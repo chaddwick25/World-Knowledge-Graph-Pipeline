@@ -1,6 +1,6 @@
 """
 Tests for the 2026-10-11 tavern-run fixes: nearest-by-class for
-OBJECT-FIELD-MEASURE (***REMOVED***2), and degenerate-distance stripping in the
+OBJECT-FIELD-MEASURE (#2), and degenerate-distance stripping in the
 primary digest.
 
 The run's evidence: "How far is the nearest tavern from Dublin?"
@@ -111,7 +111,7 @@ def test_nearest_by_class_resolves_from_other_endpoint(
     assert _stub_class_hits[0]["tag_target"] == ("amenity", "pub")
     assert _stub_class_hits[0]["top_k"] == 1
     assert _stub_class_hits[0]["radius_m"] is None
-    ***REMOVED*** The class side never geocodes; the place side geocodes once.
+    # The class side never geocodes; the place side geocodes once.
     assert _stub_geocode == ["Dublin"]
 
 
@@ -130,7 +130,7 @@ def test_both_places_regression(_stub_geocode, _stub_class_hits):
     assert "from_resolved" not in r and "to_resolved" not in r
     assert _stub_class_hits == []
     assert sorted(_stub_geocode) == ["Dublin", "Galway"]
-    ***REMOVED*** Galway to Dublin is ~187 km.
+    # Galway to Dublin is ~187 km.
     assert 180000 < r["distance_m"] < 195000
 
 

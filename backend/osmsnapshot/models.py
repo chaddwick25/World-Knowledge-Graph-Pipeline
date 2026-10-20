@@ -81,14 +81,14 @@ class SnapshotJob(models.Model):
         max_length=20, choices=Status.choices, default=Status.PENDING,
     )
 
-    ***REMOVED*** Link to Celery + pipeline tracking
+    # Link to Celery + pipeline tracking
     pipeline_run = models.ForeignKey(
         'core.PipelineRun', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='snapshot_jobs',
     )
     celery_task_id = models.CharField(max_length=255, null=True, blank=True)
 
-    ***REMOVED*** Results summary (populated on Step 6 completion)
+    # Results summary (populated on Step 6 completion)
     total_entities = models.BigIntegerField(default=0)
     total_aligned = models.BigIntegerField(default=0)
     total_spatial_links = models.BigIntegerField(default=0)
@@ -208,7 +208,7 @@ class WorldKGClassDrift(models.Model):
         help_text="Later snapshot"
     )
 
-    ***REMOVED*** Class distribution snapshots
+    # Class distribution snapshots
     class_distribution_from = models.JSONField(
         help_text="WorldKG class distribution at t0: {class: count}"
     )
@@ -216,7 +216,7 @@ class WorldKGClassDrift(models.Model):
         help_text="WorldKG class distribution at t1: {class: count}"
     )
 
-    ***REMOVED*** Drift metrics
+    # Drift metrics
     kl_divergence = models.FloatField(
         help_text="KL divergence between class distributions"
     )
@@ -227,7 +227,7 @@ class WorldKGClassDrift(models.Model):
         help_text="Change in mean ontology depth (negative = generalization)"
     )
 
-    ***REMOVED*** Class changes
+    # Class changes
     new_classes = models.JSONField(
         help_text="Classes appearing in t1 but not t0"
     )
@@ -238,7 +238,7 @@ class WorldKGClassDrift(models.Model):
         help_text="Largest class proportion changes: {class: delta}"
     )
 
-    ***REMOVED*** Semantic interpretation
+    # Semantic interpretation
     drift_magnitude = models.CharField(
         max_length=20,
         choices=[
@@ -289,12 +289,12 @@ class WorldKGClassFingerprint(models.Model):
         help_text="Snapshot this fingerprint represents"
     )
 
-    ***REMOVED*** Class distribution (normalized to percentages)
+    # Class distribution (normalized to percentages)
     class_distribution = models.JSONField(
         help_text="Normalized class distribution: {class: percentage}"
     )
 
-    ***REMOVED*** Ontology statistics
+    # Ontology statistics
     mean_depth = models.FloatField(
         help_text="Mean ontology depth across all entities"
     )
@@ -305,7 +305,7 @@ class WorldKGClassFingerprint(models.Model):
         help_text="Number of unique WorldKG classes present"
     )
 
-    ***REMOVED*** Diversity metrics
+    # Diversity metrics
     shannon_entropy = models.FloatField(
         help_text="Shannon entropy of class distribution (semantic diversity)"
     )
@@ -313,7 +313,7 @@ class WorldKGClassFingerprint(models.Model):
         help_text="Simpson's diversity index"
     )
 
-    ***REMOVED*** Top classes (for quick comparison)
+    # Top classes (for quick comparison)
     top_5_classes = models.JSONField(
         help_text="Top 5 most common classes with percentages"
     )

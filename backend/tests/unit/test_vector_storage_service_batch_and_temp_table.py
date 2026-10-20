@@ -20,7 +20,7 @@ class DummyCursor:
 
     @property
     def cursor(self):
-        ***REMOVED*** Mimic Django's DatabaseWrapper cursor wrapper exposing underlying psycopg cursor
+        # Mimic Django's DatabaseWrapper cursor wrapper exposing underlying psycopg cursor
         return self._inner
 
     @property
@@ -68,7 +68,7 @@ def test_vector_storage_service_uses_unlogged_temp_table(monkeypatch):
 
     storage = VectorStorageService(batch_size=2, model_type="tags", version="test_ver")
 
-    ***REMOVED*** Prepare minimal buffer with two entities
+    # Prepare minimal buffer with two entities
     storage.buffer = [
         {
             "osm_type": "node",

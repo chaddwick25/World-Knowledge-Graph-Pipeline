@@ -48,18 +48,18 @@ class DriveSyncVerifier:
             logger.error(f"File not found: {file_path}")
             return False
         
-        ***REMOVED*** Wait for file to stabilize (Google Drive Desktop syncs in background)
+        # Wait for file to stabilize (Google Drive Desktop syncs in background)
         initial_size = file_path.stat().st_size
         time.sleep(2)
         
-        ***REMOVED*** Check if file size is stable (sync complete)
+        # Check if file size is stable (sync complete)
         stable_checks = 0
         for _ in range(timeout // 2):
             current_size = file_path.stat().st_size
             
             if current_size == initial_size:
                 stable_checks += 1
-                if stable_checks >= 3:  ***REMOVED*** 3 consecutive stable checks
+                if stable_checks >= 3:  # 3 consecutive stable checks
                     logger.info(f"File synced: {file_path}")
                     return True
             else:
@@ -87,12 +87,12 @@ class DriveSyncVerifier:
             return {'error': 'Folder not found'}
         
         files = list(folder_path.rglob('*.pbf'))
-        total_size = sum(f.stat().st_size for f in files) / (1024 * 1024)  ***REMOVED*** MB
+        total_size = sum(f.stat().st_size for f in files) / (1024 * 1024)  # MB
         
         return {
             'total_files': len(files),
             'total_size_mb': round(total_size, 2),
-            'synced': True,  ***REMOVED*** Assume synced if files exist
+            'synced': True,  # Assume synced if files exist
             'files': [str(f) for f in files]
         }
     

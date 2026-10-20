@@ -20,7 +20,7 @@ import random
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Global variables for multiprocessing
+# Global variables for multiprocessing
 _GLOBAL_GRAPH = None
 _GLOBAL_WALK_LENGTH = None
 
@@ -29,7 +29,7 @@ def _init_walk_worker(graph, walk_length):
     global _GLOBAL_GRAPH, _GLOBAL_WALK_LENGTH
     _GLOBAL_GRAPH = graph
     _GLOBAL_WALK_LENGTH = walk_length
-    ***REMOVED*** Seed random for this worker
+    # Seed random for this worker
     random.seed()
     np.random.seed()
 
@@ -101,17 +101,17 @@ class WeightedDeepWalkService:
                  workers: int = 4,
                  min_count: int = 0,
                  
-                 ***REMOVED*** Optimization hyperparameters (GeoVectors paper §5.1)
-                 negative: int = 5,              ***REMOVED*** Negative samples
-                 alpha: float = 0.025,           ***REMOVED*** Initial learning rate
-                 min_alpha: float = 0.0001,      ***REMOVED*** Final learning rate
-                 sample: float = 1e-5,           ***REMOVED*** Subsampling threshold (lower for graph node IDs)
-                 ns_exponent: float = 0.75,      ***REMOVED*** Negative sampling power
-                 epochs: int = 1,                ***REMOVED*** Single pass (walks provide diversity)
+                 # Optimization hyperparameters (GeoVectors paper §5.1)
+                 negative: int = 5,              # Negative samples
+                 alpha: float = 0.025,           # Initial learning rate
+                 min_alpha: float = 0.0001,      # Final learning rate
+                 sample: float = 1e-5,           # Subsampling threshold (lower for graph node IDs)
+                 ns_exponent: float = 0.75,      # Negative sampling power
+                 epochs: int = 1,                # Single pass (walks provide diversity)
                  
-                 ***REMOVED*** Advanced options
-                 apply_damping: bool = False,    ***REMOVED*** False: weights from KNNGraphService are pre-damped
-                 compute_loss: bool = True,      ***REMOVED*** Monitor training loss
+                 # Advanced options
+                 apply_damping: bool = False,    # False: weights from KNNGraphService are pre-damped
+                 compute_loss: bool = True,      # Monitor training loss
                  seed: int = 42):
         """
         Initialize enhanced DeepWalk trainer.
@@ -149,7 +149,7 @@ class WeightedDeepWalkService:
         self.workers = workers
         self.min_count = min_count
         
-        ***REMOVED*** Optimization hyperparameters
+        # Optimization hyperparameters
         self.negative = negative
         self.alpha = alpha
         self.min_alpha = min_alpha
@@ -157,7 +157,7 @@ class WeightedDeepWalkService:
         self.ns_exponent = ns_exponent
         self.epochs = epochs
         
-        ***REMOVED*** Advanced options
+        # Advanced options
         self.apply_damping = apply_damping
         self.compute_loss = compute_loss
         self.seed = seed
@@ -165,7 +165,7 @@ class WeightedDeepWalkService:
         self.model = None
         self.loss_logger = None
         
-        ***REMOVED*** Validate hyperparameters
+        # Validate hyperparameters
         self._validate_hyperparameters()
     
     def _validate_hyperparameters(self):
@@ -211,12 +211,12 @@ class WeightedDeepWalkService:
             ValueError: If any weight is already ≥ e, indicating the graph is
                 pre-damped and calling this method would be incorrect.
         """
-        ***REMOVED*** Guard: detect pre-damped weights using the hard floor signature.
-        ***REMOVED*** calculate_edge_weight() always floors at exactly np.e, so the minimum
-        ***REMOVED*** weight in a pre-damped graph is np.e (within float precision).
-        ***REMOVED*** Raw haversine distances hitting np.e exactly is astronomically unlikely
-        ***REMOVED*** and their minimum will typically be << e for any graph with close neighbors.
-        ***REMOVED*** Full scan (O(E), O(1) memory) — a partial sample could miss the floor.
+        # Guard: detect pre-damped weights using the hard floor signature.
+        # calculate_edge_weight() always floors at exactly np.e, so the minimum
+        # weight in a pre-damped graph is np.e (within float precision).
+        # Raw haversine distances hitting np.e exactly is astronomically unlikely
+        # and their minimum will typically be << e for any graph with close neighbors.
+        # Full scan (O(E), O(1) memory) — a partial sample could miss the floor.
         min_weight = min(
             (w for neighbors in graph.values() for _, w in neighbors),
             default=None,
@@ -235,10 +235,10 @@ class WeightedDeepWalkService:
         for node, neighbors in graph.items():
             damped_neighbors = []
             for neighbor_id, weight in neighbors:
-                ***REMOVED*** Damped weight: max(1/ln(max(w, 1.1)), e) — matches the reference
-                ***REMOVED*** WeightedDeepWalkGraph._damp_and_row_norm clamp semantics exactly:
-                ***REMOVED*** sub-1.1 km distances get the maximum weight 1/ln(1.1), not a
-                ***REMOVED*** lower value, and zero/negative weights cannot divide by ln(0).
+                # Damped weight: max(1/ln(max(w, 1.1)), e) — matches the reference
+                # WeightedDeepWalkGraph._damp_and_row_norm clamp semantics exactly:
+                # sub-1.1 km distances get the maximum weight 1/ln(1.1), not a
+                # lower value, and zero/negative weights cannot divide by ln(0).
                 damped_w = max(1.0 / np.log(max(weight, 1.1)), np.e)
                 damped_neighbors.append((neighbor_id, damped_w))
             damped_graph[node] = damped_neighbors
@@ -262,14 +262,14 @@ class WeightedDeepWalkService:
             if not neighbors:
                 break
             
-            ***REMOVED*** Extract neighbor IDs and weights
+            # Extract neighbor IDs and weights
             neighbor_ids = [n[0] for n in neighbors]
             weights = np.array([n[1] for n in neighbors])
             
-            ***REMOVED*** Normalize to probabilities
+            # Normalize to probabilities
             probs = weights / weights.sum()
             
-            ***REMOVED*** Sample next node
+            # Sample next node
             next_node = np.random.choice(neighbor_ids, p=probs)
             walk.append(str(next_node))
             current = next_node
@@ -282,22 +282,22 @@ class WeightedDeepWalkService:
         num_nodes = len(nodes)
         total_walks = num_nodes * self.num_walks
         
-        ***REMOVED*** Use fewer workers to prevent OOM (4 workers instead of 26)
-        ***REMOVED*** Each worker gets a copy of the 66M-edge graph, so we limit parallelism
+        # Use fewer workers to prevent OOM (4 workers instead of 26)
+        # Each worker gets a copy of the 66M-edge graph, so we limit parallelism
         num_workers = min(4, cpu_count())
         
         logger.info(f"Generating {total_walks} walks using {num_workers} workers (memory-safe mode)...")
         logger.info(f"Graph size: {len(graph)} nodes, {sum(len(v) for v in graph.values())} edges")
         
-        ***REMOVED*** Create list of starting nodes (each node repeated num_walks times)
+        # Create list of starting nodes (each node repeated num_walks times)
         start_nodes = []
         for _ in range(self.num_walks):
             shuffled = nodes.copy()
             np.random.shuffle(shuffled)
             start_nodes.extend(shuffled)
         
-        ***REMOVED*** Process in batches to limit memory usage
-        batch_size = 500000  ***REMOVED*** Process 500k walks at a time
+        # Process in batches to limit memory usage
+        batch_size = 500000  # Process 500k walks at a time
         all_walks = []
         
         for batch_start in range(0, len(start_nodes), batch_size):
@@ -328,20 +328,20 @@ class WeightedDeepWalkService:
         Returns:
             Trained Word2Vec model
         """
-        ***REMOVED*** Apply damped weights if enabled
+        # Apply damped weights if enabled
         if self.apply_damping:
             graph = self.apply_damped_weights(graph)
         
-        ***REMOVED*** Generate walks
+        # Generate walks
         walks = self.generate_walks(graph)
         
-        ***REMOVED*** Setup loss logging
+        # Setup loss logging
         callbacks = []
         if self.compute_loss:
             self.loss_logger = LossLogger()
             callbacks.append(self.loss_logger)
         
-        ***REMOVED*** Log optimization hyperparameters
+        # Log optimization hyperparameters
         logger.info(
             f"Training Skip-Gram with explicit optimization:\n"
             f"  Embedding dim: {self.embedding_dim}\n"
@@ -354,19 +354,19 @@ class WeightedDeepWalkService:
             f"  Damped weights: {self.apply_damping}"
         )
         
-        ***REMOVED*** Train Word2Vec with explicit hyperparameters
+        # Train Word2Vec with explicit hyperparameters
         model = Word2Vec(
             sentences=walks,
             vector_size=self.embedding_dim,
             window=self.window_size,
             min_count=self.min_count,
-            sg=1,                          ***REMOVED*** Skip-Gram
-            hs=0,                          ***REMOVED*** Use negative sampling (not hierarchical softmax)
-            negative=self.negative,        ***REMOVED*** Number of negative samples
-            alpha=self.alpha,              ***REMOVED*** Initial learning rate
-            min_alpha=self.min_alpha,      ***REMOVED*** Final learning rate
-            sample=self.sample,            ***REMOVED*** Subsampling threshold
-            ns_exponent=self.ns_exponent,  ***REMOVED*** Negative sampling distribution power
+            sg=1,                          # Skip-Gram
+            hs=0,                          # Use negative sampling (not hierarchical softmax)
+            negative=self.negative,        # Number of negative samples
+            alpha=self.alpha,              # Initial learning rate
+            min_alpha=self.min_alpha,      # Final learning rate
+            sample=self.sample,            # Subsampling threshold
+            ns_exponent=self.ns_exponent,  # Negative sampling distribution power
             workers=self.workers,
             epochs=self.epochs,
             compute_loss=self.compute_loss,
@@ -376,7 +376,7 @@ class WeightedDeepWalkService:
         
         self.model = model
         
-        ***REMOVED*** Report training results
+        # Report training results
         logger.info(f"Training complete. Vocabulary: {len(model.wv)} entities")
         
         if self.compute_loss and self.loss_logger:

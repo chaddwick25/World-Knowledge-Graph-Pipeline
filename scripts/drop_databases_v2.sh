@@ -1,12 +1,12 @@
-***REMOVED***!/bin/bash
-***REMOVED*** Drop All Databases Script V2
-***REMOVED*** This script completely removes all PostgreSQL databases and volumes for the EDA Vector Search Toolkit
-***REMOVED*** WARNING: This will delete ALL data. Use with caution!
+#!/bin/bash
+# Drop All Databases Script V2
+# This script completely removes all PostgreSQL databases and volumes for the EDA Vector Search Toolkit
+# WARNING: This will delete ALL data. Use with caution!
 
-set -e  ***REMOVED*** Exit on any error
+set -e  # Exit on any error
 
-***REMOVED*** Load environment variables from the local env file so docker compose and the
-***REMOVED*** deletion paths have the values they need. .env.local takes precedence.
+# Load environment variables from the local env file so docker compose and the
+# deletion paths have the values they need. .env.local takes precedence.
 if [ -f .env.local ]; then
     set -a
     source .env.local
@@ -17,20 +17,20 @@ elif [ -f .env ]; then
     set +a
 fi
 
-***REMOVED*** Use the same compose files the project actually runs with.
+# Use the same compose files the project actually runs with.
 DOCKER_COMPOSE="docker compose -f docker-compose.yml -f compose.override.yml"
 
-***REMOVED*** Django apps that own migration directories (updated 2026-09-11 — the
-***REMOVED*** old list targeted deleted apps: extraction, analysis, orchestration).
-***REMOVED*** `vectors` is a dead leftover directory, not an installed app.
+# Django apps that own migration directories (updated 2026-09-11 — the
+# old list targeted deleted apps: extraction, analysis, orchestration).
+# `vectors` is a dead leftover directory, not an installed app.
 MIGRATION_APPS=(
     "api" "core" "geodata" "geovectors_encoder"
     "igea" "osmsnapshot" "semantic_search" "worldkg_nca"
 )
 
-***REMOVED*** Default keeps migration files (the fresh-DB E2E path needs the real
-***REMOVED*** migration chain, including the latest semantic_search / worldkg_nca
-***REMOVED*** migrations). Pass --wipe-migrations to delete them.
+# Default keeps migration files (the fresh-DB E2E path needs the real
+# migration chain, including the latest semantic_search / worldkg_nca
+# migrations). Pass --wipe-migrations to delete them.
 WIPE_MIGRATIONS=0
 for arg in "$@"; do
     if [ "$arg" = "--wipe-migrations" ]; then
@@ -38,12 +38,12 @@ for arg in "$@"; do
     fi
 done
 
-***REMOVED*** Colors for output
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' ***REMOVED*** No Color
+NC='\033[0m' # No Color
 
 echo "=========================================="
 echo -e "${RED}DATABASE DESTRUCTION SCRIPT V2${NC}"
@@ -65,19 +65,19 @@ echo ""
 echo -e "${BLUE}Starting database destruction...${NC}"
 echo ""
 
-***REMOVED*** Step 1: Stop all containers
+# Step 1: Stop all containers
 echo -e "${YELLOW}Step 1: Stopping all Docker containers...${NC}"
 $DOCKER_COMPOSE down --remove-orphans
 echo -e "${GREEN}✓ Containers stopped${NC}"
 echo ""
 
-***REMOVED*** Step 2: Remove database data
+# Step 2: Remove database data
 echo -e "${YELLOW}Step 2: Removing database data directories...${NC}"
 
-***REMOVED*** PostgreSQL and Redis use host bind-mounts, not Docker-managed volumes, so
-***REMOVED*** `docker volume rm` does not reset them. They must be deleted from the host
-***REMOVED*** while the containers are stopped; otherwise the old data is re-mounted on
-***REMOVED*** the next `up` and the "reset" has no effect.
+# PostgreSQL and Redis use host bind-mounts, not Docker-managed volumes, so
+# `docker volume rm` does not reset them. They must be deleted from the host
+# while the containers are stopped; otherwise the old data is re-mounted on
+# the next `up` and the "reset" has no effect.
 DEFAULT_DATA_DIR="${POSTGRES_DEFAULT_DATA_DIR:-}"
 VECTORS_DATA_DIR="${POSTGRES_VECTORS_DATA_DIR:-}"
 REDIS_DATA_DIR="${REDIS_DATA_DIR:-}"
@@ -86,7 +86,7 @@ for VAR_NAME in DEFAULT_DATA_DIR VECTORS_DATA_DIR REDIS_DATA_DIR; do
     if [ -z "${!VAR_NAME}" ]; then
         echo -e "${RED}Error: $VAR_NAME is not set.${NC}"
         echo "Set it in your .env or .env.local and source it before running this script:"
-        echo "  source .env.local  ***REMOVED*** or export \$(cat .env.local | xargs)"
+        echo "  source .env.local  # or export \$(cat .env.local | xargs)"
         exit 1
     fi
 done
@@ -101,7 +101,7 @@ for DATA_DIR in "$DEFAULT_DATA_DIR" "$VECTORS_DATA_DIR" "$REDIS_DATA_DIR"; do
     fi
 done
 
-***REMOVED*** Also clean up any project-specific Docker volumes that might exist.
+# Also clean up any project-specific Docker volumes that might exist.
 PROJECT_NAME="eda-vector-search-toolkit"
 for vol in $(docker volume ls -q | grep -E "^${PROJECT_NAME//-/-?}[-_]" || true); do
     echo "  Removing Docker volume: $vol"
@@ -111,21 +111,21 @@ done
 echo -e "${GREEN}✓ Database data removed${NC}"
 echo ""
 
-***REMOVED*** Step 3: Remove any orphaned containers
+# Step 3: Remove any orphaned containers
 echo -e "${YELLOW}Step 3: Cleaning up orphaned containers...${NC}"
 $DOCKER_COMPOSE rm -f 2>/dev/null || echo "  - No orphaned containers found"
 echo -e "${GREEN}✓ Cleanup complete${NC}"
 
-***REMOVED*** If a host Redis is still running, clear the DBs this project uses.
-***REMOVED*** The Redis bind-mount data directory is already removed above, but this
-***REMOVED*** also covers a non-container Redis instance on port 6379.
+# If a host Redis is still running, clear the DBs this project uses.
+# The Redis bind-mount data directory is already removed above, but this
+# also covers a non-container Redis instance on port 6379.
 for db in 0 1 2; do
     redis-cli -n $db FLUSHDB 2>/dev/null || echo "  - Redis DB $db not available"
 done
 echo -e "${GREEN}✓ Redis state flushed${NC}"
 echo ""
 
-***REMOVED*** Step 4: Verify removal
+# Step 4: Verify removal
 echo -e "${YELLOW}Step 4: Verifying removal...${NC}"
 echo "Remaining volumes:"
 docker volume ls | grep eda-vector-search-toolkit || echo "  - No project volumes found (good!)"
@@ -134,7 +134,7 @@ echo "Remaining containers:"
 docker ps -a | grep -E "postgres-default|postgres-vectors" || echo "  - No project containers found (good!)"
 echo ""
 
-***REMOVED*** Step 4.5: Optionally clear Wikidata candidate cache
+# Step 4.5: Optionally clear Wikidata candidate cache
 echo -e "${YELLOW}Step 4.5: Wikidata candidate cache...${NC}"
 if [ -d "data/wikidata_cache" ] && [ "$(ls -A data/wikidata_cache 2>/dev/null)" ]; then
     echo "  Found cached Wikidata candidate files in data/wikidata_cache/:"
@@ -152,7 +152,7 @@ else
 fi
 echo ""
 
-***REMOVED*** Step 5: Remove migration files (nuclear option, off by default)
+# Step 5: Remove migration files (nuclear option, off by default)
 echo -e "${YELLOW}Step 5: Migration files...${NC}"
 echo "Migration files present in:"
 for app in "${MIGRATION_APPS[@]}"; do
@@ -174,7 +174,7 @@ if [ "$remove_migrations" = "yes" ] || [ "$remove_migrations" = "y" ]; then
     for app in "${MIGRATION_APPS[@]}"; do
         if [ -d "$app/migrations" ]; then
             echo "  Cleaning $app/migrations..."
-            ***REMOVED*** Remove migration files except __init__.py
+            # Remove migration files except __init__.py
             find "$app/migrations/" -type f -name "*.py" ! -name "__init__.py" -delete 2>/dev/null || true
             find "$app/migrations/" -type f -name "*.pyc" -delete 2>/dev/null || true
             find "$app/migrations/" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
@@ -182,13 +182,13 @@ if [ "$remove_migrations" = "yes" ] || [ "$remove_migrations" = "y" ]; then
     done
     
     cd ..
-    echo -e "${GREEN}✓ Migration files removed from all ${***REMOVED***MIGRATION_APPS[@]} apps${NC}"
+    echo -e "${GREEN}✓ Migration files removed from all ${#MIGRATION_APPS[@]} apps${NC}"
 else
     echo -e "${BLUE}Migration files preserved${NC}"
 fi
 echo ""
 
-***REMOVED*** Summary
+# Summary
 echo "=========================================="
 echo -e "${GREEN}DATABASE DESTRUCTION COMPLETE (V2)${NC}"
 echo "=========================================="
@@ -199,7 +199,7 @@ echo "  ✓ PostgreSQL data directories (default + vectors)"
 echo "  ✓ Redis data directory and keyspace (DBs 0, 1, 2)"
 echo "  ✓ Project Docker volumes"
 if [ "$remove_migrations" = "yes" ]; then
-    echo "  ✓ Migration files (all ${***REMOVED***MIGRATION_APPS[@]} apps)"
+    echo "  ✓ Migration files (all ${#MIGRATION_APPS[@]} apps)"
 fi
 echo ""
 echo "Next steps:"

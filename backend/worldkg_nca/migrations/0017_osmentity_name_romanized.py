@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        ***REMOVED*** Add the name_romanized column (nullable — populated by romanize_names command)
+        # Add the name_romanized column (nullable — populated by romanize_names command)
         migrations.AddField(
             model_name='osmentity',
             name='name_romanized',
@@ -22,15 +22,15 @@ class Migration(migrations.Migration):
                           "Populated by romanize_names command. NULL before romanization."
             ),
         ),
-        ***REMOVED*** Enable pg_trgm extension (idempotent — safe if already enabled)
+        # Enable pg_trgm extension (idempotent — safe if already enabled)
         migrations.RunSQL(
             sql="CREATE EXTENSION IF NOT EXISTS pg_trgm;",
             reverse_sql="DROP EXTENSION IF EXISTS pg_trgm;",
         ),
-        ***REMOVED*** GIN trigram index on name_romanized for fast similarity search.
-        ***REMOVED*** Uses gin_trgm_ops for the % operator and similarity() function.
-        ***REMOVED*** This index enables WHERE name_romanized % 'query' in O(1) instead
-        ***REMOVED*** of scanning all rows.
+        # GIN trigram index on name_romanized for fast similarity search.
+        # Uses gin_trgm_ops for the % operator and similarity() function.
+        # This index enables WHERE name_romanized % 'query' in O(1) instead
+        # of scanning all rows.
         migrations.RunSQL(
             sql=(
                 "CREATE INDEX IF NOT EXISTS idx_osmentity_name_romanized_trgm "

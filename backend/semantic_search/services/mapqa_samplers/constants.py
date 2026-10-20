@@ -6,12 +6,12 @@ package (one module per template); the constants they reference live here
 so both sides resolve them from their own module globals.
 """
 
-***REMOVED*** ── Template names ─────────────────────────────────────────────────────────
-TEMPLATE_FILTER_AGGREGATE = "FILTER-AGGREGATE-MEASURE (***REMOVED***1)"
-TEMPLATE_OBJECT_FIELD = "OBJECT-FIELD-MEASURE (***REMOVED***2)"
-TEMPLATE_GEOCODE_BATCH = "GEOCODE-BATCH-COMPARE (***REMOVED***4)"
-TEMPLATE_LOCATION_BEARING = "LOCATION-BEARING-CLASSIFY (***REMOVED***5)"
-TEMPLATE_PLACE_ATTRIBUTE = "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)"
+# ── Template names ─────────────────────────────────────────────────────────
+TEMPLATE_FILTER_AGGREGATE = "FILTER-AGGREGATE-MEASURE (#1)"
+TEMPLATE_OBJECT_FIELD = "OBJECT-FIELD-MEASURE (#2)"
+TEMPLATE_GEOCODE_BATCH = "GEOCODE-BATCH-COMPARE (#4)"
+TEMPLATE_LOCATION_BEARING = "LOCATION-BEARING-CLASSIFY (#5)"
+TEMPLATE_PLACE_ATTRIBUTE = "PLACE-ATTRIBUTE-QUERY (#8)"
 
 TEMPLATE_BY_NUMBER = {
     1: TEMPLATE_FILTER_AGGREGATE,
@@ -21,7 +21,7 @@ TEMPLATE_BY_NUMBER = {
     8: TEMPLATE_PLACE_ATTRIBUTE,
 }
 
-***REMOVED*** Concept-transformation / metric strings (mirror train_mapqa_parser.TEMPLATE_MAP)
+# Concept-transformation / metric strings (mirror train_mapqa_parser.TEMPLATE_MAP)
 TEMPLATE_META = {
     TEMPLATE_FILTER_AGGREGATE: (
         "OBJECT(anchor) + SUB_COND(radius) → SUPPORT(within_radius) → MEASURE",
@@ -45,9 +45,9 @@ TEMPLATE_META = {
     ),
 }
 
-***REMOVED*** Question frames per template (slots: {amenity}, {name}, {a}, {b}, {x}, {y},
-***REMOVED*** {z}, {r}, {dir}) — reproduces the lexical patterns of the MapQA-llm data
-***REMOVED*** (coverage-expansion §4).
+# Question frames per template (slots: {amenity}, {name}, {a}, {b}, {x}, {y},
+# {z}, {r}, {dir}) — reproduces the lexical patterns of the MapQA-llm data
+# (coverage-expansion §4).
 FRAMES = {
     TEMPLATE_FILTER_AGGREGATE: [
         "What are the {amenity} within {r}m of {name}?",
@@ -80,15 +80,15 @@ FRAMES = {
     ],
 }
 
-***REMOVED*** Radius choices for ***REMOVED***1 (meters) — coverage-expansion §3
+# Radius choices for #1 (meters) — coverage-expansion §3
 RADII_M = (50, 100, 200, 500)
 
-***REMOVED*** 8-way cardinals (full words; matches the executor's N/NE/... sectors)
+# 8-way cardinals (full words; matches the executor's N/NE/... sectors)
 CARDINALS = ["north", "northeast", "east", "southeast",
              "south", "southwest", "west", "northwest"]
 
-***REMOVED*** Per-question-type labels written to the CSV (informational — the parser
-***REMOVED*** trains on question text + Macro-template, not this column).
+# Per-question-type labels written to the CSV (informational — the parser
+# trains on question text + Macro-template, not this column).
 QUESTION_TYPES = {
     TEMPLATE_FILTER_AGGREGATE: "self_supervised_radius_count",
     TEMPLATE_OBJECT_FIELD: "self_supervised_distance",
@@ -97,7 +97,7 @@ QUESTION_TYPES = {
     TEMPLATE_PLACE_ATTRIBUTE: "self_supervised_attribute",
 }
 
-***REMOVED*** Canonical amenity vocabulary fallback (mirrors train_mapqa_parser.OBJECT_SIGNALS)
+# Canonical amenity vocabulary fallback (mirrors train_mapqa_parser.OBJECT_SIGNALS)
 COMMON_AMENITIES = {
     "bar", "restaurant", "cafe", "hotel", "school", "hospital", "shop",
     "amenity", "pub", "bank", "pharmacy", "park", "church", "library",
@@ -106,20 +106,20 @@ COMMON_AMENITIES = {
     "post_office", "car_rental", "shelter", "telephone", "bench",
 }
 
-***REMOVED*** Pool sizing: how many candidate entities to fetch per template before
-***REMOVED*** sampling with the seeded RNG.
+# Pool sizing: how many candidate entities to fetch per template before
+# sampling with the seeded RNG.
 POOL_PER_CLASS_MULTIPLIER = 12
 MIN_POOL_SIZE = 120
 MAX_POOL_SIZE = 2000
 
-***REMOVED*** Distance-range gate for ***REMOVED***2 (km) and minimum separation for ***REMOVED***5a (m)
+# Distance-range gate for #2 (km) and minimum separation for #5a (m)
 MIN_PAIR_DISTANCE_KM = 0.5
 MAX_PAIR_DISTANCE_KM = 200.0
 MIN_BEARING_PAIR_DISTANCE_M = 100.0
 
-***REMOVED*** Direction cone width for ***REMOVED***5b (degrees, ± around the cardinal axis)
+# Direction cone width for #5b (degrees, ± around the cardinal axis)
 DIRECTION_CONE_DEGREES = 45
 DIRECTION_NEAREST_RADIUS_M = 20000
 
-***REMOVED*** Adjacency radius for ***REMOVED***8b (plan: 50m)
+# Adjacency radius for #8b (plan: 50m)
 ADJACENCY_RADIUS_M = 50

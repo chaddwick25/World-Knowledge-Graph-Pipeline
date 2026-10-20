@@ -1,4 +1,4 @@
-***REMOVED*** Research Orchestrator: Agent Stream
+# Research Orchestrator: Agent Stream
 
 > **Focus:** how the Research tab turns one big prompt ("plan a 2-day trip
 > to Belize City") into a grounded research summary: the KE interviewer on
@@ -27,7 +27,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The agent flow
+## 1. The agent flow
 
 ```
 browser (ResearchPanel.vue, Home.vue "Research" tab)
@@ -84,7 +84,7 @@ Loop mechanics (all deterministic, all logged):
   the loop substitutes the top entity name from the prior question's
   results (the question's own anchor is excluded; an empty result does not
   wipe the placeholder).
-- **Small-radius empty escalation (2026-09-19)**: a ***REMOVED***1 question with an
+- **Small-radius empty escalation (2026-09-19)**: a #1 question with an
   explicit radius below `DEFAULT_NEAR_RADIUS_M` (2km) that returns zero
   results (anchor geocoded fine) is widened to 2km and re-run once ("1 km
   is too small to search Dublin"); the empty answer previously invited the
@@ -92,7 +92,7 @@ Loop mechanics (all deterministic, all logged):
   `radius_escalated: true`. The decompose prompt also scales radii to the
   anchor (city ≥ 2km, prefer 3-5km; venue 500m-2km; never 1km for a city).
 
-***REMOVED******REMOVED*** 2. Stream processing vs batch processing (DMLS)
+## 2. Stream processing vs batch processing (DMLS)
 
 The processing model maps onto Chip Huyen's batch/stream distinction in
 *Designing Machine Learning Systems* (O'Reilly, 2022). The relevant
@@ -137,7 +137,7 @@ digested), while delivery streams and the interview is interactive. The
 stream is in the delivery and the loop's interactivity; the batch is in
 each deterministic question's execution.
 
-***REMOVED******REMOVED*** 3. Two LLM instances on the Docker network via Ollama
+## 3. Two LLM instances on the Docker network via Ollama
 
 `docker-compose.yml` declares no `networks:` key, so every service sits on
 the compose default bridge network. The backend resolves both daemons by
@@ -166,7 +166,7 @@ volume** (`ollama_models_research`): two Ollama daemons on one models dir
 lock each other's writes. qwen3:8b Q4 fits the 2070's 8 GB at ~6 GB
 resident (1 slot / 4096 context), ~2 GB headroom.
 
-***REMOVED******REMOVED*** 4. SSE streaming
+## 4. SSE streaming
 
 Three endpoints (`backend/worldkg_nca/urls.py`,
 `backend/worldkg_nca/views/search.py`):
@@ -283,7 +283,7 @@ the body). It appears in the `done` payload's `result` and in the
 `TraceService.run_trace` (thread-local), so LLM spans emitted by
 `LLMService` in the same worker thread attach as children.
 
-***REMOVED******REMOVED*** 5. Traceability
+## 5. Traceability
 
 The SSE sequence is the run's audit trail: every decomposed question, its
 template, answer, digest, and result count arrive as a named event, and
@@ -332,7 +332,7 @@ Fail-soft records, all surfaced in the trace and the `errors` list:
   user message, labeled "from your first message" in the brief box); a run
   with no brief falls back to `lastUserPrompt`.
 
-***REMOVED******REMOVED******REMOVED*** The unified trace adapter (developer-facing)
+### The unified trace adapter (developer-facing)
 
 `TraceService` (`core/services/trace_service.py`) adds the
 developer-facing observability layer under the SSE spine
@@ -347,7 +347,7 @@ model/temperature/token attributes) and the run trace from the views.
 `stage_event`. The `trace_id` in the `done` payload links the SSE run to
 the trace. The K80 batch path inherits the adapter unchanged.
 
-***REMOVED******REMOVED*** 6. The MCP bridge: not in this flow
+## 6. The MCP bridge: not in this flow
 
 The Research tab does **not** use the vue-mcp-server bridge. `ResearchPanel.vue`
 contains zero MCP references: the interview, brief, and run all talk to
@@ -368,7 +368,7 @@ research-style chaining by calling the MCP tools (`templateQuery` +
 chaining server-side, in-process, with the orchestrator LLM in the loop
 instead of the agent.
 
-***REMOVED******REMOVED*** 7. K80 follow-on (sibling schematic when it lands)
+## 7. K80 follow-on (sibling schematic when it lands)
 
 The K80 migration (later-stages, Planned): K80 die 0 takes the
 orchestrator role via llama-server (OpenAI-compatible HTTP), not Ollama.
@@ -393,7 +393,7 @@ stream/batch contrast against this doc the way §2 does here:
 - K80 die 1 takes pipeline compute (GV-NLE, USLP, spectral) pending the
   torch sm_37 verification gate.
 
-***REMOVED******REMOVED*** 8. Files
+## 8. Files
 
 - `backend/semantic_search/services/research_service.py`,
   `ResearchOrchestratorService` (loop, KE chat, brief finalize)

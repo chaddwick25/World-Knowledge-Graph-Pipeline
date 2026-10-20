@@ -14,14 +14,14 @@ import pytest
 from semantic_search.services.knn_graph_service import KNNGraphService, SparseGraph
 from semantic_search.services.spectral_analysis_service import SpectralAnalysisService
 
-***REMOVED*** Reuse the fixture and constants from the existing factor-node tests
+# Reuse the fixture and constants from the existing factor-node tests
 from tests.unit.test_factor_node_tables import (
     seeded_spectral, TEST_CC, SNAP_A, N_NODES,
     _weighted_path_graph, _features, _two_communities, _cleanup,
 )
 
 
-***REMOVED*** ── build_sparse_graph_for_subgraph ───────────────────────────────────────
+# ── build_sparse_graph_for_subgraph ───────────────────────────────────────
 
 
 @pytest.mark.django_db(
@@ -29,16 +29,16 @@ from tests.unit.test_factor_node_tables import (
 )
 def test_build_sparse_graph_for_subgraph_with_bbox():
     """build_sparse_graph_for_subgraph filters entities by bbox."""
-    ***REMOVED*** This is a unit test for the bbox path — no DB needed, just
-    ***REMOVED*** verify the method exists and handles the no-entities case.
+    # This is a unit test for the bbox path — no DB needed, just
+    # verify the method exists and handles the no-entities case.
     knn = KNNGraphService(k=5)
-    ***REMOVED*** Call with a tiny bbox in the middle of the ocean — should get
-    ***REMOVED*** an empty graph (no entities there).
+    # Call with a tiny bbox in the middle of the ocean — should get
+    # an empty graph (no entities there).
     sg = knn.build_sparse_graph_for_subgraph(
         country_code="ZZ",
         snapshot_id="2025_12_31",
         subgraph_slug="test_ocean",
-        bbox=(-1.0, -1.0, 1.0, 1.0),  ***REMOVED*** Gulf of Guinea — no OSM entities
+        bbox=(-1.0, -1.0, 1.0, 1.0),  # Gulf of Guinea — no OSM entities
     )
     assert isinstance(sg, SparseGraph)
     assert sg.n_nodes == 0
@@ -50,8 +50,8 @@ def test_build_sparse_graph_for_subgraph_with_bbox():
 def test_build_sparse_graph_for_subgraph_no_boundary_falls_back():
     """When no poly_path and no bbox, falls back to country-level build."""
     knn = KNNGraphService(k=5)
-    ***REMOVED*** No poly_path, no bbox → should call build_sparse_graph (country level)
-    ***REMOVED*** which will return an empty graph for a non-existent country.
+    # No poly_path, no bbox → should call build_sparse_graph (country level)
+    # which will return an empty graph for a non-existent country.
     sg = knn.build_sparse_graph_for_subgraph(
         country_code="ZZ",
         snapshot_id="2025_12_31",
@@ -60,29 +60,29 @@ def test_build_sparse_graph_for_subgraph_no_boundary_falls_back():
     assert isinstance(sg, SparseGraph)
 
 
-***REMOVED*** ── k clamp ──────────────────────────────────────────────────────────────
+# ── k clamp ──────────────────────────────────────────────────────────────
 
 
 def test_k_clamp_for_small_subgraph():
     """k should be clamped to min(128, max(16, n//20)) for small graphs."""
-    ***REMOVED*** For a 1000-node graph: k = min(128, max(16, 50)) = 50
+    # For a 1000-node graph: k = min(128, max(16, 50)) = 50
     k_1000 = min(128, max(16, 1000 // 20))
     assert k_1000 == 50
 
-    ***REMOVED*** For a 100-node graph: k = min(128, max(16, 5)) = 16
+    # For a 100-node graph: k = min(128, max(16, 5)) = 16
     k_100 = min(128, max(16, 100 // 20))
     assert k_100 == 16
 
-    ***REMOVED*** For a 5000-node graph: k = min(128, max(16, 250)) = 128
+    # For a 5000-node graph: k = min(128, max(16, 250)) = 128
     k_5000 = min(128, max(16, 5000 // 20))
     assert k_5000 == 128
 
-    ***REMOVED*** For a 10000-node graph: k = min(128, max(16, 500)) = 128
+    # For a 10000-node graph: k = min(128, max(16, 500)) = 128
     k_10000 = min(128, max(16, 10000 // 20))
     assert k_10000 == 128
 
 
-***REMOVED*** ── FactorNodeWriter subgraph_slug ────────────────────────────────────────
+# ── FactorNodeWriter subgraph_slug ────────────────────────────────────────
 
 
 @pytest.mark.django_db(
@@ -103,7 +103,7 @@ def test_write_spectral_nodes_with_subgraph_slug(seeded_spectral):
     )
     assert n > 0
 
-    ***REMOVED*** Verify rows have the subgraph_slug set
+    # Verify rows have the subgraph_slug set
     rows = SpectralNodeMetric.objects.using("vectors").filter(
         snapshot_id=SNAP_A, country_code=TEST_CC.upper(),
         subgraph_slug="test_subgraph",
@@ -126,17 +126,17 @@ def test_write_spectral_nodes_subgraph_idempotency(seeded_spectral):
 
     writer = FactorNodeWriter()
 
-    ***REMOVED*** Write for subgraph A
+    # Write for subgraph A
     n_a = writer.write_spectral_nodes(
         G, features, TEST_CC, SNAP_A, subgraph_slug="sub_a",
     )
 
-    ***REMOVED*** Write for subgraph B (same entities, different slug)
+    # Write for subgraph B (same entities, different slug)
     n_b = writer.write_spectral_nodes(
         G, features, TEST_CC, SNAP_A, subgraph_slug="sub_b",
     )
 
-    ***REMOVED*** Both should coexist
+    # Both should coexist
     rows_a = SpectralNodeMetric.objects.using("vectors").filter(
         snapshot_id=SNAP_A, country_code=TEST_CC.upper(), subgraph_slug="sub_a",
     )
@@ -146,15 +146,15 @@ def test_write_spectral_nodes_subgraph_idempotency(seeded_spectral):
     assert rows_a.count() == n_a
     assert rows_b.count() == n_b
 
-    ***REMOVED*** Re-write subgraph A — should not affect subgraph B
+    # Re-write subgraph A — should not affect subgraph B
     n_a2 = writer.write_spectral_nodes(
         G, features, TEST_CC, SNAP_A, subgraph_slug="sub_a",
     )
     assert n_a2 == n_a
-    assert rows_b.count() == n_b  ***REMOVED*** unchanged
+    assert rows_b.count() == n_b  # unchanged
 
 
-***REMOVED*** ── FactorResolutionService subgraph scoping ──────────────────────────────
+# ── FactorResolutionService subgraph scoping ──────────────────────────────
 
 
 @pytest.mark.django_db(
@@ -174,14 +174,14 @@ def test_diffusion_rank_subgraph_scoped(seeded_spectral):
 
     writer = FactorNodeWriter()
 
-    ***REMOVED*** Write two subgraphs with the same entities
+    # Write two subgraphs with the same entities
     writer.write_spectral_nodes(G, features, TEST_CC, SNAP_A, subgraph_slug="sg1")
     writer.write_spectral_nodes(G, features, TEST_CC, SNAP_A, subgraph_slug="sg2")
 
     frs = FactorResolutionService()
     anchor = nodes[0]
 
-    ***REMOVED*** Patch eigenvalues to avoid needing a GraphSpectralFingerprint
+    # Patch eigenvalues to avoid needing a GraphSpectralFingerprint
     from unittest import mock
     with mock.patch.object(
         FactorResolutionService, "_get_eigenvalues",
@@ -198,7 +198,7 @@ def test_diffusion_rank_subgraph_scoped(seeded_spectral):
             limit=5,
         )
 
-    ***REMOVED*** Results should only contain nodes from the anchor's subgraph
+    # Results should only contain nodes from the anchor's subgraph
     if results is not None:
         anchor_row = SpectralNodeMetric.objects.using("vectors").filter(
             snapshot_id=SNAP_A, country_code=TEST_CC.upper(),
@@ -216,7 +216,7 @@ def test_diffusion_rank_subgraph_scoped(seeded_spectral):
             )
 
 
-***REMOVED*** ── Step 5c subgraph routing ─────────────────────────────────────────────
+# ── Step 5c subgraph routing ─────────────────────────────────────────────
 
 
 def test_step_5c_routes_to_subgraph_path():
@@ -224,6 +224,6 @@ def test_step_5c_routes_to_subgraph_path():
     from pipeline.tasks.country_pipeline_steps.step_5c_graph_spectral import (
         _run_subgraph_spectral_analysis, _run_country_spectral_analysis,
     )
-    ***REMOVED*** Just verify both functions exist and are callable
+    # Just verify both functions exist and are callable
     assert callable(_run_subgraph_spectral_analysis)
     assert callable(_run_country_spectral_analysis)

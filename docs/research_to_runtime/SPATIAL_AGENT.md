@@ -1,15 +1,15 @@
-***REMOVED*** Preserving the Spatial-Agent Model Architecture
+# Preserving the Spatial-Agent Model Architecture
 
 How the agentic geospatial reasoning methodology from the [Spatial-Agent: Agentic Geo-spatial Reasoning with Scientific Core Concepts](https://papers/WernerKuhn/Spatial-Agent:%20Agentic%20Geo-spatial%20Reasoning%20with%20Scientific%20Core%20Concepts.pdf) research paper (Kuhn et al.) was integrated into the Django + Vue 3 pipeline.
 
 ---
 
-***REMOVED******REMOVED*** 1. The MCP Tool Surface
+## 1. The MCP Tool Surface
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The Spatial-Agent paper describes an agent that reasons over geospatial data by selecting and chaining tools. The agent receives a natural-language question, decomposes it using Kuhn's core concepts, selects appropriate tools from a palette, executes them, and synthesizes an answer from the results. The paper frames this as an agentic loop where the LLM acts as a controller selecting tools based on the question's semantic content.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline externalizes the agent's tool palette as an MCP (Model Context Protocol) server, exposing 9 tools that an external agent (Goose in Docker, qwen3:8b on Ollama) can call and chain. The MCP server lives in the frontend Vue 3 project and bridges Node-side data tools with browser-side application tools. The standalone `nameSearch` tool was removed 2026-09-28: its cross-script name lookup is reachable through `structuredSearch` with a `name` tag (same romanizer-backed path), and phrase-level questions belong to `templateQuery`.
 
 **Design Rule:** Data tools run in Node (headless-capable, direct fetch to Django). Application tools run in the browser (the Vue app only exists there; Pinia/DOM/devtools cannot be touched from Node).
@@ -32,12 +32,12 @@ The pipeline externalizes the agent's tool palette as an MCP (Model Context Prot
 
 ---
 
-***REMOVED******REMOVED*** 2. Tool Chaining and Cross-Language Matching
+## 2. Tool Chaining and Cross-Language Matching
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The Spatial-Agent paper demonstrates tool chaining: the agent receives a user question in one language, looks up an entity by name, then feeds the coordinates into a spatial query. The paper highlights cross-language matching as a key capability.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline makes cross-language tool chaining transparent via a romanizer that normalizes scripts before embedding lookup. The agent can receive a user question in English about a Korean entity, look it up by name via `structuredSearch` with `queryTags: {"name": "파리바게뜨"}` (which routes to the romanizer-backed fuzzy name path and romanizes Hangul to Latin), then feed the coordinates into a `templateQuery` radius question.
 
 * **Mechanism:** `structuredSearch` in `server-tools.ts` sends the query to Django's `/api/nca/semantic-triplet-search/` endpoint with `query_tags`. A `name` key derives the name search term (`search.py:177-179`), the backend romanizer (`backend/semantic_search/services/romanizing_names/`) normalizes the script, then n-gram Jaccard scores the cross-script match with FastText as a complementary signal.
@@ -46,12 +46,12 @@ The pipeline makes cross-language tool chaining transparent via a romanizer that
 
 ---
 
-***REMOVED******REMOVED*** 3. Per-Tool Map Visualization
+## 3. Per-Tool Map Visualization
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The Spatial-Agent paper visualizes agent tool outputs on a map to provide spatial context for the reasoning loop.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline renders each tool's output as a dedicated map overlay via `renderToolOverlay`, which pushes into the Pinia `overlayStore`. `WorldKGMap.vue` subscribes and renders `agentOverlayLayer`.
 
 * **Color Coding:** blue = `structuredSearch`, green = `templateQuery`.
@@ -67,12 +67,12 @@ return { status: 'rendered', id, overlayCount: overlays.value.length }
 
 ---
 
-***REMOVED******REMOVED*** 4. Human-in-the-Loop (HITL) Confirmation
+## 4. Human-in-the-Loop (HITL) Confirmation
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The Spatial-Agent paper introduces a human-in-the-loop step where the user reviews the agent's parsed query before execution. This prevents the agent from executing a misclassified query without user consent.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline implements HITL as a Pinia-driven Vue 3 modal with a state machine that the MCP server can drive programmatically.
 
 **State Machine:**
@@ -98,12 +98,12 @@ The pipeline implements HITL as a Pinia-driven Vue 3 modal with a state machine 
 
 ---
 
-***REMOVED******REMOVED*** 5. Agent Infrastructure
+## 5. Agent Infrastructure
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The Spatial-Agent paper describes an agent running in a containerized environment with access to an LLM for reasoning and tool selection.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline does not contain an in-repo agent loop. The agent is externalized to a Docker container running Goose with a local Ollama LLM. The MCP server is the bridge.
 
 **Configuration (from `02-backend`):**
@@ -120,12 +120,12 @@ The pipeline does not contain an in-repo agent loop. The agent is externalized t
 
 ---
 
-***REMOVED******REMOVED*** 6. SSE Streaming for Agent Responses
+## 6. SSE Streaming for Agent Responses
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The Spatial-Agent paper streams the agent's reasoning and answer to the user as it progresses, providing real-time feedback during tool selection and execution.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline streams parsed query, execution results, context, and LLM answer tokens via Server-Sent Events.
 
 **Event Sequence:**
@@ -140,12 +140,12 @@ The pipeline streams parsed query, execution results, context, and LLM answer to
 
 ---
 
-***REMOVED******REMOVED*** 7. Direct Path vs Agent Path Enrichment
+## 7. Direct Path vs Agent Path Enrichment
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The Spatial-Agent paper's enrichment loop has the LLM select tools (`nameSearch`, `structuredSearch`), execute them, and synthesize an answer from the results. This requires multiple LLM calls (tool selection + synthesis).
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline implements two enrichment paths, reducing LLM calls on the direct path from 3 to 1:
 
 **Direct Path (default, 1 LLM call):**
@@ -167,12 +167,12 @@ The pipeline implements two enrichment paths, reducing LLM calls on the direct p
 
 ---
 
-***REMOVED******REMOVED*** 8. MCP Transport and Smoke Testing
+## 8. MCP Transport and Smoke Testing
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The Spatial-Agent paper does not specify a transport protocol for the agent-tool interface.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline uses Streamable HTTP transport (POST/GET/DELETE on `/__mcp`) via the `vue-mcp-server` Vite plugin.
 
 * **Server:** `frontend-v3/src/mcp/index.ts` (Vite plugin: injects client runtime, mounts `/__mcp` middleware).
@@ -181,7 +181,7 @@ The pipeline uses Streamable HTTP transport (POST/GET/DELETE on `/__mcp`) via th
 
 ---
 
-***REMOVED******REMOVED*** 9. Removed Components
+## 9. Removed Components
 
 The embedded agent MVP demo page (`AgentPlayground.vue` at `/agent`) was removed 2026-08-26. Agent tool calls are now exercised via the `vue-mcp-server` bridge and `mcp-smoke-test.mjs`, not an embedded page. The following were deleted:
 - `AgentPlayground.vue` (route `/agent`)
@@ -195,7 +195,7 @@ The app is human-toolset-only in the UI; agent/MCP interaction happens via the b
 
 ---
 
-***REMOVED******REMOVED*** 10. Cross-References
+## 10. Cross-References
 
 | Topic | Document |
 |-------|----------|

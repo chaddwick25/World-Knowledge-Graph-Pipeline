@@ -57,31 +57,31 @@ from core.models.research_run import (
     ResearchRun,
 )
 
-***REMOVED*** Signal handler must be imported to register the receiver
+# Signal handler must be imported to register the receiver
 from core.models.infrastructure import update_processing_metrics
 
 __all__ = [
-    ***REMOVED*** extraction
+    # extraction
     'PbfFile', 'RegionHierarchy', 'OsmBoundary', 'PbfExtract', 'PolygonFile',
     'PbfCollection', 'RegionalExtractionState', 'ProjectionWeightAsset',
     'PlanetaryMetrics',
-    ***REMOVED*** hierarchy
+    # hierarchy
     'OSMWikiDataHierarchy',
-    ***REMOVED*** infrastructure
+    # infrastructure
     'ProcessingSession', 'Task', 'OsmiumDatasetMetrics', 'RegisteredService',
     'PlanetSnapshot', 'CountrySearchProcessing',
-    ***REMOVED*** pipeline
+    # pipeline
     'PipelineRun', 'PipelineLogEntry', 'PipelineAsset',
-    ***REMOVED*** country_profile
+    # country_profile
     'CountryRelationSnapshot', 'ContinentProfile', 'CountryPipelineProfile',
     'SubgraphProfile', 'EligibleCountry',
-    ***REMOVED*** artifact
+    # artifact
     'CountryArtifact', 'EmbeddingArtifact', 'PartitionRegistry',
     'ReasoningWorkflow', 'ReasoningStep',
-    ***REMOVED*** country_request
+    # country_request
     'CountryRequest',
-    ***REMOVED*** research_run
+    # research_run
     'ResearchRun',
-    ***REMOVED*** signals
+    # signals
     'update_processing_metrics',
 ]

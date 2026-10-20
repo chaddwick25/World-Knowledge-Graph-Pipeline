@@ -79,7 +79,7 @@ def _run_temporal_drift(env: CountryEnvelope) -> None:
     (region=country_code) — unchanged.
     """
     import dataclasses
-    ***REMOVED*** Rehydrate subgraphs (same pattern as Step 5c)
+    # Rehydrate subgraphs (same pattern as Step 5c)
     if not env.has_subgraphs or not env.subgraphs:
         try:
             fresh = CountryEnvelope.from_db(env.iso, snapshot_date=env.snapshot_date)
@@ -108,7 +108,7 @@ def _run_drift_for_region(env: CountryEnvelope, region: str) -> None:
         SpectralForecastService,
     )
 
-    ***REMOVED*** Resolve the current snapshot
+    # Resolve the current snapshot
     current_snapshot = (
         Snapshot.objects.using('default')
         .filter(country_code__iexact=env.iso, snapshot_date=env.snapshot_date)
@@ -126,7 +126,7 @@ def _run_drift_for_region(env: CountryEnvelope, region: str) -> None:
         )
         return
 
-    ***REMOVED*** Load the current fingerprint (just written by Step 5c)
+    # Load the current fingerprint (just written by Step 5c)
     current_fp = (
         GraphSpectralFingerprint.objects
         .filter(region=region, snapshot=current_snapshot)
@@ -144,7 +144,7 @@ def _run_drift_for_region(env: CountryEnvelope, region: str) -> None:
         )
         return
 
-    ***REMOVED*** Find the previous snapshot (most recent one before the current)
+    # Find the previous snapshot (most recent one before the current)
     previous_snapshot = (
         Snapshot.objects.using('default')
         .filter(country_code__iexact=env.iso)
@@ -182,7 +182,7 @@ def _run_drift_for_region(env: CountryEnvelope, region: str) -> None:
         )
         return
 
-    ***REMOVED*** Compute drift
+    # Compute drift
     drift_svc = SpectralDriftService()
     fp_from = {
         "eigenvalues": previous_fp.eigenvalues,
@@ -202,7 +202,7 @@ def _run_drift_for_region(env: CountryEnvelope, region: str) -> None:
         spectral_drift["spectral_distance"]
     )
 
-    ***REMOVED*** Forecast (needs ≥2 fingerprints; uses all available for this region)
+    # Forecast (needs ≥2 fingerprints; uses all available for this region)
     forecast_eigenvalues = None
     forecast_confidence = None
     changepoint_detected = False
@@ -221,7 +221,7 @@ def _run_drift_for_region(env: CountryEnvelope, region: str) -> None:
                 forecast_eigenvalues = fc.tolist()
                 forecast_confidence = ci.tolist()
 
-            ***REMOVED*** Change-point detection on the spectral distance series
+            # Change-point detection on the spectral distance series
             distances = []
             for i in range(1, len(all_fps)):
                 d = drift_svc.compute_spectral_drift(
@@ -251,7 +251,7 @@ def _run_drift_for_region(env: CountryEnvelope, region: str) -> None:
             pipeline_run_id=env.pipeline_run_id,
         )
 
-    ***REMOVED*** Idempotency: replace any existing drift row for this pair
+    # Idempotency: replace any existing drift row for this pair
     GraphSpectralDrift.objects.filter(
         region=region,
         snapshot_from=previous_snapshot,
@@ -287,11 +287,11 @@ def _run_drift_for_region(env: CountryEnvelope, region: str) -> None:
         pipeline_run_id=env.pipeline_run_id,
     )
 
-    ***REMOVED*** ── 5d.2: Per-node drift factor rows ──
-    ***REMOVED*** Only run for country-level (subgraph_slug=None) — per-subgraph
-    ***REMOVED*** drift factor rows would need subgraph-scoped DriftNodeMetric rows,
-    ***REMOVED*** which is a future enhancement.  For now, subgraph drift is tracked
-    ***REMOVED*** at the fingerprint level only.
+    # ── 5d.2: Per-node drift factor rows ──
+    # Only run for country-level (subgraph_slug=None) — per-subgraph
+    # drift factor rows would need subgraph-scoped DriftNodeMetric rows,
+    # which is a future enhancement.  For now, subgraph drift is tracked
+    # at the fingerprint level only.
     if region == env.iso:
         try:
             from semantic_search.services.factor_node_writer import FactorNodeWriter

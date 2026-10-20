@@ -10,28 +10,28 @@ entities that are already linked, meaning no genuinely new links can be
 discovered in regions where nobody has manually added wikidata= OSM tags.
 
 Usage:
-    ***REMOVED*** Harvest for Germany
+    # Harvest for Germany
     python manage.py harvest_wikidata_candidates --country DE
 
-    ***REMOVED*** Harvest and cache to JSON for reuse (avoids re-querying Wikidata)
+    # Harvest and cache to JSON for reuse (avoids re-querying Wikidata)
     python manage.py harvest_wikidata_candidates \
         --country DE --cache-file data/wikidata_cache/de_candidates.json
 
-    ***REMOVED*** Load from existing cache and run IGEA immediately
+    # Load from existing cache and run IGEA immediately
     python manage.py harvest_wikidata_candidates \
         --country DE \
         --cache-file data/wikidata_cache/de_candidates.json \
         --run-igea
 
-    ***REMOVED*** Restrict to a specific WorldKG class
+    # Restrict to a specific WorldKG class
     python manage.py harvest_wikidata_candidates \
         --country DE --wkg-class wkgs:Restaurant
 
-    ***REMOVED*** Harvest by explicit bounding box
+    # Harvest by explicit bounding box
     python manage.py harvest_wikidata_candidates \
         --bbox 5.87,47.27,15.04,55.06
 
-    ***REMOVED*** Dry run (harvest only, print class breakdown, no IGEA)
+    # Dry run (harvest only, print class breakdown, no IGEA)
     python manage.py harvest_wikidata_candidates \
         --country DE --dry-run
 
@@ -65,7 +65,7 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        ***REMOVED*** Geographic scope
+        # Geographic scope
         parser.add_argument(
             "--country",
             type=str,
@@ -88,7 +88,7 @@ class Command(BaseCommand):
             help="Path to .poly boundary file for exact country bbox extraction.",
         )
 
-        ***REMOVED*** Filtering
+        # Filtering
         parser.add_argument(
             "--wkg-class",
             type=str,
@@ -103,7 +103,7 @@ class Command(BaseCommand):
             help="Maximum candidates to harvest per run (default: 50000).",
         )
 
-        ***REMOVED*** Caching
+        # Caching
         parser.add_argument(
             "--cache-file",
             type=str,
@@ -116,7 +116,7 @@ class Command(BaseCommand):
             ),
         )
 
-        ***REMOVED*** Execution mode
+        # Execution mode
         parser.add_argument(
             "--enrich-classes",
             action="store_true",
@@ -138,7 +138,7 @@ class Command(BaseCommand):
             help="Run IGEA alignment immediately after harvesting.",
         )
 
-        ***REMOVED*** IGEA options (only used when --run-igea is set)
+        # IGEA options (only used when --run-igea is set)
         parser.add_argument(
             "--igea-iterations",
             type=int,
@@ -178,7 +178,7 @@ class Command(BaseCommand):
             f"{'='*62}\n"
         ))
 
-        ***REMOVED*** ── Step 1: Obtain candidate list ────────────────────────────────────
+        # ── Step 1: Obtain candidate list ────────────────────────────────────
         candidates = []
 
         if cache_file and os.path.exists(cache_file):
@@ -189,7 +189,7 @@ class Command(BaseCommand):
                 f"  ✓ Loaded {len(candidates):,} cached candidates"
             ))
 
-            ***REMOVED*** Compute embeddings if running IGEA (cache load path)
+            # Compute embeddings if running IGEA (cache load path)
             if candidates and run_igea:
                 self.stdout.write(
                     "[1b/2] Computing FastText embeddings for candidate labels..."
@@ -201,9 +201,9 @@ class Command(BaseCommand):
                 for c in candidates:
                     label = c.get('label', '')
                     if label:
-                        ***REMOVED*** Use the label directly as a tag to get its FastText embedding
+                        # Use the label directly as a tag to get its FastText embedding
                         vec = model.get_word_vector(label)
-                        ***REMOVED*** L2 normalize
+                        # L2 normalize
                         norm = np.linalg.norm(vec)
                         if norm > 0:
                             vec = vec / norm
@@ -253,9 +253,9 @@ class Command(BaseCommand):
                 f"  ✓ Harvested {len(candidates):,} candidates from Wikidata"
             ))
 
-            ***REMOVED*** Optional phase-2 P31 enrichment
+            # Optional phase-2 P31 enrichment
             if options.get("enrich_classes") and candidates:
-                batch_size = 100  ***REMOVED*** must match enrich_wkg_class default
+                batch_size = 100  # must match enrich_wkg_class default
                 n_batches = (len(candidates) + batch_size - 1) // batch_size
                 self.stdout.write(
                     f"[1b/2] Enriching wkg_class via P31/P279* lookups "
@@ -271,7 +271,7 @@ class Command(BaseCommand):
                     "  (wkg_class=None for all; add --enrich-classes for P31 mapping)"
                 )
 
-            ***REMOVED*** Phase-3: Compute FastText embeddings for candidate labels (required for IGEA)
+            # Phase-3: Compute FastText embeddings for candidate labels (required for IGEA)
             if candidates and run_igea:
                 self.stdout.write(
                     "[1c/2] Computing FastText embeddings for candidate labels..."
@@ -284,9 +284,9 @@ class Command(BaseCommand):
                 for c in candidates:
                     label = c.get('label', '')
                     if label:
-                        ***REMOVED*** Use the label directly as a tag to get its FastText embedding
+                        # Use the label directly as a tag to get its FastText embedding
                         vec = model.get_word_vector(label)
-                        ***REMOVED*** L2 normalize
+                        # L2 normalize
                         norm = np.linalg.norm(vec)
                         if norm > 0:
                             vec = vec / norm
@@ -299,7 +299,7 @@ class Command(BaseCommand):
                     f"  ✓ Computed embeddings for {embedded_count:,}/{len(candidates):,} candidates"
                 ))
 
-            ***REMOVED*** Save to cache
+            # Save to cache
             if cache_file:
                 cache_dir = os.path.dirname(cache_file)
                 if cache_dir:
@@ -314,7 +314,7 @@ class Command(BaseCommand):
             ))
             return
 
-        ***REMOVED*** ── Class breakdown ──────────────────────────────────────────────────
+        # ── Class breakdown ──────────────────────────────────────────────────
         class_counts = Counter(c.get("wkg_class") or "unmapped" for c in candidates)
         self.stdout.write(f"\nTop wkgs: classes in harvested candidates:")
         for cls, cnt in class_counts.most_common(12):
@@ -332,7 +332,7 @@ class Command(BaseCommand):
                 "    3. Candidates have P31 types outside the ontology coverage"
             ))
 
-        ***REMOVED*** ── Step 2: Optionally run IGEA ──────────────────────────────────────
+        # ── Step 2: Optionally run IGEA ──────────────────────────────────────
         if dry_run:
             self.stdout.write(self.style.WARNING(
                 "\n[dry-run] Candidates ready but IGEA not run. "

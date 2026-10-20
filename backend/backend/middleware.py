@@ -28,9 +28,9 @@ _LOCAL_HOSTS = {
     if h.strip()
 }
 
-***REMOVED*** Write/trigger endpoints — launching a pipeline, mutating the graph, or
-***REMOVED*** burning GPU hours must not be reachable from the public funnel. Same
-***REMOVED*** host-trust model as the admin gate: public hosts get a 404.
+# Write/trigger endpoints — launching a pipeline, mutating the graph, or
+# burning GPU hours must not be reachable from the public funnel. Same
+# host-trust model as the admin gate: public hosts get a 404.
 _WRITE_PATHS = frozenset({
     '/api/worldkg-pipeline-v2/start/',
     '/api/country-preprocess/',
@@ -42,21 +42,21 @@ _WRITE_PATHS = frozenset({
     '/api/geovectors/encode/',
 })
 
-***REMOVED*** Prefix-gated surfaces: not part of the public product surface (the SPA
-***REMOVED*** never calls them). Geodata is an operator CRUD registry (datasets /
-***REMOVED*** records / sources / quality + sync_metadata trigger); IGEA triplets are
-***REMOVED*** POST model-inference endpoints (predict / score / validate).
+# Prefix-gated surfaces: not part of the public product surface (the SPA
+# never calls them). Geodata is an operator CRUD registry (datasets /
+# records / sources / quality + sync_metadata trigger); IGEA triplets are
+# POST model-inference endpoints (predict / score / validate).
 _WRITE_PREFIXES = frozenset({
     '/api/geodata/',
     '/api/igea/triplets/',
 })
 
-***REMOVED*** Write endpoints the SPA legitimately calls WITH the operator key: the
-***REMOVED*** pipeline trigger. The SPA's password modal only opens on a 403 response,
-***REMOVED*** so this endpoint must NOT be hard-404-hidden on public hosts — it is
-***REMOVED*** key-gated on EVERY surface instead (funnel included), fail-closed: an
-***REMOVED*** unset PIPELINE_TRIGGER_KEY denies it (see _key_ok). All other write
-***REMOVED*** endpoints stay 404-hidden on public hosts.
+# Write endpoints the SPA legitimately calls WITH the operator key: the
+# pipeline trigger. The SPA's password modal only opens on a 403 response,
+# so this endpoint must NOT be hard-404-hidden on public hosts — it is
+# key-gated on EVERY surface instead (funnel included), fail-closed: an
+# unset PIPELINE_TRIGGER_KEY denies it (see _key_ok). All other write
+# endpoints stay 404-hidden on public hosts.
 _KEY_GATED_ON_PUBLIC = frozenset({
     '/api/worldkg-pipeline-v2/start/',
 })
@@ -73,10 +73,10 @@ def is_public_host(host):
     return (host or '').split(':')[0].lower() not in _LOCAL_HOSTS
 
 
-***REMOVED*** Tailnet operator surface: nginx tags requests arriving on the loopback
-***REMOVED*** :8081 listener (reached only via `tailscale serve` or a local process)
-***REMOVED*** with X-Trusted-Surface: tailnet. The PUBLIC listener strips the header,
-***REMOVED*** so a client cannot forge it from the funnel. See deploy/nginx.conf.
+# Tailnet operator surface: nginx tags requests arriving on the loopback
+# :8081 listener (reached only via `tailscale serve` or a local process)
+# with X-Trusted-Surface: tailnet. The PUBLIC listener strips the header,
+# so a client cannot forge it from the funnel. See deploy/nginx.conf.
 _TRUSTED_SURFACE_HEADER = 'X-Trusted-Surface'
 _TRUSTED_SURFACE_VALUE = 'tailnet'
 
@@ -144,18 +144,18 @@ class WriteEndpointGateMiddleware:
     def __call__(self, request):
         if _is_write_path(request.path):
             if request.path in _KEY_GATED_ON_PUBLIC:
-                ***REMOVED*** Fail-closed on every surface: the trigger requires a
-                ***REMOVED*** configured key, so a deployment without one denies it
-                ***REMOVED*** rather than leaving it open.
+                # Fail-closed on every surface: the trigger requires a
+                # configured key, so a deployment without one denies it
+                # rather than leaving it open.
                 if not self._key_ok(request):
                     return JsonResponse({'detail': 'Pipeline key required.'}, status=403)
             else:
                 if not _is_trusted_request(request):
                     raise Http404('Endpoint is local-only.')
-                ***REMOVED*** Key required on trusted hosts only when one is
-                ***REMOVED*** configured (legacy host-gated behavior; the compose
-                ***REMOVED*** service requires the key at startup, so production is
-                ***REMOVED*** always configured).
+                # Key required on trusted hosts only when one is
+                # configured (legacy host-gated behavior; the compose
+                # service requires the key at startup, so production is
+                # always configured).
                 if getattr(settings, 'PIPELINE_TRIGGER_KEY', '') \
                         and not self._key_ok(request):
                     return JsonResponse({'detail': 'Pipeline key required.'}, status=403)

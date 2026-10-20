@@ -67,7 +67,7 @@ class WorldKGEnrichmentSqlMixin:
             rows.append((osm_key, None, class_name, depth,
                          sup if sup else None, wd, tk, None))
 
-        ***REMOVED*** Bulk insert via execute_values for speed
+        # Bulk insert via execute_values for speed
         from psycopg2.extras import execute_values
         execute_values(
             cursor,
@@ -113,7 +113,7 @@ class WorldKGEnrichmentSqlMixin:
                 limit=limit,
             )
 
-        ***REMOVED*** Spatial filtering (same logic as batch_enrich_region)
+        # Spatial filtering (same logic as batch_enrich_region)
         bbox: Optional[Tuple[float, float, float, float]] = None
         if poly_file:
             from core.services.planet_init.osm_wikidata_resolver import parse_poly_bbox
@@ -126,13 +126,13 @@ class WorldKGEnrichmentSqlMixin:
         conn = connections[db_alias]
 
         with conn.cursor() as cursor:
-            ***REMOVED*** 1. Load ontology into temp table
+            # 1. Load ontology into temp table
             self._load_ontology_to_temp_table(cursor)
 
-            ***REMOVED*** 2. Resolve leaf table name
+            # 2. Resolve leaf table name
             leaf = self._resolve_leaf_table(cursor, snapshot_id, region)
 
-            ***REMOVED*** 3. Build WHERE clause for spatial/snapshot filtering
+            # 3. Build WHERE clause for spatial/snapshot filtering
             where_clauses = []
             params = []
             if snapshot_id:
@@ -149,7 +149,7 @@ class WorldKGEnrichmentSqlMixin:
                 params.extend([min_lon, min_lat, max_lon, max_lat])
             where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
 
-            ***REMOVED*** 4. Count candidates
+            # 4. Count candidates
             cursor.execute(
                 f"SELECT count(*) FROM {leaf} e WHERE {where_sql}",
                 params,
@@ -162,10 +162,10 @@ class WorldKGEnrichmentSqlMixin:
                               'sparql_queries': 0, 'local_predictions': 0}
                 return self.stats
 
-            ***REMOVED*** 5. Single UPDATE...FROM join
-            ***REMOVED*** For each entity, expand tags JSONB into key-value rows,
-            ***REMOVED*** join against tmp_wkg_ontology, pick the deepest match.
-            ***REMOVED*** Uses jsonb_each_text to expand tags.
+            # 5. Single UPDATE...FROM join
+            # For each entity, expand tags JSONB into key-value rows,
+            # join against tmp_wkg_ontology, pick the deepest match.
+            # Uses jsonb_each_text to expand tags.
             batch_timestamp = timezone.now()
             update_sql = f"""
                 WITH matched AS (
@@ -206,7 +206,7 @@ class WorldKGEnrichmentSqlMixin:
             cursor.execute(update_sql, update_params)
             enriched_count = cursor.rowcount
 
-            ***REMOVED*** 6. Count failed (entities that matched no ontology entry)
+            # 6. Count failed (entities that matched no ontology entry)
             cursor.execute(
                 f"SELECT count(*) FROM {leaf} e "
                 f"WHERE {where_sql} AND e.wkg_class IS NULL",

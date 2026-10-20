@@ -1,4 +1,4 @@
-***REMOVED*** OSM-Wikidata Primitives → Django DB → Vue Map Hydration
+# OSM-Wikidata Primitives → Django DB → Vue Map Hydration
 
 > **Focus:** how OSM and Wikidata primitives are materialized into Django
 > database records during `init_planet`, and how those records hydrate the
@@ -13,7 +13,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Primitive → DB → Frontend Flow
+## 1. The Primitive → DB → Frontend Flow
 
 **Primitives (external sources):**
 - Planet PBF (155GB history)
@@ -49,7 +49,7 @@ extract, sync, prebuild, ...):**
 
 ---
 
-***REMOVED******REMOVED*** 2. The `country_relations.json` Glue Layer
+## 2. The `country_relations.json` Glue Layer
 
 **Source:** `data/country_relations.json` (in the backend data directory)
 
@@ -81,9 +81,9 @@ read at runtime.
 
 ---
 
-***REMOVED******REMOVED*** 3. DB-Backed Configuration Models
+## 3. DB-Backed Configuration Models
 
-***REMOVED******REMOVED******REMOVED*** 3.1 CountryPipelineProfile
+### 3.1 CountryPipelineProfile
 
 **Source:** `core/models/country_profile.py`
 
@@ -97,7 +97,7 @@ read at runtime.
 | `geovectors_tags_tsv_path` | `prebuild_country_paths` | Resolved filesystem path |
 | `geovectors_location_tsv_path` | `prebuild_country_paths` | Resolved filesystem path |
 
-***REMOVED******REMOVED******REMOVED*** 3.2 SubgraphProfile
+### 3.2 SubgraphProfile
 
 | Field | Source | Purpose |
 |---|---|---|
@@ -110,7 +110,7 @@ read at runtime.
 | `subgraph_poly_path` | `prebuild_subgraphs` | Poly file for spatial filtering |
 | `subgraph_pickle_path` | `prebuild_subgraphs` | NLE pickle path (if any) |
 
-***REMOVED******REMOVED******REMOVED*** 3.3 EligibleCountry
+### 3.3 EligibleCountry
 
 | Field | Source | Purpose |
 |---|---|---|
@@ -122,9 +122,9 @@ read at runtime.
 
 ---
 
-***REMOVED******REMOVED*** 4. Frontend Hydration: Map Eligibility
+## 4. Frontend Hydration: Map Eligibility
 
-***REMOVED******REMOVED******REMOVED*** 4.1 The REST Endpoint
+### 4.1 The REST Endpoint
 
 `GET /api/recipes/regions-map-data/` returns a list of countries with their
 `is_geovectors_supported` flag:
@@ -146,7 +146,7 @@ read at runtime.
 ]
 ```
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Vue Map Eligibility Pattern
+### 4.2 Vue Map Eligibility Pattern
 
 **Source:** `frontend-v3/src/components/WorldKGMap.vue`
 
@@ -165,9 +165,9 @@ DB is the single source of truth.
 
 ---
 
-***REMOVED******REMOVED*** 5. Frontend Hydration: Search Filters
+## 5. Frontend Hydration: Search Filters
 
-***REMOVED******REMOVED******REMOVED*** 5.1 Subdivision Search by Wikidata QID
+### 5.1 Subdivision Search by Wikidata QID
 
 All search endpoints (gv-tags, gv-nle, hybrid, triplet-search) accept an
 optional `subdivision_qid` param. The `subdivision_resolver` utility
@@ -183,7 +183,7 @@ resolves QIDs to bbox/polygon via `SubgraphProfile` records.
    `SubgraphProfile.objects.get(wikidata_id='Q1565')` → bbox →
    `geom__within` filter on the `OsmEntity` query.
 
-***REMOVED******REMOVED******REMOVED*** 5.2 Year Selector from SnapshotJob
+### 5.2 Year Selector from SnapshotJob
 
 `Home.vue` reads `SnapshotJob` records for snapshot date badges:
 
@@ -199,7 +199,7 @@ Frontend renders year selector with badges:
 
 ---
 
-***REMOVED******REMOVED*** 6. Slug Conventions
+## 6. Slug Conventions
 
 - **Country slugs**: hyphens (not underscores) to match on-disk GeoVectors
   TSV filenames. E.g. `cuba`, `united-kingdom`, `czech-republic`.
@@ -215,7 +215,7 @@ Frontend renders year selector with badges:
 
 ---
 
-***REMOVED******REMOVED*** 7. CDD (Config-Driven Development) Principles
+## 7. CDD (Config-Driven Development) Principles
 
 - **NEVER hardcode** country metadata, bounding boxes, or slugs.
 - **Wikidata QID is the primary identifier** for countries. ISO codes are
@@ -232,7 +232,7 @@ Frontend renders year selector with badges:
 
 ---
 
-***REMOVED******REMOVED*** 8. Invariants
+## 8. Invariants
 
 - The DB is the single source of truth for all country/subdivision metadata.
 - The frontend does not discover countries from the filesystem or call

@@ -32,9 +32,9 @@ def factor_availability(request):
     if not country_code:
         return Response({"error": "country_code required"},
                         status=status.HTTP_400_BAD_REQUEST)
-    ***REMOVED*** Normalize to ISO first (override-aware — handles region names like
-    ***REMOVED*** "Ireland And Northern Ireland" → IE) so the G4 booleans match the
-    ***REMOVED*** factor rows' ISO country_code.
+    # Normalize to ISO first (override-aware — handles region names like
+    # "Ireland And Northern Ireland" → IE) so the G4 booleans match the
+    # factor rows' ISO country_code.
     try:
         resolved = resolve_iso_code(country_code)
         if resolved:
@@ -57,7 +57,7 @@ def factor_availability(request):
         "country_code = %s AND snapshot_id = %s",
         [country_code, snapshot_date],
     )
-    ***REMOVED*** DriftNodeMetric keys on snapshot_to_id (no snapshot_id column).
+    # DriftNodeMetric keys on snapshot_to_id (no snapshot_id column).
     drift = exists(
         "factor_drift_node_metric",
         "country_code = %s AND snapshot_to_id = %s",
@@ -73,12 +73,12 @@ def factor_availability(request):
         [country_code, snapshot_date],
     )
 
-    ***REMOVED*** Class-drift capability (ISSUE-class-drift-capability): the osmsnapshot
-    ***REMOVED*** tables live on the default DB, so these read through the ORM. The
-    ***REMOVED*** fingerprint is the per-snapshot ontology profile — present on every
-    ***REMOVED*** processed country after the Step 6 hook; class_drift needs a
-    ***REMOVED*** snapshot pair, so it reports available=false on single-snapshot
-    ***REMOVED*** countries until compute_class_drift has a pair to fill.
+    # Class-drift capability (ISSUE-class-drift-capability): the osmsnapshot
+    # tables live on the default DB, so these read through the ORM. The
+    # fingerprint is the per-snapshot ontology profile — present on every
+    # processed country after the Step 6 hook; class_drift needs a
+    # snapshot pair, so it reports available=false on single-snapshot
+    # countries until compute_class_drift has a pair to fill.
     from osmsnapshot.models import (
         Snapshot,
         WorldKGClassDrift,

@@ -16,9 +16,9 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 
-***REMOVED*** =============================================================================
-***REMOVED*** 1. _resolve_iso_code() — fast path for already-ISO inputs
-***REMOVED*** =============================================================================
+# =============================================================================
+# 1. _resolve_iso_code() — fast path for already-ISO inputs
+# =============================================================================
 
 
 class FakeOSMWikiDataHierarchy:
@@ -40,8 +40,8 @@ class TestResolveIsoCodeFastPath:
     already being ISO codes rather than trying DB / slug lookups.
     """
 
-    ***REMOVED*** Patch the imports used inside resolve_iso_code so we never hit the DB.
-    ***REMOVED*** We still need to import the actual function.
+    # Patch the imports used inside resolve_iso_code so we never hit the DB.
+    # We still need to import the actual function.
     @pytest.fixture(autouse=True)
     def _patch_db(self):
         with patch.dict("sys.modules", {
@@ -52,8 +52,8 @@ class TestResolveIsoCodeFastPath:
 
     @staticmethod
     def _resolve_iso_code(name):
-        ***REMOVED*** Inline a copy of the function so the test is self-contained
-        ***REMOVED*** and does not need the Django app context.
+        # Inline a copy of the function so the test is self-contained
+        # and does not need the Django app context.
         if not name:
             return ""
 
@@ -61,8 +61,8 @@ class TestResolveIsoCodeFastPath:
         if len(cleaned) == 2 and cleaned.isalpha():
             return cleaned
 
-        ***REMOVED*** --- remaining logic (not exercised by fast-path tests) ---
-        ***REMOVED*** Map known edge cases
+        # --- remaining logic (not exercised by fast-path tests) ---
+        # Map known edge cases
         name_map = {
             "monaco": "MC", "martinique": "MQ", "guadeloupe": "GP",
             "british_virgin_islands": "VG", "us_virgin_islands": "VI",
@@ -75,12 +75,12 @@ class TestResolveIsoCodeFastPath:
             "cape_verde": "CV",
         }
 
-        ***REMOVED*** Normalize: lowercase, spaces/hyphens -> underscores
+        # Normalize: lowercase, spaces/hyphens -> underscores
         slug = name.strip().lower().replace(" ", "_").replace("-", "_")
         if slug in name_map:
             return name_map[slug]
 
-        ***REMOVED*** Title-case normalization fallback
+        # Title-case normalization fallback
         normalized = name.replace("_", " ").title()
         code_map = {
             "El Salvador": "SV", "Costa Rica": "CR", "New Zealand": "NZ",
@@ -93,7 +93,7 @@ class TestResolveIsoCodeFastPath:
 
         return ""
 
-    ***REMOVED*** --- Fast-path tests ---
+    # --- Fast-path tests ---
 
     @pytest.mark.unit
     @pytest.mark.parametrize("iso_input", [
@@ -117,7 +117,7 @@ class TestResolveIsoCodeFastPath:
         assert self._resolve_iso_code("  CV  ") == "CV"
         assert self._resolve_iso_code("\tBZ\n") == "BZ"
 
-    ***REMOVED*** --- Name-to-ISO path (should still work) ---
+    # --- Name-to-ISO path (should still work) ---
 
     @pytest.mark.unit
     @pytest.mark.parametrize("name,expected_iso", [
@@ -154,14 +154,14 @@ class TestResolveIsoCodeFastPath:
     @pytest.mark.unit
     def test_non_iso_string_not_confused(self):
         """A 3-letter string or number should not be treated as ISO."""
-        ***REMOVED*** These are NOT ISO codes; they should not match the fast path
-        ***REMOVED*** The function will try DB lookups (which we've patched out)
-        ***REMOVED*** so these will return "" in our test, but importantly they
-        ***REMOVED*** should NOT pass the len==2 and isalpha check.
+        # These are NOT ISO codes; they should not match the fast path
+        # The function will try DB lookups (which we've patched out)
+        # so these will return "" in our test, but importantly they
+        # should NOT pass the len==2 and isalpha check.
         assert len("ABC") != 2
-        assert len("12") == 2  ***REMOVED*** numeric
-        ***REMOVED*** For real: _resolve_iso_code("12") should not return "12"
-        ***REMOVED*** (our implementation checks .isalpha())
+        assert len("12") == 2  # numeric
+        # For real: _resolve_iso_code("12") should not return "12"
+        # (our implementation checks .isalpha())
 
     @pytest.mark.unit
     def test_mixed_digits_iso_not_confused(self):
@@ -200,9 +200,9 @@ class TestResolveIsoCodeFastPath:
         assert self._resolve_iso_code("cv") == "CV"
 
 
-***REMOVED*** =============================================================================
-***REMOVED*** 2. CountryRelationResolver continent normalization
-***REMOVED*** =============================================================================
+# =============================================================================
+# 2. CountryRelationResolver continent normalization
+# =============================================================================
 
 
 class TestCountryRelationResolverContinentNormalization:
@@ -226,7 +226,7 @@ class TestCountryRelationResolverContinentNormalization:
     ])
     def test_parent_slug_normalization(self, geofabrik_parent, expected_key):
         """The parent_slug from Geofabrik must be normalised before lookup."""
-        ***REMOVED*** Simulate the logic in country_relation_resolver.py
+        # Simulate the logic in country_relation_resolver.py
         base_continent = geofabrik_parent.split("/")[0].lower().replace("-", "_")
         assert base_continent == expected_key, (
             f"{geofabrik_parent!r} should normalise to {expected_key!r}, "
@@ -242,7 +242,7 @@ class TestCountryRelationResolverContinentNormalization:
         """australia-oceania -> oceania if 'oceania' exists in continents."""
         continents = {"oceania": "uuid-1", "australia_oceania": "uuid-2"}
         base = "australia-oceania".split("/")[0].lower().replace("-", "_")
-        ***REMOVED*** The resolver prefers 'oceania' key
+        # The resolver prefers 'oceania' key
         if base == "australia_oceania" and "oceania" in continents:
             base = "oceania"
         assert base == "oceania"
@@ -253,11 +253,11 @@ class TestCountryRelationResolverContinentNormalization:
         When both hyphen and underscore variants of a continent exist in the DB,
         the resolver should prefer the one with children (the underscore one).
         """
-        ***REMOVED*** Simulate the logic in the fixed resolve
+        # Simulate the logic in the fixed resolve
         raw_continents = {}
         fake_entries = [
-            ("central-america", "uuid-hyphen", 0),   ***REMOVED*** stale, 0 children
-            ("central_america", "uuid-underscore", 33),  ***REMOVED*** has children
+            ("central-america", "uuid-hyphen", 0),   # stale, 0 children
+            ("central_america", "uuid-underscore", 33),  # has children
         ]
         for name, cid, child_count in fake_entries:
             key = name.lower().replace("-", "_")
@@ -295,7 +295,7 @@ class TestCountryRelationResolverContinentNormalization:
         ("south-america/brazil", "south_america"),
         ("europe/france", "europe"),
         ("africa/nigeria", "africa"),
-        ("australia-oceania/fiji", "oceania"),  ***REMOVED*** remapped
+        ("australia-oceania/fiji", "oceania"),  # remapped
     ])
     def test_end_to_end_parent_resolution(self, slug_input, expected):
         """Full parent chain: Geofabrik slug -> normalised continent key."""
@@ -318,9 +318,9 @@ class TestCountryRelationResolverContinentNormalization:
         assert base in continents
 
 
-***REMOVED*** =============================================================================
-***REMOVED*** 3. CountryEnvelope.from_db() — slug normalisation guarantees
-***REMOVED*** =============================================================================
+# =============================================================================
+# 3. CountryEnvelope.from_db() — slug normalisation guarantees
+# =============================================================================
 
 
 class TestCountryEnvelopeSlugNormalization:
@@ -348,13 +348,13 @@ class TestCountryEnvelopeSlugNormalization:
             f"normalize_country_slug({db_slug!r}) = {result!r}, "
             f"expected {expected_norm!r}"
         )
-        ***REMOVED*** Ensure the result is idempotent
+        # Ensure the result is idempotent
         assert normalize_country_slug(result) == result
 
     @pytest.mark.unit
     def test_config_counts(self):
         """Sanity check: ensure we test the main fix points."""
-        ***REMOVED*** This test documents the original issue cases
+        # This test documents the original issue cases
         fast_path = TestResolveIsoCodeFastPath()
         assert fast_path._resolve_iso_code("BZ") == "BZ"
         assert fast_path._resolve_iso_code("CV") == "CV"
@@ -362,9 +362,9 @@ class TestCountryEnvelopeSlugNormalization:
         assert fast_path._resolve_iso_code("cape_verde") == "CV"
 
 
-***REMOVED*** =============================================================================
-***REMOVED*** 4. Regression: No "Could not resolve ISO code for: CV" warnings
-***REMOVED*** =============================================================================
+# =============================================================================
+# 4. Regression: No "Could not resolve ISO code for: CV" warnings
+# =============================================================================
 
 
 class TestRegressionNoIsoWarnings:
@@ -401,9 +401,9 @@ class TestRegressionNoIsoWarnings:
             )
 
 
-***REMOVED*** =============================================================================
-***REMOVED*** 6. End-to-end: Path construction from resolved ISO codes
-***REMOVED*** =============================================================================
+# =============================================================================
+# 6. End-to-end: Path construction from resolved ISO codes
+# =============================================================================
 
 
 class TestPathFromResolvedIso:
@@ -429,7 +429,7 @@ class TestPathFromResolvedIso:
         """
         from core.services.snapshot.regional_path_service import normalize_country_slug
 
-        ***REMOVED*** Simulate DB slug lookup (simplified)
+        # Simulate DB slug lookup (simplified)
         iso_to_slug = {
             "CV": "cape-verde", "BZ": "belize", "JM": "jamaica",
             "DE": "germany", "GB": "united-kingdom", "ZA": "south-africa",
@@ -455,16 +455,16 @@ class TestPathFromResolvedIso:
         country = normalize_country_slug("cape-verde")
         assert cont == "africa"
         assert country == "cape_verde"
-        ***REMOVED*** Simulated path
+        # Simulated path
         path_parts = ["/media", cont, country, "snapshot.osm.pbf"]
         path = "/".join(path_parts)
         assert "cape_verde" in path
         assert "-" not in path.replace("/", "")
 
 
-***REMOVED*** =============================================================================
-***REMOVED*** 7. CountryEnvelope.from_dict — subgraphs must survive pipeline hops
-***REMOVED*** =============================================================================
+# =============================================================================
+# 7. CountryEnvelope.from_dict — subgraphs must survive pipeline hops
+# =============================================================================
 
 
 from pipeline.config import SubgraphConfig
@@ -485,7 +485,7 @@ class TestCountryEnvelopeSerialization:
         Step 5 (train_gv_nle) to skip subgraph fan-out.
         """
 
-        ***REMOVED*** Start with an envelope that has subgraphs
+        # Start with an envelope that has subgraphs
         original = CountryEnvelope.from_dict({
             "iso": "CV",
             "name": "Cape Verde",
@@ -500,8 +500,8 @@ class TestCountryEnvelopeSerialization:
 
         config_dict = original.to_dict()
 
-        ***REMOVED*** Simulate passing through 4 intermediary steps that each
-        ***REMOVED*** reconstruct the envelope from the dict and then pass the dict on.
+        # Simulate passing through 4 intermediary steps that each
+        # reconstruct the envelope from the dict and then pass the dict on.
         for _ in range(4):
             env = CountryEnvelope.from_dict(config_dict)
             config_dict = env.to_dict()

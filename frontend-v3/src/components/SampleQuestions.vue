@@ -41,13 +41,13 @@
 
 <script>
 // Layman descriptions per trained template — the stored `template` field
-// ('FILTER-AGGREGATE-MEASURE (***REMOVED***1)') maps to the question type it teaches.
+// ('FILTER-AGGREGATE-MEASURE (#1)') maps to the question type it teaches.
 const TEMPLATE_INFO = {
-  'FILTER-AGGREGATE-MEASURE (***REMOVED***1)': 'What is near a place',
-  'OBJECT-FIELD-MEASURE (***REMOVED***2)': 'How far apart two places are',
-  'GEOCODE-BATCH-COMPARE (***REMOVED***4)': 'The nearest, or which is closer',
-  'LOCATION-BEARING-CLASSIFY (***REMOVED***5)': 'What lies in a direction',
-  'PLACE-ATTRIBUTE-QUERY (***REMOVED***8)': 'What is around a place',
+  'FILTER-AGGREGATE-MEASURE (#1)': 'What is near a place',
+  'OBJECT-FIELD-MEASURE (#2)': 'How far apart two places are',
+  'GEOCODE-BATCH-COMPARE (#4)': 'The nearest, or which is closer',
+  'LOCATION-BEARING-CLASSIFY (#5)': 'What lies in a direction',
+  'PLACE-ATTRIBUTE-QUERY (#8)': 'What is around a place',
 }
 
 export default {

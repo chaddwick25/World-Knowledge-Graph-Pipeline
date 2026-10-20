@@ -1,6 +1,6 @@
-***REMOVED*** Backward compatibility imports - models live in the core and osmsnapshot
-***REMOVED*** apps (extraction/orchestration were consolidated into core). This file
-***REMOVED*** maintains imports for existing code that references api.models
+# Backward compatibility imports - models live in the core and osmsnapshot
+# apps (extraction/orchestration were consolidated into core). This file
+# maintains imports for existing code that references api.models
 
 from core.models import (
     PbfFile,
@@ -30,7 +30,7 @@ from osmsnapshot.models import (
 
 from core.models import CountryRequest, ResearchRun
 
-***REMOVED*** Export all models for backward compatibility
+# Export all models for backward compatibility
 __all__ = [
     'PbfFile',
     'RegionHierarchy',

@@ -23,7 +23,7 @@ from multiprocessing import Pool, cpu_count
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Global graph for multiprocessing (avoid serialization overhead)
+# Global graph for multiprocessing (avoid serialization overhead)
 _GLOBAL_GRAPH = None
 _GLOBAL_WALK_LENGTH = None
 
@@ -68,10 +68,10 @@ class SkipGramDataset(Dataset):
         """
         self.pairs = []
         
-        ***REMOVED*** Generate (center, context) pairs from walks
+        # Generate (center, context) pairs from walks
         for walk in walks:
             for i, center in enumerate(walk):
-                ***REMOVED*** Extract context window around center node
+                # Extract context window around center node
                 start = max(0, i - window_size)
                 end = min(len(walk), i + window_size + 1)
                 
@@ -110,7 +110,7 @@ class SkipGramModel(nn.Module):
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
         self.output = nn.Linear(embedding_dim, vocab_size)
         
-        ***REMOVED*** Initialize embeddings with small random values (standard practice)
+        # Initialize embeddings with small random values (standard practice)
         nn.init.uniform_(self.embeddings.weight, -0.5 / embedding_dim, 0.5 / embedding_dim)
         nn.init.uniform_(self.output.weight, -0.5 / embedding_dim, 0.5 / embedding_dim)
     
@@ -185,15 +185,15 @@ class GPUDeepWalkService:
             List of random walks
         """
         nodes = list(graph.keys())
-        ***REMOVED*** Generate list of starting nodes (each node appears num_walks times)
+        # Generate list of starting nodes (each node appears num_walks times)
         start_nodes = nodes * num_walks
         
         logger.info(f"Generating {len(start_nodes)} random walks using {cpu_count()} CPU cores...")
         logger.info(f"Graph size: {len(graph)} nodes, {sum(len(v) for v in graph.values())} edges")
         
-        ***REMOVED*** Use initializer to pass graph once to each worker (not per task!)
+        # Use initializer to pass graph once to each worker (not per task!)
         with Pool(cpu_count(), initializer=_init_worker, initargs=(graph, walk_length)) as pool:
-            ***REMOVED*** Use chunksize for better performance
+            # Use chunksize for better performance
             chunksize = max(1, len(start_nodes) // (cpu_count() * 4))
             logger.info(f"Processing with chunksize={chunksize}...")
             walks = pool.map(_generate_walk_worker, start_nodes, chunksize=chunksize)
@@ -228,35 +228,35 @@ class GPUDeepWalkService:
         logger.info(f"  Embedding dim: {self.embedding_dim}")
         logger.info(f"  Batch size: {batch_size}")
         
-        ***REMOVED*** Step 1: Generate random walks in parallel on CPU
+        # Step 1: Generate random walks in parallel on CPU
         walks = self._generate_walks_parallel(graph, walk_length, num_walks)
         
-        ***REMOVED*** Step 2: Create vocabulary mapping
+        # Step 2: Create vocabulary mapping
         self.node_to_idx = {node: idx for idx, node in enumerate(graph.keys())}
         self.idx_to_node = {idx: node for node, idx in self.node_to_idx.items()}
         vocab_size = len(self.node_to_idx)
         
         logger.info(f"Vocabulary size: {vocab_size}")
         
-        ***REMOVED*** Step 3: Convert walks to indices
+        # Step 3: Convert walks to indices
         walks_idx = [[self.node_to_idx[node] for node in walk] for walk in walks]
         
-        ***REMOVED*** Step 4: Create dataset and dataloader
+        # Step 4: Create dataset and dataloader
         dataset = SkipGramDataset(walks_idx, window_size)
         dataloader = DataLoader(
             dataset, 
             batch_size=batch_size,
             shuffle=True,
-            num_workers=4,  ***REMOVED*** Parallel data loading
-            pin_memory=True  ***REMOVED*** Faster GPU transfer
+            num_workers=4,  # Parallel data loading
+            pin_memory=True  # Faster GPU transfer
         )
         
-        ***REMOVED*** Step 5: Initialize model on GPU
+        # Step 5: Initialize model on GPU
         self.model = SkipGramModel(vocab_size, self.embedding_dim).to(self.device)
         optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
         criterion = nn.CrossEntropyLoss()
         
-        ***REMOVED*** Step 6: Training loop on GPU
+        # Step 6: Training loop on GPU
         self.model.train()
         for epoch in range(epochs):
             total_loss = 0
@@ -281,7 +281,7 @@ class GPUDeepWalkService:
             avg_loss = total_loss / num_batches
             logger.info(f"Epoch {epoch+1}/{epochs} complete, Avg Loss: {avg_loss:.4f}")
         
-        ***REMOVED*** Step 7: Extract embeddings
+        # Step 7: Extract embeddings
         embeddings_array = self.model.get_embeddings()
         embeddings_dict = {
             self.idx_to_node[idx]: embeddings_array[idx]

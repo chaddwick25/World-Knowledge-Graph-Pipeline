@@ -76,13 +76,13 @@ class EmbeddingService:
 
         pbf_path = pbf_path_override or cfg.snapshot_pbf_path
 
-        ***REMOVED*** Resolve the Snapshot UUID for this (country_code, snapshot_date).
-        ***REMOVED*** This is stored on OsmEntity.source_snapshot_id for cross-DB provenance.
+        # Resolve the Snapshot UUID for this (country_code, snapshot_date).
+        # This is stored on OsmEntity.source_snapshot_id for cross-DB provenance.
         source_snapshot_id = self._resolve_snapshot_uuid(cfg.iso, cfg.snapshot_date)
 
-        ***REMOVED*** Parallel upsert configuration (Approach B).  Default workers=8
-        ***REMOVED*** enables the parallel encode + upsert path; set to 1 for the
-        ***REMOVED*** legacy single-threaded path.
+        # Parallel upsert configuration (Approach B).  Default workers=8
+        # enables the parallel encode + upsert path; set to 1 for the
+        # legacy single-threaded path.
         workers = _parallel_upsert_workers()
         queue_depth = _parallel_upsert_queue_depth()
         chunk_size = _parallel_upsert_chunk_size()
@@ -100,17 +100,17 @@ class EmbeddingService:
                 )
                 workers = 1
 
-        ***REMOVED*** Step 1 is FastText-only (GV-Tags).  The two-axis Step-1 path
-        ***REMOVED*** (DualEncodingWriter / _run_parallel_dual) was removed 2026-09-10 —
-        ***REMOVED*** see TICKET_REMOVE_DUAL_ENCODER.  GV-NLE comes from
-        ***REMOVED*** Step 5 training + the inductive query-time path, so the parallel
-        ***REMOVED*** path needs no NLE gating.
+        # Step 1 is FastText-only (GV-Tags).  The two-axis Step-1 path
+        # (DualEncodingWriter / _run_parallel_dual) was removed 2026-09-10 —
+        # see TICKET_REMOVE_DUAL_ENCODER.  GV-NLE comes from
+        # Step 5 training + the inductive query-time path, so the parallel
+        # path needs no NLE gating.
         if workers > 1:
             entity_count = self._run_parallel(
                 cfg, pbf_path, workers, queue_depth, source_snapshot_id,
             )
         else:
-            ***REMOVED*** === legacy single-threaded path (unchanged behavior) ===
+            # === legacy single-threaded path (unchanged behavior) ===
             ft_model = FastTextModel()
             tags_storage = VectorStorageService(
                 model_type="tags", version=cfg.snapshot_date,
@@ -127,7 +127,7 @@ class EmbeddingService:
                 writer.add_line(record)
             tags_storage.flush()
             entity_count = len(n_data) + len(w_data) + len(r_data)
-            ***REMOVED*** === end legacy single-threaded path ===
+            # === end legacy single-threaded path ===
 
         if skip_post_process:
             return {
@@ -136,7 +136,7 @@ class EmbeddingService:
                 "entity_count": entity_count,
             }
 
-        ***REMOVED*** Enrich WorldKG classes + compute entropy (v2 helpers)
+        # Enrich WorldKG classes + compute entropy (v2 helpers)
         from pipeline.tasks.helper import enrich_worldkg_classes, compute_entropy
         enrich_worldkg_classes(cfg, logger=logger)
         entropy = compute_entropy(cfg, logger=logger)
@@ -147,9 +147,9 @@ class EmbeddingService:
             "entity_count": entity_count,
         }
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Parallel encode + upsert (Approach B — in-memory batch fan-out)
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Parallel encode + upsert (Approach B — in-memory batch fan-out)
+    # ------------------------------------------------------------------
 
     def _run_parallel(self, cfg: "CountryEnvelope", pbf_path: str,
                       workers: int, queue_depth: int,
@@ -195,14 +195,14 @@ class EmbeddingService:
             )
             for record in itertools.chain(w_data, r_data):
                 collector.add_line(record)
-            ***REMOVED*** Send sentinels to encoding workers
+            # Send sentinels to encoding workers
             collector.finish(workers)
-            ***REMOVED*** Wait for all encoding workers to finish pushing to upsert_queue
+            # Wait for all encoding workers to finish pushing to upsert_queue
             for t in threads:
                 t.join()
-            ***REMOVED*** Send sentinel to upsert worker
+            # Send sentinel to upsert worker
             upsert_queue.put(SENTINEL)
-            ***REMOVED*** Wait for upsert worker to finish
+            # Wait for upsert worker to finish
             upsert_thread.join()
             exc, tb = error_box.get()
             if exc is not None:
@@ -210,9 +210,9 @@ class EmbeddingService:
                     f"parallel embed worker failed: {exc}"
                 ) from exc
         finally:
-            ***REMOVED*** Belt-and-braces: ensure workers can't hang if the producer
-            ***REMOVED*** raised before finish().  Sentinels are idempotent — extra ones
-            ***REMOVED*** are dropped by workers (they break on the first sentinel).
+            # Belt-and-braces: ensure workers can't hang if the producer
+            # raised before finish().  Sentinels are idempotent — extra ones
+            # are dropped by workers (they break on the first sentinel).
             try:
                 collector.finish(workers)
             except Exception:
@@ -224,13 +224,13 @@ class EmbeddingService:
         return collector.total
 
 
-***REMOVED*** ----------------------------------------------------------------------
-***REMOVED*** Parallel upsert knob parsing (Approach B configuration).
-***REMOVED*** The knobs live in hyperparams.yaml (parallel_upsert section) and are
-***REMOVED*** parsed here lazily per call, so tests can patch the hyperparams cache
-***REMOVED*** per run (see tests/integration/test_chunk_size_benchmark.py).
-***REMOVED*** Logged at Step 1 start.
-***REMOVED*** ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+# Parallel upsert knob parsing (Approach B configuration).
+# The knobs live in hyperparams.yaml (parallel_upsert section) and are
+# parsed here lazily per call, so tests can patch the hyperparams cache
+# per run (see tests/integration/test_chunk_size_benchmark.py).
+# Logged at Step 1 start.
+# ----------------------------------------------------------------------
 
 
 def _parallel_upsert_workers() -> int:

@@ -28,7 +28,7 @@ class ShardRouter:
 
     def allow_migrate(self, db, app_label, model_name=None, **hints):
         if model_name in ('pipelinelogentry', 'pipelinerun'):
-            return db == 'default'  ***REMOVED*** Migrations always on default
+            return db == 'default'  # Migrations always on default
         return None
 
 

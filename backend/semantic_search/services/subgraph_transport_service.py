@@ -19,7 +19,7 @@ Batch time (Step 5c Phase B):
 
 Runtime (FactorResolutionService.diffusion_rank):
     loadings_b = C_{A→B} · loadings_a   (one k×k matrix-vector multiply)
-    Then the existing pgvector <***REMOVED***> query runs in B's factor rows.
+    Then the existing pgvector <#> query runs in B's factor rows.
 """
 
 from __future__ import annotations
@@ -33,8 +33,8 @@ from worldkg_nca.models import SubgraphTransport
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Minimum number of shared entities required to fit a transport matrix.
-***REMOVED*** Below this, the least-squares problem is under-determined.
+# Minimum number of shared entities required to fit a transport matrix.
+# Below this, the least-squares problem is under-determined.
 MIN_SHARED_ENTITIES = 16
 
 
@@ -46,7 +46,7 @@ class SubgraphTransportService:
     the vectors DB).
     """
 
-    ***REMOVED*** ── Batch-time: compute C ────────────────────────────────────────────
+    # ── Batch-time: compute C ────────────────────────────────────────────
 
     def compute_transport_matrix(
         self,
@@ -90,13 +90,13 @@ class SubgraphTransportService:
             )
             return None
 
-        ***REMOVED*** Build index maps: osm_id → row in eigenvector matrix
+        # Build index maps: osm_id → row in eigenvector matrix
         idx_a = {int(oid): i for i, oid in enumerate(node_ids_a)}
         idx_b = {int(oid): i for i, oid in enumerate(node_ids_b)}
 
-        ***REMOVED*** Extract eigen-loadings for shared entities in both bases
-        ***REMOVED*** F_A: (m, k) — shared entities' loadings in A's basis
-        ***REMOVED*** F_B: (m, k) — shared entities' loadings in B's basis
+        # Extract eigen-loadings for shared entities in both bases
+        # F_A: (m, k) — shared entities' loadings in A's basis
+        # F_B: (m, k) — shared entities' loadings in B's basis
         rows_a, rows_b = [], []
         for oid in shared_node_ids:
             oid = int(oid)
@@ -113,35 +113,35 @@ class SubgraphTransportService:
             )
             return None
 
-        F_A = np.stack(rows_a)  ***REMOVED*** (m, k)
-        F_B = np.stack(rows_b)  ***REMOVED*** (m, k)
+        F_A = np.stack(rows_a)  # (m, k)
+        F_B = np.stack(rows_b)  # (m, k)
 
-        ***REMOVED*** Truncate eigenvalues to k
+        # Truncate eigenvalues to k
         lam_a = np.asarray(eigenvalues_a[:k], dtype=float)
         lam_b = np.asarray(eigenvalues_b[:k], dtype=float)
 
-        ***REMOVED*** Solve regularized least squares:
-        ***REMOVED***   C = argmin ‖F_B - F_A Cᵀ‖² + λ‖CΛ_A - Λ_B C‖²
-        ***REMOVED***
-        ***REMOVED*** The descriptor term: minimize ‖F_B - F_A Cᵀ‖²
-        ***REMOVED***   → Cᵀ = (F_Aᵀ F_A)⁻¹ F_Aᵀ F_B  (ordinary least squares)
-        ***REMOVED***   → C = F_Bᵀ F_A (F_Aᵀ F_A)⁻¹
-        ***REMOVED***
-        ***REMOVED*** With the commutativity regularizer, the full objective is:
-        ***REMOVED***   min_C ‖F_B - F_A Cᵀ‖_F² + λ ‖C Λ_A - Λ_B C‖_F²
-        ***REMOVED***
-        ***REMOVED*** This is a convex quadratic in C. We solve it by vectorizing:
-        ***REMOVED***   vec(C) = argmin ‖vec(F_B) - (F_A ⊗ I_k) vec(Cᵀ)‖²
-        ***REMOVED***           + λ ‖(Λ_A ⊗ I_k - I_k ⊗ Λ_B) vec(C)‖²
-        ***REMOVED***
-        ***REMOVED*** For simplicity and numerical stability, we use scipy's least
-        ***REMOVED*** squares with the regularizer appended as additional rows.
+        # Solve regularized least squares:
+        #   C = argmin ‖F_B - F_A Cᵀ‖² + λ‖CΛ_A - Λ_B C‖²
+        #
+        # The descriptor term: minimize ‖F_B - F_A Cᵀ‖²
+        #   → Cᵀ = (F_Aᵀ F_A)⁻¹ F_Aᵀ F_B  (ordinary least squares)
+        #   → C = F_Bᵀ F_A (F_Aᵀ F_A)⁻¹
+        #
+        # With the commutativity regularizer, the full objective is:
+        #   min_C ‖F_B - F_A Cᵀ‖_F² + λ ‖C Λ_A - Λ_B C‖_F²
+        #
+        # This is a convex quadratic in C. We solve it by vectorizing:
+        #   vec(C) = argmin ‖vec(F_B) - (F_A ⊗ I_k) vec(Cᵀ)‖²
+        #           + λ ‖(Λ_A ⊗ I_k - I_k ⊗ Λ_B) vec(C)‖²
+        #
+        # For simplicity and numerical stability, we use scipy's least
+        # squares with the regularizer appended as additional rows.
 
         C = self._solve_regularized_transport(
             F_A, F_B, lam_a, lam_b, lambda_reg,
         )
 
-        ***REMOVED*** Compute residuals
+        # Compute residuals
         fit_residual = self._fit_residual(F_A, F_B, C)
         commutativity_residual = self._commutativity_residual(C, lam_a, lam_b)
 
@@ -203,104 +203,104 @@ class SubgraphTransportService:
         """
         k = F_A.shape[1]
 
-        ***REMOVED*** Descriptor term: F_A Cᵀ ≈ F_B  →  Cᵀ = lstsq(F_A, F_B)
-        ***REMOVED*** This gives the ordinary least squares solution.
+        # Descriptor term: F_A Cᵀ ≈ F_B  →  Cᵀ = lstsq(F_A, F_B)
+        # This gives the ordinary least squares solution.
         C_T, _, _, _ = np.linalg.lstsq(F_A, F_B, rcond=None)
-        C = C_T.T  ***REMOVED*** (k, k)
+        C = C_T.T  # (k, k)
 
         if lambda_reg <= 0:
             return C
 
-        ***REMOVED*** Apply commutativity regularizer via iterative refinement.
-        ***REMOVED*** The regularizer ‖C Λ_A - Λ_B C‖² pushes C toward commuting
-        ***REMOVED*** with the Laplacians. We solve:
-        ***REMOVED***   min_C ‖F_B - F_A Cᵀ‖² + λ ‖C Λ_A - Λ_B C‖²
-        ***REMOVED***
-        ***REMOVED*** Using the vectorized form:
-        ***REMOVED***   A_desc = I_k ⊗ F_A          (descriptor, mk × k²)
-        ***REMOVED***   A_comm = Λ_A ⊗ I_k - I_k ⊗ Λ_B  (commutativity, k² × k²)
-        ***REMOVED***   b = vec(F_B)                (mk × 1)
-        ***REMOVED***   x = vec(Cᵀ)                 (k² × 1)
-        ***REMOVED***
-        ***REMOVED*** Solution: x = (A_descᵀ A_desc + λ A_commᵀ A_comm)⁻¹ A_descᵀ b
+        # Apply commutativity regularizer via iterative refinement.
+        # The regularizer ‖C Λ_A - Λ_B C‖² pushes C toward commuting
+        # with the Laplacians. We solve:
+        #   min_C ‖F_B - F_A Cᵀ‖² + λ ‖C Λ_A - Λ_B C‖²
+        #
+        # Using the vectorized form:
+        #   A_desc = I_k ⊗ F_A          (descriptor, mk × k²)
+        #   A_comm = Λ_A ⊗ I_k - I_k ⊗ Λ_B  (commutativity, k² × k²)
+        #   b = vec(F_B)                (mk × 1)
+        #   x = vec(Cᵀ)                 (k² × 1)
+        #
+        # Solution: x = (A_descᵀ A_desc + λ A_commᵀ A_comm)⁻¹ A_descᵀ b
 
-        ***REMOVED*** Build the commutativity matrix: (Λ_A ⊗ I - I ⊗ Λ_B)
-        ***REMOVED*** This is k² × k². For k=128, that's 16384 × 16384 — too large
-        ***REMOVED*** to build densely. Use the sparse structure instead.
-        ***REMOVED***
-        ***REMOVED*** (Λ_A ⊗ I) vec(C) has entries: lam_a[i] * C[i,j]
-        ***REMOVED*** (I ⊗ Λ_B) vec(C) has entries: lam_b[j] * C[i,j]
-        ***REMOVED*** So (Λ_A ⊗ I - I ⊗ Λ_B) vec(C) has entries: (lam_a[i] - lam_b[j]) * C[i,j]
-        ***REMOVED***
-        ***REMOVED*** The regularizer ‖comm‖² = Σ_{i,j} (lam_a[i] - lam_b[j])² * C[i,j]²
-        ***REMOVED***
-        ***REMOVED*** This is a diagonal operator on vec(C)! So the Tikhonov matrix is
-        ***REMOVED*** diagonal with entries (lam_a[i] - lam_b[j])².
-        ***REMOVED***
-        ***REMOVED*** The full regularized solution is:
-        ***REMOVED***   C[i,j] = C_ols[i,j] / (1 + λ (lam_a[i] - lam_b[j])² / ‖F_A[:,i]‖²)
-        ***REMOVED***
-        ***REMOVED*** But this is an approximation. For the exact solution, we solve
-        ***REMOVED*** the k² × k² system. Since the regularizer is diagonal, we can
-        ***REMOVED*** use the Woodbury identity or just solve directly.
-        ***REMOVED***
-        ***REMOVED*** For simplicity and correctness, we solve the k² × k² system
-        ***REMOVED*** using the diagonal structure of the regularizer.
+        # Build the commutativity matrix: (Λ_A ⊗ I - I ⊗ Λ_B)
+        # This is k² × k². For k=128, that's 16384 × 16384 — too large
+        # to build densely. Use the sparse structure instead.
+        #
+        # (Λ_A ⊗ I) vec(C) has entries: lam_a[i] * C[i,j]
+        # (I ⊗ Λ_B) vec(C) has entries: lam_b[j] * C[i,j]
+        # So (Λ_A ⊗ I - I ⊗ Λ_B) vec(C) has entries: (lam_a[i] - lam_b[j]) * C[i,j]
+        #
+        # The regularizer ‖comm‖² = Σ_{i,j} (lam_a[i] - lam_b[j])² * C[i,j]²
+        #
+        # This is a diagonal operator on vec(C)! So the Tikhonov matrix is
+        # diagonal with entries (lam_a[i] - lam_b[j])².
+        #
+        # The full regularized solution is:
+        #   C[i,j] = C_ols[i,j] / (1 + λ (lam_a[i] - lam_b[j])² / ‖F_A[:,i]‖²)
+        #
+        # But this is an approximation. For the exact solution, we solve
+        # the k² × k² system. Since the regularizer is diagonal, we can
+        # use the Woodbury identity or just solve directly.
+        #
+        # For simplicity and correctness, we solve the k² × k² system
+        # using the diagonal structure of the regularizer.
 
-        ***REMOVED*** Build the diagonal of the commutativity penalty
-        ***REMOVED*** diff[i,j] = (lam_a[i] - lam_b[j])²
-        diff_sq = (lam_a[:, None] - lam_b[None, :]) ** 2  ***REMOVED*** (k, k)
+        # Build the diagonal of the commutativity penalty
+        # diff[i,j] = (lam_a[i] - lam_b[j])²
+        diff_sq = (lam_a[:, None] - lam_b[None, :]) ** 2  # (k, k)
 
-        ***REMOVED*** The descriptor normal matrix: F_Aᵀ F_A (k × k)
-        FtF = F_A.T @ F_A  ***REMOVED*** (k, k)
-        FtB = F_A.T @ F_B  ***REMOVED*** (k, k) — this is the RHS for Cᵀ
+        # The descriptor normal matrix: F_Aᵀ F_A (k × k)
+        FtF = F_A.T @ F_A  # (k, k)
+        FtB = F_A.T @ F_B  # (k, k) — this is the RHS for Cᵀ
 
-        ***REMOVED*** The regularized normal equations for Cᵀ:
-        ***REMOVED*** (FtF + λ * diag(diff_sq)) Cᵀ = FtB
-        ***REMOVED*** where diag(diff_sq) is applied element-wise to the diagonal
-        ***REMOVED*** of the k² × k² system. But since Cᵀ has shape (k, k), and the
-        ***REMOVED*** regularizer is diagonal in the vec(C) representation, we need
-        ***REMOVED*** to be careful about the row/column mapping.
-        ***REMOVED***
-        ***REMOVED*** vec(Cᵀ) stacks columns of Cᵀ = rows of C.
-        ***REMOVED*** The regularizer entry for C[i,j] is (lam_a[i] - lam_b[j])².
-        ***REMOVED*** In vec(Cᵀ), C[i,j] is at position j*k + i.
-        ***REMOVED***
-        ***REMOVED*** The descriptor normal matrix for vec(Cᵀ) is I_k ⊗ (F_Aᵀ F_A),
-        ***REMOVED*** which is block-diagonal with k blocks of FtF.
-        ***REMOVED***
-        ***REMOVED*** The regularizer is diagonal with entries (lam_a[i] - lam_b[j])²
-        ***REMOVED*** at position j*k + i.
-        ***REMOVED***
-        ***REMOVED*** So the regularized system is:
-        ***REMOVED*** (I_k ⊗ FtF + λ * diag(diff_sq_flat)) vec(Cᵀ) = vec(FtB)
-        ***REMOVED***
-        ***REMOVED*** where diff_sq_flat[j*k + i] = (lam_a[i] - lam_b[j])²
+        # The regularized normal equations for Cᵀ:
+        # (FtF + λ * diag(diff_sq)) Cᵀ = FtB
+        # where diag(diff_sq) is applied element-wise to the diagonal
+        # of the k² × k² system. But since Cᵀ has shape (k, k), and the
+        # regularizer is diagonal in the vec(C) representation, we need
+        # to be careful about the row/column mapping.
+        #
+        # vec(Cᵀ) stacks columns of Cᵀ = rows of C.
+        # The regularizer entry for C[i,j] is (lam_a[i] - lam_b[j])².
+        # In vec(Cᵀ), C[i,j] is at position j*k + i.
+        #
+        # The descriptor normal matrix for vec(Cᵀ) is I_k ⊗ (F_Aᵀ F_A),
+        # which is block-diagonal with k blocks of FtF.
+        #
+        # The regularizer is diagonal with entries (lam_a[i] - lam_b[j])²
+        # at position j*k + i.
+        #
+        # So the regularized system is:
+        # (I_k ⊗ FtF + λ * diag(diff_sq_flat)) vec(Cᵀ) = vec(FtB)
+        #
+        # where diff_sq_flat[j*k + i] = (lam_a[i] - lam_b[j])²
 
-        ***REMOVED*** Solve column-by-column of Cᵀ (each column is independent
-        ***REMOVED*** because I_k ⊗ FtF is block-diagonal)
-        diff_sq_flat = diff_sq.ravel()  ***REMOVED*** (k²,) — row-major: [i,j] at i*k+j
-        ***REMOVED*** But we need it in vec(Cᵀ) order (column-major of Cᵀ = row-major of C)
-        ***REMOVED*** vec(Cᵀ)[j*k + i] = Cᵀ[i,j] = C[j,i]
-        ***REMOVED*** diff_sq for C[j,i] = (lam_a[j] - lam_b[i])²
-        ***REMOVED*** So diff_sq_vec[j*k + i] = (lam_a[j] - lam_b[i])²
-        ***REMOVED*** = diff_sq[j, i] = diff_sq_flat[j*k + i]
-        ***REMOVED*** This is just the transpose of diff_sq, flattened row-major.
-        diff_sq_vec = diff_sq.T.ravel()  ***REMOVED*** (k²,)
+        # Solve column-by-column of Cᵀ (each column is independent
+        # because I_k ⊗ FtF is block-diagonal)
+        diff_sq_flat = diff_sq.ravel()  # (k²,) — row-major: [i,j] at i*k+j
+        # But we need it in vec(Cᵀ) order (column-major of Cᵀ = row-major of C)
+        # vec(Cᵀ)[j*k + i] = Cᵀ[i,j] = C[j,i]
+        # diff_sq for C[j,i] = (lam_a[j] - lam_b[i])²
+        # So diff_sq_vec[j*k + i] = (lam_a[j] - lam_b[i])²
+        # = diff_sq[j, i] = diff_sq_flat[j*k + i]
+        # This is just the transpose of diff_sq, flattened row-major.
+        diff_sq_vec = diff_sq.T.ravel()  # (k²,)
 
-        ***REMOVED*** Solve for each column j of Cᵢ (i.e., each row j of C)
-        ***REMOVED*** Column j of Cᵀ = row j of C
-        ***REMOVED*** The system for column j: (FtF + λ * diag(diff_sq[j,:])) c_j = FtB[:,j]
+        # Solve for each column j of Cᵢ (i.e., each row j of C)
+        # Column j of Cᵀ = row j of C
+        # The system for column j: (FtF + λ * diag(diff_sq[j,:])) c_j = FtB[:,j]
         C_reg = np.zeros((k, k))
         for j in range(k):
-            reg_diag = lambda_reg * diff_sq[j, :]  ***REMOVED*** (k,) — regularizer for row j of C
+            reg_diag = lambda_reg * diff_sq[j, :]  # (k,) — regularizer for row j of C
             A_j = FtF + np.diag(reg_diag)
             b_j = FtB[:, j]
             try:
                 c_j = np.linalg.solve(A_j, b_j)
             except np.linalg.LinAlgError:
                 c_j = np.linalg.lstsq(A_j, b_j, rcond=None)[0]
-            C_reg[j, :] = c_j  ***REMOVED*** row j of C
+            C_reg[j, :] = c_j  # row j of C
 
         return C_reg
 
@@ -319,9 +319,9 @@ class SubgraphTransportService:
         C: np.ndarray, lam_a: np.ndarray, lam_b: np.ndarray,
     ) -> float:
         """Compute ‖CΛ_A - Λ_B C‖_F / ‖Λ_A‖_F."""
-        ***REMOVED*** C Λ_A: scale each column j of C by lam_a[j]
+        # C Λ_A: scale each column j of C by lam_a[j]
         C_LamA = C * lam_a[None, :]
-        ***REMOVED*** Λ_B C: scale each row i of C by lam_b[i]
+        # Λ_B C: scale each row i of C by lam_b[i]
         LamB_C = C * lam_b[:, None]
         numerator = np.linalg.norm(C_LamA - LamB_C, 'fro')
         denominator = np.linalg.norm(lam_a)
@@ -329,7 +329,7 @@ class SubgraphTransportService:
             return 0.0
         return float(numerator / denominator)
 
-    ***REMOVED*** ── Runtime: transport loadings ──────────────────────────────────────
+    # ── Runtime: transport loadings ──────────────────────────────────────
 
     @staticmethod
     def transport_loadings(
@@ -341,7 +341,7 @@ class SubgraphTransportService:
         loadings_b = C_{A→B} · loadings_a
 
         This is the runtime operation: a single k×k matrix-vector multiply
-        (128×128 × 128 = 16K FLOPs), then the existing pgvector <***REMOVED***> query
+        (128×128 × 128 = 16K FLOPs), then the existing pgvector <#> query
         runs in B's factor rows.
 
         Args:
@@ -354,14 +354,14 @@ class SubgraphTransportService:
         C = np.asarray(transport_matrix, dtype=float)
         k = C.shape[0]
         phi = np.asarray(loadings_a, dtype=float)
-        ***REMOVED*** Truncate/pad to k
+        # Truncate/pad to k
         if len(phi) > k:
             phi = phi[:k]
         elif len(phi) < k:
             phi = np.pad(phi, (0, k - len(phi)))
         return C @ phi
 
-    ***REMOVED*** ── Adjacency computation ────────────────────────────────────────────
+    # ── Adjacency computation ────────────────────────────────────────────
 
     def compute_adjacency(
         self,
@@ -387,7 +387,7 @@ class SubgraphTransportService:
         pairs = []
         n = len(subgraph_configs)
 
-        ***REMOVED*** Try polygon-based adjacency first
+        # Try polygon-based adjacency first
         polygons = {}
         for sg in subgraph_configs:
             poly = self._load_polygon(sg)
@@ -400,16 +400,16 @@ class SubgraphTransportService:
                 sg_b = subgraph_configs[j]
                 slug_a, slug_b = sorted([sg_a.slug, sg_b.slug])
 
-                ***REMOVED*** Polygon-based check
+                # Polygon-based check
                 if slug_a in polygons and slug_b in polygons:
                     pa = polygons[slug_a]
                     pb = polygons[slug_b]
-                    ***REMOVED*** Adjacent if polygons intersect or are within 2× buffer
+                    # Adjacent if polygons intersect or are within 2× buffer
                     if pa.intersects(pb) or pa.buffer(buffer_deg).intersects(pb.buffer(buffer_deg)):
                         pairs.append((slug_a, slug_b))
                         continue
 
-                ***REMOVED*** BBox-based fallback
+                # BBox-based fallback
                 if self._bboxes_are_adjacent(sg_a, sg_b, buffer_deg):
                     pairs.append((slug_a, slug_b))
 
@@ -445,12 +445,12 @@ class SubgraphTransportService:
             return False
 
         gap = 2 * buffer_deg
-        ***REMOVED*** Bboxes are adjacent if they overlap or are within gap in both lon and lat
+        # Bboxes are adjacent if they overlap or are within gap in both lon and lat
         lon_adj = a_lon[0] <= b_lon[1] + gap and b_lon[0] <= a_lon[1] + gap
         lat_adj = a_lat[0] <= b_lat[1] + gap and b_lat[0] <= a_lat[1] + gap
         return lon_adj and lat_adj
 
-    ***REMOVED*** ── DB I/O ───────────────────────────────────────────────────────────
+    # ── DB I/O ───────────────────────────────────────────────────────────
 
     def write_transport_matrices(
         self,
@@ -476,7 +476,7 @@ class SubgraphTransportService:
         """
         country_code = country_code.upper()
 
-        ***REMOVED*** Idempotent delete
+        # Idempotent delete
         SubgraphTransport.objects.using("vectors").filter(
             snapshot_id=snapshot_id,
             country_code=country_code,

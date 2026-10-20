@@ -33,25 +33,25 @@ from semantic_search.services.community_detection_service import (
 )
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Helpers
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
 
 def _weighted_graph() -> nx.Graph:
     """Small weighted graph with an isolated node and class attributes."""
     G = nx.Graph()
-    G.add_edge(10, 20, weight=5.0)  ***REMOVED*** max of the parallel pair (3.0, 5.0)
+    G.add_edge(10, 20, weight=5.0)  # max of the parallel pair (3.0, 5.0)
     G.add_edge(20, 30, weight=2.0)
     G.add_edge(30, 40, weight=1.0)
     G.add_edge(40, 20, weight=4.0)
-    G.add_node(50)  ***REMOVED*** isolated node
+    G.add_node(50)  # isolated node
     G.nodes[10]["wkg_class"] = "wkgs:Amenity"
     return G
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** SparseGraph structural correctness
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# SparseGraph structural correctness
+# --------------------------------------------------------------------------- #
 
 def test_from_nx_to_nx_round_trip():
     """from_nx → to_nx preserves nodes, edges, and max weights."""
@@ -115,7 +115,7 @@ def test_components_match_networkx():
 
 def test_max_weight_dedup():
     """Parallel k-NN edges keep max weight (not sum) in the CSR."""
-    ***REMOVED*** (0→1, w=3) and (1→0, w=5) — nx keeps max=5; CSR sum would give 8
+    # (0→1, w=3) and (1→0, w=5) — nx keeps max=5; CSR sum would give 8
     sg = SparseGraph(
         node_ids=np.array([0, 1], dtype=np.int64),
         edge_index=np.array([[0, 1], [1, 0]], dtype=np.int64),
@@ -126,9 +126,9 @@ def test_max_weight_dedup():
     assert A[1, 0] == pytest.approx(5.0)
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Consumer equivalence: SparseGraph vs NetworkX
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Consumer equivalence: SparseGraph vs NetworkX
+# --------------------------------------------------------------------------- #
 
 def test_spectral_features_match_networkx_path():
     """compute_spectral_features on SparseGraph matches the NetworkX path."""
@@ -195,7 +195,7 @@ def test_community_detection_sparse_matches_nx():
     sg = SparseGraph.from_nx(G)
     result_sg = CommunityDetectionService().detect_communities(sg)
 
-    ***REMOVED*** Partition property holds in both paths
+    # Partition property holds in both paths
     assert sorted(sum(result_sg["communities"], [])) == sorted(G.nodes())
     assert result_sg["community_count"] == 2
     assert result_sg["community_count"] == result_nx["community_count"]

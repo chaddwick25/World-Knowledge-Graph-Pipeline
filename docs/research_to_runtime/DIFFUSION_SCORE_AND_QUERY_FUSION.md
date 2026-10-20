@@ -1,4 +1,4 @@
-***REMOVED*** Diffusion Score and Query Fusion
+# Diffusion Score and Query Fusion
 
 > **Status**: new doc (2026-09-28). Records the provenance of the query-time
 > fusion score, the diffusion term's math and implementation, and the
@@ -6,7 +6,7 @@
 > (exact-search decision) and `../semantic_search/factor_table_math_reference.md`
 > (full formula reference with the worked heat-kernel example).
 
-***REMOVED******REMOVED*** 1. Provenance map
+## 1. Provenance map
 
 The runtime re-rank sums four terms:
 
@@ -25,7 +25,7 @@ combined_score = diffusion_score + name_score + geo_score + uslp_boost
 The reason to record this: the fusion is the pipeline's own design, and the
 diffusion term is the least documented piece of it.
 
-***REMOVED******REMOVED*** 2. The graph and the Laplacian choice (Step 5c, batch time)
+## 2. The graph and the Laplacian choice (Step 5c, batch time)
 
 Step 5c builds a k-NN graph from entity locations (haversine distance,
 k=50, log-inverse-distance edge weights `w = max(1/ln(max(d_km, 1.1)), e)`),
@@ -68,7 +68,7 @@ Keeping the bottom-k eigenvalues keeps the smoothest modes; high-frequency
 modes are numerically unstable and decay instantly in the heat kernel
 (`e^{-tλ} → 0`).
 
-***REMOVED******REMOVED*** 3. The factorization (Step 5c, batch time)
+## 3. The factorization (Step 5c, batch time)
 
 `L = ΦΛΦᵀ`, and the pieces are stored separately:
 
@@ -85,7 +85,7 @@ check, `factor_resolution_service.py:190-222`). A same-snapshot rerun that
 failed between the two writes would otherwise pair old loadings with a new
 fingerprint and produce wrong scores.
 
-***REMOVED******REMOVED*** 4. Runtime factorization of the score
+## 4. Runtime factorization of the score
 
 The heat-kernel diffusion score from an anchor at time t:
 
@@ -108,7 +108,7 @@ Implementation (`factor_resolution_service.py`):
 2. Build `w` (coefficient vector, `:231-237`):
    `w[:k] = exp(-t · λ[:k]) · φ_anchor[:k]`, zero-padded to 128.
 3. One pgvector inner-product query over candidate entities
-   (`:335-341`): `score = -(eigen_loadings <***REMOVED***> w)`, ordered by descending
+   (`:335-341`): `score = -(eigen_loadings <#> w)`, ordered by descending
    score, filtered at `min_score = 1e-6`, trimmed to `limit` (default 20),
    anchor excluded.
 4. Cross-subgraph transport when the candidate set spans subgraphs (§5).
@@ -140,7 +140,7 @@ The combinatorial kernel on the same graph (λ = 0, 1, 3) would give
 `(0.317, 0.367, 0.317)` and a uniform steady state: the Laplacian choice
 changes the answer, which is why §2 records it.
 
-***REMOVED******REMOVED*** 5. Borders: buffer zones and transport
+## 5. Borders: buffer zones and transport
 
 Cross-subgraph diffusion exists so border communities answer correctly.
 Two mechanisms, both batch-time:
@@ -173,16 +173,16 @@ The heat operator commutes with the Laplacian, which is what makes the
 coefficients transportable: the eigenbasis is the operator's diagonal
 form, and C maps one diagonal form to the adjacent one.
 
-***REMOVED******REMOVED*** 6. The fusion and its caveats
+## 6. The fusion and its caveats
 
 `combined_score = diffusion_score + name_score + geo_score + uslp_boost`,
 re-sorted descending (`query_executor_service/geo_uslp.py`). The re-rank
-runs on FILTER-AGGREGATE-MEASURE (***REMOVED***1) and PLACE-ATTRIBUTE-QUERY (***REMOVED***8);
+runs on FILTER-AGGREGATE-MEASURE (#1) and PLACE-ATTRIBUTE-QUERY (#8);
 wiring into the remaining trained templates is open.
 
 - **`diffusion_score` is non-zero only for heat-kernel-built pools.**
-  PLACE-ATTRIBUTE-QUERY (***REMOVED***8) sets it per result
-  (`query_executor_service/service.py:376`); EVENT-DIFFUSION (***REMOVED***14)
+  PLACE-ATTRIBUTE-QUERY (#8) sets it per result
+  (`query_executor_service/service.py:376`); EVENT-DIFFUSION (#14)
   computes it at multiple t. The other trained templates (radius count,
   distance, bearing) leave it 0.0, so their re-rank is name + geo + uslp.
 - **`name_score` fires only for proper-name OBJECTs.** The caller decides
@@ -209,7 +209,7 @@ wiring into the remaining trained templates is open.
   The `name_score` term is the identity signal: it pins exact-name
   entities to the top of proper-name queries regardless of distance.
 
-***REMOVED******REMOVED*** 7. Modes and PCA: not implemented
+## 7. Modes and PCA: not implemented
 
 **Status: not implemented (2026-09-28).** No PCA call exists in the
 backend. The only PCA described is the urban-morphology feature PCA
@@ -256,7 +256,7 @@ weight would be validated against the exact-search baseline before it can
 replace `e^{-tλ}`. The blocker is the relevance discipline, not compute:
 the factorization is 128-dim and batch-time.
 
-***REMOVED******REMOVED*** 8. Cross-references
+## 8. Cross-references
 
 | Topic | Document |
 |---|---|

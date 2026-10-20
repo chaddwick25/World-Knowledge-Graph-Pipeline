@@ -49,9 +49,9 @@ class ProjectionWeightService(BaseService):
             max_weight,
         )
 
-        ***REMOVED*** ------------------------------------------------------------------
-        ***REMOVED*** 1) Load validation data from DB (accepted vs rejected links)
-        ***REMOVED*** ------------------------------------------------------------------
+        # ------------------------------------------------------------------
+        # 1) Load validation data from DB (accepted vs rejected links)
+        # ------------------------------------------------------------------
         country_filter = Q()
         if country_name:
             from core.services.snapshot.regional_path_service import normalize_country_slug
@@ -82,7 +82,7 @@ class ProjectionWeightService(BaseService):
                 len(positives),
                 len(negatives),
             )
-            ***REMOVED*** Keep any existing asset but do not create a new one
+            # Keep any existing asset but do not create a new one
             return {
                 "country_code": iso_code or country_name,
                 "region_name": country_name or iso_code,
@@ -98,9 +98,9 @@ class ProjectionWeightService(BaseService):
         for g, n, t in negatives:
             validation_data.append((float(g), float(n), float(t), 0))
 
-        ***REMOVED*** ------------------------------------------------------------------
-        ***REMOVED*** 2) Optimize weights via simple grid search
-        ***REMOVED*** ------------------------------------------------------------------
+        # ------------------------------------------------------------------
+        # 2) Optimize weights via simple grid search
+        # ------------------------------------------------------------------
         w_geo, w_name, w_class, best_f1 = self._optimize_weights(
             validation_data,
             grid_size=grid_size,
@@ -117,9 +117,9 @@ class ProjectionWeightService(BaseService):
             best_f1,
         )
 
-        ***REMOVED*** ------------------------------------------------------------------
-        ***REMOVED*** 3) Persist to filesystem + DB asset
-        ***REMOVED*** ------------------------------------------------------------------
+        # ------------------------------------------------------------------
+        # 3) Persist to filesystem + DB asset
+        # ------------------------------------------------------------------
         output_root.mkdir(parents=True, exist_ok=True)
         country_slug = country_key.lower().replace(" ", "_")
         asset_path = output_root / f"{country_slug}_weights.json"
@@ -174,9 +174,9 @@ class ProjectionWeightService(BaseService):
             "asset_path": str(asset_path),
         }
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Internal helpers
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _optimize_weights(
@@ -201,7 +201,7 @@ class ProjectionWeightService(BaseService):
         if max_weight < min_weight:
             max_weight = min_weight
 
-        ***REMOVED*** Simple linear grid
+        # Simple linear grid
         if grid_size == 1:
             candidates = [min_weight]
         else:
@@ -240,8 +240,8 @@ class ProjectionWeightService(BaseService):
         """
         tp = fp = fn = 0
 
-        ***REMOVED*** Normalize by sum of weights so that threshold is applied on a
-        ***REMOVED*** [0, 1]-like scale, mirroring the original normalized_score logic
+        # Normalize by sum of weights so that threshold is applied on a
+        # [0, 1]-like scale, mirroring the original normalized_score logic
         denom = w_geo + w_name + w_class
         if denom <= 0:
             denom = 1.0

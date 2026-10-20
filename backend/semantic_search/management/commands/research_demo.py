@@ -60,8 +60,8 @@ class Command(BaseCommand):
         ))
 
         def emit(event, **payload):
-            ***REMOVED*** Accept both call forms: dict (the loop's event_callback
-            ***REMOVED*** contract — same normalization as the SSE view) and kwargs.
+            # Accept both call forms: dict (the loop's event_callback
+            # contract — same normalization as the SSE view) and kwargs.
             if isinstance(event, dict):
                 payload = {k: v for k, v in event.items() if k != "event"}
                 event = event.get("event") or "message"
@@ -70,8 +70,8 @@ class Command(BaseCommand):
                 "→ " + json.dumps(line, ensure_ascii=False, default=str)[:600]
             )
 
-        ***REMOVED*** One trace per demo run (console sink shows it; Langfuse sink
-        ***REMOVED*** ingests it). Thread-local: LLM spans attach as children.
+        # One trace per demo run (console sink shows it; Langfuse sink
+        # ingests it). Thread-local: LLM spans attach as children.
         from core.services.trace_service import TraceService
 
         trace_id = uuid.uuid4().hex
@@ -134,5 +134,5 @@ class Command(BaseCommand):
                 SnapshotJob.objects.order_by("-snapshot_date")
                 .values_list("snapshot_date", flat=True).first()
             )
-        except Exception:  ***REMOVED*** noqa: BLE001 — the demo must not fail on lookup
+        except Exception:  # noqa: BLE001 — the demo must not fail on lookup
             return None

@@ -1,4 +1,4 @@
-***REMOVED*** LLM Capacity Envelope & Request Flow: qwen3:8b on the RTX 4070 Ti Super
+# LLM Capacity Envelope & Request Flow: qwen3:8b on the RTX 4070 Ti Super
 
 > **Focus:** how a user request travels through parser → executor → LLM
 > synthesis on the resident `qwen3:8b`, and the VRAM/compute envelope that
@@ -13,7 +13,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Request Flow: Question → Parsed → Executed → Enriched → Streamed
+## 1. Request Flow: Question → Parsed → Executed → Enriched → Streamed
 
 ```
  user question
@@ -60,7 +60,7 @@ Invariant: **the LLM is an accelerator, never a single point of failure** —
 every stage falls back to a deterministic result, and the frontend shows
 progressive events from ~0.2s regardless of model latency.
 
-***REMOVED******REMOVED******REMOVED*** The LLM's three task shapes (all validated at 8B, 2026-09-16)
+### The LLM's three task shapes (all validated at 8B, 2026-09-16)
 
 | Task | Where | Shape | 8b verdict |
 |---|---|---|---|
@@ -70,7 +70,7 @@ progressive events from ~0.2s regardless of model latency.
 
 ---
 
-***REMOVED******REMOVED*** 2. Ollama Scheduler & Slot Model
+## 2. Ollama Scheduler & Slot Model
 
 ```
  request ──▶ Ollama server (:11434)
@@ -94,7 +94,7 @@ at 6 slots = **8.7 GB** (6.3 GB at 2 slots, 9.9 GB at 8).
 
 ---
 
-***REMOVED******REMOVED*** 3. Capacity Envelope (measured 2026-09-16)
+## 3. Capacity Envelope (measured 2026-09-16)
 
 Load test: exact production synthesis prompt (~1,351 prompt tokens, 200
 out), 8 concurrent users × 4 requests, streaming, P95 metrics:
@@ -117,7 +117,7 @@ out), 8 concurrent users × 4 requests, streaming, P95 metrics:
 
 ---
 
-***REMOVED******REMOVED*** 4. GPU Sharing with the Pipeline Worker
+## 4. GPU Sharing with the Pipeline Worker
 
 ```
 4070 Ti Super (16 GB), one card, two tenants:
@@ -137,39 +137,39 @@ out), 8 concurrent users × 4 requests, streaming, P95 metrics:
 
 ---
 
-***REMOVED******REMOVED*** 5. Wiring
+## 5. Wiring
 
 ```yaml
-***REMOVED*** docker-compose.yml
+# docker-compose.yml
 ollama:
   environment:
-    - NVIDIA_VISIBLE_DEVICES=1      ***REMOVED*** 4070 Ti Super (GPU 1); worker also =1
-    - OLLAMA_KEEP_ALIVE=-1          ***REMOVED*** resident forever — no cold reloads
-    - OLLAMA_NUM_PARALLEL=6         ***REMOVED*** load-tested ceiling (2026-09-16)
-    - OLLAMA_MAX_LOADED_MODELS=1    ***REMOVED*** one resident model (goose shares 8b)
-    - OLLAMA_MAX_QUEUE=32           ***REMOVED*** bounded back-pressure
+    - NVIDIA_VISIBLE_DEVICES=1      # 4070 Ti Super (GPU 1); worker also =1
+    - OLLAMA_KEEP_ALIVE=-1          # resident forever — no cold reloads
+    - OLLAMA_NUM_PARALLEL=6         # load-tested ceiling (2026-09-16)
+    - OLLAMA_MAX_LOADED_MODELS=1    # one resident model (goose shares 8b)
+    - OLLAMA_MAX_QUEUE=32           # bounded back-pressure
 
-***REMOVED*** backend + worker env
+# backend + worker env
 LLM_ENABLED=1
 LLM_BASE_URL=http://ollama:11434/v1
-LLM_MODEL=qwen3:8b                  ***REMOVED*** default in llm_service.py too
-LLM_API_STYLE=native                ***REMOVED*** /api/chat + think:false (qwen3 thinking
-                                    ***REMOVED*** mode eats the budget on /v1)
+LLM_MODEL=qwen3:8b                  # default in llm_service.py too
+LLM_API_STYLE=native                # /api/chat + think:false (qwen3 thinking
+                                    # mode eats the budget on /v1)
 LLM_TIMEOUT=60.0
 LLM_ANSWER_CACHE_TTL_SECONDS=1800
 
-***REMOVED*** goose env
+# goose env
 GOOSE_PROVIDER=ollama
-GOOSE_MODEL=qwen3:8b                ***REMOVED*** same model — no swap-thrash
+GOOSE_MODEL=qwen3:8b                # same model — no swap-thrash
 ```
 
 ---
 
-***REMOVED******REMOVED*** 6. Verification
+## 6. Verification
 
 ```
-docker exec eda-ollama ollama ps          ***REMOVED*** SIZE 8.7 GB, CONTEXT 4096, Forever
-docker exec eda-ollama ollama list        ***REMOVED*** qwen3:8b only (14b deleted)
+docker exec eda-ollama ollama ps          # SIZE 8.7 GB, CONTEXT 4096, Forever
+docker exec eda-ollama ollama list        # qwen3:8b only (14b deleted)
 nvidia-smi --query-gpu=name,memory.used,memory.free --format=csv
 curl -sN -H "Accept: text/event-stream" \
   "http://localhost:8000/api/nca/execute-query/stream/?query=Which%20cafes%20are%20within%2050km%20of%20Belize%20City%3F&country_code=Belize"
@@ -181,7 +181,7 @@ not guaranteed; model or context-size changes shift the envelope.
 
 ---
 
-***REMOVED******REMOVED*** Files
+## Files
 
 - `backend/core/services/llm_service.py` (client; default model `qwen3:8b`)
 - `backend/worldkg_nca/views/search.py` (`execute_query_stream`)

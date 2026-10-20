@@ -9,7 +9,7 @@
     <header class="d-flex align-items-start justify-content-between gap-2">
       <div class="d-flex flex-column gap-1">
         <h1 class="fs-4 fw-bold mb-0" style="color: var(--bs-heading-color); letter-spacing: -0.03em;">
-          <a href="https://www.vgiscience.org/projects/worldkg.html" target="_blank" rel="noopener noreferrer" class="app-shell__brand-mark text-decoration-none">&***REMOVED***127758;</a>
+          <a href="https://www.vgiscience.org/projects/worldkg.html" target="_blank" rel="noopener noreferrer" class="app-shell__brand-mark text-decoration-none">&#127758;</a>
           World KG &amp; Geo Spatial Reasoning
         </h1>
       </div>

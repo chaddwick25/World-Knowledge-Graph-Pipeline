@@ -60,19 +60,19 @@ class Command(BaseCommand):
         ))
 
         with connections['vectors'].cursor() as cursor:
-            ***REMOVED*** Ensure pgvector extension is available
+            # Ensure pgvector extension is available
             cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
 
-            ***REMOVED*** Bump parallel maintenance workers for this session if requested.
-            ***REMOVED*** This only affects the current connection — it does NOT change
-            ***REMOVED*** the global server setting.
+            # Bump parallel maintenance workers for this session if requested.
+            # This only affects the current connection — it does NOT change
+            # the global server setting.
             if parallel_workers is not None:
                 if parallel_workers < 0:
                     raise CommandError("--parallel-workers must be >= 0")
                 cursor.execute(
                     f"SET max_parallel_maintenance_workers = {int(parallel_workers)};"
                 )
-                ***REMOVED*** Report the effective value so the operator can confirm.
+                # Report the effective value so the operator can confirm.
                 cursor.execute("SHOW max_parallel_maintenance_workers;")
                 effective = cursor.fetchone()[0]
                 self.stdout.write(f"  max_parallel_maintenance_workers = {effective}")
@@ -83,7 +83,7 @@ class Command(BaseCommand):
                     "DROP INDEX IF EXISTS osmentity_static_embedding_hnsw_idx;"
                 )
 
-            ***REMOVED*** HNSW index on static_embedding (cosine distance)
+            # HNSW index on static_embedding (cosine distance)
             cursor.execute(f"""
                 CREATE INDEX IF NOT EXISTS osmentity_static_embedding_hnsw_idx
                 ON semantic_search_osmentity

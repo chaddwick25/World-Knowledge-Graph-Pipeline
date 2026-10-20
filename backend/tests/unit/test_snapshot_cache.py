@@ -30,10 +30,10 @@ class TestSnapshotCache:
         assert snapshot_utils.get_latest_snapshot_id() == "2025_12_31"
 
     def test_expired_entry_is_not_returned(self, monkeypatch):
-        ***REMOVED*** Stale timestamp (long past TTL) → cache miss → cold path runs.
-        ***REMOVED*** In the unit env the vectors DB is blocked, so the cold path
-        ***REMOVED*** fail-softs to None and repopulates the cache — the stale value
-        ***REMOVED*** must never leak through.
+        # Stale timestamp (long past TTL) → cache miss → cold path runs.
+        # In the unit env the vectors DB is blocked, so the cold path
+        # fail-softs to None and repopulates the cache — the stale value
+        # must never leak through.
         snapshot_utils._SNAPSHOT_CACHE["latest"] = {
             "at": time.monotonic() - 9999.0, "value": "stale",
         }
@@ -49,8 +49,8 @@ class TestSnapshotCache:
         assert "latest" not in snapshot_utils._SNAPSHOT_CACHE
 
     def test_ttl_from_env(self, monkeypatch):
-        ***REMOVED*** Default raised 120 → 300 (2026-10-01): the snapshot-registry
-        ***REMOVED*** Append is the hot-path variable; 2 idle minutes was too short.
+        # Default raised 120 → 300 (2026-10-01): the snapshot-registry
+        # Append is the hot-path variable; 2 idle minutes was too short.
         assert snapshot_utils._snapshot_cache_ttl() == 300.0
         monkeypatch.setattr(settings, "SNAPSHOT_ID_CACHE_TTL_SECONDS", "5")
         assert snapshot_utils._snapshot_cache_ttl() == 5.0

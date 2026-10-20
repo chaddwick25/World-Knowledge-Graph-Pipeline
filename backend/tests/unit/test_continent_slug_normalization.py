@@ -25,7 +25,7 @@ def temp_base_dir():
         yield td
 
 
-***REMOVED*** ====== 1. Normalisation functions -- pure invariants ======
+# ====== 1. Normalisation functions -- pure invariants ======
 
 
 class TestNormalizeContinentSlug:
@@ -33,28 +33,28 @@ class TestNormalizeContinentSlug:
 
     @pytest.mark.unit
     @pytest.mark.parametrize("raw,expected", [
-        ***REMOVED*** Single-word continents (unchanged)
+        # Single-word continents (unchanged)
         ("europe", "europe"),
         ("africa", "africa"),
         ("asia", "asia"),
         ("antarctica", "antarctica"),
         ("australia", "australia"),
         ("oceania", "oceania"),
-        ***REMOVED*** Hyphenated -> underscores (THE FIX)
+        # Hyphenated -> underscores (THE FIX)
         ("north-america", "north_america"),
         ("south-america", "south_america"),
         ("central-america", "central_america"),
-        ***REMOVED*** Space-separated -> underscores
+        # Space-separated -> underscores
         ("North America", "north_america"),
         ("South America", "south_america"),
         ("Central America", "central_america"),
-        ***REMOVED*** Mixed delimiters
+        # Mixed delimiters
         ("North-America", "north_america"),
         ("north_America", "north_america"),
-        ***REMOVED*** Already underscore (no-op)
+        # Already underscore (no-op)
         ("north_america", "north_america"),
         ("south_america", "south_america"),
-        ***REMOVED*** Name with spaces
+        # Name with spaces
         ("Russian Federation", "russian_federation"),
     ])
     def test_hyphens_and_spaces_become_underscores(self, raw, expected):
@@ -121,7 +121,7 @@ class TestNormalizeCountryName:
         assert normalize_country_name(slug) == expected
 
 
-***REMOVED*** ====== 2. RegionalPathService -- path construction invariants ======
+# ====== 2. RegionalPathService -- path construction invariants ======
 
 
 @pytest.mark.unit
@@ -152,7 +152,7 @@ class TestRegionalPathService:
         assert "-" not in path.name
 
 
-***REMOVED*** ====== 3. Full resolution chain must never produce hyphens ======
+# ====== 3. Full resolution chain must never produce hyphens ======
 
 
 @pytest.mark.unit
@@ -199,7 +199,7 @@ class TestFullResolutionChain:
                 assert "-" not in part, f"Hyphen found in filename part: {part}"
 
 
-***REMOVED*** ====== 4. Hardcoded continent list verification ======
+# ====== 4. Hardcoded continent list verification ======
 
 
 @pytest.mark.unit
@@ -222,7 +222,7 @@ class TestHardcodedContinentLists:
             assert "-" not in name, f"Hyphen in priority list: {name!r}"
 
 
-***REMOVED*** ====== 5. Skip-if-exists logic ======
+# ====== 5. Skip-if-exists logic ======
 
 
 @pytest.mark.unit
@@ -261,7 +261,7 @@ class TestSkipRegeneration:
         assert expected_pbf.exists()
 
 
-***REMOVED*** ====== 6. Mixed convention detection ======
+# ====== 6. Mixed convention detection ======
 
 
 @pytest.mark.unit

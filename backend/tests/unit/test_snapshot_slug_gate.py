@@ -32,9 +32,9 @@ from pipeline.envelopes import CountryEnvelope
 logger = logging.getLogger("test_snapshot_slug_gate")
 
 
-***REMOVED*** =============================================================================
-***REMOVED*** 1. Fix 1 — SnapshotExtractionService respects the canonical_slug gate
-***REMOVED*** =============================================================================
+# =============================================================================
+# 1. Fix 1 — SnapshotExtractionService respects the canonical_slug gate
+# =============================================================================
 
 
 class TestExtractCountrySnapshotSlugGate:
@@ -69,7 +69,7 @@ class TestExtractCountrySnapshotSlugGate:
         ), patch.object(
             SnapshotExtractionService, "_register_snapshot",
         ):
-            ***REMOVED*** The extraction validates the output file exists post-time-filter.
+            # The extraction validates the output file exists post-time-filter.
             snap_path = base.get_single_snapshot_pbf_path(
                 "europe", country_slug, "2025_12_31",
             )
@@ -112,8 +112,8 @@ class TestExtractCountrySnapshotSlugGate:
         when the canonical_slug gate is passed."""
         result = self._run_extraction(tmp_path, country_slug="netherlands")
 
-        ***REMOVED*** What from_db computes as the fallback snapshot_pbf_path
-        ***REMOVED*** (candidate_slugs[0] = get_country_slug("NL", canonical_slug)).
+        # What from_db computes as the fallback snapshot_pbf_path
+        # (candidate_slugs[0] = get_country_slug("NL", canonical_slug)).
         env_expected = RegionalPathService(str(tmp_path)).get_single_snapshot_pbf_path(
             "europe", get_country_slug("NL", "netherlands"), "2025_12_31",
         )
@@ -151,9 +151,9 @@ class TestExtractCountrySnapshotSlugGate:
             assert get_country_slug("NL", "netherlands") == "netherlands"
 
 
-***REMOVED*** =============================================================================
-***REMOVED*** 2. Fix 2 — preprocess_snapshot returns a replaced envelope (frozen-safe)
-***REMOVED*** =============================================================================
+# =============================================================================
+# 2. Fix 2 — preprocess_snapshot returns a replaced envelope (frozen-safe)
+# =============================================================================
 
 
 class TestPreprocessSnapshotReturnsEnvelope:
@@ -182,7 +182,7 @@ class TestPreprocessSnapshotReturnsEnvelope:
 
         env = self._build_env()
         original_path = env.snapshot_pbf_path
-        assert Path(env.snapshot_pbf_path).exists() is False  ***REMOVED*** pre-conditions
+        assert Path(env.snapshot_pbf_path).exists() is False  # pre-conditions
 
         mock_result = {
             "success": True,
@@ -203,17 +203,17 @@ class TestPreprocessSnapshotReturnsEnvelope:
 
             new_env = helper.preprocess_snapshot(env, logger=logger)
 
-        ***REMOVED*** The extraction service received the canonical_slug gate.
+        # The extraction service received the canonical_slug gate.
         mock_cls.return_value.extract_country_snapshot.assert_called_once()
         call_kwargs = mock_cls.return_value.extract_country_snapshot.call_args.kwargs
         assert call_kwargs.get("country_slug") == "netherlands"
 
-        ***REMOVED*** A NEW envelope is returned with the actual extraction paths.
+        # A NEW envelope is returned with the actual extraction paths.
         assert new_env is not env
         assert new_env.snapshot_pbf_path == mock_result["snapshot_pbf_path"]
         assert new_env.poly_path == mock_result["poly_file_path"]
 
-        ***REMOVED*** The original envelope is unchanged (frozen dataclass — no mutation).
+        # The original envelope is unchanged (frozen dataclass — no mutation).
         assert env.snapshot_pbf_path == original_path
         assert env.poly_path is None
 

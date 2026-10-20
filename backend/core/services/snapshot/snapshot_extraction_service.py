@@ -62,7 +62,7 @@ class SnapshotExtractionService:
     def __init__(self) -> None:
         self.osmium = OsmiumFacade()
 
-    ***REMOVED*** ── Public API ───────────────────────────────────────────────────────
+    # ── Public API ───────────────────────────────────────────────────────
     def extract_country_snapshot(
         self,
         country_code: str,
@@ -109,7 +109,7 @@ class SnapshotExtractionService:
             else default_slug
         )
 
-        ***REMOVED*** ── 1. Resolve continent PBF (source for extraction) ──────────
+        # ── 1. Resolve continent PBF (source for extraction) ──────────
         continent_pbf = self._resolve_continent_pbf(cont_norm)
         if not continent_pbf:
             return self._fail(
@@ -117,12 +117,12 @@ class SnapshotExtractionService:
                 f"Ensure planet init has extracted continent PBFs."
             )
 
-        ***REMOVED*** ── 2. Resolve output paths ────────────────────────────────────
+        # ── 2. Resolve output paths ────────────────────────────────────
         snapshot_pbf_path = regional_path_service.get_single_snapshot_pbf_path(
             cont_norm, resolved_slug, snapshot_date,
         )
 
-        ***REMOVED*** ── 3. Resolve poly file ───────────────────────────────────────
+        # ── 3. Resolve poly file ───────────────────────────────────────
         resolved_poly = self._resolve_poly_file(
             poly_file_path=poly_file_path,
             country_code=country_code,
@@ -137,7 +137,7 @@ class SnapshotExtractionService:
                 f"(relation_id={osm_relation_id})"
             )
 
-        ***REMOVED*** ── 4. Short-circuit if snapshot already exists ────────────────
+        # ── 4. Short-circuit if snapshot already exists ────────────────
         if Path(snapshot_pbf_path).exists() and Path(snapshot_pbf_path).stat().st_size > 0:
             logger.info(
                 "Snapshot PBF already exists — skipping extraction [country=%s path=%s]",
@@ -152,7 +152,7 @@ class SnapshotExtractionService:
                 "skipped": True,
             }
 
-        ***REMOVED*** ── 5. Extract from continent PBF (with history) ───────────────
+        # ── 5. Extract from continent PBF (with history) ───────────────
         Path(snapshot_pbf_path).parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             suffix=".osm.pbf", delete=False, dir=str(Path(snapshot_pbf_path).parent),
@@ -169,7 +169,7 @@ class SnapshotExtractionService:
                     f"(continent_pbf={continent_pbf})"
                 )
 
-            ***REMOVED*** ── 6. Time-filter to snapshot date ────────────────────────
+            # ── 6. Time-filter to snapshot date ────────────────────────
             syear, smonth, sday = (int(x) for x in snapshot_date.split("_"))
             timestamp = f"{syear}-{smonth:02d}-{sday:02d}T23:59:59Z"
             time_ok = self._osmium_time_filter(
@@ -180,7 +180,7 @@ class SnapshotExtractionService:
                     f"osmium time-filter failed for {country_code} @ {snapshot_date}"
                 )
 
-            ***REMOVED*** ── 7. Validate output ─────────────────────────────────────
+            # ── 7. Validate output ─────────────────────────────────────
             if not Path(snapshot_pbf_path).exists() or Path(snapshot_pbf_path).stat().st_size == 0:
                 return self._fail(
                     f"Snapshot PBF missing or empty: {snapshot_pbf_path}"
@@ -192,14 +192,14 @@ class SnapshotExtractionService:
                 )
             entity_count = self._extract_entity_count(info)
 
-            ***REMOVED*** ── 8. Register PbfFile row ────────────────────────────────
+            # ── 8. Register PbfFile row ────────────────────────────────
             pbf_file = self._register_pbf_file(
                 snapshot_pbf_path=str(snapshot_pbf_path),
                 source_pbf_path=str(continent_pbf),
                 entity_count=entity_count,
             )
 
-            ***REMOVED*** ── 9. Register Snapshot row ───────────────────────────────
+            # ── 9. Register Snapshot row ───────────────────────────────
             self._register_snapshot(
                 country_code=country_code,
                 snapshot_date=snapshot_date,
@@ -224,7 +224,7 @@ class SnapshotExtractionService:
             except OSError:
                 pass
 
-    ***REMOVED*** ── Helpers ──────────────────────────────────────────────────────────
+    # ── Helpers ──────────────────────────────────────────────────────────
     def _resolve_continent_pbf(self, continent_slug: str) -> Optional[Path]:
         """Resolve the continent PBF (with history) path.
 
@@ -240,7 +240,7 @@ class SnapshotExtractionService:
             if pbf.exists() and pbf.stat().st_size > 0:
                 return pbf
 
-        ***REMOVED*** Fallback: regional_path_service convention
+        # Fallback: regional_path_service convention
         fallback = regional_path_service.get_continent_pbf_path(continent_slug)
         if fallback.exists() and fallback.stat().st_size > 0:
             return fallback
@@ -257,11 +257,11 @@ class SnapshotExtractionService:
         planet_pbf: str,
     ) -> Optional[Path]:
         """Resolve a .poly file: caller-supplied → OsmBoundary → on-disk → generate."""
-        ***REMOVED*** 1. Caller-supplied
+        # 1. Caller-supplied
         if poly_file_path and Path(poly_file_path).exists():
             return Path(poly_file_path)
 
-        ***REMOVED*** 2. OsmBoundary DB lookup (polygon_file FK → PolygonFile.file_path)
+        # 2. OsmBoundary DB lookup (polygon_file FK → PolygonFile.file_path)
         try:
             from core.models import OsmBoundary
             boundary = (
@@ -276,7 +276,7 @@ class SnapshotExtractionService:
         except Exception as exc:
             logger.warning("OsmBoundary poly lookup failed: %s", exc)
 
-        ***REMOVED*** 3. On-disk fallback (regional_path_service convention)
+        # 3. On-disk fallback (regional_path_service convention)
         candidate = (
             Path(settings.BASE_DATA_DIR)
             / "OSM-PBF-FILES"
@@ -287,7 +287,7 @@ class SnapshotExtractionService:
         if candidate.exists():
             return candidate
 
-        ***REMOVED*** 4. Generate from planet PBF via osmium getid + export
+        # 4. Generate from planet PBF via osmium getid + export
         if osm_relation_id and planet_pbf:
             from .pbf_bounding_box_service import pbf_bounding_box_service
             generated = (

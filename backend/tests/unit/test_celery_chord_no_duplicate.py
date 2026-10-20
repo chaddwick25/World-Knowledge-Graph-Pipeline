@@ -51,9 +51,9 @@ import pytest
 from django.conf import settings
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** 1. Config guard — fast CI gate
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# 1. Config guard — fast CI gate
+# --------------------------------------------------------------------------- #
 
 class TestResultBackendConfig:
     """Ensure the Celery result backend uses PatchedDatabaseBackend.
@@ -90,9 +90,9 @@ class TestResultBackendConfig:
         )
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** 2. Backend unit tests — direct method testing
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# 2. Backend unit tests — direct method testing
+# --------------------------------------------------------------------------- #
 
 class TestPatchedDatabaseBackend:
     """Directly test PatchedDatabaseBackend's chord methods.
@@ -118,7 +118,7 @@ class TestPatchedDatabaseBackend:
         request.id = str(uuid.uuid4())
         request.group = str(uuid.uuid4())
 
-        ***REMOVED*** Must not raise — this is the core fix
+        # Must not raise — this is the core fix
         backend.on_chord_part_return(request=request, state="SUCCESS", result={})
 
     def test_on_chord_part_return_no_gid_is_noop(self):
@@ -132,7 +132,7 @@ class TestPatchedDatabaseBackend:
         request.id = "test-id"
         request.group = None
 
-        ***REMOVED*** Must not raise
+        # Must not raise
         backend.on_chord_part_return(request=request, state="SUCCESS", result={})
 
     def test_apply_chord_does_not_create_chordcounter(self):
@@ -151,7 +151,7 @@ class TestPatchedDatabaseBackend:
         backend = PatchedDatabaseBackend(app=celery_app)
         group_id = str(uuid.uuid4())
 
-        ***REMOVED*** Mock ChordCounter.objects to track create vs filter/delete
+        # Mock ChordCounter.objects to track create vs filter/delete
         mock_manager = MagicMock()
         mock_filter_qs = MagicMock()
         mock_manager.filter.return_value = mock_filter_qs
@@ -166,21 +166,21 @@ class TestPatchedDatabaseBackend:
 
                 backend.apply_chord(header_result, body)
 
-                ***REMOVED*** fallback_chord_unlock should have been called
+                # fallback_chord_unlock should have been called
                 assert mock_fallback.called, (
                     "apply_chord should call fallback_chord_unlock to schedule "
                     "the chord_unlock polling task"
                 )
 
-                ***REMOVED*** ChordCounter.objects.create should NOT have been called
+                # ChordCounter.objects.create should NOT have been called
                 mock_manager.create.assert_not_called(), (
                     "PatchedDatabaseBackend.apply_chord must NOT call "
                     "ChordCounter.objects.create — it uses "
                     "fallback_chord_unlock instead"
                 )
 
-                ***REMOVED*** ChordCounter.objects.filter(group_id=...).delete() should
-                ***REMOVED*** have been called (stale cleanup)
+                # ChordCounter.objects.filter(group_id=...).delete() should
+                # have been called (stale cleanup)
                 mock_manager.filter.assert_called_once_with(group_id=group_id)
                 mock_filter_qs.delete.assert_called_once()
 
@@ -213,7 +213,7 @@ class TestPatchedDatabaseBackend:
 
                 backend.apply_chord(header_result, body)
 
-                ***REMOVED*** filter(group_id=...).delete() should have been called
+                # filter(group_id=...).delete() should have been called
                 mock_manager.filter.assert_called_once_with(group_id=group_id)
                 mock_filter_qs.delete.assert_called_once(), (
                     "PatchedDatabaseBackend.apply_chord should delete stale "
@@ -239,7 +239,7 @@ class TestPatchedDatabaseBackend:
         request.id = str(uuid.uuid4())
         request.group = str(uuid.uuid4())
 
-        ***REMOVED*** Patch ChordCounter.objects to raise if queried
+        # Patch ChordCounter.objects to raise if queried
         with patch.object(
             ChordCounter, "objects",
             new=MagicMock(),
@@ -248,12 +248,12 @@ class TestPatchedDatabaseBackend:
                 "PatchedDatabaseBackend.on_chord_part_return must NOT "
                 "query ChordCounter.objects"
             )
-            ***REMOVED*** Must not raise — should not touch ChordCounter
+            # Must not raise — should not touch ChordCounter
             backend.on_chord_part_return(
                 request=request, state="SUCCESS", result={},
             )
 
-            ***REMOVED*** Verify ChordCounter.objects was never accessed for query
+            # Verify ChordCounter.objects was never accessed for query
             mock_objects.select_for_update.assert_not_called()
 
     def test_apply_chord_overrides_none_interval(self):
@@ -281,7 +281,7 @@ class TestPatchedDatabaseBackend:
                 body = MagicMock()
                 body.options = {}
 
-                ***REMOVED*** Exactly how chord.run calls it (canvas.py:1422-1429)
+                # Exactly how chord.run calls it (canvas.py:1422-1429)
                 backend.apply_chord(
                     header_result, body,
                     interval=None, countdown=1, max_retries=None,
@@ -325,9 +325,9 @@ class TestPatchedDatabaseBackend:
                 )
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** 3. Chord-in-chain canvas composition smoke test
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# 3. Chord-in-chain canvas composition smoke test
+# --------------------------------------------------------------------------- #
 
 class TestChordInChainNoDuplicates:
     """Chord-in-chain canvas composition smoke test.
@@ -402,9 +402,9 @@ class TestChordInChainNoDuplicates:
             tracker["calls"]["post"] = tracker["calls"].get("post", 0) + 1
             return {"done": True}
 
-        ***REMOVED*** Build the exact pattern from canvas.py Step 5:
-        ***REMOVED***   chain(pre.s(cfg), chord([header.si(0), header.si(1), header.si(2)],
-        ***REMOVED***                            callback.s(cfg)), post.s())
+        # Build the exact pattern from canvas.py Step 5:
+        #   chain(pre.s(cfg), chord([header.si(0), header.si(1), header.si(2)],
+        #                            callback.s(cfg)), post.s())
         num_headers = 5
         header_sigs = [_header_task.si(i) for i in range(num_headers)]
         cfg = {"test": True}
@@ -415,10 +415,10 @@ class TestChordInChainNoDuplicates:
             _post_task.s(),
         )
 
-        ***REMOVED*** Execute eagerly — Celery's trace calls apply_chord + on_chord_part_return
+        # Execute eagerly — Celery's trace calls apply_chord + on_chord_part_return
         canvas.apply_async()
 
-        ***REMOVED*** Assert each header ran exactly once
+        # Assert each header ran exactly once
         for i in range(num_headers):
             count = tracker["calls"].get(f"header_{i}", 0)
             assert count == 1, (
@@ -429,14 +429,14 @@ class TestChordInChainNoDuplicates:
                 f"All call counts: {tracker['calls']}"
             )
 
-        ***REMOVED*** Assert the callback ran exactly once
+        # Assert the callback ran exactly once
         cb_count = tracker["calls"].get("callback", 0)
         assert cb_count == 1, (
             f"Chord callback ran {cb_count} times — expected exactly 1. "
             f"All call counts: {tracker['calls']}"
         )
 
-        ***REMOVED*** Assert pre and post ran exactly once
+        # Assert pre and post ran exactly once
         assert tracker["calls"].get("pre", 0) == 1, f"Pre-task ran {tracker['calls'].get('pre', 0)} times"
         assert tracker["calls"].get("post", 0) == 1, f"Post-task ran {tracker['calls'].get('post', 0)} times"
 
@@ -461,8 +461,8 @@ class TestChordInChainNoDuplicates:
         header_sigs = [_header.si(i) for i in range(3)]
         ch = chord(header_sigs, _callback.s({"cfg": True}))
 
-        ***REMOVED*** If ChordCounter.DoesNotExist is raised, it will propagate as an
-        ***REMOVED*** exception in eager mode (task_eager_propagates=True).
+        # If ChordCounter.DoesNotExist is raised, it will propagate as an
+        # exception in eager mode (task_eager_propagates=True).
         try:
             result = ch.apply_async()
             assert result is not None

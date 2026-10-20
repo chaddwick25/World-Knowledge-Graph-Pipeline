@@ -205,14 +205,14 @@ class PbfFile(models.Model):
         Returns:
             PbfFile or None: The most recent monthly extract, or None if no monthly extracts exist
         """
-        ***REMOVED*** Get all yearly extracts that are children of this PBF
+        # Get all yearly extracts that are children of this PBF
         yearly_extracts = PbfFile.objects.filter(
             parent_pbf=self,
             extraction_level=self.ExtractionLevel.REGION_YEARLY,
             status=self.PbfStatus.COMPLETED
         )
         
-        ***REMOVED*** Collect all monthly extracts from all yearly extracts
+        # Collect all monthly extracts from all yearly extracts
         monthly_extracts = []
         for yearly in yearly_extracts:
             monthly_children = PbfFile.objects.filter(
@@ -225,7 +225,7 @@ class PbfFile(models.Model):
         if not monthly_extracts:
             return None
         
-        ***REMOVED*** Find the monthly extract with the latest max_timestamp
+        # Find the monthly extract with the latest max_timestamp
         latest = max(monthly_extracts, key=lambda x: x.max_timestamp if x.max_timestamp else timezone.datetime.min.replace(tzinfo=timezone.utc))
         
         return latest if latest.max_timestamp else None
@@ -296,18 +296,18 @@ class OsmBoundary(models.Model):
     Separate from PolygonFile (extraction boundaries).
     """
     osm_id = models.BigIntegerField(unique=True, db_index=True)
-    osm_type = models.CharField(max_length=10)  ***REMOVED*** 'relation', 'way'
-    admin_level = models.IntegerField(db_index=True)  ***REMOVED*** 2=country, 4=state, etc.
+    osm_type = models.CharField(max_length=10)  # 'relation', 'way'
+    admin_level = models.IntegerField(db_index=True)  # 2=country, 4=state, etc.
     
     name = models.CharField(max_length=255, db_index=True)
-    name_en = models.CharField(max_length=255, null=True, blank=True)  ***REMOVED*** English name
-    iso_code = models.CharField(max_length=10, null=True, blank=True, db_index=True)  ***REMOVED*** ISO3166-1
+    name_en = models.CharField(max_length=255, null=True, blank=True)  # English name
+    iso_code = models.CharField(max_length=10, null=True, blank=True, db_index=True)  # ISO3166-1
     
-    ***REMOVED*** Cartographic geometry (simplified for display)
+    # Cartographic geometry (simplified for display)
     geometry = models.JSONField(help_text="GeoJSON geometry")
     bbox = models.JSONField(null=True, blank=True, help_text="Bounding box [minLon, minLat, maxLon, maxLat]")
     
-    ***REMOVED*** Link to extraction polygon
+    # Link to extraction polygon
     polygon_file = models.ForeignKey(
         'PolygonFile',
         on_delete=models.SET_NULL,
@@ -316,10 +316,10 @@ class OsmBoundary(models.Model):
         related_name='osm_boundary'
     )
     
-    ***REMOVED*** Metadata
+    # Metadata
     simplification_tolerance = models.FloatField(default=0.01)
     
-    ***REMOVED*** Temporal Validity (Versioning)
+    # Temporal Validity (Versioning)
     valid_from = models.DateTimeField(
         null=True, blank=True, 
         default=datetime(2004, 1, 1, tzinfo=timezone.utc),
@@ -393,7 +393,7 @@ class PolygonFile(models.Model):
     region_name = models.CharField(max_length=255, db_index=True, help_text="The corresponding region name, if known.")
     is_active = models.BooleanField(default=True)
     
-    ***REMOVED*** Temporal Validity (Versioning)
+    # Temporal Validity (Versioning)
     valid_from = models.DateTimeField(
         null=True, blank=True,
         default=datetime(2004, 1, 1, tzinfo=timezone.utc),
@@ -461,7 +461,7 @@ class RegionalExtractionState(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     region_name = models.CharField(max_length=255, db_index=True)
     region_type = models.CharField(max_length=20, choices=RegionType.choices)
-    ***REMOVED*** Track which planet file was the source for this state
+    # Track which planet file was the source for this state
     source_planet_path = models.CharField(max_length=1024, db_index=True)
     status = models.CharField(
         max_length=20,
@@ -470,7 +470,7 @@ class RegionalExtractionState(models.Model):
         db_index=True,
     )
 
-    ***REMOVED*** Ground truth reference
+    # Ground truth reference
     poly_file = models.ForeignKey(
         'PolygonFile',
         on_delete=models.CASCADE,
@@ -478,7 +478,7 @@ class RegionalExtractionState(models.Model):
         help_text="The .poly file that defines this region's boundary",
     )
 
-    ***REMOVED*** Links to other relevant records
+    # Links to other relevant records
     osm_boundary = models.ForeignKey(
         'OsmBoundary',
         on_delete=models.SET_NULL,
@@ -495,7 +495,7 @@ class RegionalExtractionState(models.Model):
         related_name='initialization_states',
     )
 
-    ***REMOVED*** Metrics and metadata
+    # Metrics and metadata
     metrics = models.JSONField(
         default=dict,
         blank=True,
@@ -551,7 +551,7 @@ class ProjectionWeightAsset(models.Model):
         help_text="Filesystem path to the JSON file storing learned weights."
     )
 
-    ***REMOVED*** Learned weights for tri-space style scoring
+    # Learned weights for tri-space style scoring
     w_geo = models.FloatField(default=1.0)
     w_name = models.FloatField(default=1.0)
     w_class = models.FloatField(default=1.0)
@@ -603,7 +603,7 @@ class PlanetaryMetrics(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
-    ***REMOVED*** Source identification
+    # Source identification
     pbf_file = models.OneToOneField(
         PbfFile,
         on_delete=models.CASCADE,
@@ -617,28 +617,28 @@ class PlanetaryMetrics(models.Model):
         related_name='planetary_metrics'
     )
     
-    ***REMOVED*** Core metrics (natural primitives)
+    # Core metrics (natural primitives)
     node_count = models.BigIntegerField()
     way_count = models.BigIntegerField()
     relation_count = models.BigIntegerField()
     
-    ***REMOVED*** Geographic primitives
+    # Geographic primitives
     bbox_min_lat = models.FloatField()
     bbox_max_lat = models.FloatField()
     bbox_min_lon = models.FloatField()
     bbox_max_lon = models.FloatField()
     area_km2 = models.FloatField()
     
-    ***REMOVED*** Tag distribution primitives
+    # Tag distribution primitives
     unique_tag_keys = models.IntegerField()
     unique_tag_values = models.IntegerField()
     top_tag_keys = models.JSONField(default=list)
     
-    ***REMOVED*** Quality primitives
+    # Quality primitives
     orphan_nodes_ratio = models.FloatField()
     incomplete_ways_ratio = models.FloatField()
     
-    ***REMOVED*** Processing primitives (for policy decisions)
+    # Processing primitives (for policy decisions)
     estimated_processing_time_seconds = models.IntegerField()
     recommended_batch_size = models.IntegerField()
     recommended_worker_count = models.IntegerField()

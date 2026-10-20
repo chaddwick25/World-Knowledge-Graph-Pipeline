@@ -46,7 +46,7 @@ class Command(BaseCommand):
             ))
             return
 
-        ***REMOVED*** Global mode: existing behavior (root → snapshot → all leaves)
+        # Global mode: existing behavior (root → snapshot → all leaves)
         self.stdout.write(self.style.WARNING(
             "Global mode: dropping HNSW indexes on semantic_search_osmentity "
             "(vectors DB)..."
@@ -56,9 +56,9 @@ class Command(BaseCommand):
             f"Dropped {total} index(es) (global)."
         ))
 
-    ***REMOVED*** ------------------------------------------------------------------ ***REMOVED***
-    ***REMOVED*** Per-leaf mode — drops ALL non-constraint indexes (HNSW + GIST + B-tree)
-    ***REMOVED*** ------------------------------------------------------------------ ***REMOVED***
+    # ------------------------------------------------------------------ #
+    # Per-leaf mode — drops ALL non-constraint indexes (HNSW + GIST + B-tree)
+    # ------------------------------------------------------------------ #
     def _drop_leaf_bulk_indexes(self, leaf_name: str) -> int:
         """Drop ALL non-constraint indexes on a single leaf partition.
 
@@ -77,14 +77,14 @@ class Command(BaseCommand):
         the bulk load completes.
         """
         with connections['vectors'].cursor() as cursor:
-            ***REMOVED*** Select all non-unique, non-primary-key indexes on this leaf.
-            ***REMOVED***
-            ***REMOVED*** We use pg_index.indisunique / indisprimary instead of
-            ***REMOVED*** pg_constraint because for partitioned tables the constraint
-            ***REMOVED*** record lives on the PARENT partition, not the leaf — so a
-            ***REMOVED*** pg_constraint join misses leaf indexes that back inherited
-            ***REMOVED*** unique constraints and incorrectly tries to drop them (which
-            ***REMOVED*** PostgreSQL rejects with "required by parent index").
+            # Select all non-unique, non-primary-key indexes on this leaf.
+            #
+            # We use pg_index.indisunique / indisprimary instead of
+            # pg_constraint because for partitioned tables the constraint
+            # record lives on the PARENT partition, not the leaf — so a
+            # pg_constraint join misses leaf indexes that back inherited
+            # unique constraints and incorrectly tries to drop them (which
+            # PostgreSQL rejects with "required by parent index").
             cursor.execute(
                 """
                 SELECT i.indexname
@@ -111,32 +111,32 @@ class Command(BaseCommand):
                 )
         return len(indexes)
 
-    ***REMOVED*** ------------------------------------------------------------------ ***REMOVED***
-    ***REMOVED*** Global mode (existing behavior, refactored into a method)
-    ***REMOVED*** ------------------------------------------------------------------ ***REMOVED***
+    # ------------------------------------------------------------------ #
+    # Global mode (existing behavior, refactored into a method)
+    # ------------------------------------------------------------------ #
     def _drop_all_hnsw(self) -> int:
         with connections['vectors'].cursor() as cursor:
-            ***REMOVED*** Drop HNSW indexes on the partitioned table hierarchy.
-            ***REMOVED***
-            ***REMOVED*** For partitioned indexes, PostgreSQL requires dropping the PARENT
-            ***REMOVED*** first.  Dropping a parent partitioned index automatically drops
-            ***REMOVED*** ALL child indexes on every sub-partition and leaf — no CASCADE
-            ***REMOVED*** needed.  You CANNOT drop a child index while the parent exists
-            ***REMOVED*** (the parent depends on it).
-            ***REMOVED***
-            ***REMOVED*** Order:
-            ***REMOVED***   1. Drop root partitioned HNSW indexes (ON semantic_search_osmentity)
-            ***REMOVED***      → automatically drops all children on snapshot sub-partitions + leaves
-            ***REMOVED***   2. Drop any remaining snapshot-level partitioned HNSW indexes
-            ***REMOVED***      → automatically drops their leaf children
-            ***REMOVED***   3. Drop any remaining leaf HNSW indexes (orphaned, no parent)
-            ***REMOVED***
-            ***REMOVED*** Exclude any index that backs a constraint (pkey, unique) —
-            ***REMOVED*** dropping those would corrupt the schema.
+            # Drop HNSW indexes on the partitioned table hierarchy.
+            #
+            # For partitioned indexes, PostgreSQL requires dropping the PARENT
+            # first.  Dropping a parent partitioned index automatically drops
+            # ALL child indexes on every sub-partition and leaf — no CASCADE
+            # needed.  You CANNOT drop a child index while the parent exists
+            # (the parent depends on it).
+            #
+            # Order:
+            #   1. Drop root partitioned HNSW indexes (ON semantic_search_osmentity)
+            #      → automatically drops all children on snapshot sub-partitions + leaves
+            #   2. Drop any remaining snapshot-level partitioned HNSW indexes
+            #      → automatically drops their leaf children
+            #   3. Drop any remaining leaf HNSW indexes (orphaned, no parent)
+            #
+            # Exclude any index that backs a constraint (pkey, unique) —
+            # dropping those would corrupt the schema.
 
-            ***REMOVED*** Step 1: Drop root partitioned HNSW indexes on semantic_search_osmentity.
-            ***REMOVED*** These are ON ONLY indexes.  Match by 'hnsw' in indexdef OR name.
-            ***REMOVED*** Exclude constraint-backed indexes.
+            # Step 1: Drop root partitioned HNSW indexes on semantic_search_osmentity.
+            # These are ON ONLY indexes.  Match by 'hnsw' in indexdef OR name.
+            # Exclude constraint-backed indexes.
             cursor.execute("""
                 SELECT i.indexname
                 FROM pg_indexes i
@@ -155,11 +155,11 @@ class Command(BaseCommand):
                 cursor.execute(f"DROP INDEX IF EXISTS {idx_name};")
                 self.stdout.write(f"  Dropped root HNSW index: {idx_name}")
 
-            ***REMOVED*** Step 2: Drop snapshot-level partitioned HNSW indexes.
-            ***REMOVED*** These are ON ONLY indexes on tables like embeddings_2025_12_31
-            ***REMOVED*** (the snapshot sub-partition, which is itself partitioned by
-            ***REMOVED*** country_code).  The root drop above may have already removed
-            ***REMOVED*** them, but IF NOT EXISTS handles that.
+            # Step 2: Drop snapshot-level partitioned HNSW indexes.
+            # These are ON ONLY indexes on tables like embeddings_2025_12_31
+            # (the snapshot sub-partition, which is itself partitioned by
+            # country_code).  The root drop above may have already removed
+            # them, but IF NOT EXISTS handles that.
             cursor.execute("""
                 SELECT i.indexname, i.tablename
                 FROM pg_indexes i
@@ -177,9 +177,9 @@ class Command(BaseCommand):
                 cursor.execute(f"DROP INDEX IF EXISTS {idx_name};")
                 self.stdout.write(f"  Dropped snapshot HNSW index: {idx_name} (on {tbl_name})")
 
-            ***REMOVED*** Step 3: Drop any remaining leaf HNSW indexes.
-            ***REMOVED*** These are on leaf partitions (embeddings_{snapshot}_{cc}) and
-            ***REMOVED*** may survive if they were created independently (not via parent).
+            # Step 3: Drop any remaining leaf HNSW indexes.
+            # These are on leaf partitions (embeddings_{snapshot}_{cc}) and
+            # may survive if they were created independently (not via parent).
             cursor.execute("""
                 SELECT indexname, indexdef, tablename
                 FROM pg_indexes

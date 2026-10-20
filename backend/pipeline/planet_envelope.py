@@ -11,17 +11,17 @@ import dataclasses
 from typing import List, Optional
 
 
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
-***REMOVED*** PlanetEnvelope (for planet-init tasks)
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# PlanetEnvelope (for planet-init tasks)
+# ──────────────────────────────────────────────────────────────────────────
 @dataclasses.dataclass
 class PlanetRunState:
     """Mutable state for planet-init runs."""
     snapshot_date: str = "2025_12_31"
     continents_extracted: bool = False
-    ***REMOVED*** Transient (NOT serialized by to_dict): artifact descriptors produced by
-    ***REMOVED*** the task body, consumed by the @pipeline_step on_success hook to emit
-    ***REMOVED*** PipelineAsset rows. See CountryRunState.pending_assets for the shape.
+    # Transient (NOT serialized by to_dict): artifact descriptors produced by
+    # the task body, consumed by the @pipeline_step on_success hook to emit
+    # PipelineAsset rows. See CountryRunState.pending_assets for the shape.
     pending_assets: List[dict] = dataclasses.field(default_factory=list)
 
 
@@ -48,7 +48,7 @@ class PlanetEnvelope:
     extract_continents: bool = True
     state: PlanetRunState = dataclasses.field(default_factory=PlanetRunState)
 
-    ***REMOVED*** ── Compatibility with legacy CountryConfig field names ─────────────
+    # ── Compatibility with legacy CountryConfig field names ─────────────
     @property
     def iso(self) -> str:
         return "PL"

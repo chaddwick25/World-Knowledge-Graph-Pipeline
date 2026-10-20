@@ -1,4 +1,4 @@
-***REMOVED*** Docker Agent Stack: Ollama + Goose on the RTX 4070 Ti Super
+# Docker Agent Stack: Ollama + Goose on the RTX 4070 Ti Super
 
 > **Focus:** how the local agent runs entirely in Docker. Ollama serves the
 > model, Goose is the MCP-native agent, with the GPU dedicated to the
@@ -13,7 +13,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Hardware
+## 1. Hardware
 
 Two GPUs (`nvidia-smi`):
 
@@ -34,18 +34,18 @@ the app is idle.
 
 ---
 
-***REMOVED******REMOVED*** 2. Ollama Service
+## 2. Ollama Service
 
 ```yaml
 ollama:
   image: ollama/ollama
   runtime: nvidia
   environment:
-    - NVIDIA_VISIBLE_DEVICES=1          ***REMOVED*** 4070 Ti Super — app side, exclusive
-    - OLLAMA_KEEP_ALIVE=-1              ***REMOVED*** model always resident (no cold reloads)
-    - OLLAMA_NUM_PARALLEL=6             ***REMOVED*** qwen3:8b resident 8.7 GB; load-tested ceiling 2026-09-16 (see llm_capacity_envelope.md)
+    - NVIDIA_VISIBLE_DEVICES=1          # 4070 Ti Super — app side, exclusive
+    - OLLAMA_KEEP_ALIVE=-1              # model always resident (no cold reloads)
+    - OLLAMA_NUM_PARALLEL=6             # qwen3:8b resident 8.7 GB; load-tested ceiling 2026-09-16 (see llm_capacity_envelope.md)
     - OLLAMA_MAX_LOADED_MODELS=1
-    - OLLAMA_MAX_QUEUE=32               ***REMOVED*** fail fast instead of queueing 512
+    - OLLAMA_MAX_QUEUE=32               # fail fast instead of queueing 512
   ports: ["11434:11434"]
   volumes: [ollama_models:/root/.ollama]
 ```
@@ -56,23 +56,23 @@ time; qwen3:14b was deleted 2026-09-16). The backend reaches it as
 
 ---
 
-***REMOVED******REMOVED*** 3. Goose Service
+## 3. Goose Service
 
 ```yaml
 goose:
   image: ghcr.io/block/goose:latest
-  network_mode: host                    ***REMOVED*** localhost reaches Vite (:5173) + Ollama (:11434)
+  network_mode: host                    # localhost reaches Vite (:5173) + Ollama (:11434)
   environment:
     - GOOSE_PROVIDER=ollama
     - GOOSE_MODEL=qwen3:8b
     - OLLAMA_HOST=http://localhost:11434
-    - GOOSE_TELEMETRY_OPT_IN=false      ***REMOVED*** skip the interactive prompt
+    - GOOSE_TELEMETRY_OPT_IN=false      # skip the interactive prompt
   volumes:
-    - ./goose/config:/home/goose/.config/goose   ***REMOVED*** DIRECTORY mount, not a file
+    - ./goose/config:/home/goose/.config/goose   # DIRECTORY mount, not a file
     - ./goose:/workspace/goose
   stdin_open: true
   tty: true
-  restart: "no"                         ***REMOVED*** on-demand, not a daemon
+  restart: "no"                         # on-demand, not a daemon
 ```
 
 **Config-directory mount gotcha:** goose rewrites `config.yaml` on session
@@ -91,12 +91,12 @@ Use `docker compose run --rm goose session` (interactive TUI) or
 
 ---
 
-***REMOVED******REMOVED*** 4. Runbook
+## 4. Runbook
 
 ```bash
 docker compose up -d ollama
 docker compose exec ollama ollama pull qwen3:8b
-docker compose run --rm goose session            ***REMOVED*** interactive agent
+docker compose run --rm goose session            # interactive agent
 docker compose run --rm goose run -t "Which cafes are within 50km of Belize City?"
 ```
 
@@ -105,7 +105,7 @@ for overlay tools; data tools work headless), ollama :11434.
 
 ---
 
-***REMOVED******REMOVED*** 5. Agent Config & Recipe
+## 5. Agent Config & Recipe
 
 - `goose/config/config.yaml`: provider via env; `worldkg-mcp` extension
   (`type: streamable_http`, `uri: http://localhost:5173/__mcp`,
@@ -116,7 +116,7 @@ for overlay tools; data tools work headless), ollama :11434.
 
 ---
 
-***REMOVED******REMOVED*** 6. Model Rationale
+## 6. Model Rationale
 
 `qwen3:8b` (Q4, 8.7 GB resident at 6 slots) is the platform model as of
 2026-09-16: an A/B replay of the exact production prompts showed equivalent

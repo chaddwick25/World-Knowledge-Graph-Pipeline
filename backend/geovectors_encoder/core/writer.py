@@ -50,10 +50,10 @@ class AsyncWrite(threading.Thread):
                 while not self.q.empty():
                     l = self.q.get()
                     
-                    ***REMOVED*** Capture raw data
-                    raw_data = l ***REMOVED*** [id, type, tags, lat, lon] or similar
+                    # Capture raw data
+                    raw_data = l # [id, type, tags, lat, lon] or similar
                     
-                    ***REMOVED*** Encode and transform
+                    # Encode and transform
                     vector = None
                     if self.encoder is not None:
                         vector = self.encoder.encode_instance(l)
@@ -65,10 +65,10 @@ class AsyncWrite(threading.Thread):
                         
                     line_str = "\t".join(map(str, l_transformed)) + "\n"
                         
-                    ***REMOVED*** Write to file
+                    # Write to file
                     fo.write(file_encoding(line_str))
                     
-                    ***REMOVED*** Execute DB callback if provided
+                    # Execute DB callback if provided
                     if self.db_callback:
                         self.db_callback(raw_data, vector)
 

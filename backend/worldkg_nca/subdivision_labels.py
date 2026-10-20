@@ -14,11 +14,11 @@ as needed — keyed by ISO 3166-1 alpha-2, matching ``CountryPipelineProfile.iso
 """
 
 SUBDIVISION_LABELS = {
-    ***REMOVED*** ── User-specified (2026-10-06) ────────────────────────────────────
+    # ── User-specified (2026-10-06) ────────────────────────────────────
     "IE": "County",
     "CA": "Province and Territory",
 
-    ***REMOVED*** ── Europe ─────────────────────────────────────────────────────────
+    # ── Europe ─────────────────────────────────────────────────────────
     "GB": "County",
     "FR": "Department",
     "DE": "State",
@@ -64,7 +64,7 @@ SUBDIVISION_LABELS = {
     "AM": "Province",
     "AZ": "District",
 
-    ***REMOVED*** ── Americas ───────────────────────────────────────────────────────
+    # ── Americas ───────────────────────────────────────────────────────
     "US": "State",
     "MX": "State",
     "BR": "State",
@@ -93,7 +93,7 @@ SUBDIVISION_LABELS = {
     "TT": "Region",
     "BS": "District",
 
-    ***REMOVED*** ── Africa ─────────────────────────────────────────────────────────
+    # ── Africa ─────────────────────────────────────────────────────────
     "ZA": "Province",
     "NG": "State",
     "EG": "Governorate",
@@ -145,7 +145,7 @@ SUBDIVISION_LABELS = {
     "BI": "Province",
     "KM": "Island",
 
-    ***REMOVED*** ── Asia ───────────────────────────────────────────────────────────
+    # ── Asia ───────────────────────────────────────────────────────────
     "IN": "State",
     "PK": "Province",
     "BD": "Division",
@@ -187,7 +187,7 @@ SUBDIVISION_LABELS = {
     "IL": "District",
     "PS": "Governorate",
 
-    ***REMOVED*** ── Oceania ────────────────────────────────────────────────────────
+    # ── Oceania ────────────────────────────────────────────────────────
     "AU": "State and Territory",
     "NZ": "Region",
     "PG": "Province",
@@ -197,7 +197,7 @@ SUBDIVISION_LABELS = {
     "WS": "District",
     "TO": "Division",
 
-    ***REMOVED*** ── Caribbean ──────────────────────────────────────────────────────
+    # ── Caribbean ──────────────────────────────────────────────────────
     "GD": "Parish",
     "BB": "Parish",
     "LC": "Quarter",
@@ -206,13 +206,13 @@ SUBDIVISION_LABELS = {
     "DM": "Parish",
     "KN": "Parish",
 
-    ***REMOVED*** ── Synthetic non-sovereign codes (non_sovereign_territories) ──────
-    "WL": "Principal Area",   ***REMOVED*** Wales
-    "XS": "Council Area",     ***REMOVED*** Scotland
-    "EN": "County",           ***REMOVED*** England
-    "IM": "Parish",           ***REMOVED*** Isle of Man
-    "GG": "Parish",           ***REMOVED*** Guernsey
-    "JE": "Parish",           ***REMOVED*** Jersey
+    # ── Synthetic non-sovereign codes (non_sovereign_territories) ──────
+    "WL": "Principal Area",   # Wales
+    "XS": "Council Area",     # Scotland
+    "EN": "County",           # England
+    "IM": "Parish",           # Isle of Man
+    "GG": "Parish",           # Guernsey
+    "JE": "Parish",           # Jersey
 }
 
 DEFAULT_SUBDIVISION_LABEL = "Subdivision"

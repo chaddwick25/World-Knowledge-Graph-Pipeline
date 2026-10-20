@@ -41,9 +41,9 @@ from django_celery_results.models import ChordCounter
 
 logger = get_logger(__name__)
 
-***REMOVED*** Polling interval for chord_unlock task (seconds).  Celery's default is
-***REMOVED*** 1s, which creates ~180-600 retry messages for 3-10 minute GPU tasks.
-***REMOVED*** 10s reduces this to ~18-60 retries while keeping callback latency low.
+# Polling interval for chord_unlock task (seconds).  Celery's default is
+# 1s, which creates ~180-600 retry messages for 3-10 minute GPU tasks.
+# 10s reduces this to ~18-60 retries while keeping callback latency low.
 CHORD_UNLOCK_INTERVAL = 10
 
 
@@ -74,17 +74,17 @@ class PatchedDatabaseBackend(DatabaseBackend):
         We also clean up any stale ``ChordCounter`` rows for this group
         (from a previous run or a partial run) to prevent confusion.
         """
-        ***REMOVED*** Clean up stale ChordCounter from previous runs
+        # Clean up stale ChordCounter from previous runs
         ChordCounter.objects.filter(group_id=header_result.id).delete()
 
-        ***REMOVED*** Set a longer polling interval to reduce Redis message volume.
-        ***REMOVED*** chord.run() passes interval=None explicitly (canvas.py:1422-1429),
-        ***REMOVED*** so setdefault() — which only sets *absent* keys — would be a no-op.
-        ***REMOVED*** Use an explicit None-check instead.
+        # Set a longer polling interval to reduce Redis message volume.
+        # chord.run() passes interval=None explicitly (canvas.py:1422-1429),
+        # so setdefault() — which only sets *absent* keys — would be a no-op.
+        # Use an explicit None-check instead.
         if kwargs.get("interval") is None:
             kwargs["interval"] = CHORD_UNLOCK_INTERVAL
 
-        ***REMOVED*** Use the standard fallback: schedule chord_unlock polling task
+        # Use the standard fallback: schedule chord_unlock polling task
         self.fallback_chord_unlock(header_result, body, **kwargs)
 
     def on_chord_part_return(self, request, state, result, **kwargs):
@@ -103,9 +103,9 @@ class PatchedDatabaseBackend(DatabaseBackend):
         tid, gid = request.id, request.group
         if not gid or not tid:
             return
-        ***REMOVED*** TaskResult has already been stored by store_result() in
-        ***REMOVED*** mark_as_done().  The chord_unlock polling task will detect
-        ***REMOVED*** completion and fire the callback.  Nothing to do here.
+        # TaskResult has already been stored by store_result() in
+        # mark_as_done().  The chord_unlock polling task will detect
+        # completion and fire the callback.  Nothing to do here.
         logger.debug(
             "on_chord_part_return: task %s completed for group %s "
             "(chord_unlock polling will handle callback)",

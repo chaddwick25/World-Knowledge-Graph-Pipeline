@@ -19,7 +19,7 @@ class HierarchyConfig:
     """Config for OSM relation hierarchy extraction."""
     max_depth: int = 4
     include_admin_levels: Optional[List[int]] = None
-    ***REMOVED*** Deprecated: we no longer persist hierarchy caches to disk.
+    # Deprecated: we no longer persist hierarchy caches to disk.
     cache_dir: str = "data/osm_wikidata_hierarchy_cache"
 
 
@@ -31,8 +31,8 @@ class OsmRelationHierarchyService:
     """
 
     def __init__(self, config: Optional[HierarchyConfig] = None):
-        ***REMOVED*** We keep the config object for compatibility but no longer
-        ***REMOVED*** create or use an on-disk hierarchy cache directory.
+        # We keep the config object for compatibility but no longer
+        # create or use an on-disk hierarchy cache directory.
         self.config = config or HierarchyConfig()
 
     def build_hierarchy_for_country(
@@ -63,7 +63,7 @@ class OsmRelationHierarchyService:
         start_ts = time.time()
         children_count = 0
 
-        ***REMOVED*** Root node (country level)
+        # Root node (country level)
         root_node: Dict[str, Any] = {
             "osm_relation_id": root_relation_id,
             "name": country_name,
@@ -71,7 +71,7 @@ class OsmRelationHierarchyService:
             "children": [],
         }
 
-        ***REMOVED*** If we have a Wikidata URI, try to fetch direct subdivisions with P402
+        # If we have a Wikidata URI, try to fetch direct subdivisions with P402
         if wikidata_uri and "wikidata.org/entity/" in wikidata_uri:
             try:
                 qid = wikidata_uri.rstrip("/").rsplit("/", 1)[-1]
@@ -149,8 +149,8 @@ ORDER BY ?childLabel
                 rel_id = int(rel_raw)
             except (TypeError, ValueError):
                 continue
-            ***REMOVED*** Extract the Wikidata QID from the ?child URI
-            ***REMOVED*** (e.g., "http://www.wikidata.org/entity/Q260009" → "Q260009")
+            # Extract the Wikidata QID from the ?child URI
+            # (e.g., "http://www.wikidata.org/entity/Q260009" → "Q260009")
             child_uri = row.get("child", {}).get("value", "")
             child_qid = child_uri.rsplit("/", 1)[-1] if child_uri else None
 

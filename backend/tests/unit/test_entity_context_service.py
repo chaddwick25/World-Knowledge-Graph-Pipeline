@@ -19,7 +19,7 @@ from semantic_search.services.entity_context_service import (
 )
 
 
-***REMOVED*** ── Helpers ──────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────
 
 class _FakeQS:
     """Chainable queryset fake that records calls and returns canned rows."""
@@ -71,7 +71,7 @@ def _never(*a, **k):
     raise AssertionError("must not be called")
 
 
-***REMOVED*** ── Routing (TEMPLATE_CONTEXT_MAP) ───────────────────────────────────────
+# ── Routing (TEMPLATE_CONTEXT_MAP) ───────────────────────────────────────
 
 class TestRouting:
     def _patch_sources(self, monkeypatch):
@@ -93,7 +93,7 @@ class TestRouting:
     def test_full_template_fetches_all_three(self, monkeypatch):
         calls = self._patch_sources(monkeypatch)
         out = EntityContextService.get_context(
-            [1, 2], "BZ", "2025_12_31", template="FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
+            [1, 2], "BZ", "2025_12_31", template="FILTER-AGGREGATE-MEASURE (#1)",
         )
         assert set(calls) == {"uslp", "communities", "classes"}
         assert out["uslp_links"] == [{"head_osm_id": 1}]
@@ -109,7 +109,7 @@ class TestRouting:
             classmethod(lambda cls, ids, snap, cc: calls.append("classes") or [{"wkg_class": "wkgs:Bar", "count": 1}]),
         )
         out = EntityContextService.get_context(
-            [1], "BZ", "2025_12_31", template="LOCATION-BEARING-CLASSIFY (***REMOVED***5)",
+            [1], "BZ", "2025_12_31", template="LOCATION-BEARING-CLASSIFY (#5)",
         )
         assert calls == ["classes"]
         assert out["uslp_links"] == [] and out["communities"] == {}
@@ -124,7 +124,7 @@ class TestRouting:
         )
         monkeypatch.setattr(EntityContextService, "_class_distribution", classmethod(_never))
         out = EntityContextService.get_context(
-            [1], "BZ", "2025_12_31", template="EVENT-DIFFUSION (***REMOVED***14)",
+            [1], "BZ", "2025_12_31", template="EVENT-DIFFUSION (#14)",
         )
         assert calls == ["communities"]
         assert out["communities"] == {1: {"community": 2}}
@@ -143,10 +143,10 @@ class TestRouting:
         assert set(calls) == {"uslp", "communities", "classes"}
 
     def test_template_map_has_expected_keys(self):
-        assert TEMPLATE_CONTEXT_MAP["FILTER-AGGREGATE-MEASURE (***REMOVED***1)"] == ALL_SOURCES
-        assert TEMPLATE_CONTEXT_MAP["LOCATION-BEARING-CLASSIFY (***REMOVED***5)"] == {"classes"}
-        assert "OBJECT-FIELD-MEASURE (***REMOVED***2)" in TEMPLATE_CONTEXT_MAP
-        assert "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)" in TEMPLATE_CONTEXT_MAP
+        assert TEMPLATE_CONTEXT_MAP["FILTER-AGGREGATE-MEASURE (#1)"] == ALL_SOURCES
+        assert TEMPLATE_CONTEXT_MAP["LOCATION-BEARING-CLASSIFY (#5)"] == {"classes"}
+        assert "OBJECT-FIELD-MEASURE (#2)" in TEMPLATE_CONTEXT_MAP
+        assert "PLACE-ATTRIBUTE-QUERY (#8)" in TEMPLATE_CONTEXT_MAP
 
     def test_empty_osm_ids_returns_empty_without_queries(self, monkeypatch):
         monkeypatch.setattr(EntityContextService, "_uslp_links", classmethod(_never))
@@ -161,7 +161,7 @@ class TestRouting:
         trace = []
         EntityContextService.get_context(
             [1], "BZ", "2025_12_31",
-            template="PLACE-ATTRIBUTE-QUERY (***REMOVED***8)", trace=trace,
+            template="PLACE-ATTRIBUTE-QUERY (#8)", trace=trace,
         )
         step = trace[-1]
         assert step["step"] == "entity_context"
@@ -171,7 +171,7 @@ class TestRouting:
         assert calls == ["uslp", "classes"]
 
 
-***REMOVED*** ── Per-source query construction ────────────────────────────────────────
+# ── Per-source query construction ────────────────────────────────────────
 
 class TestUslpLinks:
     def test_query_scoping_and_cap(self, monkeypatch):
@@ -263,7 +263,7 @@ class TestClassDistribution:
         qs = fake.qs
         filter_kwargs = [c[1] for c in qs.calls if c[0] == "filter"]
         assert filter_kwargs[0] == {"osm_id__in": [1, 2], "snapshot_id": "2025_12_31"}
-        assert filter_kwargs[1] == {"country_code": "BZ"}  ***REMOVED*** uppercased
+        assert filter_kwargs[1] == {"country_code": "BZ"}  # uppercased
         excludes = [c[1] for c in qs.calls if c[0] == "exclude"]
         assert {"wkg_class__isnull": True} in excludes
         assert {"wkg_class": ""} in excludes
@@ -278,7 +278,7 @@ class TestClassDistribution:
         monkeypatch.setattr("worldkg_nca.models.OsmEntity.objects", fake)
         EntityContextService._class_distribution([1], "2025_12_31", None)
         filter_kwargs = [c[1] for c in fake.qs.calls if c[0] == "filter"]
-        assert len(filter_kwargs) == 1  ***REMOVED*** no country_code filter
+        assert len(filter_kwargs) == 1  # no country_code filter
 
     def test_fail_soft_on_error(self, monkeypatch):
         monkeypatch.setattr("worldkg_nca.models.OsmEntity.objects", object())

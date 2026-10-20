@@ -38,7 +38,7 @@ class TargetGeometry:
     config: SplitTargetConfig
     poly_path: Path
     geometry: MultiPolygon
-    prepared: object  ***REMOVED*** shapely prepared geometry
+    prepared: object  # shapely prepared geometry
 
 
 class AssignmentIndex:
@@ -94,7 +94,7 @@ def load_embedding_splits_config() -> Dict[str, List[dict]]:
     splits = embedding_splits.get("splits", [])
     merges = embedding_splits.get("merges", [])
 
-    ***REMOVED*** Ensure both keys are lists for downstream use
+    # Ensure both keys are lists for downstream use
     if not isinstance(splits, list):
         logger.error("'splits' key in embedding_splits must be a list")
         splits = []
@@ -130,9 +130,9 @@ class EmbeddingSpatialSplitService:
         self.continents_root = Path(continents_root)
         self.stdout = stdout
 
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
-    ***REMOVED*** Logging helpers
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # Logging helpers
+    # ──────────────────────────────────────────────────────────────────────
 
     def _print(self, msg: str) -> None:
         if self.stdout is not None:
@@ -140,9 +140,9 @@ class EmbeddingSpatialSplitService:
         else:
             logger.info(msg)
 
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
-    ***REMOVED*** Poly resolution & parsing
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # Poly resolution & parsing
+    # ──────────────────────────────────────────────────────────────────────
 
     @staticmethod
     def resolve_poly_path(polygons_root: Path, poly_name: str) -> Optional[Path]:
@@ -192,11 +192,11 @@ class EmbeddingSpatialSplitService:
         try:
             with poly_path.open("r") as f:
                 lines = f.readlines()
-        except Exception as exc:  ***REMOVED*** noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to read poly file %s: %s", poly_path, exc)
             return None
 
-        ***REMOVED*** Skip the first line (name) if present
+        # Skip the first line (name) if present
         idx = 0
         if lines:
             first = lines[0].strip()
@@ -230,12 +230,12 @@ class EmbeddingSpatialSplitService:
                 if current_ring:
                     flush_ring()
                     continue
-                ***REMOVED*** Empty ring + END → end of polygon block
+                # Empty ring + END → end of polygon block
                 flush_polygon()
                 continue
 
             parts = line.split()
-            ***REMOVED*** Block labels like "1", "2" – start of a new ring
+            # Block labels like "1", "2" – start of a new ring
             if len(parts) == 1 and parts[0].isdigit():
                 flush_ring()
                 continue
@@ -249,7 +249,7 @@ class EmbeddingSpatialSplitService:
                 continue
             current_ring.append((lon, lat))
 
-        ***REMOVED*** Flush any trailing data
+        # Flush any trailing data
         flush_ring()
         flush_polygon()
 
@@ -266,7 +266,7 @@ class EmbeddingSpatialSplitService:
                 if not poly.is_valid:
                     poly = poly.buffer(0)
                 polygons.append(poly)
-            except Exception as exc:  ***REMOVED*** noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to build polygon from %s: %s", poly_path, exc)
 
         if not polygons:
@@ -277,15 +277,15 @@ class EmbeddingSpatialSplitService:
 
         try:
             union = unary_union(polygons)
-        except Exception:  ***REMOVED*** noqa: BLE001
+        except Exception:  # noqa: BLE001
             union = MultiPolygon(polygons)
         if isinstance(union, Polygon):
             return MultiPolygon([union])
         return union
 
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
-    ***REMOVED*** Snapshot PBF handling (osmium time-filter)
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # Snapshot PBF handling (osmium time-filter)
+    # ──────────────────────────────────────────────────────────────────────
 
     def _run_osmium(self, args: List[str], label: str = "") -> None:
         osmium_exec = getattr(settings, "OSMIUM_EXECUTABLE", None)
@@ -301,7 +301,7 @@ class EmbeddingSpatialSplitService:
                 text=True,
                 timeout=7200,
             )
-        except Exception as exc:  ***REMOVED*** noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             raise RuntimeError(f"osmium {label} failed to run: {exc}") from exc
 
         if result.returncode != 0:
@@ -337,7 +337,7 @@ class EmbeddingSpatialSplitService:
         from time import time as _time
 
         t0 = _time()
-        ***REMOVED*** Use SINGLE_SNAPSHOT_DATE year for consistency with the rest of the pipeline
+        # Use SINGLE_SNAPSHOT_DATE year for consistency with the rest of the pipeline
         snapshot_date = getattr(settings, "SINGLE_SNAPSHOT_DATE", "2025_12_31")
         iso_ts = snapshot_date.replace("_", "-") + "T00:00:00Z"
 
@@ -361,9 +361,9 @@ class EmbeddingSpatialSplitService:
         self._print(f"    Snapshot created: {size_mb:.1f} MB ({elapsed:.0f}s)")
         return snapshot_path
 
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
-    ***REMOVED*** Pyosmium assignment pass
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # Pyosmium assignment pass
+    # ──────────────────────────────────────────────────────────────────────
 
     def _build_assignments(
         self,
@@ -376,7 +376,7 @@ class EmbeddingSpatialSplitService:
         if not target_geoms:
             return AssignmentIndex({}), AssignmentIndex({}), AssignmentIndex({})
 
-        ***REMOVED*** Union bbox for node pre-filtering
+        # Union bbox for node pre-filtering
         union_geom = unary_union([tg.geometry for tg in target_geoms])
         minx, miny, maxx, maxy = union_geom.bounds
         minx -= bbox_padding
@@ -387,13 +387,13 @@ class EmbeddingSpatialSplitService:
         prepared_geoms = [tg.prepared for tg in target_geoms]
 
         class AssignmentHandler(osmium.SimpleHandler):
-            def __init__(self):  ***REMOVED*** type: ignore[no-untyped-def]
+            def __init__(self):  # type: ignore[no-untyped-def]
                 super().__init__()
                 self.node_assign: Dict[int, int] = {}
                 self.way_assign: Dict[int, int] = {}
                 self.relation_members: Dict[int, List[Tuple[str, int]]] = {}
 
-            def node(self, n):  ***REMOVED*** type: ignore[no-untyped-def]
+            def node(self, n):  # type: ignore[no-untyped-def]
                 if not n.location.valid():
                     return
                 lon = n.location.lon
@@ -406,12 +406,12 @@ class EmbeddingSpatialSplitService:
                     try:
                         if pg.contains(pt):
                             mask |= 1 << idx
-                    except Exception:  ***REMOVED*** noqa: BLE001
+                    except Exception:  # noqa: BLE001
                         continue
                 if mask:
                     self.node_assign[int(n.id)] = mask
 
-            def way(self, w):  ***REMOVED*** type: ignore[no-untyped-def]
+            def way(self, w):  # type: ignore[no-untyped-def]
                 mask = 0
                 for nref in w.nodes:
                     mid = int(nref.ref)
@@ -421,14 +421,14 @@ class EmbeddingSpatialSplitService:
                 if mask:
                     self.way_assign[int(w.id)] = mask
 
-            def relation(self, r):  ***REMOVED*** type: ignore[no-untyped-def]
+            def relation(self, r):  # type: ignore[no-untyped-def]
                 members: List[Tuple[str, int]] = []
                 for m in r.members:
                     mtype = getattr(m, "type", None)
                     ref = getattr(m, "ref", None)
                     if ref is None or mtype is None:
                         continue
-                    ***REMOVED*** In pyosmium, member.type is usually 'n', 'w', or 'r'
+                    # In pyosmium, member.type is usually 'n', 'w', or 'r'
                     if mtype == "n":
                         t = "n"
                     elif mtype == "w":
@@ -442,7 +442,7 @@ class EmbeddingSpatialSplitService:
         handler = AssignmentHandler()
         handler.apply_file(str(snapshot_path))
 
-        ***REMOVED*** Second pass: relation assignments by majority-vote over members
+        # Second pass: relation assignments by majority-vote over members
         relation_assign: Dict[int, int] = {}
         num_targets = len(target_geoms)
 
@@ -470,9 +470,9 @@ class EmbeddingSpatialSplitService:
         relation_index = AssignmentIndex(relation_assign)
         return node_index, way_index, relation_index
 
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
-    ***REMOVED*** TSV dispatch
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # TSV dispatch
+    # ──────────────────────────────────────────────────────────────────────
 
     def _dispatch_tsv(
         self,
@@ -490,7 +490,7 @@ class EmbeddingSpatialSplitService:
         if not source_tsv.exists():
             raise FileNotFoundError(f"Source TSV not found: {source_tsv}")
 
-        ***REMOVED*** Skip if all outputs already exist (unless force)
+        # Skip if all outputs already exist (unless force)
         if not force:
             all_exist = True
             for tg in target_geoms:
@@ -505,7 +505,7 @@ class EmbeddingSpatialSplitService:
                 )
                 return
 
-        ***REMOVED*** Prepare output writers to .tmp paths
+        # Prepare output writers to .tmp paths
         writers: Dict[str, Tuple[gzip.GzipFile, csv.writer, Path, Path]] = {}
         for tg in target_geoms:
             out_dir = self.embeddings_root / continent / tg.config.slug
@@ -517,7 +517,7 @@ class EmbeddingSpatialSplitService:
             writer = csv.writer(f, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
             writers[tg.config.slug] = (f, writer, tmp_path, final_path)
 
-            ***REMOVED*** Copy header.tsv when present
+            # Copy header.tsv when present
             src_header = source_tsv.parent / "header.tsv"
             if src_header.exists():
                 tgt_header = out_dir / "header.tsv"
@@ -526,7 +526,7 @@ class EmbeddingSpatialSplitService:
                         from shutil import copy2
 
                         copy2(str(src_header), str(tgt_header))
-                    except Exception:  ***REMOVED*** noqa: BLE001
+                    except Exception:  # noqa: BLE001
                         logger.warning("Failed to copy header.tsv from %s", src_header)
 
         total_rows = 0
@@ -535,7 +535,7 @@ class EmbeddingSpatialSplitService:
         with gzip.open(str(source_tsv), "rt") as f:
             reader = csv.reader(f, delimiter="\t")
             for row in reader:
-                if not row or row[0].startswith("***REMOVED***") or len(row) < 2:
+                if not row or row[0].startswith("#") or len(row) < 2:
                     continue
                 total_rows += 1
                 osm_type = row[0].strip().lower()
@@ -562,7 +562,7 @@ class EmbeddingSpatialSplitService:
                         writer.writerow(row)
                         matched_per_target[tg.config.slug] += 1
 
-        ***REMOVED*** Close and atomically rename
+        # Close and atomically rename
         for slug, (f, _writer, tmp_path, final_path) in writers.items():
             f.close()
             os.replace(tmp_path, final_path)
@@ -574,9 +574,9 @@ class EmbeddingSpatialSplitService:
             f"  TSV dispatch complete for {source_tsv.name}: {total_rows:,} rows processed",
         )
 
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
-    ***REMOVED*** Public API
-    ***REMOVED*** ──────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # Public API
+    # ──────────────────────────────────────────────────────────────────────
 
     def process_split_group(
         self,

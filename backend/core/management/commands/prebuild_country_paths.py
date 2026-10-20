@@ -89,7 +89,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("EMBEDDINGS_ROOT not configured or does not exist."))
             return
 
-        ***REMOVED*** -- Build TSV index from disk -----------------------------------
+        # -- Build TSV index from disk -----------------------------------
         self.stdout.write(self.style.MIGRATE_HEADING(
             f"\nScanning TSVs under {embedding_root}..."
         ))
@@ -100,7 +100,7 @@ class Command(BaseCommand):
             self._print_report(tsv_index, single_iso)
             return
 
-        ***REMOVED*** -- Resolve paths for each profile -------------------------------
+        # -- Resolve paths for each profile -------------------------------
         self.stdout.write(self.style.SUCCESS("=" * 60))
         self.stdout.write(self.style.SUCCESS("Country Paths Pre-Build"))
         self.stdout.write(self.style.SUCCESS("=" * 60))
@@ -139,7 +139,7 @@ class Command(BaseCommand):
                     )
                 )
 
-        ***REMOVED*** Subgraph paths
+        # Subgraph paths
         subgraph_qs = SubgraphProfile.objects.filter(has_subgraph_pbf=True)
         if single_iso:
             subgraph_qs = subgraph_qs.filter(
@@ -175,9 +175,9 @@ class Command(BaseCommand):
                 iso = p.iso3 or p.iso2 or "?"
                 self.stdout.write(f"    {p.canonical_name} ({iso}) slug={r.get('slug')}")
 
-    ***REMOVED*** ======================================================================
-    ***REMOVED*** TSV Index
-    ***REMOVED*** ======================================================================
+    # ======================================================================
+    # TSV Index
+    # ======================================================================
 
     def _build_tsv_index(self, embedding_root: Path) -> Dict[str, dict]:
         """Scan EMBEDDINGS_ROOT recursively and build {slug: {location_tsv, tags_tsv}}.
@@ -199,9 +199,9 @@ class Command(BaseCommand):
         index = {}
 
         for tsv_path in embedding_root.rglob("*.tsv.gz"):
-            ***REMOVED*** Parse filename: "ireland-and-northern-ireland-location.tsv.gz"
-            stem = tsv_path.stem.replace(".tsv", "")  ***REMOVED*** removes .gz then .tsv
-            ***REMOVED*** Split on last hyphen to get type
+            # Parse filename: "ireland-and-northern-ireland-location.tsv.gz"
+            stem = tsv_path.stem.replace(".tsv", "")  # removes .gz then .tsv
+            # Split on last hyphen to get type
             parts = stem.rsplit("-", 1)
             if len(parts) != 2:
                 continue
@@ -211,9 +211,9 @@ class Command(BaseCommand):
             if tsv_type not in ("location", "tags"):
                 continue
 
-            ***REMOVED*** Determine continent and subregion from parent dir
-            parent_dir = tsv_path.parent.name  ***REMOVED*** e.g. "europe-west-location"
-            continent_dir = tsv_path.parent.parent.name  ***REMOVED*** e.g. "europe"
+            # Determine continent and subregion from parent dir
+            parent_dir = tsv_path.parent.name  # e.g. "europe-west-location"
+            continent_dir = tsv_path.parent.parent.name  # e.g. "europe"
 
             entry = index.setdefault(slug_part, {
                 "location_tsv": None,
@@ -228,9 +228,9 @@ class Command(BaseCommand):
 
         return index
 
-    ***REMOVED*** ======================================================================
-    ***REMOVED*** Country path resolution
-    ***REMOVED*** ======================================================================
+    # ======================================================================
+    # Country path resolution
+    # ======================================================================
 
     def _resolve_country_paths(
         self,
@@ -247,24 +247,24 @@ class Command(BaseCommand):
         iso = profile.iso3 or profile.iso2 or ""
         default_slug = profile.canonical_slug
 
-        ***REMOVED*** IMPORTANT: candidate_slugs prioritises canonical_slug first.
-        ***REMOVED*** TSV filenames use the Geofabrik-derived slug (hyphens),
-        ***REMOVED*** which matches canonical_slug. The overrides.json 'country_slug'
-        ***REMOVED*** is for OSM path resolution, NOT for TSV matching.
+        # IMPORTANT: candidate_slugs prioritises canonical_slug first.
+        # TSV filenames use the Geofabrik-derived slug (hyphens),
+        # which matches canonical_slug. The overrides.json 'country_slug'
+        # is for OSM path resolution, NOT for TSV matching.
         override = get_country_override_record(iso)
         override_country_slug = override.get("country_slug") if override else None
         override_emb_slug = override.get("embedding_slug") if override else None
 
-        ***REMOVED*** Build candidate list in priority order:
-        ***REMOVED*** 1. override.embedding_slug (explicit TSV filename override)
-        ***REMOVED*** 2. canonical_slug (the Geofabrik slug, matches most TSV filenames)
-        ***REMOVED*** 3. override.country_slug (for OSM paths, fallback for TSV)
-        ***REMOVED*** 4. normalized canonical name (underscores -> hyphens)
-        ***REMOVED*** 5. iso lowercase
+        # Build candidate list in priority order:
+        # 1. override.embedding_slug (explicit TSV filename override)
+        # 2. canonical_slug (the Geofabrik slug, matches most TSV filenames)
+        # 3. override.country_slug (for OSM paths, fallback for TSV)
+        # 4. normalized canonical name (underscores -> hyphens)
+        # 5. iso lowercase
         candidate_slugs = []
         if override_emb_slug:
             candidate_slugs.append(override_emb_slug)
-        candidate_slugs.append(default_slug)  ***REMOVED*** canonical_slug matches TSV filenames
+        candidate_slugs.append(default_slug)  # canonical_slug matches TSV filenames
         if override_country_slug and override_country_slug not in candidate_slugs:
             candidate_slugs.append(override_country_slug)
         name_slug = normalize_country_slug(profile.canonical_name)
@@ -285,20 +285,20 @@ class Command(BaseCommand):
                 loc_tsv = entry.get("location_tsv")
                 tags_tsv = entry.get("tags_tsv")
                 matched_slug = cs
-                ***REMOVED*** Also enrich continent if not set
+                # Also enrich continent if not set
                 if not cont_slug and entry.get("continent"):
                     cont_slug = entry["continent"]
                 break
 
-        ***REMOVED*** -- embedding_edge_cases: shared location/tag overrides -----------
-        ***REMOVED*** Some countries borrow location or tag TSVs from another shard.
-        ***REMOVED*** For example, Poland borrows europe-east location but keeps its own
-        ***REMOVED*** tags. Germany has split node/way location and tag views.
-        ***REMOVED*** See data/overrides.json → embedding_edge_cases for the full config.
+        # -- embedding_edge_cases: shared location/tag overrides -----------
+        # Some countries borrow location or tag TSVs from another shard.
+        # For example, Poland borrows europe-east location but keeps its own
+        # tags. Germany has split node/way location and tag views.
+        # See data/overrides.json → embedding_edge_cases for the full config.
         if matched_slug:
             edge_case = get_embedding_edge_case(matched_slug)
             if edge_case:
-                ***REMOVED*** Shared location overrides: use source shard's location TSV
+                # Shared location overrides: use source shard's location TSV
                 for slo in edge_case.get("shared_location_overrides", []):
                     source_slug = slo.get("source")
                     targets = slo.get("targets", [])
@@ -313,7 +313,7 @@ class Command(BaseCommand):
                                 )
                             )
 
-                ***REMOVED*** Shared tag overrides: use source shard's tags TSV
+                # Shared tag overrides: use source shard's tags TSV
                 for sto in edge_case.get("shared_tag_overrides", []):
                     source_slug = sto.get("source")
                     targets = sto.get("targets", [])
@@ -328,8 +328,8 @@ class Command(BaseCommand):
                                 )
                             )
 
-        ***REMOVED*** -- OSM_WIKIDATA_EXTRACTIONS_DIR paths ---------------------------
-        ***REMOVED*** For OSM paths, use the override country_slug (which maps to Geofabrik dir names)
+        # -- OSM_WIKIDATA_EXTRACTIONS_DIR paths ---------------------------
+        # For OSM paths, use the override country_slug (which maps to Geofabrik dir names)
         osm_slug = override_country_slug or matched_slug or default_slug
         osm_dir = getattr(settings, 'OSM_WIKIDATA_EXTRACTIONS_DIR', None)
         if osm_dir:
@@ -352,7 +352,7 @@ class Command(BaseCommand):
         if country_osm_dir:
             pickle_dir = str(country_osm_dir / "pickle")
 
-        ***REMOVED*** Continent PBF
+        # Continent PBF
         cont_pbf = None
         if osm_dir and cont_slug:
             cont_pbf_path = Path(osm_dir) / "continents" / f"{cont_slug}.pbf"
@@ -382,7 +382,7 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING(f"    {k}: (not found)"))
             return result
 
-        ***REMOVED*** -- Write to DB --------------------------------------------------
+        # -- Write to DB --------------------------------------------------
         effective_override_slug = override.get("country_slug") if override else None
         effective_override_poly_slug = override.get("poly_slug") if override else None
         effective_override_emb_slug_for_field = override.get("embedding_slug") if override else None
@@ -419,9 +419,9 @@ class Command(BaseCommand):
 
         return result
 
-    ***REMOVED*** ======================================================================
-    ***REMOVED*** Subgraph path resolution
-    ***REMOVED*** ======================================================================
+    # ======================================================================
+    # Subgraph path resolution
+    # ======================================================================
 
     def _resolve_subgraph_paths(
         self,
@@ -479,9 +479,9 @@ class Command(BaseCommand):
             "updated_at",
         ])
 
-    ***REMOVED*** ======================================================================
-    ***REMOVED*** Report mode
-    ***REMOVED*** ======================================================================
+    # ======================================================================
+    # Report mode
+    # ======================================================================
 
     def _print_report(self, tsv_index: Dict[str, dict], single_iso: str = None):
         """Print the current state of TSV coverage and profile matches."""
@@ -491,7 +491,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("TSV Index Report"))
         self.stdout.write(self.style.SUCCESS("=" * 60))
 
-        ***REMOVED*** Group TSVs by continent
+        # Group TSVs by continent
         by_continent = defaultdict(list)
         for slug, entry in sorted(tsv_index.items()):
             by_continent[entry["continent"]].append((slug, entry))
@@ -503,14 +503,14 @@ class Command(BaseCommand):
             self.stdout.write(f"\n  {continent}/: {len(entries)} slugs, "
                               f"{has_loc} with location TSV, {has_tags} with tags TSV")
 
-            ***REMOVED*** Show subregions
+            # Show subregions
             subregions = defaultdict(list)
             for slug, entry in entries:
                 subregions[entry["subregion"]].append(slug)
             for subregion, slugs in sorted(subregions.items()):
                 self.stdout.write(f"    {subregion}: {len(slugs)} slugs")
 
-        ***REMOVED*** Match against profiles
+        # Match against profiles
         self.stdout.write(self.style.MIGRATE_HEADING("\nProfile Matching"))
 
         profiles = CountryPipelineProfile.objects.all()
@@ -580,7 +580,7 @@ class Command(BaseCommand):
                 entry = tsv_index[slug]
                 self.stdout.write(f"    {slug} [{entry['continent']}/{entry['subregion']}]")
 
-        ***REMOVED*** Quick overrides template for slug mismatches
+        # Quick overrides template for slug mismatches
         mismatches = [
             (p, candidates) for p, candidates in profile_without_tsv
             if any(c in tsv_index for c in candidates[1:])
@@ -596,13 +596,13 @@ class Command(BaseCommand):
                     if c in tsv_index:
                         self.stdout.write(
                             f'    "{iso}": {{ "embedding_slug": "{c}" }}  '
-                            f"***REMOVED*** {p.canonical_name} (canonical={p.canonical_slug})"
+                            f"# {p.canonical_name} (canonical={p.canonical_slug})"
                         )
                         break
 
-    ***REMOVED*** ======================================================================
-    ***REMOVED*** Utilities
-    ***REMOVED*** ======================================================================
+    # ======================================================================
+    # Utilities
+    # ======================================================================
 
     def _resolve_embedding_root(self) -> Optional[Path]:
         emb_root = getattr(settings, 'EMBEDDINGS_ROOT', None)

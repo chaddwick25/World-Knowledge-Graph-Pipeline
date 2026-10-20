@@ -56,7 +56,7 @@ def _traces():
     return [e for e in _memory() if e["kind"] == "trace"]
 
 
-***REMOVED*** ── Config ────────────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────
 
 class TestConfig:
     def test_default_disabled(self):
@@ -72,7 +72,7 @@ class TestConfig:
         monkeypatch.setattr(settings, "TRACE_SAMPLE_RATE", "7")
         assert TraceService._cfg()["sample_rate"] == 1.0
         monkeypatch.setattr(settings, "TRACE_SAMPLE_RATE", "-1")
-        TraceService.reset()  ***REMOVED*** env changed mid-test: reload the cached config
+        TraceService.reset()  # env changed mid-test: reload the cached config
         assert TraceService._cfg()["sample_rate"] == 0.0
 
     def test_deterministic_flag(self, monkeypatch):
@@ -84,7 +84,7 @@ class TestConfig:
         assert TraceService.is_enabled() is False
 
 
-***REMOVED*** ── TraceService core ─────────────────────────────────────────────────────
+# ── TraceService core ─────────────────────────────────────────────────────
 
 class TestTraceService:
     def test_disabled_is_total_noop(self):
@@ -155,7 +155,7 @@ class TestTraceService:
         def worker():
             with TraceService.run_trace("research", trace_id="t-thread"):
                 seen["trace"] = trace_service_module._local.trace_id
-                TraceService.point_span("question:0", attributes={"template": "***REMOVED***1"})
+                TraceService.point_span("question:0", attributes={"template": "#1"})
 
         t = threading.Thread(target=worker)
         t.start()
@@ -166,7 +166,7 @@ class TestTraceService:
     def test_stage_event_default_off(self, monkeypatch):
         monkeypatch.setattr(settings, "TRACE_SINK", "memory")
         with TraceService.run_trace("research", trace_id="t-st"):
-            TraceService.stage_event("question", {"index": 0, "template": "***REMOVED***1"})
+            TraceService.stage_event("question", {"index": 0, "template": "#1"})
         assert _spans() == []
 
     def test_stage_event_when_enabled(self, monkeypatch):
@@ -175,7 +175,7 @@ class TestTraceService:
         with TraceService.run_trace("research", trace_id="t-st"):
             TraceService.stage_event(
                 "question",
-                {"index": 2, "template": "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
+                {"index": 2, "template": "FILTER-AGGREGATE-MEASURE (#1)",
                  "result_count": 5},
             )
             TraceService.stage_event("tool", {"tool": "nameSearch", "args": {}})
@@ -187,7 +187,7 @@ class TestTraceService:
         monkeypatch.setattr(settings, "TRACE_SINK", "file")
         monkeypatch.setattr(settings, "TRACE_SINK_URL", str(tmp_path / "trace.ndjson"))
         monkeypatch.setattr(settings, "TRACE_QUEUE_SIZE", "4")
-        ***REMOVED*** No daemon thread: drain deterministically via flush().
+        # No daemon thread: drain deterministically via flush().
         monkeypatch.setattr(TraceService, "_ensure_thread", lambda cls: None)
         with TraceService.run_trace("research", trace_id="t-ovf"):
             for i in range(10):
@@ -195,7 +195,7 @@ class TestTraceService:
         TraceService.flush()
         lines = (tmp_path / "trace.ndjson").read_text().splitlines()
         assert len(lines) <= 4
-        ***REMOVED*** The newest event survives; the oldest were dropped.
+        # The newest event survives; the oldest were dropped.
         assert json.loads(lines[-1])["name"] == "s9"
         names = [json.loads(l)["name"] for l in lines]
         assert "s0" not in names
@@ -208,21 +208,21 @@ class TestTraceService:
         monkeypatch.setattr(TraceService, "_ensure_thread", lambda cls: None)
         with TraceService.run_trace("research", trace_id="t-down"):
             TraceService.point_span("x")
-        TraceService.flush()  ***REMOVED*** must not raise
+        TraceService.flush()  # must not raise
 
     def test_collect_batch_windows_by_interval_and_cap(self):
         q = queue.Queue()
         for i in range(3):
             q.put_nowait({"n": i})
-        ***REMOVED*** Long interval, small cap: the cap wins, no waiting on a full queue.
+        # Long interval, small cap: the cap wins, no waiting on a full queue.
         batch = TraceService._collect_batch(q, q.get(), interval=10.0, cap=2)
         assert [b["n"] for b in batch] == [0, 1]
-        ***REMOVED*** Zero interval: drain what is already queued, then stop.
+        # Zero interval: drain what is already queued, then stop.
         batch2 = TraceService._collect_batch(q, q.get(), interval=0.0, cap=64)
         assert [b["n"] for b in batch2] == [2]
 
 
-***REMOVED*** ── LLMService instrumentation ────────────────────────────────────────────
+# ── LLMService instrumentation ────────────────────────────────────────────
 
 class _FakeResp:
     def __init__(self, payload, status_code=200, text=""):
@@ -279,7 +279,7 @@ class TestLLMInstrumentation:
         llm = LLMService()
         with TraceService.run_trace("execute_query", trace_id="t2"):
             assert llm.chat([{"role": "user", "content": "hi"}]) is None
-        assert _spans()[0]["status"] == "ok"  ***REMOVED*** fail-soft: 500 → None, not an exception
+        assert _spans()[0]["status"] == "ok"  # fail-soft: 500 → None, not an exception
 
     def test_chat_stream_emits_span(self, monkeypatch):
         monkeypatch.setattr(settings, "TRACE_SINK", "memory")
@@ -331,7 +331,7 @@ class TestLLMInstrumentation:
         assert _spans() == []
 
 
-***REMOVED*** ── View integration (research_stream emit path) ──────────────────────────
+# ── View integration (research_stream emit path) ──────────────────────────
 
 def _stream_body(resp) -> str:
     """Consume an async-generator StreamingHttpResponse body."""
@@ -359,14 +359,14 @@ class TestResearchStreamView:
             event_callback({
                 "event": "question", "index": 0,
                 "question": "Which hotels are within 2km of Belize City?",
-                "template": "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
+                "template": "FILTER-AGGREGATE-MEASURE (#1)",
                 "answer": "Found 1 entities within 2km.",
                 "result_count": 1,
             })
         return {
             "prompt": prompt, "country_code": country_code,
             "snapshot_date": snapshot_date,
-            "questions": [{"index": 0, "question": "Q?", "template": "***REMOVED***1",
+            "questions": [{"index": 0, "question": "Q?", "template": "#1",
                            "answer": "A", "result_count": 1}],
             "tool_calls": [], "summary": "summary", "errors": [],
         }
@@ -388,9 +388,9 @@ class TestResearchStreamView:
         body = _stream_body(resp)
         assert "event: plan" in body
         assert "event: done" in body
-        assert resp["X-Trace-Id"] in body  ***REMOVED*** trace_id surfaced in the done payload
+        assert resp["X-Trace-Id"] in body  # trace_id surfaced in the done payload
 
-        ***REMOVED*** stage_event fired from the emit path → question point span recorded.
+        # stage_event fired from the emit path → question point span recorded.
         names = [s["name"] for s in _spans()]
         assert "question:0" in names
         assert _spans()[0]["trace_id"] == resp["X-Trace-Id"]
@@ -410,8 +410,8 @@ class TestResearchStreamView:
                 {"prompt": "plan a trip to Belize City", "country_code": "BZ"},
                 HTTP_HOST="localhost",
             )
-            ***REMOVED*** The async generator is lazy — consume inside the patch so
-            ***REMOVED*** the worker thread runs the fake plan, not the real LLM.
+            # The async generator is lazy — consume inside the patch so
+            # the worker thread runs the fake plan, not the real LLM.
             _stream_body(resp)
         run = ResearchRun.objects.get(trace_id=resp["X-Trace-Id"])
         assert run.status == "done"
@@ -480,7 +480,7 @@ class TestResearchRunsEndpoint:
         assert rows[0]["id"] == str(run.id)
         assert rows[0]["trace_id"] == "tr-1"
         assert rows[0]["recipe"] == "doppelganger_report"
-        assert "events" not in rows[0]  ***REMOVED*** compact list; detail carries events
+        assert "events" not in rows[0]  # compact list; detail carries events
 
     def test_list_filters_by_country_and_status(self, client):
         self._make_run(trace_id="tr-jm", country_code="JM")

@@ -26,7 +26,7 @@ from semantic_search.services.subgraph_transport_service import (
 )
 from worldkg_nca.models import SubgraphTransport
 
-***REMOVED*** Factor tables live on the vectors DB
+# Factor tables live on the vectors DB
 pytestmark = pytest.mark.django_db(
     transaction=False, databases=["default", "vectors"],
 )
@@ -35,7 +35,7 @@ TEST_CC = "ZZ"
 SNAP = "9999_01_01"
 
 
-***REMOVED*** ── Transport matrix computation ────────────────────────────────────────
+# ── Transport matrix computation ────────────────────────────────────────
 
 
 class TestComputeTransportMatrix:
@@ -47,17 +47,17 @@ class TestComputeTransportMatrix:
         np.random.seed(42)
         n, k = 100, 10
 
-        ***REMOVED*** Build a random symmetric matrix and its eigendecomposition
+        # Build a random symmetric matrix and its eigendecomposition
         A = np.random.randn(n, n)
         A = (A + A.T) / 2
         eigenvalues, eigenvectors = np.linalg.eigh(A)
-        ***REMOVED*** Sort ascending, drop trivial
+        # Sort ascending, drop trivial
         idx = eigenvalues.argsort()
         eigenvalues = eigenvalues[idx][1:k + 1]
         eigenvectors = eigenvectors[:, idx][:, 1:k + 1]
 
         node_ids = np.arange(n, dtype=np.int64)
-        shared_ids = node_ids.copy()  ***REMOVED*** all nodes shared
+        shared_ids = node_ids.copy()  # all nodes shared
 
         result = svc.compute_transport_matrix(
             eigenvalues_a=eigenvalues, eigenvectors_a=eigenvectors,
@@ -65,15 +65,15 @@ class TestComputeTransportMatrix:
             eigenvalues_b=eigenvalues.copy(), eigenvectors_b=eigenvectors.copy(),
             node_ids_b=node_ids.copy(),
             shared_node_ids=shared_ids,
-            lambda_reg=0.0,  ***REMOVED*** no regularization for identity test
+            lambda_reg=0.0,  # no regularization for identity test
         )
 
         assert result is not None
         C = result["transport_matrix"]
-        ***REMOVED*** C should be close to identity (or -identity due to sign ambiguity)
+        # C should be close to identity (or -identity due to sign ambiguity)
         diag = np.diag(C)
         assert np.allclose(np.abs(diag), 1.0, atol=0.01)
-        ***REMOVED*** Off-diagonal should be near zero
+        # Off-diagonal should be near zero
         off_diag = C - np.diag(diag)
         assert np.allclose(off_diag, 0.0, atol=0.01)
 
@@ -91,7 +91,7 @@ class TestComputeTransportMatrix:
         eigenvectors = eigenvectors[:, idx][:, 1:k + 1]
 
         node_ids_a = np.arange(n, dtype=np.int64)
-        ***REMOVED*** Permute node ordering for B
+        # Permute node ordering for B
         perm = np.random.permutation(n)
         node_ids_b = node_ids_a[perm]
         eigenvectors_b = eigenvectors[perm]
@@ -109,12 +109,12 @@ class TestComputeTransportMatrix:
 
         assert result is not None
         C = result["transport_matrix"]
-        ***REMOVED*** C should be close to a signed permutation matrix
-        ***REMOVED*** Each row/col should have one entry near ±1, rest near 0
+        # C should be close to a signed permutation matrix
+        # Each row/col should have one entry near ±1, rest near 0
         for i in range(k):
             row_max = np.max(np.abs(C[i]))
             assert row_max > 0.9, f"Row {i} max abs value {row_max} < 0.9"
-            ***REMOVED*** Count near-zero entries
+            # Count near-zero entries
             near_zero = np.sum(np.abs(C[i]) < 0.1)
             assert near_zero >= k - 2, f"Row {i} has too many non-zero entries"
 
@@ -124,7 +124,7 @@ class TestComputeTransportMatrix:
         np.random.seed(456)
         n, k = 200, 12
 
-        ***REMOVED*** Build graph A
+        # Build graph A
         A = np.random.randn(n, n)
         A = (A + A.T) / 2
         lam_a, vec_a = np.linalg.eigh(A)
@@ -132,7 +132,7 @@ class TestComputeTransportMatrix:
         lam_a = lam_a[idx][1:k + 1]
         vec_a = vec_a[:, idx][:, 1:k + 1]
 
-        ***REMOVED*** Build graph B = A + perturbation (non-isomorphic)
+        # Build graph B = A + perturbation (non-isomorphic)
         perturbation = np.random.randn(n, n) * 0.1
         perturbation = (perturbation + perturbation.T) / 2
         B = A + perturbation
@@ -154,7 +154,7 @@ class TestComputeTransportMatrix:
         )
 
         assert result is not None
-        ***REMOVED*** With small perturbation, the fit residual should be low
+        # With small perturbation, the fit residual should be low
         assert result["fit_residual"] < 0.5, (
             f"Fit residual {result['fit_residual']} too high for small perturbation"
         )
@@ -172,7 +172,7 @@ class TestComputeTransportMatrix:
         vec = vec[:, idx][:, 1:k + 1]
 
         node_ids = np.arange(n, dtype=np.int64)
-        ***REMOVED*** Only 5 shared — below MIN_SHARED_ENTITIES
+        # Only 5 shared — below MIN_SHARED_ENTITIES
         shared_ids = np.array([0, 1, 2, 3, 4], dtype=np.int64)
 
         result = svc.compute_transport_matrix(
@@ -200,7 +200,7 @@ class TestComputeTransportMatrix:
         assert result is None
 
 
-***REMOVED*** ── Transport loadings ──────────────────────────────────────────────────
+# ── Transport loadings ──────────────────────────────────────────────────
 
 
 class TestTransportLoadings:
@@ -246,7 +246,7 @@ class TestTransportLoadings:
         assert np.allclose(transported[3:], 0.0)
 
 
-***REMOVED*** ── Adjacency computation ───────────────────────────────────────────────
+# ── Adjacency computation ───────────────────────────────────────────────
 
 
 class TestComputeAdjacency:
@@ -303,7 +303,7 @@ class TestComputeAdjacency:
             bbox_min_lon=1.5, bbox_min_lat=1.5,
             bbox_max_lon=2.5, bbox_max_lat=2.5,
         )
-        ***REMOVED*** Gap is 0.5°, 2×0.45=0.9° → adjacent
+        # Gap is 0.5°, 2×0.45=0.9° → adjacent
         pairs = svc.compute_adjacency([sg_a, sg_b], buffer_deg=0.45)
         assert ("aaa", "bbb") in pairs
 
@@ -321,14 +321,14 @@ class TestComputeAdjacency:
             for i in range(5)
         ]
         pairs = svc.compute_adjacency(configs)
-        ***REMOVED*** All pairs should be sorted
+        # All pairs should be sorted
         for a, b in pairs:
             assert a < b
-        ***REMOVED*** No duplicates
+        # No duplicates
         assert len(pairs) == len(set(pairs))
 
 
-***REMOVED*** ── DB I/O ──────────────────────────────────────────────────────────────
+# ── DB I/O ──────────────────────────────────────────────────────────────
 
 
 class TestTransportDBIO:
@@ -364,7 +364,7 @@ class TestTransportDBIO:
         assert loaded.shape == (k, k)
         assert np.allclose(loaded, C)
 
-        ***REMOVED*** Cleanup
+        # Cleanup
         SubgraphTransport.objects.using("vectors").filter(
             snapshot_id=SNAP, country_code=TEST_CC,
         ).delete()
@@ -376,7 +376,7 @@ class TestTransportDBIO:
         C1 = np.ones((k, k))
         C2 = np.eye(k) * 3.0
 
-        ***REMOVED*** First write
+        # First write
         svc.write_transport_matrices(
             snapshot_id=SNAP, country_code=TEST_CC,
             transport_data=[{
@@ -386,7 +386,7 @@ class TestTransportDBIO:
                 "fit_residual": 0.2, "commutativity_residual": 0.1,
             }],
         )
-        ***REMOVED*** Second write (different matrix)
+        # Second write (different matrix)
         svc.write_transport_matrices(
             snapshot_id=SNAP, country_code=TEST_CC,
             transport_data=[{
@@ -397,7 +397,7 @@ class TestTransportDBIO:
             }],
         )
 
-        ***REMOVED*** Should only have 1 row (replaced)
+        # Should only have 1 row (replaced)
         count = SubgraphTransport.objects.using("vectors").filter(
             snapshot_id=SNAP, country_code=TEST_CC,
             subgraph_from="a", subgraph_to="b",
@@ -410,7 +410,7 @@ class TestTransportDBIO:
         )
         assert np.allclose(loaded, C2)
 
-        ***REMOVED*** Cleanup
+        # Cleanup
         SubgraphTransport.objects.using("vectors").filter(
             snapshot_id=SNAP, country_code=TEST_CC,
         ).delete()

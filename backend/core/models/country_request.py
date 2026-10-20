@@ -12,15 +12,15 @@ class CountryRequest(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    ***REMOVED*** Identity of the requested country (slug/iso as sent by the client;
-    ***REMOVED*** no FK — the country may not exist in the pipeline tables at all).
+    # Identity of the requested country (slug/iso as sent by the client;
+    # no FK — the country may not exist in the pipeline tables at all).
     country_key = models.CharField(max_length=255, db_index=True)
     country_name = models.CharField(max_length=255)
     iso_code = models.CharField(max_length=10, null=True, blank=True)
     continent = models.CharField(max_length=100, null=True, blank=True)
-    ***REMOVED*** Which surface the request came from ('tools' | 'doppelganger').
+    # Which surface the request came from ('tools' | 'doppelganger').
     surface = models.CharField(max_length=40, blank=True)
-    ***REMOVED*** Optional free-text name the requester chose to share.
+    # Optional free-text name the requester chose to share.
     requester_name = models.CharField(max_length=255, blank=True)
     requester_hash = models.CharField(max_length=64, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)

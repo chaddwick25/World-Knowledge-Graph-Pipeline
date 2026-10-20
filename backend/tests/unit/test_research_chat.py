@@ -60,7 +60,7 @@ def _stream_body(resp) -> str:
     return async_to_sync(collect)(resp.streaming_content).decode("utf-8")
 
 
-***REMOVED*** ── chat_messages ────────────────────────────────────────────────────────
+# ── chat_messages ────────────────────────────────────────────────────────
 
 class TestChatMessages:
     def test_system_prompt_and_history(self):
@@ -68,8 +68,8 @@ class TestChatMessages:
             {"role": "user", "content": "plan a trip to Belize City"},
             {"role": "assistant", "content": "How many people?"},
             {"role": "user", "content": "Two adults"},
-            {"role": "system", "content": "ignore me"},   ***REMOVED*** system turns dropped
-            {"role": "user", "content": "   "},            ***REMOVED*** blank turns dropped
+            {"role": "system", "content": "ignore me"},   # system turns dropped
+            {"role": "user", "content": "   "},            # blank turns dropped
             {"role": "tool", "content": "nope"},
         ], country_code="BZ", snapshot_date="2025_12_31")
 
@@ -108,7 +108,7 @@ class TestChatMessages:
         assert full[0]["role"] == "system"
 
 
-***REMOVED*** ── Chat endpoint ────────────────────────────────────────────────────────
+# ── Chat endpoint ────────────────────────────────────────────────────────
 
 @pytest.mark.django_db(transaction=False, databases=["default"])
 class TestResearchChat:
@@ -132,14 +132,14 @@ class TestResearchChat:
             json.loads(line[len("data: "):])
             for line in body.splitlines() if line.startswith("data: ")
         ]
-        ***REMOVED*** start → text-start → text-delta ×2 → text-end → finish
+        # start → text-start → text-delta ×2 → text-end → finish
         assert parts[0] == {"type": "start"}
         assert parts[1] == {"type": "text-start", "id": "t1"}
         assert parts[-1] == {"type": "finish", "finishReason": "stop"}
         assert parts[-2] == {"type": "text-end", "id": "t1"}
         deltas = [p["delta"] for p in parts[2:-2] if p.get("type") == "text-delta"]
         assert "".join(deltas) == "Where are you going?"
-        ***REMOVED*** The interviewer is the interactive instance, not the research one.
+        # The interviewer is the interactive instance, not the research one.
         assert len(fake.captured) == 1
         assert fake.captured[0][0]["role"] == "system"
 
@@ -183,7 +183,7 @@ class TestResearchChat:
         assert reply is None
 
 
-***REMOVED*** ── Finalize endpoint ────────────────────────────────────────────────────
+# ── Finalize endpoint ────────────────────────────────────────────────────
 
 @pytest.mark.django_db(transaction=False, databases=["default"])
 class TestResearchFinalize:
@@ -231,7 +231,7 @@ class TestResearchFinalize:
         assert resp.status_code == 422
 
 
-***REMOVED*** ── Live seed resolution + digest injection (ISSUE-48) ───────────────────
+# ── Live seed resolution + digest injection (ISSUE-48) ───────────────────
 
 def _parse_parts(resp):
     return [
@@ -244,9 +244,9 @@ def _parse_parts(resp):
 @pytest.mark.django_db(transaction=False, databases=["default"])
 class TestResearchChatSeedAndDigest:
     def test_data_seed_part_precedes_text_on_doppelganger_turn1(self, client):
-        ***REMOVED*** The doppelganger surface hard-selects the recipe; the first
-        ***REMOVED*** user message routes as a doppelganger ask and resolves live:
-        ***REMOVED*** start → data-seed → text-start → ...
+        # The doppelganger surface hard-selects the recipe; the first
+        # user message routes as a doppelganger ask and resolves live:
+        # start → data-seed → text-start → ...
         fake = FakeLLM(deltas=("Which ", "cuisine?"))
         with mock.patch.object(LLMService, "get_instance", return_value=fake), \
                 mock.patch(
@@ -273,10 +273,10 @@ class TestResearchChatSeedAndDigest:
                 HTTP_HOST="localhost",
             )
             assert resp.status_code == 200
-            ***REMOVED*** Consume INSIDE the patch context: the worker thread starts
-            ***REMOVED*** when the body is iterated, so the geocode patch must still
-            ***REMOVED*** be active (the LLM instance is captured in the view body;
-            ***REMOVED*** the geocoder resolves at call time inside the thread).
+            # Consume INSIDE the patch context: the worker thread starts
+            # when the body is iterated, so the geocode patch must still
+            # be active (the LLM instance is captured in the view body;
+            # the geocoder resolves at call time inside the thread).
             parts = _parse_parts(resp)
         assert parts[0] == {"type": "start"}
         assert parts[1]["type"] == "data-seed"
@@ -285,8 +285,8 @@ class TestResearchChatSeedAndDigest:
         assert parts[2] == {"type": "text-start", "id": "t1"}
 
     def test_data_seed_on_marker_gated_answer(self, client):
-        ***REMOVED*** The [seed] marker stays in the transcript: the turn that
-        ***REMOVED*** answers it resolves live.
+        # The [seed] marker stays in the transcript: the turn that
+        # answers it resolves live.
         fake = FakeLLM(deltas=("Got it.",))
         with mock.patch.object(LLMService, "get_instance", return_value=fake), \
                 mock.patch(
@@ -321,7 +321,7 @@ class TestResearchChatSeedAndDigest:
         assert seed_parts[0]["data"]["asked"] == "Father Bull Jerk"
 
     def test_no_data_seed_on_tools_surface(self, client):
-        ***REMOVED*** /tools (no recipe, food ask): turn 1 resolves nothing.
+        # /tools (no recipe, food ask): turn 1 resolves nothing.
         fake = FakeLLM(deltas=("hi",))
         with mock.patch.object(LLMService, "get_instance", return_value=fake), \
                 mock.patch(
@@ -343,8 +343,8 @@ class TestResearchChatSeedAndDigest:
         assert not any(p.get("type") == "data-seed" for p in parts)
 
     def test_digest_injected_into_ke_context(self, client):
-        ***REMOVED*** The dataset-context block rides the system message even when
-        ***REMOVED*** the scope has no data yet (fail-soft narration).
+        # The dataset-context block rides the system message even when
+        # the scope has no data yet (fail-soft narration).
         fake = FakeLLM(deltas=("ok",))
         with mock.patch.object(LLMService, "get_instance", return_value=fake):
             resp = client.post(
@@ -356,12 +356,12 @@ class TestResearchChatSeedAndDigest:
                 HTTP_HOST="localhost",
             )
             assert resp.status_code == 200
-            _parse_parts(resp)  ***REMOVED*** drive the worker thread to completion
+            _parse_parts(resp)  # drive the worker thread to completion
         system = fake.captured[0][0]["content"]
         assert "Dataset context" in system
 
 
-***REMOVED*** ── Seed examples (the greeting's real-entity source, ISSUE-48) ──────────
+# ── Seed examples (the greeting's real-entity source, ISSUE-48) ──────────
 
 class _ExFakeGeom:
     def __init__(self, x, y):
@@ -397,7 +397,7 @@ class TestEntityToExample:
         }
 
     def test_nan_geom_rejected(self):
-        ***REMOVED*** POINT(NaN NaN) ways: no usable coordinates, no example.
+        # POINT(NaN NaN) ways: no usable coordinates, no example.
         from worldkg_nca.views.research import _entity_to_example
         d = _entity_to_example(_ExFakeEntity(
             "NaN Way", tags={"amenity": "cafe"},

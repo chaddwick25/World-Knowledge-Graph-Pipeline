@@ -65,11 +65,11 @@ class Command(BaseCommand):
         self.max_workers = options.get('max_workers')
         self.force = options['force']
         
-        ***REMOVED*** Validate required environment variables
+        # Validate required environment variables
         self.validate_environment()
         
-        ***REMOVED*** Get configuration from settings (env-backed; also set at runtime
-        ***REMOVED*** by run_continents_recipe / planet_initialization_service).
+        # Get configuration from settings (env-backed; also set at runtime
+        # by run_continents_recipe / planet_initialization_service).
         folder_path = os.path.abspath(getattr(settings, 'FOLDER_PATH', None) or settings.POLYGON_FILES_DIR)
         source_pbf_path = getattr(settings, 'SOURCE_PBF_PATH', None)
         output_base_dir = getattr(settings, 'OUTPUT_BASE_DIR', None)
@@ -83,7 +83,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  Phases: {options.get('phases')}")
         self.stdout.write()
 
-        ***REMOVED*** Step 1: Sync Hierarchy and Initialize RegionalExtractionState
+        # Step 1: Sync Hierarchy and Initialize RegionalExtractionState
         self.stdout.write(self.style.SUCCESS("Step 1: Syncing polygon file hierarchy..."))
         from core.services.snapshot.regional_path_service import normalize_continent_slug
         self.sync_hierarchy(Path(folder_path), source_pbf_path)
@@ -92,15 +92,15 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("✓ Sync completed. (Sync-only mode)"))
             return
 
-        ***REMOVED*** Create processing session
+        # Create processing session
         session = self.create_processing_session(source_pbf_path, output_base_dir)
         
         try:
-            ***REMOVED*** Step 2: Determine Phase Configuration
+            # Step 2: Determine Phase Configuration
             phases = [int(p) for p in options.get('phases').split(',')]
             start_year = options.get('start_year')
             
-            ***REMOVED*** Get target regions
+            # Get target regions
             from core.models import RegionalExtractionState
             if options.get('country'):
                 country_name = options.get('country')
@@ -125,15 +125,15 @@ class Command(BaseCommand):
 
             self.stdout.write(f"Targeting {target_states.count()} regions for temporal expansion.")
             
-            ***REMOVED*** Step 3: Run Pipeline (Continental Only)
+            # Step 3: Run Pipeline (Continental Only)
             for state in target_states:
                 if state.region_type == RegionalExtractionState.RegionType.CONTINENT:
                     self.stdout.write(self.style.SUCCESS(f"Extracting Continent: {state.region_name}"))
 
                     try:
-                        ***REMOVED*** Direct continent extraction via osmium extract --polygon.
-                        ***REMOVED*** Replaces the legacy temporal_orchestrator.run_pipeline(phases=[1])
-                        ***REMOVED*** call. Uses the continent's .poly file to extract from the planet PBF.
+                        # Direct continent extraction via osmium extract --polygon.
+                        # Replaces the legacy temporal_orchestrator.run_pipeline(phases=[1])
+                        # call. Uses the continent's .poly file to extract from the planet PBF.
                         from core.services.snapshot.regional_path_service import (
                             regional_path_service,
                             normalize_continent_slug,
@@ -141,11 +141,11 @@ class Command(BaseCommand):
                         cont_slug = normalize_continent_slug(state.region_name)
                         output_pbf = regional_path_service.get_continent_pbf_path(cont_slug)
 
-                        ***REMOVED*** Continent .poly files live in POLYGON_FILES_DIR
+                        # Continent .poly files live in POLYGON_FILES_DIR
                         poly_dir = Path(getattr(settings, 'POLYGON_FILES_DIR', ''))
                         poly_path = poly_dir / f"{cont_slug}.poly"
                         if not poly_path.exists():
-                            ***REMOVED*** Try alternate naming (e.g., underscores vs hyphens)
+                            # Try alternate naming (e.g., underscores vs hyphens)
                             alt_poly = poly_dir / f"{cont_slug.replace('-', '_')}.poly"
                             if alt_poly.exists():
                                 poly_path = alt_poly
@@ -179,7 +179,7 @@ class Command(BaseCommand):
                         ))
                     except Exception as e:
                         self.stdout.write(self.style.ERROR(f"✗ Failed to extract {state.region_name}: {e}"))
-                        ***REMOVED*** Continue to next continent
+                        # Continue to next continent
                         continue
                 else:
                     self.stdout.write(self.style.WARNING(f"Skipping non-continent region: {state.region_name}. Use GUI for countries."))
@@ -213,7 +213,7 @@ class Command(BaseCommand):
                 "defaults them from settings."
             )
 
-        ***REMOVED*** Validate paths exist
+        # Validate paths exist
         folder_path = getattr(settings, 'FOLDER_PATH', None)
         source_pbf_path = getattr(settings, 'SOURCE_PBF_PATH', None)
         
@@ -229,7 +229,7 @@ class Command(BaseCommand):
         existing_continents = []
         
         for continent in continental_names:
-            ***REMOVED*** Check if PBF extracts exist for this continent
+            # Check if PBF extracts exist for this continent
             extracts = PbfExtract.objects.filter(
                 output_pbf_path__icontains=continent
             ).exists()
@@ -269,7 +269,7 @@ class Command(BaseCommand):
                 if item.is_dir():
                     if item.name in EXCLUDED_DIRS:
                         continue
-                    ***REMOVED*** Normalize continent/region names to use underscores (database convention)
+                    # Normalize continent/region names to use underscores (database convention)
                     normalized_name = normalize_continent_slug(item.name) if parent_obj is None else item.name
                     region_obj, created = RegionHierarchy.objects.get_or_create(
                         name=normalized_name,
@@ -286,12 +286,12 @@ class Command(BaseCommand):
                         defaults={'poly_file_path': resolved_path}
                     )
                     
-                    ***REMOVED*** Update path if mismatched
+                    # Update path if mismatched
                     if not created and region_obj.poly_file_path != resolved_path:
                         region_obj.poly_file_path = resolved_path
                         region_obj.save(update_fields=['poly_file_path'])
 
-                    ***REMOVED*** Link PolygonFile
+                    # Link PolygonFile
                     poly_file_obj, p_created = PolygonFile.objects.get_or_create(
                         file_path=resolved_path,
                         defaults={'name': item.stem, 'region_name': item.stem}
@@ -300,8 +300,8 @@ class Command(BaseCommand):
                         region_obj.polygon_file = poly_file_obj
                         region_obj.save(update_fields=['polygon_file'])
                     
-                    ***REMOVED*** Initialize RegionalExtractionState
-                    ***REMOVED*** A continent is a top-level dir, a country is a sub-dir or a file in a continent dir.
+                    # Initialize RegionalExtractionState
+                    # A continent is a top-level dir, a country is a sub-dir or a file in a continent dir.
                     r_type = RegionalExtractionState.RegionType.CONTINENT if parent_obj is None else RegionalExtractionState.RegionType.COUNTRY
                     
                     RegionalExtractionState.objects.get_or_create(
@@ -316,7 +316,7 @@ class Command(BaseCommand):
 
         sync_directory(folder_path)
         
-        ***REMOVED*** Deduplication logic
+        # Deduplication logic
         continents = RegionHierarchy.objects.filter(parent__isnull=True)
         duplicates = (
             RegionHierarchy.objects
@@ -362,8 +362,8 @@ class Command(BaseCommand):
             continent_output_dir = Path(output_base_dir) / state.region_name
             continent_output_dir.mkdir(parents=True, exist_ok=True)
             
-            ***REMOVED*** Find all country states under this continent by looking at poly_file directory structure
-            ***REMOVED*** Actually, we can just look for countries whose poly_file is in the continent's folder.
+            # Find all country states under this continent by looking at poly_file directory structure
+            # Actually, we can just look for countries whose poly_file is in the continent's folder.
             continent_path = Path(state.poly_file.file_path).parent
             country_states = RegionalExtractionState.objects.filter(
                 source_planet_path=source_pbf_path,
@@ -383,18 +383,18 @@ class Command(BaseCommand):
                     output_file = continent_output_dir / relative_path.with_suffix('.pbf')
                     output_file.parent.mkdir(parents=True, exist_ok=True)
                     
-                    ***REMOVED*** Check if already completed
+                    # Check if already completed
                     if not self.force and country_state.status == RegionalExtractionState.StateStatus.COMPLETED:
                         self.stdout.write(f"    Skipping {relative_path} (already completed)")
                         continue
                     
                     self.stdout.write(f"    Processing {relative_path}...")
                     
-                    ***REMOVED*** Update state to EXTRACTING
+                    # Update state to EXTRACTING
                     country_state.status = RegionalExtractionState.StateStatus.EXTRACTING
                     country_state.save()
                     
-                    ***REMOVED*** Run extraction
+                    # Run extraction
                     result = extraction_service.extract_with_polygon(
                         source_pbf_path=source_pbf_path,
                         polygon_file_path=str(poly_file),
@@ -425,11 +425,11 @@ class Command(BaseCommand):
                     country_state.save()
                     self.stdout.write(f"      ✗ Error: {e}")
             
-            ***REMOVED*** Update continent state
+            # Update continent state
             if failed_count == 0:
                 state.status = RegionalExtractionState.StateStatus.COMPLETED
             elif processed_count > 0:
-                state.status = RegionalExtractionState.StateStatus.EXTRACTING ***REMOVED*** Partially done
+                state.status = RegionalExtractionState.StateStatus.EXTRACTING # Partially done
             else:
                 state.status = RegionalExtractionState.StateStatus.FAILED
             
@@ -453,11 +453,11 @@ class Command(BaseCommand):
     def get_or_create_source_pbf(self, source_pbf_path):
         """Get or create PbfFile record for the source PBF"""
         try:
-            ***REMOVED*** Try to find existing PBF file by path
+            # Try to find existing PBF file by path
             pbf_file = PbfFile.objects.filter(path=source_pbf_path).first()
             
             if not pbf_file:
-                ***REMOVED*** Create new PBF file record
+                # Create new PBF file record
                 pbf_file = PbfFile.objects.create(
                     path=source_pbf_path,
                     pbf_file_type=PbfFile.PbfType.HISTORICAL,

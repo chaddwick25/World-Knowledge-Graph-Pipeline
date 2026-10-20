@@ -1,4 +1,4 @@
-***REMOVED*** USLP: Unsupervised Spatial Link Prediction (Step 4)
+# USLP: Unsupervised Spatial Link Prediction (Step 4)
 
 > **Focus:** how USLP predicts spatial relationships between OSM entities
 > using tri-space scoring (geo + name + class), geohash-based candidate
@@ -16,7 +16,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Where USLP Sits in the Pipeline
+## 1. Where USLP Sits in the Pipeline
 
 **Step 3: IGEA — iterative geographic entity alignment** → `OsmEntity.wikidata_uri` populated for aligned entities.
 
@@ -35,7 +35,7 @@ acceptance count. The `total_accepted == 0` checks were removed from
 
 ---
 
-***REMOVED******REMOVED*** 2. The Tri-Space Scoring Architecture
+## 2. The Tri-Space Scoring Architecture
 
 **Head entity** (has a spatial literal tag), e.g. restaurant with
 `tags={addr:city: "Havana"}`.
@@ -56,9 +56,9 @@ Combine:
 
 ---
 
-***REMOVED******REMOVED*** 3. The Three Score Spaces
+## 3. The Three Score Spaces
 
-***REMOVED******REMOVED******REMOVED*** 3.1 Geo Score: Geographic Proximity
+### 3.1 Geo Score: Geographic Proximity
 
 ```python
 geo_sim = 1 - d / d_max
@@ -69,7 +69,7 @@ geo_sim = 1 - d / d_max
 - Range: [0, 1]. 1.0 means co-located, 0.0 means at max distance
 - Uses geohash clustering to normalize distances per region
 
-***REMOVED******REMOVED******REMOVED*** 3.2 Name Score: Semantic Name Similarity
+### 3.2 Name Score: Semantic Name Similarity
 
 ```python
 name_sim = cosine(FastText(literal), FastText(candidate_name))
@@ -81,7 +81,7 @@ name_sim = cosine(FastText(literal), FastText(candidate_name))
 - Range: [-1, 1], no clamping (preserves negative cosine for antonyms)
 - Uses FastText `cc.en.300.bin` model (same as GV-Tags encoding)
 
-***REMOVED******REMOVED******REMOVED*** 3.3 Class Score: Ontological Compatibility
+### 3.3 Class Score: Ontological Compatibility
 
 ```python
 class_sim = cosine(FastText(relation_text), FastText(candidate_class))
@@ -95,18 +95,18 @@ class_sim = cosine(FastText(relation_text), FastText(candidate_class))
 - Can use TransE distance if `transe_service` is available
 - Range: [-1, 1]
 
-***REMOVED******REMOVED******REMOVED*** 3.4 Total Score
+### 3.4 Total Score
 
 ```python
-unnormalized = geo + name + class    ***REMOVED*** Range: [0, 3.0]
-normalized = unnormalized / 3.0      ***REMOVED*** Range: [0, 1.0]
+unnormalized = geo + name + class    # Range: [0, 3.0]
+normalized = unnormalized / 3.0      # Range: [0, 1.0]
 ```
 
 Acceptance threshold: **0.7** (from `hyperparams.yaml`).
 
 ---
 
-***REMOVED******REMOVED*** 4. Geohash Precision: Relation-Specific Search Radius
+## 4. Geohash Precision: Relation-Specific Search Radius
 
 **Source:** <ref_file file="backend/igea/services/spatial_link_prediction.py" lines="76-101" />
 
@@ -115,7 +115,7 @@ radius. Shorter geohash = larger search area:
 
 ```python
 RELATION_GEOHASH_PRECISION = {
-    ***REMOVED*** Precision 1 — country/continent level (~5,000 km)
+    # Precision 1 — country/continent level (~5,000 km)
     'isIn':           1,
     'addrPlace':      1,
     'isInContinent':  1,
@@ -124,7 +124,7 @@ RELATION_GEOHASH_PRECISION = {
     'addrCountry':    1,
     'capitalCity':    1,
 
-    ***REMOVED*** Precision 3 — state/county/district level (~156 km)
+    # Precision 3 — state/county/district level (~156 km)
     'addrState':      3,
     'addrDistrict':   3,
     'addrProvince':   3,
@@ -132,7 +132,7 @@ RELATION_GEOHASH_PRECISION = {
     'isInState':      3,
     'isInDistrict':   3,
 
-    ***REMOVED*** Precision 4 — local level (~39 km)
+    # Precision 4 — local level (~39 km)
     'addrSubdistrict': 4,
     'addrSuburb':     4,
     'addrHamlet':     4,
@@ -144,7 +144,7 @@ RELATION_GEOHASH_PRECISION = {
 DEFAULT_GEOHASH_PRECISION = 4
 ```
 
-***REMOVED******REMOVED******REMOVED*** 4.1 Radius Mapping
+### 4.1 Radius Mapping
 
 ```python
 radius_km = {1: 5000, 3: 156, 4: 39}.get(precision, 156)
@@ -159,7 +159,7 @@ radius_km = {1: 5000, 3: 156, 4: 39}.get(precision, 156)
 This aligns with the USLP reference implementation
 (`SSLPandUSLP-main/USLP/USLP_main.py:120-135`).
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Why Geohash Precision Matters
+### 4.2 Why Geohash Precision Matters
 
 An "isInCountry" relation should search the entire country (~5000km); an
 "addrSuburb" relation should only search the local area (~39km). The wrong
@@ -168,9 +168,9 @@ scorer with irrelevant candidates (too wide).
 
 ---
 
-***REMOVED******REMOVED*** 5. Subgraph Fan-Out and Rehydration
+## 5. Subgraph Fan-Out and Rehydration
 
-***REMOVED******REMOVED******REMOVED*** 5.1 The Rehydration Problem
+### 5.1 The Rehydration Problem
 
 On a fresh DB, `has_subgraphs=False` at canvas dispatch time because subgraph
 poly files have not been generated yet. The canvas chord for Step 4 was
@@ -178,7 +178,7 @@ built with this stale flag, so USLP would run at country level only
 (7 entities → 39 links for Belize) instead of fanning out to subgraphs
 (2,420 entities → 20,114 links).
 
-***REMOVED******REMOVED******REMOVED*** 5.2 The Fix: Self-Dispatch Inline
+### 5.2 The Fix: Self-Dispatch Inline
 
 <ref_snippet file="backend/pipeline/tasks/country_pipeline_steps/step_4_uslp.py" lines="48-76" />
 
@@ -190,7 +190,7 @@ Step 4 now **rehydrates subgraphs from DB at task start**:
 3. The `rehydrated` flag distinguishes this path from the normal
    chord-driven path
 
-***REMOVED******REMOVED******REMOVED*** 5.3 Chord vs Inline Dispatch
+### 5.3 Chord vs Inline Dispatch
 
 | Path | When | How |
 |---|---|---|
@@ -202,7 +202,7 @@ already generated, the chord path is used.
 
 ---
 
-***REMOVED******REMOVED*** 6. The SpatialTripletScore Model
+## 6. The SpatialTripletScore Model
 
 **Source:** <ref_file file="backend/igea/models.py" />
 
@@ -213,15 +213,15 @@ class SpatialTripletScore(models.Model):
     head_osm_id = BigIntegerField()
     tail_osm_type = CharField(max_length=10)
     tail_osm_id = BigIntegerField()
-    relation = CharField(max_length=50)       ***REMOVED*** e.g. "isInCounty", "addrSuburb"
-    geo_score = FloatField()                  ***REMOVED*** [0, 1]
-    name_score = FloatField()                 ***REMOVED*** [-1, 1]
-    topo_score = FloatField()                 ***REMOVED*** [-1, 1] (class score)
-    unnormalized_score = FloatField()         ***REMOVED*** [0, 3.0]
-    normalized_score = FloatField()           ***REMOVED*** [0, 1.0]
-    predicted = BooleanField()                ***REMOVED*** True if normalized >= 0.7
-    geohash_precision = IntegerField()        ***REMOVED*** 1, 3, or 4
-    snapshot_id = CharField(max_length=20)    ***REMOVED*** partition key
+    relation = CharField(max_length=50)       # e.g. "isInCounty", "addrSuburb"
+    geo_score = FloatField()                  # [0, 1]
+    name_score = FloatField()                 # [-1, 1]
+    topo_score = FloatField()                 # [-1, 1] (class score)
+    unnormalized_score = FloatField()         # [0, 3.0]
+    normalized_score = FloatField()           # [0, 1.0]
+    predicted = BooleanField()                # True if normalized >= 0.7
+    geohash_precision = IntegerField()        # 1, 3, or 4
+    snapshot_id = CharField(max_length=20)    # partition key
     country_name = CharField(max_length=100)
     created_at = DateTimeField(auto_now_add=True)
 
@@ -234,7 +234,7 @@ class SpatialTripletScore(models.Model):
         ]
 ```
 
-***REMOVED******REMOVED******REMOVED*** 6.1 The Composite Index: `igea_triplet_csp_idx`
+### 6.1 The Composite Index: `igea_triplet_csp_idx`
 
 The composite index on `(country_name, snapshot_id, predicted)` enables
 **Index Only Scan** for the dashboard's most common query:
@@ -250,7 +250,7 @@ Without the composite index, Postgres would do a bitmap scan + heap fetch
 for each filter. With it, the index covers all three filter columns and
 Postgres can satisfy the query from the index alone.
 
-***REMOVED******REMOVED******REMOVED*** 6.2 SpatialTripletScoreRejected
+### 6.2 SpatialTripletScoreRejected
 
 Same fields as `SpatialTripletScore` but without the `predicted` flag.
 Stores links below the 0.7 threshold. Useful for debugging false negatives
@@ -258,20 +258,20 @@ and tuning the threshold.
 
 ---
 
-***REMOVED******REMOVED*** 7. Persistence: Chunked bulk_create
+## 7. Persistence: Chunked bulk_create
 
 **Source:** `backend/igea/services/spatial_link_prediction.py` (`persist_links`)
 
 ```python
 PERSIST_CHUNK = 5000
 
-***REMOVED*** Split into accepted/rejected buffers
+# Split into accepted/rejected buffers
 if is_accepted:
     accepted_buf.append(SpatialTripletScore(**base_fields, predicted=True))
 else:
     rejected_buf.append(SpatialTripletScoreRejected(**base_fields))
 
-***REMOVED*** Chunked bulk_create with ignore_conflicts=True
+# Chunked bulk_create with ignore_conflicts=True
 SpatialTripletScore.objects.bulk_create(accepted_buf, ignore_conflicts=True)
 SpatialTripletScoreRejected.objects.bulk_create(rejected_buf, ignore_conflicts=True)
 ```
@@ -284,7 +284,7 @@ SpatialTripletScoreRejected.objects.bulk_create(rejected_buf, ignore_conflicts=T
 
 ---
 
-***REMOVED******REMOVED*** 8. The Dashboard: SQL Aggregate with Case/When
+## 8. The Dashboard: SQL Aggregate with Case/When
 
 **Source:** `backend/api/services/augmented_data_service.py` (`_aggregate_accepted_metrics`)
 
@@ -303,7 +303,7 @@ result = accepted_qs.aggregate(
     class_dominant=Count(
         Case(When(topo_score__gt=F('geo_score') + F('name_score'), then=1))
     ),
-    ***REMOVED*** Histogram buckets
+    # Histogram buckets
     b0=Count(Case(When(normalized_score__gte=0.0, normalized_score__lt=0.2, then=1))),
     b1=Count(Case(When(normalized_score__gte=0.2, normalized_score__lt=0.4, then=1))),
     b2=Count(Case(When(normalized_score__gte=0.4, normalized_score__lt=0.6, then=1))),
@@ -313,7 +313,7 @@ result = accepted_qs.aggregate(
 )
 ```
 
-***REMOVED******REMOVED******REMOVED*** 8.1 Dominance Calculation
+### 8.1 Dominance Calculation
 
 | Dominance | Condition | Meaning |
 |---|---|---|
@@ -325,7 +325,7 @@ result = accepted_qs.aggregate(
 Using `F()` expressions keeps the arithmetic inside the SQL engine. No rows
 are loaded into Python.
 
-***REMOVED******REMOVED******REMOVED*** 8.2 Histogram Buckets
+### 8.2 Histogram Buckets
 
 | Bucket | Range | Label |
 |---|---|---|
@@ -339,28 +339,28 @@ The last bucket includes 1.0 (uses `>=` rather than a range).
 
 ---
 
-***REMOVED******REMOVED*** 9. Configuration
+## 9. Configuration
 
-***REMOVED******REMOVED******REMOVED*** 9.1 Hyperparams (from `hyperparams.yaml`)
+### 9.1 Hyperparams (from `hyperparams.yaml`)
 
 **Source:** <ref_file file="backend/pipeline/hyperparams.yaml" />
 
 ```yaml
 uslp:
-  threshold: 0.7        ***REMOVED*** Acceptance threshold for normalized_score
-  top_k: 50             ***REMOVED*** Top-k candidates per relation
-  limit: 1720000        ***REMOVED*** Max candidates to load (tuned; paper default 200000)
-  max_heads: 4385000    ***REMOVED*** Max head entities to process (tuned; paper default 50000)
-  use_gpu: true         ***REMOVED*** GPU acceleration
-  gpu_device: "cuda:0"  ***REMOVED*** GPU device
-  use_fp64: false       ***REMOVED*** fp32 by default
+  threshold: 0.7        # Acceptance threshold for normalized_score
+  top_k: 50             # Top-k candidates per relation
+  limit: 1720000        # Max candidates to load (tuned; paper default 200000)
+  max_heads: 4385000    # Max head entities to process (tuned; paper default 50000)
+  use_gpu: true         # GPU acceleration
+  gpu_device: "cuda:0"  # GPU device
+  use_fp64: false       # fp32 by default
 ```
 
 The YAML is runtime truth; `settings.py` declares none of these knobs. The
 frozen `ModelHyperparams` dataclass field defaults are the code-level fallback
 when a YAML key is absent.
 
-***REMOVED******REMOVED******REMOVED*** 9.2 Hardcoded Constants (in `spatial_link_prediction.py`)
+### 9.2 Hardcoded Constants (in `spatial_link_prediction.py`)
 
 | Constant | Value | Purpose |
 |---|---|---|
@@ -370,7 +370,7 @@ when a YAML key is absent.
 
 ---
 
-***REMOVED******REMOVED*** 10. Data Flow
+## 10. Data Flow
 
 **Inputs:**
 - `OsmEntity` (vectors DB): `geom` (PostGIS point, GiST indexed), `tags`
@@ -400,7 +400,7 @@ when a YAML key is absent.
 
 ---
 
-***REMOVED******REMOVED*** 11. The Step 4b Chord Callback
+## 11. The Step 4b Chord Callback
 
 **Source:** `backend/pipeline/tasks/country_pipeline_steps/step_4_uslp.py` (`step_4b_finalize_subgraph_uslp`)
 
@@ -416,7 +416,7 @@ When the inline path is used (subgraphs rehydrated at task start):
 
 ---
 
-***REMOVED******REMOVED*** 12. Invariants
+## 12. Invariants
 
 - USLP runs **independently** of IGEA, not gated on IGEA acceptance count.
 - Tri-space scoring: `normalized = (geo + name + class) / 3.0`, range [0, 1].
@@ -437,14 +437,14 @@ When the inline path is used (subgraphs rehydrated at task start):
 
 ---
 
-***REMOVED******REMOVED*** 13. USLP Links as a Data Asset
+## 13. USLP Links as a Data Asset
 
 Beyond the dashboard, the accepted links are a **queryable salience
 signal**, a curated set of "locations that matter" produced by the pipeline
 itself. This section documents what the links actually are, how much of
 them exist, and the two ways the platform consumes them.
 
-***REMOVED******REMOVED******REMOVED*** 13.1 What a Link Means
+### 13.1 What a Link Means
 
 Each accepted row is a **WorldKG object-property (containment/address)
 triple**, not a generic "nearby" relation:
@@ -466,7 +466,7 @@ place in a populated area**. The **tail** is the region (often an OSM
 admin-boundary relation). Acceptance (`predicted=True`) means
 `normalized_score ≥ 0.7`, the tri-space (geo + name + class) verdict.
 
-***REMOVED******REMOVED******REMOVED*** 13.2 Real Coverage (snapshot `2025_12_31`, `predicted=True`)
+### 13.2 Real Coverage (snapshot `2025_12_31`, `predicted=True`)
 
 | Country | Links | Distinct heads | Relations | Notes |
 |---|---|---|---|---|
@@ -479,7 +479,7 @@ Heads are power-law distributed (a few entities have many links). Any
 consumer weighting by link count should use rank/percentile-normalized
 weights, not raw counts.
 
-***REMOVED******REMOVED******REMOVED*** 13.3 Consumption Pattern 1: Query-Time Salience Boost (implemented)
+### 13.3 Consumption Pattern 1: Query-Time Salience Boost (implemented)
 
 The executor already treats USLP as a salience signal at **query time**.
 `_enrich_with_geo_and_uslp` (in `query_executor_service/geo_uslp.py`) adds a
@@ -487,7 +487,7 @@ The executor already treats USLP as a salience signal at **query time**.
 for the query's head entity, then re-ranks. USLP already influences "which
 results matter" for live queries.
 
-***REMOVED******REMOVED******REMOVED*** 13.4 Consumption Pattern 2: Training-Data Sampling Prior (planned)
+### 13.4 Consumption Pattern 2: Training-Data Sampling Prior (planned)
 
 The USLP-weighted question-generation design proposes re-weighting
 `generate_mapqa_training_data`'s entity pool by head salience (link count +

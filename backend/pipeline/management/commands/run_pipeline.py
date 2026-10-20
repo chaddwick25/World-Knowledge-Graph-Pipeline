@@ -7,25 +7,25 @@ of pipeline/hyperparams.yaml — the backend container has no GPU):
     docker compose exec worker python manage.py run_pipeline ...
 
 Usage:
-    ***REMOVED*** Full pipeline (Steps 1–5)
+    # Full pipeline (Steps 1–5)
     python manage.py run_pipeline MZ
 
-    ***REMOVED*** Full pipeline + pre-processing (phases 1–3)
+    # Full pipeline + pre-processing (phases 1–3)
     python manage.py run_pipeline MC --preprocess
 
-    ***REMOVED*** Full pipeline + pre-processing + GeoVectors pickle (phases 1–4)
+    # Full pipeline + pre-processing + GeoVectors pickle (phases 1–4)
     python manage.py run_pipeline MC --preprocess --preprocess-phases 1,2,3,4
 
-    ***REMOVED*** Full pipeline with entropy gate bypass
+    # Full pipeline with entropy gate bypass
     python manage.py run_pipeline GB --skip-entropy-gate
 
-    ***REMOVED*** Single stage (for debugging / resume). Stages: 1, 1.5, 2, 3, 4, 4.5,
-    ***REMOVED*** 5, 5.5, 5.7 (graph spectral), 6.  (5.8 temporal drift removed
-    ***REMOVED*** 2026-09-26 — scheduled-interval feature, not a per-run step.)
+    # Single stage (for debugging / resume). Stages: 1, 1.5, 2, 3, 4, 4.5,
+    # 5, 5.5, 5.7 (graph spectral), 6.  (5.8 temporal drift removed
+    # 2026-09-26 — scheduled-interval feature, not a per-run step.)
     python manage.py run_pipeline MZ --stage 3
     python manage.py run_pipeline MZ --stage 5.7
 
-    ***REMOVED*** With custom snapshot date
+    # With custom snapshot date
     python manage.py run_pipeline MZ --snapshot-date 2024_06_30
 """
 
@@ -89,7 +89,7 @@ class Command(BaseCommand):
         preprocess = options.get('preprocess', False)
         preprocess_phases_str = options.get('preprocess_phases', '1,2,3')
 
-        ***REMOVED*** In --wait mode, use eager execution so no broker/worker is needed
+        # In --wait mode, use eager execution so no broker/worker is needed
         if wait:
             from pipeline.celery_app import celery_app
             celery_app.conf.update(
@@ -100,7 +100,7 @@ class Command(BaseCommand):
         from pipeline.canvas import run_worldkg_pipeline, run_pipeline_stage
         from celery.result import AsyncResult
 
-        ***REMOVED*** ── Optional: Temporal Pre-processing (Phases 1–3 / 1–4) ────────
+        # ── Optional: Temporal Pre-processing (Phases 1–3 / 1–4) ────────
         if preprocess:
             self.stdout.write(
                 self.style.WARNING(
@@ -118,7 +118,7 @@ class Command(BaseCommand):
         )
 
         if stage:
-            ***REMOVED*** Single stage mode
+            # Single stage mode
             self.stdout.write(
                 self.style.WARNING(
                     f'Running Stage {stage} for {iso}...'
@@ -136,7 +136,7 @@ class Command(BaseCommand):
             )
             return
 
-        ***REMOVED*** Full pipeline mode
+        # Full pipeline mode
         self.stdout.write(
             self.style.SUCCESS(
                 f'\n{"="*60}\n'
@@ -169,7 +169,7 @@ class Command(BaseCommand):
         if wait:
             self.stdout.write('Waiting for pipeline to complete...')
             result = AsyncResult(pipeline_run_id)
-            result.wait(timeout=14400)  ***REMOVED*** 4 hours max
+            result.wait(timeout=14400)  # 4 hours max
             if result.successful():
                 self.stdout.write(
                     self.style.SUCCESS('Pipeline completed successfully!')

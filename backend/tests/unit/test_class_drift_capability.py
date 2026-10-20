@@ -95,7 +95,7 @@ def patch_resolver(monkeypatch):
     )
 
 
-***REMOVED*** ── Schema / validation ──────────────────────────────────────────────────
+# ── Schema / validation ──────────────────────────────────────────────────
 
 def test_class_drift_in_research_tools_schema():
     schema = QueryEnrichmentService._research_tools_schema()
@@ -113,7 +113,7 @@ def test_validate_tool_calls_accepts_classdrift():
     assert validated == [("classDrift", {})]
 
 
-***REMOVED*** ── Executor report shape ────────────────────────────────────────────────
+# ── Executor report shape ────────────────────────────────────────────────
 
 def _patch_osm_models(monkeypatch, snaps, fp_row, drift_rows):
     monkeypatch.setattr(
@@ -167,7 +167,7 @@ def test_class_drift_report_with_drift(patch_resolver, monkeypatch):
     assert drift["latest"]["drift_magnitude"] == "high"
 
 
-***REMOVED*** ── Command idempotency ──────────────────────────────────────────────────
+# ── Command idempotency ──────────────────────────────────────────────────
 
 def test_compute_class_drift_fills_missing_pair(monkeypatch):
     s1, s2 = _snap("2024_12_31"), _snap("2025_12_31")
@@ -220,7 +220,7 @@ def test_compute_class_drift_skips_existing_pair(monkeypatch):
     )
     calls = []
     fake_service = SimpleNamespace(
-        ***REMOVED*** Existing pair: service returns None, no compute attempted.
+        # Existing pair: service returns None, no compute attempted.
         fill_pair_if_missing=lambda a, b: None,
         compute_drift=lambda a, b: calls.append((a, b)),
     )
@@ -251,7 +251,7 @@ def test_compute_class_drift_single_snapshot_noop(monkeypatch):
     assert calls == []
 
 
-***REMOVED*** ── Manifest fields ──────────────────────────────────────────────────────
+# ── Manifest fields ──────────────────────────────────────────────────────
 
 def test_factor_availability_single_snapshot_drift_unavailable(
     patch_resolver, monkeypatch,

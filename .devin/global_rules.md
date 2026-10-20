@@ -1,4 +1,4 @@
-***REMOVED*** WorldKG Pipeline: Project Rules
+# WorldKG Pipeline: Project Rules
 
 Project guidance for agent sessions in this repository. The documentation
 is organized in five places:

@@ -39,28 +39,28 @@ def build_subgraph_list(
     Raises:
         ValueError: If country metadata cannot be resolved or no valid subgraphs found.
     """
-    ***REMOVED*** Resolve country metadata
+    # Resolve country metadata
     country_data = get_country_by_name(country_name)
     if not country_data:
         raise ValueError(f"Could not resolve country metadata for {country_name}")
 
-    ***REMOVED*** Use continent_name if available, otherwise fall back to parent_slug
+    # Use continent_name if available, otherwise fall back to parent_slug
     continent_raw = country_data.get('continent_name') or country_data.get('parent_slug') or ''
     continent = normalize_continent_slug(continent_raw) if continent_raw else 'unknown'
     raw_slug = country_data.get('slug') or country_name
     country_slug = normalize_country_slug(raw_slug)
 
-    ***REMOVED*** Use centralized service to resolve the correct directory slug
+    # Use centralized service to resolve the correct directory slug
     from core.services.snapshot.regional_path_service import regional_path_service
     country_slug = regional_path_service.resolve_country_slug_for_subgraphs(
         continent, country_slug, country_name, country_data
     )
 
-    ***REMOVED*** Get subgraphs directory
+    # Get subgraphs directory
     subgraphs_root = regional_path_service.get_subgraphs_dir(continent, country_slug)
 
     if auto_all:
-        ***REMOVED*** Auto-discover all subgraphs from filesystem
+        # Auto-discover all subgraphs from filesystem
         if not subgraphs_root.exists():
             logger.warning(f"No subgraphs directory found for {country_name}: {subgraphs_root}")
             return []
@@ -88,7 +88,7 @@ def build_subgraph_list(
         return subgraphs
 
     else:
-        ***REMOVED*** Manual selection: validate and normalize frontend-provided list
+        # Manual selection: validate and normalize frontend-provided list
         if not selected:
             raise ValueError("Manual selection mode requires 'selected' subgraph list")
 
@@ -99,18 +99,18 @@ def build_subgraph_list(
                 logger.warning(f"Subgraph entry missing poly_path, skipping: {sg}")
                 continue
 
-            ***REMOVED*** Validate poly file exists
+            # Validate poly file exists
             poly_path_obj = Path(poly_path)
             if not poly_path_obj.exists():
                 logger.warning(f"Poly file not found: {poly_path}, skipping")
                 continue
 
-            ***REMOVED*** Normalize name and slug
+            # Normalize name and slug
             name = sg.get('name') or sg.get('slug')
             slug = sg.get('slug') or (sg.get('name') or '').lower().replace(' ', '_')
 
             if not name:
-                ***REMOVED*** Derive name from poly file if missing
+                # Derive name from poly file if missing
                 name = slug.replace('_', ' ')
 
             subgraphs.append({

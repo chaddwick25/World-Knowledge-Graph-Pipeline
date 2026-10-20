@@ -25,7 +25,7 @@ from unittest.mock import patch
 class SemanticSearchComparisonTest(TestCase):
     """Compare triple-space vs ANN search performance and results"""
 
-    databases = {'vectors'}  ***REMOVED*** Use actual vectors database, not test database
+    databases = {'vectors'}  # Use actual vectors database, not test database
 
     def setUp(self):
         self.client = APIClient()
@@ -33,10 +33,10 @@ class SemanticSearchComparisonTest(TestCase):
         self.query_tags = {"amenity": "restaurant"}
         self.top_k = 20
         
-        ***REMOVED*** Mock bbox resolution to avoid database dependency
+        # Mock bbox resolution to avoid database dependency
         self.bbox_patch = patch('core.services.planet_init.osm_wikidata_resolver.resolve_country_bbox')
         self.mock_bbox = self.bbox_patch.start()
-        self.mock_bbox.return_value = (7.4, 43.7, 7.45, 43.75)  ***REMOVED*** Monaco bbox
+        self.mock_bbox.return_value = (7.4, 43.7, 7.45, 43.75)  # Monaco bbox
 
     def tearDown(self):
         self.bbox_patch.stop()
@@ -63,7 +63,7 @@ class SemanticSearchComparisonTest(TestCase):
         self.assertIsInstance(data['count'], int)
         self.assertIsInstance(data['results'], list)
         
-        ***REMOVED*** Validate result structure
+        # Validate result structure
         if data['count'] > 0:
             result = data['results'][0]
             self.assertIn('osm_type', result)
@@ -101,7 +101,7 @@ class SemanticSearchComparisonTest(TestCase):
         self.assertIsInstance(data['count'], int)
         self.assertIsInstance(data['results'], list)
         
-        ***REMOVED*** Validate result structure
+        # Validate result structure
         if data['count'] > 0:
             result = data['results'][0]
             self.assertIn('osm_type', result)
@@ -118,7 +118,7 @@ class SemanticSearchComparisonTest(TestCase):
 
     def test_performance_comparison(self):
         """Compare performance between triple-space and ANN search"""
-        ***REMOVED*** Triple-space search
+        # Triple-space search
         start_time = time.time()
         response_triple = self.client.post(
             '/api/nca/semantic-triplet-search/',
@@ -132,7 +132,7 @@ class SemanticSearchComparisonTest(TestCase):
         )
         triple_time = time.time() - start_time
         
-        ***REMOVED*** ANN search
+        # ANN search
         start_time = time.time()
         response_ann = self.client.post(
             '/api/nca/semantic-triplet-search/',
@@ -158,7 +158,7 @@ class SemanticSearchComparisonTest(TestCase):
         print(f"Speedup:      {triple_time/ann_time:.2f}x")
         print(f"{'='*60}")
         
-        ***REMOVED*** Both should succeed
+        # Both should succeed
         self.assertEqual(response_triple.status_code, 200)
         self.assertEqual(response_ann.status_code, 200)
 
@@ -166,7 +166,7 @@ class SemanticSearchComparisonTest(TestCase):
         """Test both endpoints with lat/lon for geographic scoring"""
         lat, lon = 43.7334, 7.4214
         
-        ***REMOVED*** Triple-space with geo
+        # Triple-space with geo
         response_triple = self.client.post(
             '/api/nca/semantic-triplet-search/',
             {
@@ -180,7 +180,7 @@ class SemanticSearchComparisonTest(TestCase):
             format='json'
         )
         
-        ***REMOVED*** ANN with geo
+        # ANN with geo
         response_ann = self.client.post(
             '/api/nca/semantic-triplet-search/',
             {
@@ -198,7 +198,7 @@ class SemanticSearchComparisonTest(TestCase):
         data_triple = response_triple.json()
         data_ann = response_ann.json()
         
-        ***REMOVED*** Both should have geo_score > 0
+        # Both should have geo_score > 0
         if data_triple['count'] > 0:
             self.assertGreater(data_triple['results'][0]['scores']['geo_score'], 0)
         
@@ -211,7 +211,7 @@ class SemanticSearchComparisonTest(TestCase):
 
     def test_with_exact_tag_match(self):
         """Test both endpoints with exact tag matching"""
-        ***REMOVED*** Triple-space with exact match
+        # Triple-space with exact match
         response_triple = self.client.post(
             '/api/nca/semantic-triplet-search/',
             {
@@ -224,7 +224,7 @@ class SemanticSearchComparisonTest(TestCase):
             format='json'
         )
         
-        ***REMOVED*** ANN with exact match
+        # ANN with exact match
         response_ann = self.client.post(
             '/api/nca/semantic-triplet-search/',
             {
@@ -241,7 +241,7 @@ class SemanticSearchComparisonTest(TestCase):
         data_triple = response_triple.json()
         data_ann = response_ann.json()
         
-        ***REMOVED*** Both should only return entities with amenity=restaurant
+        # Both should only return entities with amenity=restaurant
         if data_triple['count'] > 0:
             for result in data_triple['results']:
                 self.assertEqual(result['tags'].get('amenity'), 'restaurant')
@@ -256,7 +256,7 @@ class SemanticSearchComparisonTest(TestCase):
 
     def test_result_overlap(self):
         """Test overlap between triple-space and ANN results"""
-        ***REMOVED*** Triple-space search
+        # Triple-space search
         response_triple = self.client.post(
             '/api/nca/semantic-triplet-search/',
             {
@@ -268,7 +268,7 @@ class SemanticSearchComparisonTest(TestCase):
             format='json'
         )
         
-        ***REMOVED*** ANN search
+        # ANN search
         response_ann = self.client.post(
             '/api/nca/semantic-triplet-search/',
             {
@@ -284,11 +284,11 @@ class SemanticSearchComparisonTest(TestCase):
         data_triple = response_triple.json()
         data_ann = response_ann.json()
         
-        ***REMOVED*** Get entity IDs
+        # Get entity IDs
         triple_ids = {(r['osm_type'], r['osm_id']) for r in data_triple['results']}
         ann_ids = {(r['osm_type'], r['osm_id']) for r in data_ann['results']}
         
-        ***REMOVED*** Calculate overlap
+        # Calculate overlap
         overlap = triple_ids & ann_ids
         overlap_pct = len(overlap) / len(triple_ids) * 100 if triple_ids else 0
         
@@ -318,7 +318,7 @@ class SemanticSearchComparisonTest(TestCase):
             print(f"With static_embedding: {with_static}")
             print(f"Coverage: {coverage:.1f}%")
             
-            ***REMOVED*** ANN requires static_embedding
+            # ANN requires static_embedding
             if coverage < 50:
                 print(f"WARNING: Low static_embedding coverage ({coverage:.1f}%)")
                 print(f"ANN search may return fewer results than triple-space")

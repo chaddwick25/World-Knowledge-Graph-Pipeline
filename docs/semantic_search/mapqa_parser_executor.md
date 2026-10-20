@@ -1,4 +1,4 @@
-***REMOVED*** MapQA Parser + Executor: Natural Language → Geospatial Answer
+# MapQA Parser + Executor: Natural Language → Geospatial Answer
 
 > **Focus:** the MapQA pipeline end to end. The TF-IDF parser that turns a
 > natural-language geospatial question into a template + concepts + roles,
@@ -11,7 +11,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Runtime Flow
+## 1. The Runtime Flow
 
 ```
 User types: "Which bars are within 50m of Hollywood Blvd?"
@@ -23,7 +23,7 @@ User types: "Which bars are within 50m of Hollywood Blvd?"
       2. OneVsRest LogReg predict                   → concept types present
       3. Span extraction                            → concept text values
       2c. Class-verified OBJECT recovery (object_oracle injected by the
-          view; parser stays no-DB): ML+heuristic miss on ***REMOVED***1 → geocode the
+          view; parser stays no-DB): ML+heuristic miss on #1 → geocode the
           pre-preposition span → POI WorldKG class → emit OBJECT with the
           original span at conf 0.6. Brand names parse without retraining.
       4. LogReg predict                             → role per concept
@@ -44,7 +44,7 @@ User types: "Which bars are within 50m of Hollywood Blvd?"
       3. Enrichment + re-rank (non-fatal):
          combined_score = diffusion + name_score + geo + uslp_boost
          (name_score = FastText cosine between the OBJECT span and the
-         entity name; wired into ***REMOVED***1 and ***REMOVED***8)
+         entity name; wired into #1 and #8)
       4. Answer synthesis (deterministic per template)
 
   ▼  Response JSON
@@ -64,7 +64,7 @@ User types: "Which bars are within 50m of Hollywood Blvd?"
 
 ---
 
-***REMOVED******REMOVED*** 2. The Parser (Control Plane)
+## 2. The Parser (Control Plane)
 
 **Source:** `backend/semantic_search/services/query_parser_service.py`
 
@@ -78,7 +78,7 @@ concept extractor misses open-vocabulary brand names and the heuristic
 signal list doesn't cover them, so brand OBJECTs came back empty
 ("Juici Patties within 150km of KFC" → 0 results). When
 `object_oracle` is injected (the view passes `_object_recovery_oracle`,
-`worldkg_nca/views/search.py`) and ML + heuristic both miss OBJECT on ***REMOVED***1,
+`worldkg_nca/views/search.py`) and ML + heuristic both miss OBJECT on #1,
 the pre-preposition span is geocoded and its WorldKG class checked via
 `is_poi_wkg_class` (POI accepted; Highway/Place/Waterway/Natural/
 Boundary/Route/Railway/Landuse rejected). A POI-class span is emitted as
@@ -89,35 +89,35 @@ is pure and unit-tested (`test_mapqa_parser.py::TestIsPoiWkgClass`).
 ```python
 parser = QueryParserService.get_instance()
 parsed = parser.parse("Which bars are within 50m of Hollywood Blvd?")
-***REMOVED*** → {template: "FILTER-AGGREGATE-MEASURE (***REMOVED***1)", confidence: 1.0,
-***REMOVED***    concepts: [{type: "OBJECT", text: "bar"}, ...],
-***REMOVED***    roles: [{concept_type: "OBJECT", role: "SUB_COND"}, ...],
-***REMOVED***    dag: [{role: "SUB_COND", ...}, ...],
-***REMOVED***    validation: {valid: true, violations: []}}
+# → {template: "FILTER-AGGREGATE-MEASURE (#1)", confidence: 1.0,
+#    concepts: [{type: "OBJECT", text: "bar"}, ...],
+#    roles: [{concept_type: "OBJECT", role: "SUB_COND"}, ...],
+#    dag: [{role: "SUB_COND", ...}, ...],
+#    validation: {valid: true, violations: []}}
 
 entities = QueryParserService.extract_all_entities("How far is X from Y?")
-***REMOVED*** → ["X", "Y"]
+# → ["X", "Y"]
 ```
 
 **The 5 trained templates:**
 
 | Template | Operator pattern |
 |---|---|
-| `FILTER-AGGREGATE-MEASURE (***REMOVED***1)` | place_search_spatial → geocode → ST_DWithin radius filter |
-| `GEOCODE-BATCH-COMPARE (***REMOVED***4)` | place_search_spatial → geocode → Distance ordering (or compare_closer for 3+ entities) |
-| `PLACE-ATTRIBUTE-QUERY (***REMOVED***8)` | place_search (name ILIKE) → place_details |
-| `LOCATION-BEARING-CLASSIFY (***REMOVED***5)` | batch_geocode → bearing → bearing_to_direction |
-| `OBJECT-FIELD-MEASURE (***REMOVED***2)` | batch_geocode → haversine |
+| `FILTER-AGGREGATE-MEASURE (#1)` | place_search_spatial → geocode → ST_DWithin radius filter |
+| `GEOCODE-BATCH-COMPARE (#4)` | place_search_spatial → geocode → Distance ordering (or compare_closer for 3+ entities) |
+| `PLACE-ATTRIBUTE-QUERY (#8)` | place_search (name ILIKE) → place_details |
+| `LOCATION-BEARING-CLASSIFY (#5)` | batch_geocode → bearing → bearing_to_direction |
+| `OBJECT-FIELD-MEASURE (#2)` | batch_geocode → haversine |
 
-***REMOVED******REMOVED******REMOVED*** 2.1 Deterministic Template Override
+### 2.1 Deterministic Template Override
 
 Queries matching `within X(km|m) of` are forced to
-`FILTER-AGGREGATE-MEASURE (***REMOVED***1)` regardless of TF-IDF output. This prevents
+`FILTER-AGGREGATE-MEASURE (#1)` regardless of TF-IDF output. This prevents
 radius-bearing queries (e.g. "bar within 5km of a bus station") from being
 misrouted to `PLACE-ATTRIBUTE-QUERY`, which uses heat kernel diffusion with
 no geographic radius filter.
 
-***REMOVED******REMOVED******REMOVED*** 2.2 LLM Refine Path
+### 2.2 LLM Refine Path
 
 When confidence falls below `MAPQA_LLM_FALLBACK_CONFIDENCE` (default 0.5),
 `_llm_refine` re-classifies template/concepts via the platform LLM. The
@@ -126,7 +126,7 @@ templates the classifier knows.
 
 ---
 
-***REMOVED******REMOVED*** 3. The Executor (Data Plane)
+## 3. The Executor (Data Plane)
 
 **Source:** `backend/semantic_search/services/query_executor_service/`
 
@@ -157,8 +157,8 @@ plus:
   `combined_score = diffusion_score + name_score + geo_score + uslp_boost`.
   `name_score` = FastText cosine between the OBJECT span and the entity
   `name` (proper-name OBJECTs only, decided by `_resolve_amenity_tag`
-  returning None; exact brands ≈ 1.0, nameless 0.0). Wired into ***REMOVED***1 and ***REMOVED***8
-  (previously only ***REMOVED***8 — ***REMOVED***1 returned the raw distance-sorted pool).
+  returning None; exact brands ≈ 1.0, nameless 0.0). Wired into #1 and #8
+  (previously only #8 — #1 returned the raw distance-sorted pool).
 - **Name-first pool (2026-09-28)**: proper-name OBJECTs build the pool
   name-first. `_search_by_name()` (`spatial_search.py`) matches
   `name_romanized` with the index-assisted trigram operator (sim ≥ 0.4,
@@ -176,14 +176,14 @@ plus:
 
 ---
 
-***REMOVED******REMOVED*** 4. The DAG
+## 4. The DAG
 
 The DAG is not a generic graph. It is a **list of nodes ordered by role
 precedence**, composed from a pre-validated template skeleton. The template
 provides the structure (which roles exist, in what order); the concepts
 provide the content (what fills each role).
 
-***REMOVED******REMOVED******REMOVED*** 4.1 Role Precedence Invariant (G2)
+### 4.1 Role Precedence Invariant (G2)
 
 ```
 SUB_COND (1) ≺ COND (2) ≺ SUPPORT (3) ≺ MEASURE (4)
@@ -194,7 +194,7 @@ comparison. G1 (acyclicity), G3 (type compatibility), G4 (data
 availability), G5 (connectivity) are satisfied by construction: the 5
 template skeletons are pre-validated.
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Example DAG: FILTER-AGGREGATE-MEASURE
+### 4.2 Example DAG: FILTER-AGGREGATE-MEASURE
 
 ```json
 [
@@ -205,7 +205,7 @@ template skeletons are pre-validated.
 ]
 ```
 
-***REMOVED******REMOVED******REMOVED*** 4.3 Open-Vocabulary OBJECT Extraction
+### 4.3 Open-Vocabulary OBJECT Extraction
 
 `_extract_concept_span` for OBJECT tries the closed `amenity_vocab` first.
 If no match, it returns the **raw phrase** before the first structural
@@ -213,7 +213,7 @@ preposition (open-vocabulary slot; the executor's 3-tier fallback resolves
 it at execution time). Example: "italian food near a bus station" →
 OBJECT "italian food", LOCATION "a bus station".
 
-***REMOVED******REMOVED******REMOVED*** 4.4 Kuhn's Template Hardening (2026-09-13)
+### 4.4 Kuhn's Template Hardening (2026-09-13)
 
 Three fixes keep the template path correct when the input is dirty:
 
@@ -252,7 +252,7 @@ question: endpoint 40.4s → 9.0s.
 
 ---
 
-***REMOVED******REMOVED*** 5. HITL: Human-in-the-Loop Confirmation
+## 5. HITL: Human-in-the-Loop Confirmation
 
 **Source:** `frontend-v3/src/components/QueryConfirmationModal.vue`
 
@@ -276,7 +276,7 @@ The HITL state is managed by `queryProposalStore.js` (Pinia store):
 `idle` → `pending` → `approved`/`edited`/`rejected`. The modal is
 store-driven and teleported to body (see rule 01 §1.12).
 
-***REMOVED******REMOVED******REMOVED*** 5.1 MCP Bridge (Dev-Only)
+### 5.1 MCP Bridge (Dev-Only)
 
 The HITL tools are exposed via the vue-mcp-server (dev-only MCP bridge at
 `/__mcp`):
@@ -293,7 +293,7 @@ the direct UI path executes without it.
 
 ---
 
-***REMOVED******REMOVED*** 6. Training
+## 6. Training
 
 **Source:** `backend/semantic_search/management/commands/train_mapqa_parser.py`
 
@@ -335,13 +335,13 @@ The CSV loader tolerates both schemas. Legacy 7-column rows get defaults
 
 ---
 
-***REMOVED******REMOVED*** 7. Testing
+## 7. Testing
 
 ```bash
-***REMOVED*** Parser unit tests (22 tests, no DB needed)
+# Parser unit tests (22 tests, no DB needed)
 docker compose exec backend python -m pytest tests/unit/test_mapqa_parser.py -v --reuse-db
 
-***REMOVED*** Executor integration tests (12 tests, needs DB)
+# Executor integration tests (12 tests, needs DB)
 docker compose exec backend python -m pytest tests/integration/test_mapqa_executor.py -v --reuse-db
 ```
 
@@ -361,7 +361,7 @@ docker compose exec backend python -m pytest tests/integration/test_mapqa_execut
 
 ---
 
-***REMOVED******REMOVED*** 8. Invariants
+## 8. Invariants
 
 - The parser is control-plane only. It does NOT touch the data plane.
 - The executor is data-plane only. It runs the parsed plan against PostGIS
@@ -381,7 +381,7 @@ docker compose exec backend python -m pytest tests/integration/test_mapqa_execut
 
 ---
 
-***REMOVED******REMOVED*** 9. Training Data Distribution
+## 9. Training Data Distribution
 
 The parser is trained on the MapQA LLM dataset (California + Illinois
 splits), a hand-curated augmentation CSV, **and self-supervised rows**
@@ -398,15 +398,15 @@ Distribution after the 2026-08-25 self-supervised expansion
 
 | Template | Source dataset (train+test) | Self-supervised | Total |
 |---|---|---|---|
-| `GEOCODE-BATCH-COMPARE` (***REMOVED***4) | 1,198 | 1,500 | 2,698 |
-| `FILTER-AGGREGATE-MEASURE` (***REMOVED***1) | 756 | 1,511 | 2,267 |
-| `PLACE-ATTRIBUTE-QUERY` (***REMOVED***8) | 600 | 1,454 | 2,054 |
-| `LOCATION-BEARING-CLASSIFY` (***REMOVED***5) | 300 | 1,500 | 1,800 |
-| `OBJECT-FIELD-MEASURE` (***REMOVED***2) | 300 | 1,500 | 1,800 |
-| `SPECTRAL-ANALYSIS` (***REMOVED***11) | 0 | 0 | API-only |
-| `TEMPORAL-DRIFT` (***REMOVED***12) | 0 | 0 | API-only |
-| `COMMUNITY-DETECT` (***REMOVED***13) | 0 | 0 | API-only |
-| `EVENT-DIFFUSION` (***REMOVED***14) | 0 | 0 | API-only |
+| `GEOCODE-BATCH-COMPARE` (#4) | 1,198 | 1,500 | 2,698 |
+| `FILTER-AGGREGATE-MEASURE` (#1) | 756 | 1,511 | 2,267 |
+| `PLACE-ATTRIBUTE-QUERY` (#8) | 600 | 1,454 | 2,054 |
+| `LOCATION-BEARING-CLASSIFY` (#5) | 300 | 1,500 | 1,800 |
+| `OBJECT-FIELD-MEASURE` (#2) | 300 | 1,500 | 1,800 |
+| `SPECTRAL-ANALYSIS` (#11) | 0 | 0 | API-only |
+| `TEMPORAL-DRIFT` (#12) | 0 | 0 | API-only |
+| `COMMUNITY-DETECT` (#13) | 0 | 0 | API-only |
+| `EVENT-DIFFUSION` (#14) | 0 | 0 | API-only |
 
 Every generated answer is computed exactly from PostGIS at generation time
 (`ST_DWithin` counts, haversine, nearest-entity ordering, bearing→cardinal)

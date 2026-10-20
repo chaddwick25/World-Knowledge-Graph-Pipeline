@@ -43,9 +43,9 @@ def test_route_food_prompts_stay_default():
 
 
 def test_route_seed_line_brief_routes_doppelganger():
-    ***REMOVED*** The brief handshake: the finalize appends "Seed:" (on its own line)
-    ***REMOVED*** only for doppelganger asks it verified; the run's prompt (the
-    ***REMOVED*** brief) carries the marker.
+    # The brief handshake: the finalize appends "Seed:" (on its own line)
+    # only for doppelganger asks it verified; the run's prompt (the
+    # brief) carries the marker.
     brief = (
         "Research IE (all) focusing on The Friars Tavern.\n"
         "Seed: The Friars Tavern (pub)"
@@ -57,9 +57,9 @@ def test_route_seed_line_brief_routes_doppelganger():
 
 
 def test_route_similar_noun_phrasings():
-    ***REMOVED*** The 2026-10-12 Redbones runs: "similar cafe(s) to X" (a noun
-    ***REMOVED*** between similar and to) missed the alternation and routed to the
-    ***REMOVED*** food census, which answers "similar" with "nearby".
+    # The 2026-10-12 Redbones runs: "similar cafe(s) to X" (a noun
+    # between similar and to) missed the alternation and routed to the
+    # food census, which answers "similar" with "nearby".
     assert route_to_recipe(
         "find me similar cafes to Redbones Blues Cafe in Kingston"
     ) is DOPPELGANGER_REPORT
@@ -69,9 +69,9 @@ def test_route_similar_noun_phrasings():
 
 
 def test_route_misspelled_doppelganger():
-    ***REMOVED*** The third Redbones run: "Dopplegangers" (transposed) defeated the
-    ***REMOVED*** strict \bdoppelg\w*\b spelling; every real word starting "dopp"
-    ***REMOVED*** is this ask.
+    # The third Redbones run: "Dopplegangers" (transposed) defeated the
+    # strict \bdoppelg\w*\b spelling; every real word starting "dopp"
+    # is this ask.
     assert route_to_recipe(
         "Find me Dopplegangers of Redbones Blues Cafe located in "
         "Kingston but search Island/country wide"
@@ -79,8 +79,8 @@ def test_route_misspelled_doppelganger():
 
 
 def test_subject_from_misspelled_ask_with_location():
-    ***REMOVED*** The misspelled form + the "located in" trailing phrase: the
-    ***REMOVED*** subject is the similarity target, not the location.
+    # The misspelled form + the "located in" trailing phrase: the
+    # subject is the similarity target, not the location.
     assert ResearchOrchestratorService._subject_from_brief(
         "Find me Dopplegangers of Redbones Blues Cafe located in "
         "Kingston but search Island/country wide"
@@ -88,11 +88,11 @@ def test_subject_from_misspelled_ask_with_location():
 
 
 def test_finalize_fallback_routes_on_the_conversation(monkeypatch):
-    ***REMOVED*** The third Redbones run: the extraction failed, the fallback
-    ***REMOVED*** routed on the misspelled user text alone, and the run lost the
-    ***REMOVED*** route even though the KE's reply spelled "doppelgangers"
-    ***REMOVED*** correctly. The fallback now routes on the FULL conversation (the
-    ***REMOVED*** Jamaica-run lesson applied to the fallback path).
+    # The third Redbones run: the extraction failed, the fallback
+    # routed on the misspelled user text alone, and the run lost the
+    # route even though the KE's reply spelled "doppelgangers"
+    # correctly. The fallback now routes on the FULL conversation (the
+    # Jamaica-run lesson applied to the fallback path).
     from semantic_search.services.entity_geocoder import EntityGeocoder
 
     class DownLLM:
@@ -132,8 +132,8 @@ def test_finalize_fallback_routes_on_the_conversation(monkeypatch):
 
 
 def test_subject_from_raw_similar_ask():
-    ***REMOVED*** The fallback brief is the user's own words: the similarity TARGET
-    ***REMOVED*** is the subject; the trailing location phrase is not.
+    # The fallback brief is the user's own words: the similarity TARGET
+    # is the subject; the trailing location phrase is not.
     assert ResearchOrchestratorService._subject_from_brief(
         "find me similar cafes to Redbones Blues Cafe in Kingston"
     ) == "Redbones Blues Cafe"
@@ -143,17 +143,17 @@ def test_subject_from_raw_similar_ask():
     assert ResearchOrchestratorService._subject_from_brief(
         "twins of The Friars Tavern"
     ) == "The Friars Tavern"
-    ***REMOVED*** Non-similarity asks still yield None (no invented subject).
+    # Non-similarity asks still yield None (no invented subject).
     assert ResearchOrchestratorService._subject_from_brief(
         "tell me about taverns in ireland"
     ) is None
 
 
 def test_finalize_fallback_verifies_seed(monkeypatch):
-    ***REMOVED*** The extraction failed (LLM down): the fallback brief is the user's
-    ***REMOVED*** own words, and it goes through the same verify-and-mark step (the
-    ***REMOVED*** 2026-10-12 Redbones run: the fallback skipped verification and the
-    ***REMOVED*** run lost the route).
+    # The extraction failed (LLM down): the fallback brief is the user's
+    # own words, and it goes through the same verify-and-mark step (the
+    # 2026-10-12 Redbones run: the fallback skipped verification and the
+    # run lost the route).
     from semantic_search.services.entity_geocoder import EntityGeocoder
 
     class DownLLM:
@@ -182,7 +182,7 @@ def test_finalize_fallback_verifies_seed(monkeypatch):
     assert out["source"] == "fallback"
     assert out["seed"]["found"] is True
     assert "Seed: Redbones Blues Cafe (cafe)" in out["brief"]
-    ***REMOVED*** The marked fallback routes the run to the doppelganger report.
+    # The marked fallback routes the run to the doppelganger report.
     assert route_to_recipe(out["brief"]) is DOPPELGANGER_REPORT
 
 
@@ -222,9 +222,9 @@ def test_tool_evidence_text():
 
 
 def test_tool_evidence_text_class_drift_dict():
-    ***REMOVED*** The classDrift executor returns a dict, not a row list: the
-    ***REMOVED*** evidence loop must render one compact line, not crash
-    ***REMOVED*** (TypeError: unhashable type: 'slice', found 2026-10-17).
+    # The classDrift executor returns a dict, not a row list: the
+    # evidence loop must render one compact line, not crash
+    # (TypeError: unhashable type: 'slice', found 2026-10-17).
     calls = [
         {"tool": "classDrift", "args": {}, "output": {
             "fingerprint": {
@@ -265,11 +265,11 @@ def test_tool_evidence_text_class_drift_no_baseline():
 
 def test_preplan_tools_executes_and_emits(monkeypatch):
     from semantic_search.services import research_service as rs
-    ***REMOVED*** The settings default is '0' locally (compose sets '1' for the
-    ***REMOVED*** container); the round's gate is the module flag either way.
+    # The settings default is '0' locally (compose sets '1' for the
+    # container); the round's gate is the module flag either way.
     monkeypatch.setattr(rs, "_FOLLOWUP_ENABLED", True)
-    ***REMOVED*** chat_tools returns the RAW native calls (dicts); _validate_tool_calls
-    ***REMOVED*** consumes that shape and produces the (tool, args) tuples.
+    # chat_tools returns the RAW native calls (dicts); _validate_tool_calls
+    # consumes that shape and produces the (tool, args) tuples.
     calls = [{
         "name": "similarEntities",
         "arguments": {"entity": "The Friars Tavern"},
@@ -313,14 +313,14 @@ def test_subject_constraint_entity_variant():
     )
     assert "named entity" in line
     assert "plan around" in line
-    ***REMOVED*** The class variant still carries the class instruction.
+    # The class variant still carries the class instruction.
     class_line = ResearchOrchestratorService._subject_constraint_line(
         "bubble tea"
     )
     assert "carry the subject as the class" in class_line
 
 
-***REMOVED*** ── Seed verification (the confirmation flow) ────────────────────────────
+# ── Seed verification (the confirmation flow) ────────────────────────────
 
 def test_verify_seed_skips_non_doppelganger_briefs():
     assert ResearchOrchestratorService._verify_seed(
@@ -411,12 +411,12 @@ def test_finalize_brief_carries_seed(monkeypatch):
 
 
 def test_finalize_routes_on_the_full_interview(monkeypatch):
-    ***REMOVED*** The 2026-10-11 Jamaica run: the user typed "similar entites"
-    ***REMOVED*** (misspelled) and the brief carried no similarity signal, so the run
-    ***REMOVED*** went to FOOD_REPORT and the doppelganger machinery never engaged.
-    ***REMOVED*** The KE's own wording ("looking for doppelgangers of?") carries the
-    ***REMOVED*** intent: routing reads the full interview, not just the first
-    ***REMOVED*** message.
+    # The 2026-10-11 Jamaica run: the user typed "similar entites"
+    # (misspelled) and the brief carried no similarity signal, so the run
+    # went to FOOD_REPORT and the doppelganger machinery never engaged.
+    # The KE's own wording ("looking for doppelgangers of?") carries the
+    # intent: routing reads the full interview, not just the first
+    # message.
     from semantic_search.services import research_service as rs
     from semantic_search.services.entity_geocoder import EntityGeocoder
 
@@ -458,9 +458,9 @@ def test_finalize_routes_on_the_full_interview(monkeypatch):
 
 
 def test_derived_tallies_local_by_name():
-    ***REMOVED*** The Jamaica run: untagged local places ("Father Bull Jerk" carries
-    ***REMOVED*** no cuisine tag) — the name match surfaces them for the
-    ***REMOVED*** local/international split.
+    # The Jamaica run: untagged local places ("Father Bull Jerk" carries
+    # no cuisine tag) — the name match surfaces them for the
+    # local/international split.
     records = [
         {"cuisine_counts": {"japanese": 1, "seafood": 1},
          "local_name_places": ["Father Bull Jerk", "Pepper's Jerk Center"]},
@@ -473,8 +473,8 @@ def test_derived_tallies_local_by_name():
 
 
 def test_local_name_places_construction():
-    ***REMOVED*** The record construction's name match: JM tokens ("jerk",
-    ***REMOVED*** "jamaican", "caribbean") against entity names, underscore forms too.
+    # The record construction's name match: JM tokens ("jerk",
+    # "jamaican", "caribbean") against entity names, underscore forms too.
     from semantic_search.services.research_service import COUNTRY_CUISINE
     tokens = COUNTRY_CUISINE["JM"]
     names = ["Father Bull Jerk", "Redstep Seafood Bar & Grill",
@@ -488,8 +488,8 @@ def test_local_name_places_construction():
 
 
 def test_resolve_recipe_override_wins():
-    ***REMOVED*** The doppelganger surface hard-selects its recipe: the override
-    ***REMOVED*** wins even when the ask carries no doppelganger vocabulary.
+    # The doppelganger surface hard-selects its recipe: the override
+    # wins even when the ask carries no doppelganger vocabulary.
     recipe = ResearchOrchestratorService._resolve_recipe(
         "best bubble tea spots", "doppelganger_report",
     )
@@ -497,9 +497,9 @@ def test_resolve_recipe_override_wins():
 
 
 def test_resolve_recipe_unknown_key_routes():
-    ***REMOVED*** An unknown key must not silently become the default recipe with
-    ***REMOVED*** the surface's expectation unmet: it falls through to the router,
-    ***REMOVED*** which reads the ask.
+    # An unknown key must not silently become the default recipe with
+    # the surface's expectation unmet: it falls through to the router,
+    # which reads the ask.
     recipe = ResearchOrchestratorService._resolve_recipe(
         "find doppelgangers of The Friars Tavern", "bogus_recipe",
     )
@@ -512,8 +512,8 @@ def test_resolve_recipe_no_override_routes():
 
 
 def test_verify_seed_honors_recipe_override(monkeypatch):
-    ***REMOVED*** An ask without doppelganger vocabulary still verifies on the
-    ***REMOVED*** doppelganger surface: the override bypasses the route gate.
+    # An ask without doppelganger vocabulary still verifies on the
+    # doppelganger surface: the override bypasses the route gate.
     from semantic_search.services.entity_geocoder import EntityGeocoder
     hit = {"osm_id": 1, "osm_type": "node", "name": "X", "lat": 1.0,
            "lon": 2.0, "tags": {}}
@@ -528,7 +528,7 @@ def test_verify_seed_honors_recipe_override(monkeypatch):
 
 
 def test_verify_seed_no_override_non_doppelganger_ask(monkeypatch):
-    ***REMOVED*** /tools surface (no override): a food ask verifies nothing.
+    # /tools surface (no override): a food ask verifies nothing.
     from semantic_search.services.entity_geocoder import EntityGeocoder
     monkeypatch.setattr(
         EntityGeocoder, "geocode",
@@ -542,8 +542,8 @@ def test_verify_seed_no_override_non_doppelganger_ask(monkeypatch):
 
 
 def test_finalize_brief_confirmed_seed_skips_geocode(monkeypatch):
-    ***REMOVED*** The user's live map pick is authoritative: no re-geocode, the
-    ***REMOVED*** Seed line renders from the confirmed row.
+    # The user's live map pick is authoritative: no re-geocode, the
+    # Seed line renders from the confirmed row.
     def boom(*a, **k):
         raise AssertionError("_verify_seed must not run for a confirmed seed")
     monkeypatch.setattr(
@@ -611,14 +611,14 @@ def test_chat_messages_injects_digest_and_strips_marker():
         digest_text="Dataset context:\n- Snapshot 2025_12_31: 10 entities",
     )
     assert "Dataset context:" in full[0]["content"]
-    ***REMOVED*** the [seed] marker is protocol, not prose: stripped from LLM text
+    # the [seed] marker is protocol, not prose: stripped from LLM text
     assert "[seed]" not in full[2]["content"]
     assert "Which place exactly?" in full[2]["content"]
 
 
 def test_message_text_keeps_marker_for_gate():
-    ***REMOVED*** The live-resolution gate reads the RAW transcript to detect the
-    ***REMOVED*** marker; only LLM-facing text strips it.
+    # The live-resolution gate reads the RAW transcript to detect the
+    # marker; only LLM-facing text strips it.
     raw = ResearchOrchestratorService._message_text(
         {"role": "assistant", "content": "[seed] Which place exactly?"})
     assert "[seed]" in raw
@@ -649,7 +649,7 @@ def test_live_seed_part_turn1_doppelganger_ask(monkeypatch):
     assert part["type"] == "data-seed" and part["id"] == "seed"
     assert part["data"]["found"] is True
     assert part["data"]["osm_id"] == 9842380892
-    assert "candidates" not in part["data"]  ***REMOVED*** single hit: no list
+    assert "candidates" not in part["data"]  # single hit: no list
 
 
 def test_live_seed_part_marker_gated_turn(monkeypatch):
@@ -675,8 +675,8 @@ def test_live_seed_part_marker_gated_turn(monkeypatch):
 
 
 def test_live_seed_part_absent_on_non_answer_turns(monkeypatch):
-    ***REMOVED*** No [seed] marker on the last assistant turn, no turn-1 ask: no
-    ***REMOVED*** resolution, no part (axis/constraint turns never geocode).
+    # No [seed] marker on the last assistant turn, no turn-1 ask: no
+    # resolution, no part (axis/constraint turns never geocode).
     from semantic_search.services.entity_geocoder import EntityGeocoder
     monkeypatch.setattr(
         EntityGeocoder, "geocode_candidates",
@@ -735,7 +735,7 @@ def test_live_seed_part_multi_hit_carries_candidates(monkeypatch):
 
 
 def test_live_seed_part_no_resolution_on_tools_surface(monkeypatch):
-    ***REMOVED*** /tools (no override, food ask): turn 1 does not geocode.
+    # /tools (no override, food ask): turn 1 does not geocode.
     from semantic_search.services.entity_geocoder import EntityGeocoder
     monkeypatch.setattr(
         EntityGeocoder, "geocode_candidates",
@@ -749,9 +749,9 @@ def test_live_seed_part_no_resolution_on_tools_surface(monkeypatch):
 
 
 def test_live_seed_part_turn1_unextractable_subject_skips(monkeypatch):
-    ***REMOVED*** Turn 1 routes as doppelganger but the subject pattern cannot
-    ***REMOVED*** extract a name: skip (the KE's [seed] question catches the answer
-    ***REMOVED*** next turn) instead of geocoding prose.
+    # Turn 1 routes as doppelganger but the subject pattern cannot
+    # extract a name: skip (the KE's [seed] question catches the answer
+    # next turn) instead of geocoding prose.
     from semantic_search.services.entity_geocoder import EntityGeocoder
     monkeypatch.setattr(
         EntityGeocoder, "geocode_candidates",
@@ -766,9 +766,9 @@ def test_live_seed_part_turn1_unextractable_subject_skips(monkeypatch):
 
 
 def test_live_seed_part_strips_synthetic_seed_handshake(monkeypatch):
-    ***REMOVED*** An explicit map pick is announced as "Seed: <name> (kind)" - the
-    ***REMOVED*** handshake format. If the KE's [seed] question is still the last
-    ***REMOVED*** assistant turn, the gate must geocode the NAME, not the wrapper.
+    # An explicit map pick is announced as "Seed: <name> (kind)" - the
+    # handshake format. If the KE's [seed] question is still the last
+    # assistant turn, the gate must geocode the NAME, not the wrapper.
     from semantic_search.services.entity_geocoder import EntityGeocoder
     captured = {}
 

@@ -1,4 +1,4 @@
-***REMOVED*** Docker Entrypoint Init: `init_planet` as a Batch Preprocessing Step
+# Docker Entrypoint Init: `init_planet` as a Batch Preprocessing Step
 
 > **Focus:** how planet initialization works as a Docker entrypoint step
 > (the `init_planet` management command), the 16 steps it runs, the
@@ -15,25 +15,25 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Docker Entrypoint Script
+## 1. The Docker Entrypoint Script
 
 **Source:** `docker-entrypoint.sh` (in the backend container)
 
 ```bash
-***REMOVED*** 1. Run migrations (backend container only, gated by RUN_MIGRATIONS)
+# 1. Run migrations (backend container only, gated by RUN_MIGRATIONS)
 if [ "$RUN_MIGRATIONS" = "true" ]; then
     python manage.py migrate
     python manage.py migrate --database=vectors
 fi
 
-***REMOVED*** 2. Worker waits for migrations to complete (polls django_migrations)
+# 2. Worker waits for migrations to complete (polls django_migrations)
 if [ "$RUN_MIGRATIONS" = "false" ]; then
-    ***REMOVED*** Poll until core.0001_initial appears in django_migrations
+    # Poll until core.0001_initial appears in django_migrations
     until python -c "..." 2>/dev/null; do sleep 2; done
 fi
 
-***REMOVED*** 3. Run init_planet (backend container only, gated by RUN_INIT_PLANET,
-***REMOVED***    then by a cheap COMPLETED PlanetSnapshot pre-check — added 2026-09-10)
+# 3. Run init_planet (backend container only, gated by RUN_INIT_PLANET,
+#    then by a cheap COMPLETED PlanetSnapshot pre-check — added 2026-09-10)
 if [ "$RUN_INIT_PLANET" != "false" ]; then
     PLANET_COMPLETE=$(psql ... -tAc \
       "SELECT 1 FROM planet_snapshots WHERE status = 'COMPLETED' LIMIT 1;")
@@ -44,11 +44,11 @@ if [ "$RUN_INIT_PLANET" != "false" ]; then
     fi
 fi
 
-***REMOVED*** 4. Start the actual service (gunicorn for backend, celery for worker)
+# 4. Start the actual service (gunicorn for backend, celery for worker)
 exec "$@"
 ```
 
-***REMOVED******REMOVED******REMOVED*** 1.1 Why a Docker Entrypoint Step (Not Celery)
+### 1.1 Why a Docker Entrypoint Step (Not Celery)
 
 The former Celery canvas (`step_0_initialize_planet` → `step_0b` → ... →
 `step_0m` → `_finalize_planet_init_chain`) had several problems:
@@ -70,7 +70,7 @@ The `init_planet` management command solves all three:
 - **Resumable**: `--step <name>` runs a single step; `--no-lock` forces
   re-run.
 
-***REMOVED******REMOVED******REMOVED*** 1.2 Best-Effort Execution
+### 1.2 Best-Effort Execution
 
 `init_planet` failures do **not** abort container startup. The entrypoint
 script uses `|| echo "WARNING: ..."` so the container still starts. This
@@ -79,13 +79,13 @@ Wikidata SPARQL timeout) should not block the API server from starting.
 
 ---
 
-***REMOVED******REMOVED*** 2. The `init_planet` Management Command
+## 2. The `init_planet` Management Command
 
 **Source:** <ref_file file="backend/core/management/commands/init_planet.py" />
 
-***REMOVED******REMOVED******REMOVED*** 2.1 The 16 Steps
+### 2.1 The 16 Steps
 
-| ***REMOVED*** | Step Name | Purpose |
+| # | Step Name | Purpose |
 |---|---|---|
 | 1 | `register_planet` | Registers planet PBF + Wikidata hierarchy skeleton via `PlanetInitializationService` |
 | 2 | `extract_continents` | Extracts continent PBFs from planet file via osmium |
@@ -104,7 +104,7 @@ Wikidata SPARQL timeout) should not block the API server from starting.
 | 15 | `compute_amenity_embeddings` | Precomputes FastText embeddings for the MapQA amenity vocab |
 | 16 | `finalize` | Marks `PlanetSnapshot` row as COMPLETED |
 
-***REMOVED******REMOVED******REMOVED*** 2.2 The PlanetSnapshot Soft Lock
+### 2.2 The PlanetSnapshot Soft Lock
 
 1. `init_planet` starts.
 2. Check: `PlanetSnapshot.objects.filter(snapshot_date=today,
@@ -116,7 +116,7 @@ Wikidata SPARQL timeout) should not block the API server from starting.
 5. All steps succeed → `PlanetSnapshot.status = 'COMPLETED'`.
    Any step fails → `PlanetSnapshot.status = 'FAILED'` (best-effort).
 
-***REMOVED******REMOVED******REMOVED*** 2.3 CLI Flags
+### 2.3 CLI Flags
 
 | Flag | Effect |
 |---|---|
@@ -125,29 +125,29 @@ Wikidata SPARQL timeout) should not block the API server from starting.
 | `--skip-continents` | Skip continent PBF extraction (only safe if already done) |
 | `--skip-embeddings` | Skip embedding scan/split/merge steps |
 
-***REMOVED******REMOVED******REMOVED*** 2.4 Manual Invocation
+### 2.4 Manual Invocation
 
 ```bash
-***REMOVED*** Full run (idempotent — skips if already COMPLETED today)
+# Full run (idempotent — skips if already COMPLETED today)
 python manage.py init_planet
 
-***REMOVED*** Force re-run (ignores soft lock)
+# Force re-run (ignores soft lock)
 python manage.py init_planet --no-lock
 
-***REMOVED*** Single step
+# Single step
 python manage.py init_planet --step generate_osm_boundaries
 
-***REMOVED*** Skip continent extraction (already done)
+# Skip continent extraction (already done)
 python manage.py init_planet --skip-continents
 ```
 
 ---
 
-***REMOVED******REMOVED*** 3. Preprocessing vs Batch Processing
+## 3. Preprocessing vs Batch Processing
 
 The pipeline distinguishes two kinds of work.
 
-***REMOVED******REMOVED******REMOVED*** 3.1 Preprocessing (init_planet, entry script)
+### 3.1 Preprocessing (init_planet, entry script)
 
 - **Runs once** at container startup (or manually)
 - **Idempotent**, safe to re-run
@@ -158,7 +158,7 @@ The pipeline distinguishes two kinds of work.
   `EligibleCountry`, `OsmBoundary`), Redis cache (ontology), filesystem
   artifacts (continent PBFs, split TSVs)
 
-***REMOVED******REMOVED******REMOVED*** 3.2 Batch Processing (country pipeline, Celery canvas)
+### 3.2 Batch Processing (country pipeline, Celery canvas)
 
 - **Runs per country** on demand (via API or manual trigger)
 - **Not idempotent**, `force=true` required to re-run a COMPLETED job
@@ -180,9 +180,9 @@ The pipeline distinguishes two kinds of work.
 
 ---
 
-***REMOVED******REMOVED*** 4. What init_planet Produces
+## 4. What init_planet Produces
 
-***REMOVED******REMOVED******REMOVED*** 4.1 Database Rows (default DB)
+### 4.1 Database Rows (default DB)
 
 | Model | Step | Purpose |
 |---|---|---|
@@ -192,14 +192,14 @@ The pipeline distinguishes two kinds of work.
 | `EligibleCountry` | 8, 11 | Which countries have GeoVectors embeddings (READY/PENDING) |
 | `OsmBoundary` | 13 | High-precision bbox from continent recipes |
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Redis Cache
+### 4.2 Redis Cache
 
 | Key Pattern | Step | Purpose |
 |---|---|---|
 | `worldkg:class:*` | 12 | WorldKG ontology classes (loaded from TTL) |
 | `worldkg:wikidata_to_wkg` | 12 | Wikidata QID → WorldKG class map |
 
-***REMOVED******REMOVED******REMOVED*** 4.3 Filesystem Artifacts
+### 4.3 Filesystem Artifacts
 
 | Path | Step | Purpose |
 |---|---|---|
@@ -208,7 +208,7 @@ The pipeline distinguishes two kinds of work.
 
 ---
 
-***REMOVED******REMOVED*** 5. The Migration Race Fix
+## 5. The Migration Race Fix
 
 The backend and worker containers both run `docker-entrypoint.sh`
 concurrently. Without coordination, they race on `CREATE TYPE` in
@@ -224,7 +224,7 @@ migration step.
 
 ---
 
-***REMOVED******REMOVED*** 6. Invariants
+## 6. Invariants
 
 - Planet init is NOT a Celery canvas. It is the `init_planet` management
   command.

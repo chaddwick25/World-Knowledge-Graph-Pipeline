@@ -1,4 +1,4 @@
-***REMOVED*** Wikidata Enrichment Flow: Entry Script → Step 1 → Step 2
+# Wikidata Enrichment Flow: Entry Script → Step 1 → Step 2
 
 > **Focus:** the cross-step data-flow narrative. How the Docker entry script
 > loads WorldKG ontology classes into Redis, how Step 1 upserts OSM entities
@@ -13,7 +13,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Cross-Step Flow
+## 1. The Cross-Step Flow
 
 **Docker entrypoint (`init_planet`, step 12: `enrich_worldkg_classes`):**
 - `WorldKG_Ontolgy.ttl` (on disk)
@@ -51,9 +51,9 @@
 
 ---
 
-***REMOVED******REMOVED*** 2. Why This Cross-Step Pattern Saves Time
+## 2. Why This Cross-Step Pattern Saves Time
 
-***REMOVED******REMOVED******REMOVED*** 2.1 Ontology Loaded Once (Not Per-Run)
+### 2.1 Ontology Loaded Once (Not Per-Run)
 
 The WorldKG ontology TTL is ~2 MB and contains ~10,000 class definitions.
 Loading and parsing it takes ~5 seconds. Per-pipeline-run loading would make
@@ -61,7 +61,7 @@ every country run pay that cost. Loading it once during `init_planet` (entry
 script) keeps the ontology in Redis for all subsequent pipeline runs, with
 no per-run TTL parsing.
 
-***REMOVED******REMOVED******REMOVED*** 2.2 SQL Join Instead of Python Loop
+### 2.2 SQL Join Instead of Python Loop
 
 `sql_enrich_region()` (Step 1c) uses a single `UPDATE...FROM` join to enrich
 all entities in one SQL round-trip. ~10x faster than the legacy
@@ -75,7 +75,7 @@ all entities in one SQL round-trip. ~10x faster than the legacy
 See [SQL Join Enrichment](../semantic_search/sql_join_enrichment.md) for the
 full SQL schematic.
 
-***REMOVED******REMOVED******REMOVED*** 2.3 Step 2 Reuses the Same Ontology Cache
+### 2.3 Step 2 Reuses the Same Ontology Cache
 
 Step 2 (Wikidata harvest) needs to map Wikidata QIDs to WorldKG classes for
 IGEA type-matching. Instead of re-loading the ontology or re-querying
@@ -86,7 +86,7 @@ access patterns (SQL join vs. Redis lookup).
 
 ---
 
-***REMOVED******REMOVED*** 3. The Two Enrichment Targets
+## 3. The Two Enrichment Targets
 
 | Target | Step | Method | Source |
 |---|---|---|---|
@@ -99,7 +99,7 @@ same ontology cache but different access patterns.
 
 ---
 
-***REMOVED******REMOVED*** 4. Wikidata URI Normalization
+## 4. Wikidata URI Normalization
 
 **Source:** `worldkg_nca/services/wikidata_service.py` (`_build_reverse_nca_map`)
 
@@ -114,7 +114,7 @@ The fix: `_build_reverse_nca_map()` normalizes ontology URIs from
 
 ---
 
-***REMOVED******REMOVED*** 5. SPARQL Retry Semantics
+## 5. SPARQL Retry Semantics
 
 `WikidataCandidateService` (`worldkg_nca/services/wikidata_service.py`)
 inherits `SPARQLRetryMixin` (`semantic_search.utils.sparql_mixin`):
@@ -129,7 +129,7 @@ inherits `SPARQLRetryMixin` (`semantic_search.utils.sparql_mixin`):
 
 ---
 
-***REMOVED******REMOVED*** 6. Failure Modes
+## 6. Failure Modes
 
 | Failure | Effect |
 |---|---|
@@ -144,7 +144,7 @@ cannot corrupt the ontology or break the pipeline. Step 2 and Step 3 handle
 
 ---
 
-***REMOVED******REMOVED*** 7. Invariants
+## 7. Invariants
 
 - The WorldKG ontology is loaded once during `init_planet` (entry script),
   not per-pipeline-run.

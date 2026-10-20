@@ -24,7 +24,7 @@ row + a router pattern, no loop changes.
 
 import re
 
-***REMOVED*** ── Registry ─────────────────────────────────────────────────────────────
+# ── Registry ─────────────────────────────────────────────────────────────
 
 RECIPES = {}
 
@@ -37,30 +37,30 @@ def _register(recipe):
 FOOD_REPORT = {
     "key": "food_report",
     "label": "food & drink report",
-    ***REMOVED*** The plan's criteria: each slot is one section of the final summary.
-    ***REMOVED*** Derived slots carry no question — the section is computed from the
-    ***REMOVED*** other slots' results (the brands tally is a name-frequency count,
-    ***REMOVED*** not an LLM guess). Food & drink vendors only: shops, services,
-    ***REMOVED*** health, transit, and infrastructure are out of scope by design
-    ***REMOVED*** (the "getting around" slot measures travel BETWEEN food spots —
-    ***REMOVED*** distances and clustering — not transport).
+    # The plan's criteria: each slot is one section of the final summary.
+    # Derived slots carry no question — the section is computed from the
+    # other slots' results (the brands tally is a name-frequency count,
+    # not an LLM guess). Food & drink vendors only: shops, services,
+    # health, transit, and infrastructure are out of scope by design
+    # (the "getting around" slot measures travel BETWEEN food spots —
+    # distances and clustering — not transport).
     "slots": [
         {"id": "eat", "section": "Where to eat and drink"},
         {"id": "brands", "section": "Popular brands", "derived": True},
         {"id": "cuisine", "section": "Local vs international cuisine"},
         {"id": "move", "section": "Getting around between food spots"},
     ],
-    ***REMOVED*** The planner's resolvable class vocabulary — food & drink vendors
-    ***REMOVED*** only (each maps to an amenity=[value] or cuisine family in
-    ***REMOVED*** CATEGORY_TAG_TARGETS/TAG_RULES).
+    # The planner's resolvable class vocabulary — food & drink vendors
+    # only (each maps to an amenity=[value] or cuisine family in
+    # CATEGORY_TAG_TARGETS/TAG_RULES).
     "class_vocabulary": (
         "restaurants, cafes, fast food, bars, pubs, taverns, beer "
         "gardens, nightclubs, food courts, food trucks, street food, "
         "snack bars, ice cream, vending machines, bakeries, bubble tea"
     ),
-    ***REMOVED*** The deterministic subject question's head noun (2026-10-11):
-    ***REMOVED*** "Which {subject} cafes are within X of {anchor}?" — food & drink
-    ***REMOVED*** vendors; other recipes set their own.
+    # The deterministic subject question's head noun (2026-10-11):
+    # "Which {subject} cafes are within X of {anchor}?" — food & drink
+    # vendors; other recipes set their own.
     "subject_head": "cafes",
     "radius_policy": (
         "YOU decide each question's radius (output radius_m) from the "
@@ -85,9 +85,9 @@ FOOD_REPORT = {
         "local vs international cuisine",
         "getting around between food spots",
     ),
-    ***REMOVED*** Notes the assemble prompt appends verbatim — the brands/cuisine
-    ***REMOVED*** tallies are computed counts, so the LLM cites them and never
-    ***REMOVED*** estimates.
+    # Notes the assemble prompt appends verbatim — the brands/cuisine
+    # tallies are computed counts, so the LLM cites them and never
+    # estimates.
     "assemble_notes": (
         " For popular brands, use the derived brand tally — names "
         "repeated across results are the chains; never estimate counts. "
@@ -98,12 +98,12 @@ FOOD_REPORT = {
         "cafes and restaurants are and how far apart the top picks sit "
         "— never mention transit, fuel, or infrastructure."
     ),
-    ***REMOVED*** Deterministic fill for required slots the planner skipped: the
-    ***REMOVED*** decompose validation guarantees every required (non-derived) slot
-    ***REMOVED*** has >= 1 question — these resolve through the parser's vocabulary
-    ***REMOVED*** ({anchor} is the first question's anchor). cuisine/move reuse the
-    ***REMOVED*** vendor radius question — the cuisine census and cluster read are
-    ***REMOVED*** computed from the results, not a special template.
+    # Deterministic fill for required slots the planner skipped: the
+    # decompose validation guarantees every required (non-derived) slot
+    # has >= 1 question — these resolve through the parser's vocabulary
+    # ({anchor} is the first question's anchor). cuisine/move reuse the
+    # vendor radius question — the cuisine census and cluster read are
+    # computed from the results, not a special template.
     "slot_defaults": {
         "eat": "Which restaurants are within 10km of {anchor}?",
         "cuisine": "Which restaurants are within 10km of {anchor}?",
@@ -116,18 +116,18 @@ _register(FOOD_REPORT)
 DOPPELGANGER_REPORT = {
     "key": "doppelganger_report",
     "label": "doppelganger report",
-    ***REMOVED*** The seed entity anchors everything. The twins come from the
-    ***REMOVED*** pre-plan similarEntities search (derived — the tool's evidence, not
-    ***REMOVED*** a question); the spread from ***REMOVED***2 distance questions between the
-    ***REMOVED*** seed and the twins.
+    # The seed entity anchors everything. The twins come from the
+    # pre-plan similarEntities search (derived — the tool's evidence, not
+    # a question); the spread from #2 distance questions between the
+    # seed and the twins.
     "slots": [
         {"id": "twins", "section": "The similar entities", "derived": True},
         {"id": "context", "section": "What the seed is", "derived": True},
         {"id": "spread", "section": "Where the twins sit"},
     ],
-    ***REMOVED*** The seed's class vocabulary (the seed entity's own class resolves
-    ***REMOVED*** through CATEGORY_TAG_TARGETS; the planner's questions stay inside
-    ***REMOVED*** it).
+    # The seed's class vocabulary (the seed entity's own class resolves
+    # through CATEGORY_TAG_TARGETS; the planner's questions stay inside
+    # it).
     "class_vocabulary": (
         "taverns, pubs, bars, restaurants, cafes, fast food, ice cream, "
         "bakeries, hotels, guest houses, attractions"
@@ -149,8 +149,8 @@ DOPPELGANGER_REPORT = {
     "assemble_sections": (
         "the similar entities", "what the seed is", "where the twins sit",
     ),
-    ***REMOVED*** The twins tally is the tool's evidence, so the LLM cites it and
-    ***REMOVED*** never invents twins.
+    # The twins tally is the tool's evidence, so the LLM cites it and
+    # never invents twins.
     "assemble_notes": (
         " The twins slot is filled by the pre-plan similarEntities "
         "search: name the twins in similarity order with their "
@@ -170,42 +170,42 @@ def get_recipe(key: str = None) -> dict:
     return RECIPES.get(key or DEFAULT_RECIPE_KEY, FOOD_REPORT)
 
 
-***REMOVED*** ── Router ───────────────────────────────────────────────────────────────
-***REMOVED*** Deterministic-first, closed-set: each pattern maps the prompt to a
-***REMOVED*** recipe key; an ambiguous prompt gets ONE chat_json over the closed set
-***REMOVED*** (same gate discipline as the template manifest) — never an open-set
-***REMOVED*** label. No second recipe today, so every prompt stays on the default;
-***REMOVED*** when one lands, add a pattern here + a recipe row — the loop, repair
-***REMOVED*** pipeline, and SSE spine stay unchanged.
+# ── Router ───────────────────────────────────────────────────────────────
+# Deterministic-first, closed-set: each pattern maps the prompt to a
+# recipe key; an ambiguous prompt gets ONE chat_json over the closed set
+# (same gate discipline as the template manifest) — never an open-set
+# label. No second recipe today, so every prompt stays on the default;
+# when one lands, add a pattern here + a recipe row — the loop, repair
+# pipeline, and SSE spine stay unchanged.
 
 _ROUTER_PATTERNS = [
-    ***REMOVED*** "find similar entities to X" / "twins of X" → the doppelganger
-    ***REMOVED*** report (2026-10-11): the Friars Tavern run answered the similarity
-    ***REMOVED*** ask with a proximity census because no recipe represented it.
+    # "find similar entities to X" / "twins of X" → the doppelganger
+    # report (2026-10-11): the Friars Tavern run answered the similarity
+    # ask with a proximity census because no recipe represented it.
     (
         re.compile(
             r"\bsimilar\s+(?:entities|places|venues|to)\b"
-            ***REMOVED*** "similar cafes to X" / "similar cafe to X" (the 2026-10-12
-            ***REMOVED*** Redbones runs: both phrasings missed the alternation and
-            ***REMOVED*** the ask routed to the food census, which answers "similar"
-            ***REMOVED*** with "nearby"): any noun between similar and to/for is the
-            ***REMOVED*** doppelganger ask.
+            # "similar cafes to X" / "similar cafe to X" (the 2026-10-12
+            # Redbones runs: both phrasings missed the alternation and
+            # the ask routed to the food census, which answers "similar"
+            # with "nearby"): any noun between similar and to/for is the
+            # doppelganger ask.
             r"|\bsimilar\s+\w+\s+(?:to|for)\b"
-            ***REMOVED*** \bdopp\w*\b (not \bdoppelg\w*\b): the 2026-10-12 Redbones
-            ***REMOVED*** run typed "Dopplegangers" (transposed) and the strict
-            ***REMOVED*** spelling missed it; every real word starting "dopp" is
-            ***REMOVED*** this ask.
+            # \bdopp\w*\b (not \bdoppelg\w*\b): the 2026-10-12 Redbones
+            # run typed "Dopplegangers" (transposed) and the strict
+            # spelling missed it; every real word starting "dopp" is
+            # this ask.
             r"|\bdopp\w*\b|\btwins?\b",
             re.IGNORECASE,
         ),
         "doppelganger_report",
     ),
-    ***REMOVED*** The brief handshake (2026-10-11): the frontend runs with the BRIEF
-    ***REMOVED*** as the prompt, and the brief's rewording drops "similar places" —
-    ***REMOVED*** the Friars Tavern frontend run routed to FOOD_REPORT and produced a
-    ***REMOVED*** proximity/brands report. _verify_seed appends the "Seed:" line only
-    ***REMOVED*** for doppelganger asks it verified against the dataset, so that line
-    ***REMOVED*** is the recipe marker: the finalize decided, the run honors it.
+    # The brief handshake (2026-10-11): the frontend runs with the BRIEF
+    # as the prompt, and the brief's rewording drops "similar places" —
+    # the Friars Tavern frontend run routed to FOOD_REPORT and produced a
+    # proximity/brands report. _verify_seed appends the "Seed:" line only
+    # for doppelganger asks it verified against the dataset, so that line
+    # is the recipe marker: the finalize decided, the run honors it.
     (
         re.compile(r"^\s*Seed:\s", re.MULTILINE),
         "doppelganger_report",

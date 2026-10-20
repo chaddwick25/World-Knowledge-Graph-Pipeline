@@ -1,4 +1,4 @@
-***REMOVED*** External Concepts for Result Visualization & MCP Tooling
+# External Concepts for Result Visualization & MCP Tooling
 
 > **Focus:** core concepts from two Spatial Dev Guru posts, applied to
 > **visualizing MapQA executor results** in two versions: **V1
@@ -17,17 +17,17 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Project Context: What the Executor Returns
+## 1. Project Context: What the Executor Returns
 
 The executor (`backend/semantic_search/services/query_executor_service/`)
 returns a dict with five keys:
 
 ```python
 {
-    "template": "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
-    "results": [ {osm_entity_dict}, ... ],   ***REMOVED*** list, possibly empty
+    "template": "FILTER-AGGREGATE-MEASURE (#1)",
+    "results": [ {osm_entity_dict}, ... ],   # list, possibly empty
     "answer": "Found 3 bars within 50m of Hollywood Blvd.",
-    "trace": [ {step, input, output, ...}, ... ],  ***REMOVED*** ordered execution trace
+    "trace": [ {step, input, output, ...}, ... ],  # ordered execution trace
     "latency_ms": 142.3,
 }
 ```
@@ -40,7 +40,7 @@ relevant), and enrichment metadata.
 
 The 5 templates produce structurally distinct result shapes:
 
-| ***REMOVED*** | Template | Result shape | Spatial character |
+| # | Template | Result shape | Spatial character |
 |---|---|---|---|
 | 1 | FILTER-AGGREGATE-MEASURE | N entities within radius R of anchor point | cluster around a point |
 | 2 | OBJECT-FIELD-MEASURE | 1 entity with attribute/field value | single point |
@@ -54,7 +54,7 @@ about (V2).
 
 ---
 
-***REMOVED******REMOVED*** 2. Current MCP Surface (What Exists Today)
+## 2. Current MCP Surface (What Exists Today)
 
 The dev-only MCP bridge at `/__mcp` (`frontend-v3/src/mcp/`) exposes **10
 tools**:
@@ -78,7 +78,7 @@ visualization** beyond the text `answer` string. `renderToolOverlay` can
 draw marker/radius overlays, but the template-specific shapes (bearing
 wedge, fan-in bars, density) are not rendered.
 
-***REMOVED******REMOVED******REMOVED*** Gap
+### Gap
 
 The executor returns structured, geospatially-grounded results (entities
 with `geom`, `distance`, `tags`), but the frontend only shows the
@@ -89,12 +89,12 @@ what V1 and V2 address.
 
 ---
 
-***REMOVED******REMOVED*** 3. Core Concepts From Post ***REMOVED***1: OSM Renderer / Web Mercator
+## 3. Core Concepts From Post #1: OSM Renderer / Web Mercator
 
 The post builds a minimal OSM tile renderer in pure JS/Canvas and exposes
 the math that Leaflet hides. The transferable concepts:
 
-***REMOVED******REMOVED******REMOVED*** 3.1 `latLonToWorld` / `worldToLatLon`: Projection as a First-Class Operation
+### 3.1 `latLonToWorld` / `worldToLatLon`: Projection as a First-Class Operation
 
 ```js
 // Web Mercator (EPSG:3857), normalized to [0,1] then scaled by 2^zoom
@@ -110,7 +110,7 @@ frontend needs this projection. `WorldKGMap.vue` uses `vue-leaflet`, which
 hides it behind `latLngToContainerPoint`. A result overlay either uses that
 API or the explicit math from the post for a custom Canvas/SVG layer.
 
-***REMOVED******REMOVED******REMOVED*** 3.2 Tile Pyramid + Zoom Scaling: `scale = 2^zoom`
+### 3.2 Tile Pyramid + Zoom Scaling: `scale = 2^zoom`
 
 - `TILE_SIZE = 256`, `MAX_LATITUDE = 85.0511287798` (Web Mercator pole limit)
 - Visible-tile computation: canvas corners → world coords → tile coords →
@@ -122,7 +122,7 @@ spread out and individual geometry becomes visible. The tile-pyramid mental
 model is what makes the overlay zoom-consistent with the base OSM raster
 layer that `WorldKGMap.vue` already renders.
 
-***REMOVED******REMOVED******REMOVED*** 3.3 Visible-Tile Computation + Caching: Viewport-Driven Culling
+### 3.3 Visible-Tile Computation + Caching: Viewport-Driven Culling
 
 The post's `getVisibleTiles()` is a tight loop: canvas corners → world
 coords → tile coords → fetch → draw. The result overlay needs the analogous
@@ -130,7 +130,7 @@ loop: canvas viewport → world bbox → which result entities fall inside →
 render those, skip the rest. Same **viewport-driven culling** pattern,
 applied to result entities instead of tiles.
 
-***REMOVED******REMOVED******REMOVED*** 3.4 Why the Poles "Explode": `MAX_LATITUDE = 85.0511`
+### 3.4 Why the Poles "Explode": `MAX_LATITUDE = 85.0511`
 
 The Mercator `y` formula diverges as `φ → ±90°`. The post clamps latitude
 to `±85.0511°`.
@@ -142,13 +142,13 @@ One-line invariant the overlay must inherit.
 
 ---
 
-***REMOVED******REMOVED*** 4. Core Concepts From Post ***REMOVED***2: Spatial Interpolation
+## 4. Core Concepts From Post #2: Spatial Interpolation
 
 The post covers IDW, kernel/RBF interpolation, and reconstructing a
 **continuous surface** from **scattered samples**. The transferable
 concepts:
 
-***REMOVED******REMOVED******REMOVED*** 4.1 IDW (Inverse-Distance Weighting): Already in the Pipeline
+### 4.1 IDW (Inverse-Distance Weighting): Already in the Pipeline
 
 The pipeline already uses IDW to reconstruct embeddings from k-NN neighbors
 and detect drift (see
@@ -167,20 +167,20 @@ MEASURE) using IDW across the parsed concepts' individual confidences.
 Low-confidence slots become "valleys", visually flagging where the parser
 was uncertain, which contextualizes the result quality for the user.
 
-***REMOVED******REMOVED******REMOVED*** 4.2 Kernel/RBF Interpolation: Smooth Result Density
+### 4.2 Kernel/RBF Interpolation: Smooth Result Density
 
 The Gaussian RBF kernel `K(x, x') = exp(-||x - x'||² / 2σ²)` produces
 smooth interpolation.
 
 **Relevance to result viz (density heatmap):** for templates that return
-many entities (template ***REMOVED***1 with a dense area, template ***REMOVED***5 with a broad
+many entities (template #1 with a dense area, template #5 with a broad
 bearing sector), a raw marker scatter can be unreadable. An RBF density
 surface over result entity positions, `ρ(x) = Σ_i K(x, x_i)`, produces a
 smooth heatmap that communicates clustering structure without per-marker
 clutter. This is the post's interpolation theory applied to the result set,
 not the embedding space.
 
-***REMOVED******REMOVED******REMOVED*** 4.3 Continuous Surface From Scattered Samples: The Mental Model
+### 4.3 Continuous Surface From Scattered Samples: The Mental Model
 
 The deepest transferable idea: **result entities are a sparse sample of the
 underlying geographic distribution**. Visualizing them as discrete markers
@@ -191,42 +191,42 @@ misclassified the area").
 
 ---
 
-***REMOVED******REMOVED*** 5. V1: Deterministic Result Visualization
+## 5. V1: Deterministic Result Visualization
 
 **Principle:** each `(template, result_shape)` pair maps to a fixed
 visualization component. No agent reasoning, no round-trip, no override.
 Predictable, testable, always works.
 
-***REMOVED******REMOVED******REMOVED*** 5.1 The Mapping Table
+### 5.1 The Mapping Table
 
-| Template | Result shape | V1 Visualization | Post ***REMOVED***1 concept | Post ***REMOVED***2 concept |
+| Template | Result shape | V1 Visualization | Post #1 concept | Post #2 concept |
 |---|---|---|---|---|
-| ***REMOVED***1 FILTER-AGGREGATE-MEASURE | N entities within radius R | Radius circle (R) + ranked markers inside, color-coded by distance | `latLonToWorld` for circle projection | IDW confidence surface on the concept slots |
-| ***REMOVED***2 OBJECT-FIELD-MEASURE | 1 entity + field value | Single marker + attribute card popup | `latLonToWorld` for marker | — |
-| ***REMOVED***4 GEOCODE-BATCH-COMPARE | N entities ranked by distance to anchor | Fan-in diagram: anchor marker + N result markers + distance bars | `latLonToWorld` for all markers | RBF density if N is large |
-| ***REMOVED***5 LOCATION-BEARING-CLASSIFY | N entities in a bearing sector | Bearing wedge from anchor + markers inside the wedge | `latLonToWorld` + bearing calc | RBF density within the wedge |
-| ***REMOVED***8 PLACE-ATTRIBUTE-QUERY | 1 entity + attribute list | Single marker + attribute list panel | `latLonToWorld` for marker | — |
+| #1 FILTER-AGGREGATE-MEASURE | N entities within radius R | Radius circle (R) + ranked markers inside, color-coded by distance | `latLonToWorld` for circle projection | IDW confidence surface on the concept slots |
+| #2 OBJECT-FIELD-MEASURE | 1 entity + field value | Single marker + attribute card popup | `latLonToWorld` for marker | — |
+| #4 GEOCODE-BATCH-COMPARE | N entities ranked by distance to anchor | Fan-in diagram: anchor marker + N result markers + distance bars | `latLonToWorld` for all markers | RBF density if N is large |
+| #5 LOCATION-BEARING-CLASSIFY | N entities in a bearing sector | Bearing wedge from anchor + markers inside the wedge | `latLonToWorld` + bearing calc | RBF density within the wedge |
+| #8 PLACE-ATTRIBUTE-QUERY | 1 entity + attribute list | Single marker + attribute list panel | `latLonToWorld` for marker | — |
 
-***REMOVED******REMOVED******REMOVED*** 5.2 New Vue Component: `ResultOverlay.vue`
+### 5.2 New Vue Component: `ResultOverlay.vue`
 
 A Leaflet overlay (SVG or Canvas layer) that renders V1 visualizations on
 top of `WorldKGMap.vue`. Responsibilities:
 
 1. **Project** each result entity's `geom` with `latLngToContainerPoint`
-   (Leaflet API equivalent of post ***REMOVED***1's `latLonToWorld`).
-2. **Cull** entities outside the current viewport (post ***REMOVED***1 §3.3 pattern).
+   (Leaflet API equivalent of post #1's `latLonToWorld`).
+2. **Cull** entities outside the current viewport (post #1 §3.3 pattern).
 3. **Render** the template-specific viz from the mapping table above:
-   - Template ***REMOVED***1: `L.circle(anchor, R)` + markers, color scale by distance
-   - Template ***REMOVED***4: anchor marker + result markers + SVG distance bars
+   - Template #1: `L.circle(anchor, R)` + markers, color scale by distance
+   - Template #4: anchor marker + result markers + SVG distance bars
      between each result and the anchor
-   - Template ***REMOVED***5: SVG bearing wedge (polygon from anchor at angle ±δ) +
+   - Template #5: SVG bearing wedge (polygon from anchor at angle ±δ) +
      markers inside
-4. **Encode confidence** as a small IDW sparkline (post ***REMOVED***2 §4.1) below the
+4. **Encode confidence** as a small IDW sparkline (post #2 §4.1) below the
    result panel. X-axis = role order, y-axis = interpolated confidence.
-5. **Clamp latitude** to `±85.0511°` (post ***REMOVED***1 §3.4) for high-latitude
+5. **Clamp latitude** to `±85.0511°` (post #1 §3.4) for high-latitude
    countries.
 
-***REMOVED******REMOVED******REMOVED*** 5.3 Enhanced `QueryConfirmationModal.vue` → Result Panel
+### 5.3 Enhanced `QueryConfirmationModal.vue` → Result Panel
 
 After the executor returns, the modal transitions from "confirm query" to
 "show result". The result panel has two parts:
@@ -239,7 +239,7 @@ After the executor returns, the modal transitions from "confirm query" to
 This keeps the current HITL flow intact: confirm → execute → visualize, all
 in one modal lifecycle.
 
-***REMOVED******REMOVED******REMOVED*** 5.4 V1 Properties
+### 5.4 V1 Properties
 
 - **No MCP round-trip**, visualization is synchronous, determined by the
   template + result shape lookup table.
@@ -253,14 +253,14 @@ in one modal lifecycle.
 
 ---
 
-***REMOVED******REMOVED*** 6. V2: Agent-Controlled Visualization
+## 6. V2: Agent-Controlled Visualization
 
 **Principle:** the executor result + trace + DAG are handed to an agent via
 MCP. The agent selects which visualization to invoke from a palette of
 available viz tools, and can override the V1 deterministic choice when the
 result shape warrants it.
 
-***REMOVED******REMOVED******REMOVED*** 6.1 New MCP Tool: `renderResultViz`
+### 6.1 New MCP Tool: `renderResultViz`
 
 ```ts
 // frontend-v3/src/mcp/mcp-server.ts
@@ -275,15 +275,15 @@ server.registerTool(
     inputSchema: {
       viz_type: z
         .enum([
-          "radius_circle",      // template ***REMOVED***1 default
-          "fan_in_distance",    // template ***REMOVED***4 default
-          "bearing_wedge",      // template ***REMOVED***5 default
-          "single_marker",      // templates ***REMOVED***2, ***REMOVED***8 default
-          "density_heatmap",    // RBF density (post ***REMOVED***2 §4.2)
+          "radius_circle",      // template #1 default
+          "fan_in_distance",    // template #4 default
+          "bearing_wedge",      // template #5 default
+          "single_marker",      // templates #2, #8 default
+          "density_heatmap",    // RBF density (post #2 §4.2)
           "convex_hull",        // result spatial extent
           "trace_dag_walk",     // trace steps as DAG nodes on map
           "empty_state",        // no results — show query region only
-          "confidence_surface", // IDW per-slot confidence (post ***REMOVED***2 §4.1)
+          "confidence_surface", // IDW per-slot confidence (post #2 §4.1)
         ])
         .describe("Which visualization to render"),
       options: z
@@ -299,7 +299,7 @@ server.registerTool(
 );
 ```
 
-***REMOVED******REMOVED******REMOVED*** 6.2 New MCP Tool: `getExecutorResult`
+### 6.2 New MCP Tool: `getExecutorResult`
 
 The agent needs to see the result to decide which viz to render. This tool
 exposes the executor output that is already in the proposal store:
@@ -320,7 +320,7 @@ server.registerTool(
 );
 ```
 
-***REMOVED******REMOVED******REMOVED*** 6.3 The V2 Loop
+### 6.3 The V2 Loop
 
 1. Executor returns `{template, results, answer, trace, latency_ms}`.
 2. Frontend renders the V1 deterministic viz immediately (no wait).
@@ -339,21 +339,21 @@ The key design choice: **V1 renders first, V2 overrides if needed.** The
 user is never staring at a blank screen waiting for the agent. The agent's
 role is *refinement*, not *gatekeeping*.
 
-***REMOVED******REMOVED******REMOVED*** 6.4 Viz Palette (Agent-Selectable)
+### 6.4 Viz Palette (Agent-Selectable)
 
 | `viz_type` | When the agent would choose it | Post concept |
 |---|---|---|
-| `radius_circle` | Template ***REMOVED***1, small N (default V1) | Post ***REMOVED***1 §3.1 |
-| `fan_in_distance` | Template ***REMOVED***4, small N (default V1) | Post ***REMOVED***1 §3.1 |
-| `bearing_wedge` | Template ***REMOVED***5 (default V1) | Post ***REMOVED***1 §3.1 + bearing |
-| `single_marker` | Templates ***REMOVED***2, ***REMOVED***8 (default V1) | Post ***REMOVED***1 §3.1 |
-| `density_heatmap` | Large N (>200 entities), marker clutter | Post ***REMOVED***2 §4.2 (RBF) |
-| `convex_hull` | Spatially scattered results, show extent | Post ***REMOVED***1 §3.1 (project hull vertices) |
-| `trace_dag_walk` | User/debugger wants to see execution steps | Post ***REMOVED***1 §3.1 (project trace step anchors) |
-| `empty_state` | `result_count == 0`, show query region | Post ***REMOVED***1 §3.1 (project the anchor) |
-| `confidence_surface` | Low parser confidence, show uncertainty | Post ***REMOVED***2 §4.1 (IDW) |
+| `radius_circle` | Template #1, small N (default V1) | Post #1 §3.1 |
+| `fan_in_distance` | Template #4, small N (default V1) | Post #1 §3.1 |
+| `bearing_wedge` | Template #5 (default V1) | Post #1 §3.1 + bearing |
+| `single_marker` | Templates #2, #8 (default V1) | Post #1 §3.1 |
+| `density_heatmap` | Large N (>200 entities), marker clutter | Post #2 §4.2 (RBF) |
+| `convex_hull` | Spatially scattered results, show extent | Post #1 §3.1 (project hull vertices) |
+| `trace_dag_walk` | User/debugger wants to see execution steps | Post #1 §3.1 (project trace step anchors) |
+| `empty_state` | `result_count == 0`, show query region | Post #1 §3.1 (project the anchor) |
+| `confidence_surface` | Low parser confidence, show uncertainty | Post #2 §4.1 (IDW) |
 
-***REMOVED******REMOVED******REMOVED*** 6.5 V2 Properties
+### 6.5 V2 Properties
 
 - **One MCP round-trip**: `getExecutorResult` + `renderResultViz`. Latency
   depends on agent inference time, not on rendering.
@@ -368,7 +368,7 @@ role is *refinement*, not *gatekeeping*.
 
 ---
 
-***REMOVED******REMOVED*** 7. Why These Concepts Fit This Project
+## 7. Why These Concepts Fit This Project
 
 | Post concept | V1 integration point | V2 integration point |
 |---|---|---|
@@ -380,16 +380,16 @@ role is *refinement*, not *gatekeeping*.
 | RBF kernel | — (V1 doesn't use density) | `density_heatmap` viz type (agent-selectable for large N) |
 | Continuous surface from samples | — | Mental model: result entities as sparse sample of the geographic distribution; gaps are informative |
 
-Post ***REMOVED***1 concepts are **mechanical**, the same math Leaflet uses, exposed
+Post #1 concepts are **mechanical**, the same math Leaflet uses, exposed
 explicitly. They apply equally to V1 and V2; every map-based viz needs them.
-Post ***REMOVED***2 concepts are **conceptual**; they add viz *types* that V1 doesn't
+Post #2 concepts are **conceptual**; they add viz *types* that V1 doesn't
 need but V2 can invoke when the result shape warrants it. IDW confidence
-surfaces and RBF density heatmaps are the two post ***REMOVED***2 ideas that become
+surfaces and RBF density heatmaps are the two post #2 ideas that become
 agent-selectable tools in the V2 palette.
 
 ---
 
-***REMOVED******REMOVED*** 8. Non-Goals / Out of Scope
+## 8. Non-Goals / Out of Scope
 
 - **Replacing Leaflet** with a custom Canvas renderer. The post builds a
   from-scratch renderer for *pedagogy*; this project keeps Leaflet as the
@@ -412,8 +412,8 @@ agent-selectable tools in the V2 palette.
 
 ---
 
-***REMOVED******REMOVED*** 9. References
+## 9. References
 
-- Post ***REMOVED***1: <https://spatial-dev.guru/2026/01/11/building-an-openstreetmap-renderer-from-scratch/>
-- Post ***REMOVED***2: <https://spatial-dev.guru/posts/page/2/> (Spatial Interpolation in Python)
+- Post #1: <https://spatial-dev.guru/2026/01/11/building-an-openstreetmap-renderer-from-scratch/>
+- Post #2: <https://spatial-dev.guru/posts/page/2/> (Spatial Interpolation in Python)
 - Parser source: <ref_file file="backend/semantic_search/services/query_parser_service.py" />

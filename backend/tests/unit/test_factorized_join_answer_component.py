@@ -18,7 +18,7 @@ from semantic_search.services.query_executor_service import (
     QueryExecutorService,
 )
 
-TEMPLATE = "FILTER-AGGREGATE-MEASURE (***REMOVED***1)"
+TEMPLATE = "FILTER-AGGREGATE-MEASURE (#1)"
 
 PARSED = {
     "template": TEMPLATE,
@@ -28,8 +28,8 @@ PARSED = {
     ],
 }
 
-***REMOVED*** No osm_id/osm_type on purpose: keeps _enrich_results and
-***REMOVED*** EntityContextService.get_context on their DB-free early paths.
+# No osm_id/osm_type on purpose: keeps _enrich_results and
+# EntityContextService.get_context on their DB-free early paths.
 FAKE_RESULTS = [
     {"name": "Alpha", "tags": {"name": "Alpha", "amenity": "cafe"},
      "wkg_class": "wkgs:Cafe", "lat": 1.0, "lon": 2.0},
@@ -86,7 +86,7 @@ def test_answer_event_emitted_before_enrichment_llm_down(monkeypatch):
     assert "executed" in names
     assert "answer" in names
     assert "context" in names
-    ***REMOVED*** Deterministic answer must precede the enrichment context phase.
+    # Deterministic answer must precede the enrichment context phase.
     assert names.index("answer") < names.index("context")
 
     answer_event = next(e for e in events if e["event"] == "answer")

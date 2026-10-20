@@ -86,7 +86,7 @@ class Command(BaseCommand):
             traceback.print_exc()
             return
 
-        ***REMOVED*** Print Global Results
+        # Print Global Results
         g = results["global"]
         self.stdout.write(self.style.SUCCESS(
             f"\nGLOBAL METRICS:\n"
@@ -98,7 +98,7 @@ class Command(BaseCommand):
             f"    Spatial:  {g['spatial_count_from']} -> {g['spatial_count_to']}\n"
         ))
 
-        ***REMOVED*** Print Subdivision Results
+        # Print Subdivision Results
         subdivisions = results["subdivisions"]
         if subdivisions:
             self.stdout.write(self.style.SUCCESS(f"\nSUBDIVISION METRICS:\n"))

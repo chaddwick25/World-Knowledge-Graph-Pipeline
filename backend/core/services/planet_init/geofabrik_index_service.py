@@ -37,7 +37,7 @@ class GeofabrikIndexService:
             response.raise_for_status()
             self.data = response.json()
             
-            ***REMOVED*** Cache it
+            # Cache it
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.cache_path, 'w') as f:
                 json.dump(self.data, f)

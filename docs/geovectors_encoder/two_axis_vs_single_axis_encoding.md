@@ -1,4 +1,4 @@
-***REMOVED*** Two-Axis vs Single-Axis Embedding: The Decision and the Naming
+# Two-Axis vs Single-Axis Embedding: The Decision and the Naming
 
 > **Status: SUPERSEDED (2026-09-10).** The two-axis Step-1 encoding path
 > (`DualEncodingWriter` + `_build_dual_writer` + `_run_parallel_dual` +
@@ -49,7 +49,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Two-Axis Architecture
+## 1. The Two-Axis Architecture
 
 The GeoVectors paper (Tempelmeier et al., ISWC 2021) defines two independent
 embedding models. The pipeline implements both, plus a fused 400D
@@ -73,7 +73,7 @@ GV-NLE(100)). HNSW index planned, **not built** (0 rows populated, verified
 
 ---
 
-***REMOVED******REMOVED*** 2. The Decision Branch
+## 2. The Decision Branch
 
 `EmbeddingService.run()` was the single entry point for Step 1 encoding and
 branched on two envelope fields: `cfg.has_pretrained_nle` and
@@ -86,16 +86,16 @@ Current Step 1 flow:
 EmbeddingService.run(cfg)
   workers = _parallel_upsert_workers()
   if workers > 1:
-    _run_parallel(cfg, pbf_path, workers, queue_depth)   ***REMOVED*** BatchCollector fan-out, FastText-only
+    _run_parallel(cfg, pbf_path, workers, queue_depth)   # BatchCollector fan-out, FastText-only
   else:
-    writer = DBOnlyWriter(FastTextModel(), tags_storage) ***REMOVED*** legacy single-threaded, FastText-only
+    writer = DBOnlyWriter(FastTextModel(), tags_storage) # legacy single-threaded, FastText-only
 ```
 
 No NLE encoding happens in Step 1. `cfg.has_pretrained_nle` is still carried
 on the envelope and reported in the result dict (`has_nle`), but it no
 longer routes any code path.
 
-***REMOVED******REMOVED******REMOVED*** 2.1 What Controlled the Branch (historical)
+### 2.1 What Controlled the Branch (historical)
 
 | Field | Source | Meaning |
 |---|---|---|
@@ -104,7 +104,7 @@ longer routes any code path.
 | `workers` | `PARALLEL_UPSERT_WORKERS` env var (code default 1) | Encoding thread count; `1` = legacy single-threaded, `>1` = parallel path |
 | ~~`_PARALLEL_DUAL_ENABLED`~~ | ~~Module constant in `embedding_service.py`~~ | ~~Removed 2026-09-10~~ |
 
-***REMOVED******REMOVED******REMOVED*** 2.2 Why the Two-Axis Path Never Ran (verified 2026-08-31 against live DB + disk)
+### 2.2 Why the Two-Axis Path Never Ran (verified 2026-08-31 against live DB + disk)
 
 - **All 197 countries** have `has_embeddings = t` in
   `country_pipeline_profiles`, so gate 1 (`has_pretrained_nle`) passed
@@ -122,7 +122,7 @@ longer routes any code path.
 
 ---
 
-***REMOVED******REMOVED*** 3. DBOnlyWriter: Single Encoding (FastText-only)
+## 3. DBOnlyWriter: Single Encoding (FastText-only)
 
 **Source:** <ref_file file="backend/geovectors_encoder/services/geovectors_service.py" /> (`DBOnlyWriter` moved to `geovectors_encoder/services/snapshot_processors.py` 2026-09-25)
 
@@ -155,13 +155,13 @@ When used for FastText-only encoding (the production default):
 >    coverage for multi-word amenity names and descriptions.
 
 ```python
-***REMOVED*** embedding_service.py (legacy single-threaded path, FastText-only)
+# embedding_service.py (legacy single-threaded path, FastText-only)
 writer = DBOnlyWriter(ft_model, tags_storage)
 ```
 
 ---
 
-***REMOVED******REMOVED*** 4. DualEncodingWriter: Dual Encoding (FastText + NLE) — REMOVED 2026-09-10
+## 4. DualEncodingWriter: Dual Encoding (FastText + NLE) — REMOVED 2026-09-10
 
 > This class was deleted with the two-axis Step-1 path (see the superseded
 > banner above). Kept here for history.
@@ -194,9 +194,9 @@ parallel dual path exists (see
 
 ---
 
-***REMOVED******REMOVED*** 5. The Parallel Paths
+## 5. The Parallel Paths
 
-***REMOVED******REMOVED******REMOVED*** 5.1 `_run_parallel`: FastText-only, Parallelized (the only parallel path)
+### 5.1 `_run_parallel`: FastText-only, Parallelized (the only parallel path)
 
 - Main thread streams the PBF once via `read_from_snapshot` with a
   `BatchCollector` (drop-in writer replacement).
@@ -209,7 +209,7 @@ parallel dual path exists (see
 - See [Streaming Batched Encoding](streaming_batched_encoding.md) for the
   full `BatchCollector` architecture.
 
-***REMOVED******REMOVED******REMOVED*** 5.2 `_run_parallel_dual`: FastText + NLE, Parallelized — REMOVED 2026-09-10
+### 5.2 `_run_parallel_dual`: FastText + NLE, Parallelized — REMOVED 2026-09-10
 
 > Removed with the two-axis path. It had the same producer/consumer topology
 > as `_run_parallel`, shared one `NLEModel` across encoding threads, and the
@@ -218,7 +218,7 @@ parallel dual path exists (see
 
 ---
 
-***REMOVED******REMOVED*** 6. Why Two-Axis Encoding Existed (and Why It Was Never the Default)
+## 6. Why Two-Axis Encoding Existed (and Why It Was Never the Default)
 
 The GeoVectors paper (Section 3.2) defines both embeddings. The original
 GeoVectors reference implementation (upstream `GeoVectors-master` repo, not vendored) computed
@@ -242,7 +242,7 @@ comes exclusively from Step 5 training and the inductive bridge.
 
 ---
 
-***REMOVED******REMOVED*** 7. The 400D Fused static_embedding
+## 7. The 400D Fused static_embedding
 
 After both axes are populated, `compute_static_embeddings` concatenates
 them:
@@ -270,7 +270,7 @@ index on `static_embedding`. Only rows with **both** GV-Tags + GV-NLE have
 
 ---
 
-***REMOVED******REMOVED*** 8. Invariants
+## 8. Invariants
 
 - Aggregation: GV-Tags embeddings are the **unweighted arithmetic mean**
   (centroid) of per-token FastText vectors, not a weighted average. Both the

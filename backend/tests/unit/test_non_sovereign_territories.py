@@ -66,8 +66,8 @@ class TestNonSovereignTerritories:
             assert "name" in info, f"{iso} missing 'name'"
             assert "slug" in info, f"{iso} missing 'slug'"
             assert "continent" in info, f"{iso} missing 'continent'"
-            ***REMOVED*** Slug should be a lowercase, URL-friendly version of the name
-            ***REMOVED*** (may differ if the source data uses a specific slug convention)
+            # Slug should be a lowercase, URL-friendly version of the name
+            # (may differ if the source data uses a specific slug convention)
             assert info["slug"] == info["slug"].lower(), (
                 f"Slug for {iso} must be lowercase, got {info['slug']!r}"
             )

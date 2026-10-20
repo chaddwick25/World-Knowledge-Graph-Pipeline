@@ -25,7 +25,7 @@ from typing import Optional
 logger = logging.getLogger("pipeline")
 logger.setLevel(logging.INFO)
 
-***REMOVED*** Cross-process cache: run_id -> log path (so all workers agree on the filename).
+# Cross-process cache: run_id -> log path (so all workers agree on the filename).
 _log_file_registry: dict[str, str] = {}
 
 
@@ -49,7 +49,7 @@ def _ensure_console_handler() -> None:
         logger.addHandler(ch)
 
 
-***REMOVED*** Attach the console handler once at import (covers non-Celery / test paths).
+# Attach the console handler once at import (covers non-Celery / test paths).
 _ensure_console_handler()
 
 
@@ -74,9 +74,9 @@ def _run_log_path(pipeline_run_id: str, country_iso: str) -> Path:
     that produced a different filename than the worker's UTC-based one.
     """
     from datetime import datetime, timezone
-    ***REMOVED*** Logs live under backend/pipeline/logs/pipeline/ (moved from
-    ***REMOVED*** backend/logs/pipeline/ 2026-10-06). pipeline_logger.py sits in
-    ***REMOVED*** backend/pipeline/, so one parent hop lands in backend/pipeline/.
+    # Logs live under backend/pipeline/logs/pipeline/ (moved from
+    # backend/logs/pipeline/ 2026-10-06). pipeline_logger.py sits in
+    # backend/pipeline/, so one parent hop lands in backend/pipeline/.
     log_dir = Path(__file__).resolve().parent / "logs" / "pipeline"
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -115,18 +115,18 @@ def setup_pipeline_run_logger(pipeline_run_id: str, country_iso: str = "") -> st
 
     log_file_str = str(_run_log_path(pipeline_run_id, country_iso))
 
-    ***REMOVED*** Ensure console handler is present (Celery workers may strip it on fork).
+    # Ensure console handler is present (Celery workers may strip it on fork).
     _ensure_console_handler()
 
-    ***REMOVED*** Already attached for this file? No-op.
+    # Already attached for this file? No-op.
     if any(hasattr(h, "baseFilename") and h.baseFilename == log_file_str for h in logger.handlers):
         return log_file_str
 
-    ***REMOVED*** Remove previous run's file handler(s) to prevent cross-run contamination.
+    # Remove previous run's file handler(s) to prevent cross-run contamination.
     _remove_file_handlers(logger)
 
-    ***REMOVED*** WatchedFileHandler: cross-process safe (re-opens on external rotation,
-    ***REMOVED*** no RotatingFileHandler locking issues).
+    # WatchedFileHandler: cross-process safe (re-opens on external rotation,
+    # no RotatingFileHandler locking issues).
     fh = WatchedFileHandler(log_file_str)
     fh.setLevel(logging.INFO)
     fh.setFormatter(
@@ -134,17 +134,17 @@ def setup_pipeline_run_logger(pipeline_run_id: str, country_iso: str = "") -> st
     )
     logger.addHandler(fh)
 
-    ***REMOVED*** Stop pipeline -> root propagation: otherwise each pipeline message is
-    ***REMOVED*** written by both the pipeline handler and the root handler below (double).
+    # Stop pipeline -> root propagation: otherwise each pipeline message is
+    # written by both the pipeline handler and the root handler below (double).
     logger.propagate = False
     logger.info("Pipeline run log initialized: %s", log_file_str)
 
-    ***REMOVED*** Also capture Celery/Django messages (root logger) into the same file.
-    ***REMOVED*** Set root to INFO so that module-level loggers (vector_storage_service,
-    ***REMOVED*** embedding_service, etc.) that propagate to root are captured — not
-    ***REMOVED*** just the "pipeline" logger.  Without this, root stays at WARNING
-    ***REMOVED*** (Python default) and all INFO-level upsert/enrichment logs are
-    ***REMOVED*** silently dropped after a fresh container start.
+    # Also capture Celery/Django messages (root logger) into the same file.
+    # Set root to INFO so that module-level loggers (vector_storage_service,
+    # embedding_service, etc.) that propagate to root are captured — not
+    # just the "pipeline" logger.  Without this, root stays at WARNING
+    # (Python default) and all INFO-level upsert/enrichment logs are
+    # silently dropped after a fresh container start.
     _root = logging.getLogger()
     _root.setLevel(logging.INFO)
     _remove_file_handlers(_root)
@@ -188,23 +188,23 @@ class PipelineLogger:
         metadata: Optional[dict] = None,
     ) -> None:
         """Write a PipelineLogEntry row + emit to Python logging."""
-        ***REMOVED*** 1. DB write (structured, queryable, shard-ready)
+        # 1. DB write (structured, queryable, shard-ready)
         try:
             from core.models import PipelineLogEntry, PipelineRun
-            ***REMOVED*** Only set the run FK if the PipelineRun actually exists.
-            ***REMOVED*** When running steps directly (e.g., via manage.py shell without
-            ***REMOVED*** a PipelineRun record), the FK would violate the constraint.
+            # Only set the run FK if the PipelineRun actually exists.
+            # When running steps directly (e.g., via manage.py shell without
+            # a PipelineRun record), the FK would violate the constraint.
             run_fk = None
             if self.pipeline_run_id:
                 run_fk = PipelineRun.objects.filter(
                     id=self.pipeline_run_id
                 ).values_list("id", flat=True).first()
             PipelineLogEntry.objects.create(
-                ***REMOVED*** FK (column run_id) — enables CASCADE delete + related_name
-                ***REMOVED*** queries (run.log_entries). Only set when the run exists.
+                # FK (column run_id) — enables CASCADE delete + related_name
+                # queries (run.log_entries). Only set when the run exists.
                 run_id=run_fk,
-                ***REMOVED*** Denormalized UUID — enables shard routing without a JOIN.
-                ***REMOVED*** Kept even when the run doesn't exist, for traceability.
+                # Denormalized UUID — enables shard routing without a JOIN.
+                # Kept even when the run doesn't exist, for traceability.
                 pipeline_run_id=self.pipeline_run_id,
                 country_code=self.country_code or None,
                 continent=self.continent or None,
@@ -216,10 +216,10 @@ class PipelineLogger:
                 task_id=task_id,
             )
         except Exception as exc:
-            ***REMOVED*** Never let logging crash the pipeline
+            # Never let logging crash the pipeline
             logger.warning("PipelineLogEntry write failed: %s", exc)
 
-        ***REMOVED*** 2. Python logging (console + optional file handler in dev)
+        # 2. Python logging (console + optional file handler in dev)
         log_fn = {
             "DEBUG": logger.debug,
             "INFO": logger.info,

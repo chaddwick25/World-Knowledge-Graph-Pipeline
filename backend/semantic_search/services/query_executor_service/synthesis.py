@@ -56,12 +56,12 @@ class SynthesisMixin:
 
         count = len(results) if isinstance(results, list) else 1
 
-        if template == "FILTER-AGGREGATE-MEASURE (***REMOVED***1)":
+        if template == "FILTER-AGGREGATE-MEASURE (#1)":
             radius = _qes()._get_concept(concepts, "AMOUNT")
             radius_text = radius["text"] if radius else "the specified radius"
             return f"Found {count} entities within {radius_text}."
 
-        if template == "GEOCODE-BATCH-COMPARE (***REMOVED***4)":
+        if template == "GEOCODE-BATCH-COMPARE (#4)":
             if results and isinstance(results, list):
                 top = results[0]
                 dist = top.get("distance_m")
@@ -69,7 +69,7 @@ class SynthesisMixin:
                     return f"Nearest: {top.get('name', 'unknown')} ({_fmt_away(dist)} away)."
                 return f"Nearest: {top.get('name', 'unknown')}."
 
-        if template == "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)":
+        if template == "PLACE-ATTRIBUTE-QUERY (#8)":
             if results and isinstance(results, list):
                 count = len(results)
                 names = [r.get("name", "N/A") for r in results[:3]]
@@ -78,11 +78,11 @@ class SynthesisMixin:
                 return f"Found {count} places: {', '.join(names)}" + \
                        ("..." if count > 3 else ".")
 
-        if template == "LOCATION-BEARING-CLASSIFY (***REMOVED***5)":
+        if template == "LOCATION-BEARING-CLASSIFY (#5)":
             if results and isinstance(results, list):
                 r = results[0]
                 if "anchor_name" in r:
-                    ***REMOVED*** 5b Cone search
+                    # 5b Cone search
                     amenity_str = f" {r['requested_amenity']}" if r.get("requested_amenity") else ""
                     name = r.get("name") or (r.get("tags") or {}).get("name") or "unknown"
                     dist = r.get("distance_m")
@@ -90,19 +90,19 @@ class SynthesisMixin:
                     return (f"Nearest{amenity_str} {r['direction']} of {r['anchor_name']} is "
                             f"{name}{dist_str}.")
                 elif "from" in r and "to" in r and "direction" in r:
-                    ***REMOVED*** 5a Bearing pair
+                    # 5a Bearing pair
                     return (f"Direction: {r['direction']} "
                             f"({r['bearing_degrees']:.0f}°) "
                             f"from {r['from']} to {r['to']}.")
 
-        if template == "OBJECT-FIELD-MEASURE (***REMOVED***2)":
+        if template == "OBJECT-FIELD-MEASURE (#2)":
             if results and isinstance(results, list) and "distance_km" in results[0]:
                 r = results[0]
                 return (f"Distance: {r['distance_km']:.2f} km "
                         f"({r['distance_m']:.0f} m) "
                         f"from {r['from']} to {r['to']}.")
 
-        if template == "SPECTRAL-ANALYSIS (***REMOVED***11)":
+        if template == "SPECTRAL-ANALYSIS (#11)":
             if isinstance(results, dict) and "algebraic_connectivity" in results:
                 return (
                     f"Algebraic connectivity λ₂ = "
@@ -111,7 +111,7 @@ class SynthesisMixin:
                     f"signal smoothness = {results.get('signal_smoothness', 0.0):.4f}."
                 )
 
-        if template == "TEMPORAL-DRIFT (***REMOVED***12)":
+        if template == "TEMPORAL-DRIFT (#12)":
             if isinstance(results, dict) and "spectral_distance" in results:
                 return (
                     f"Spectral drift = {results['spectral_distance']:.4f} "
@@ -120,7 +120,7 @@ class SynthesisMixin:
                     f"Fiedler drift = {results['fiedler_drift']:.4f}."
                 )
 
-        if template == "COMMUNITY-DETECT (***REMOVED***13)":
+        if template == "COMMUNITY-DETECT (#13)":
             if isinstance(results, dict) and "community_count" in results:
                 q = results.get("modularity")
                 if q is not None:
@@ -130,7 +130,7 @@ class SynthesisMixin:
                     )
                 return f"Detected {results['community_count']} communities."
 
-        if template == "EVENT-DIFFUSION (***REMOVED***14)":
+        if template == "EVENT-DIFFUSION (#14)":
             if isinstance(results, dict) and "affected" in results:
                 t_keys = sorted(results["affected"].keys())
                 counts = [len(results["affected"][t]) for t in t_keys]
@@ -214,6 +214,6 @@ class SynthesisMixin:
             answer = llm.chat(messages, temperature=0.2, max_tokens=200)
             answer = (answer or "").strip()
             return answer or None
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — answer synthesis must never break execute
+        except Exception as exc:  # noqa: BLE001 — answer synthesis must never break execute
             logger.warning("LLM answer synthesis failed; using template formatter: %s", exc)
             return None

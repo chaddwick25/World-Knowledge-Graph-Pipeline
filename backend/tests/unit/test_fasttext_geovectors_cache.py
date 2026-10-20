@@ -17,7 +17,7 @@ class DummyFastText:
     def get_word_vector(self, token):
         token = str(token)
         self.calls[token] = self.calls.get(token, 0) + 1
-        ***REMOVED*** Return deterministic vector based on token for reproducibility
+        # Return deterministic vector based on token for reproducibility
         base = float(len(token))
         return np.full(self._dim, base, dtype=np.float32)
 
@@ -26,7 +26,7 @@ class DummyFastText:
 def test_fasttext_model_caches_repeated_tokens(monkeypatch):
     dummy = DummyFastText(dim=4)
 
-    ***REMOVED*** Patch semantic_search ModelRegistryService so FastTextModel.__init__ uses our dummy
+    # Patch semantic_search ModelRegistryService so FastTextModel.__init__ uses our dummy
     import semantic_search.services.model_registry_service as mr_module
 
     class DummyRegistryService:
@@ -44,19 +44,19 @@ def test_fasttext_model_caches_repeated_tokens(monkeypatch):
         ("amenity", "beta"),
     ]
 
-    ***REMOVED*** First call should populate cache
+    # First call should populate cache
     v1 = model.encode_tags(tags)
     assert v1 is not None
 
-    ***REMOVED*** Second call with same tags should hit cache for all tokens
+    # Second call with same tags should hit cache for all tokens
     v2 = model.encode_tags(tags)
     assert v2 is not None
 
-    ***REMOVED*** All vectors should be equal (deterministic dummy)
+    # All vectors should be equal (deterministic dummy)
     np.testing.assert_allclose(v1, v2)
 
-    ***REMOVED*** Tokens used: keys: name, highway, amenity; values: alpha, beta
-    ***REMOVED*** Each should have exactly one underlying get_word_vector call
+    # Tokens used: keys: name, highway, amenity; values: alpha, beta
+    # Each should have exactly one underlying get_word_vector call
     expected_tokens = {"name", "highway", "amenity", "alpha", "beta"}
     assert set(dummy.calls.keys()) == expected_tokens
     for count in dummy.calls.values():

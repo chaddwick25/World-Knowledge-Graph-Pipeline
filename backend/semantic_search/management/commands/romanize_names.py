@@ -9,10 +9,10 @@ schedule. Idempotent (only processes NULL rows). Resumable (interrupted
 runs continue from where they left off).
 
 Usage:
-    python manage.py romanize_names                          ***REMOVED*** all countries
-    python manage.py romanize_names --country-code KR        ***REMOVED*** one country
+    python manage.py romanize_names                          # all countries
+    python manage.py romanize_names --country-code KR        # one country
     python manage.py romanize_names --country-code KR --batch-size 10000
-    python manage.py romanize_names --limit 1000             ***REMOVED*** for testing
+    python manage.py romanize_names --limit 1000             # for testing
 """
 
 import logging
@@ -25,7 +25,7 @@ from semantic_search.services.romanizing_names.registry import RomanizerRegistry
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Default batch size for bulk updates
+# Default batch size for bulk updates
 DEFAULT_BATCH_SIZE = 5000
 
 
@@ -67,11 +67,11 @@ class Command(BaseCommand):
         limit = opts["limit"]
         dry_run = opts["dry_run"]
 
-        ***REMOVED*** Build the query to find entities needing romanization
-        ***REMOVED*** We use raw SQL on the vectors DB for efficiency
+        # Build the query to find entities needing romanization
+        # We use raw SQL on the vectors DB for efficiency
         conn = connections["vectors"]
 
-        ***REMOVED*** Count entities needing romanization
+        # Count entities needing romanization
         count_sql = """
             SELECT COUNT(*)
             FROM semantic_search_osmentity
@@ -103,7 +103,7 @@ class Command(BaseCommand):
             f"Supported scripts: {RomanizerRegistry.list_supported()}"
         )
 
-        ***REMOVED*** Process in batches
+        # Process in batches
         processed = 0
         start_time = time.time()
 
@@ -115,7 +115,7 @@ class Command(BaseCommand):
             if limit and processed + fetch_limit > limit:
                 fetch_limit = limit - processed
 
-            ***REMOVED*** Fetch a batch of entities needing romanization
+            # Fetch a batch of entities needing romanization
             fetch_sql = """
                 SELECT id, tags->>'name' as name
                 FROM semantic_search_osmentity
@@ -137,7 +137,7 @@ class Command(BaseCommand):
             if not rows:
                 break
 
-            ***REMOVED*** Romanize each name
+            # Romanize each name
             updates = []
             for entity_id, name in rows:
                 romanized = RomanizerRegistry.auto_romanize(name)
@@ -145,25 +145,25 @@ class Command(BaseCommand):
                     updates.append((romanized, entity_id))
 
             if not updates:
-                ***REMOVED*** No romanizable names in this batch — mark them as empty
-                ***REMOVED*** to avoid re-fetching them
+                # No romanizable names in this batch — mark them as empty
+                # to avoid re-fetching them
                 empty_ids = [r[0] for r in rows]
                 self._mark_empty(conn, empty_ids)
                 processed += len(rows)
                 continue
 
             if dry_run:
-                ***REMOVED*** Print samples
+                # Print samples
                 for entity_id, name in rows[:5]:
                     romanized = RomanizerRegistry.auto_romanize(name)
                     self.stdout.write(f"  {name!r} → {romanized!r}")
                 processed += len(rows)
                 continue
 
-            ***REMOVED*** Bulk UPDATE
+            # Bulk UPDATE
             self._bulk_update(conn, updates)
 
-            ***REMOVED*** Mark any entities that had no romanizable name
+            # Mark any entities that had no romanizable name
             updated_ids = {u[1] for u in updates}
             empty_ids = [r[0] for r in rows if r[0] not in updated_ids]
             if empty_ids:
@@ -186,8 +186,8 @@ class Command(BaseCommand):
         """Bulk UPDATE name_romanized using a VALUES clause."""
         if not updates:
             return
-        ***REMOVED*** Build a VALUES clause for the bulk update
-        ***REMOVED*** Using a CTE for efficient batch update
+        # Build a VALUES clause for the bulk update
+        # Using a CTE for efficient batch update
         values_sql = ", ".join(
             "(%s, %s)" for _ in updates
         )
@@ -209,7 +209,7 @@ class Command(BaseCommand):
         """Mark entities as having an empty romanized name (avoid re-fetching)."""
         if not entity_ids:
             return
-        ***REMOVED*** Set name_romanized to empty string for entities with no romanizable name
+        # Set name_romanized to empty string for entities with no romanizable name
         placeholders = ", ".join(["%s"] * len(entity_ids))
         sql = f"""
             UPDATE semantic_search_osmentity

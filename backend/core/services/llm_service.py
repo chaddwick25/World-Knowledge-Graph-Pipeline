@@ -84,8 +84,8 @@ class LLMService:
         self.style = (style or getattr(settings, "LLM_API_STYLE", "") or "native").lower()
         base = (base_url or getattr(settings, "LLM_BASE_URL", "") or _DEFAULT_BASE_URL).rstrip("/")
         self.base_url = base
-        ***REMOVED*** Native Ollama endpoints live at /api/* (no /v1 prefix); the OpenAI
-        ***REMOVED*** style keeps the base as given (typically including /v1).
+        # Native Ollama endpoints live at /api/* (no /v1 prefix); the OpenAI
+        # style keeps the base as given (typically including /v1).
         self.root_url = base[:-3] if base.endswith("/v1") else base
         self.model = model or getattr(settings, "LLM_MODEL", "") or _DEFAULT_MODEL
         try:
@@ -173,7 +173,7 @@ class LLMService:
             attrs.update(extra)
         return attrs
 
-    ***REMOVED*** ── Availability ──────────────────────────────────────────────────────
+    # ── Availability ──────────────────────────────────────────────────────
 
     def is_available(self) -> bool:
         """Cached liveness probe (GET /api/tags or /v1/models).
@@ -199,7 +199,7 @@ class LLMService:
         self._available_at = now
         return ok
 
-    ***REMOVED*** ── Chat ──────────────────────────────────────────────────────────────
+    # ── Chat ──────────────────────────────────────────────────────────────
 
     def chat(self, messages, temperature: float = 0.2,
              max_tokens: int = 512, think: bool = None) -> Optional[str]:
@@ -567,7 +567,7 @@ class LLMService:
                 return None
         return None
 
-    ***REMOVED*** ── Embeddings ────────────────────────────────────────────────────────
+    # ── Embeddings ────────────────────────────────────────────────────────
 
     def embed(self, texts: List[str]) -> Optional[list]:
         """Embeddings (native /api/embed or /v1/embeddings). list or None."""

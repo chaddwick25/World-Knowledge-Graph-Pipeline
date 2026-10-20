@@ -32,7 +32,7 @@ def _as_comma_str(value, default: str) -> str:
 class ModelHyperparams:
     """Static model hyperparameters — loaded from YAML, frozen, not serialized."""
 
-    ***REMOVED*** USLP (link prediction)
+    # USLP (link prediction)
     uslp_threshold: float = 0.7
     uslp_top_k: int = 50
     uslp_limit: int = 200000
@@ -41,7 +41,7 @@ class ModelHyperparams:
     uslp_gpu_device: str = "cuda:0"
     uslp_use_fp64: bool = False
 
-    ***REMOVED*** DeepWalk / GV-NLE
+    # DeepWalk / GV-NLE
     deepwalk_k: int = 50
     deepwalk_embedding_dim: int = 100
     deepwalk_walk_length: int = 80
@@ -51,27 +51,27 @@ class ModelHyperparams:
     deepwalk_gpu_device: str = "cuda:0"
     deepwalk_buffer_deg: float = 0.45
 
-    ***REMOVED*** GPU scheduling — shared by Step 4 (USLP) and Step 5 (GV-NLE).
-    ***REMOVED*** Comma-separated device + concurrency lists, parsed by the step modules.
+    # GPU scheduling — shared by Step 4 (USLP) and Step 5 (GV-NLE).
+    # Comma-separated device + concurrency lists, parsed by the step modules.
     gv_nle_gpu_devices: str = "cuda:0,cuda:1"
     gv_nle_gpu_concurrency: str = "1,1"
     gv_nle_small_pbf_mb: float = 0.3
 
-    ***REMOVED*** Step 1 parallel embedding upsert (embedding_service.py)
+    # Step 1 parallel embedding upsert (embedding_service.py)
     parallel_upsert_workers: int = 1
     parallel_upsert_queue_depth: int = 2
     parallel_upsert_min_pbf_mb: int = 0
     parallel_upsert_chunk_size: int = 20000
 
-    ***REMOVED*** Region enrichment + preprocess-embeddings worker counts
+    # Region enrichment + preprocess-embeddings worker counts
     enrichment_workers: int = 2
     embedding_splits_workers: int = 1
 
-    ***REMOVED*** Entropy gate
+    # Entropy gate
     min_entropy: float = 1.5
     min_entropy_delta: float = 0.2
 
-    ***REMOVED*** FastText
+    # FastText
     fasttext_model_path: Optional[str] = None
 
     @classmethod

@@ -47,7 +47,7 @@ class TargetGeometry:
     config: SplitTargetConfig
     poly_path: Path
     geometry: MultiPolygon
-    prepared: object  ***REMOVED*** shapely prepared geometry
+    prepared: object  # shapely prepared geometry
 
 
 class AssignmentIndex:
@@ -98,7 +98,7 @@ class PigzWriter:
     
     def __enter__(self):
         if self._use_pigz:
-            ***REMOVED*** pigz: parallel compression
+            # pigz: parallel compression
             self._stdout_file = open(self.path, "wb")
             self._proc = subprocess.Popen(
                 ["pigz", "-p", str(self.num_threads), "-c"],
@@ -106,13 +106,13 @@ class PigzWriter:
                 stdout=self._stdout_file,
             )
             self._stdin = self._proc.stdin
-            ***REMOVED*** Wrap binary stdin for csv.writer (needs text mode)
+            # Wrap binary stdin for csv.writer (needs text mode)
             self._text_wrapper = io.TextIOWrapper(
                 self._stdin, encoding="utf-8", write_through=True, newline=""
             )
             self._writer = csv.writer(self._text_wrapper, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
         else:
-            ***REMOVED*** Fallback: single-threaded gzip
+            # Fallback: single-threaded gzip
             self._file = gzip.open(str(self.path), "wt")
             self._writer = csv.writer(self._file, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
         return self
@@ -121,7 +121,7 @@ class PigzWriter:
         if self._use_pigz:
             if self._text_wrapper:
                 self._text_wrapper.flush()
-                self._text_wrapper.detach()  ***REMOVED*** Don't close underlying pipe
+                self._text_wrapper.detach()  # Don't close underlying pipe
             if self._stdin:
                 self._stdin.close()
             if self._proc:
@@ -239,16 +239,16 @@ class ShapelySpatialSplitter:
                     continue
                 flush_polygon()
                 continue
-            ***REMOVED*** Ring header: a line that is just an integer (outer ring) or "!integer" (hole)
-            ***REMOVED*** In the OSM .poly format, each numbered section starts a new ring.
+            # Ring header: a line that is just an integer (outer ring) or "!integer" (hole)
+            # In the OSM .poly format, each numbered section starts a new ring.
             stripped = line.lstrip("!")
             if stripped.isdigit() and len(line.split()) == 1:
                 is_hole = line.startswith("!")
-                ***REMOVED*** Flush any in-progress ring first
+                # Flush any in-progress ring first
                 if current_ring:
                     flush_ring()
-                ***REMOVED*** For a new outer ring (!is_hole), flush the current polygon
-                ***REMOVED*** so this ring starts a fresh polygon
+                # For a new outer ring (!is_hole), flush the current polygon
+                # so this ring starts a fresh polygon
                 if not is_hole and current_shell is not None:
                     flush_polygon()
                 continue
@@ -295,7 +295,7 @@ class ShapelySpatialSplitter:
             def __init__(self, bbox):
                 super().__init__()
                 self.bbox = bbox
-                ***REMOVED*** Collect into lists, convert to numpy at the end
+                # Collect into lists, convert to numpy at the end
                 self.ids = []
                 self.lons = []
                 self.lats = []
@@ -318,7 +318,7 @@ class ShapelySpatialSplitter:
         lons = np.array(handler.lons, dtype=np.float64)
         lats = np.array(handler.lats, dtype=np.float64)
 
-        ***REMOVED*** Free Python lists early
+        # Free Python lists early
         del handler.ids, handler.lons, handler.lats
 
         self._print(f"    Extracted {len(osm_ids):,} nodes in bbox")
@@ -341,12 +341,12 @@ class ShapelySpatialSplitter:
         if num_targets == 0 or len(osm_ids) == 0:
             return {}
 
-        ***REMOVED*** Build STRtree from target geometries
+        # Build STRtree from target geometries
         geoms = [tg.geometry for tg in target_geoms]
         tree = shapely.STRtree(geoms)
 
-        ***REMOVED*** Pre-compute per-target bbox bounds for numpy pre-filter
-        bounds = np.array([tg.geometry.bounds for tg in target_geoms])  ***REMOVED*** (n_targets, 4)
+        # Pre-compute per-target bbox bounds for numpy pre-filter
+        bounds = np.array([tg.geometry.bounds for tg in target_geoms])  # (n_targets, 4)
         union_minx = bounds[:, 0].min()
         union_miny = bounds[:, 1].min()
         union_maxx = bounds[:, 2].max()
@@ -354,14 +354,14 @@ class ShapelySpatialSplitter:
 
         node_assign: Dict[int, int] = {}
 
-        ***REMOVED*** Process in chunks to limit memory for point geometry arrays
+        # Process in chunks to limit memory for point geometry arrays
         chunk_size = 2_000_000
         for start in range(0, len(osm_ids), chunk_size):
             end = min(start + chunk_size, len(osm_ids))
             chunk_lons = lons[start:end]
             chunk_lats = lats[start:end]
 
-            ***REMOVED*** Fast numpy union-bbox pre-filter (eliminates ~99% of nodes)
+            # Fast numpy union-bbox pre-filter (eliminates ~99% of nodes)
             in_union = (
                 (chunk_lons >= union_minx) & (chunk_lons <= union_maxx) &
                 (chunk_lats >= union_miny) & (chunk_lats <= union_maxy)
@@ -370,7 +370,7 @@ class ShapelySpatialSplitter:
             if len(candidate_local) == 0:
                 continue
 
-            ***REMOVED*** Per-target bbox filter for finer pre-filtering
+            # Per-target bbox filter for finer pre-filtering
             in_any_target = np.zeros(len(candidate_local), dtype=bool)
             for ti in range(num_targets):
                 t_minx, t_miny, t_maxx, t_maxy = bounds[ti]
@@ -386,28 +386,28 @@ class ShapelySpatialSplitter:
             if len(candidate_local) == 0:
                 continue
 
-            ***REMOVED*** Create shapely points only for candidates (vectorized)
+            # Create shapely points only for candidates (vectorized)
             pts = shapely.points(chunk_lons[candidate_local], chunk_lats[candidate_local])
 
-            ***REMOVED*** STRtree query: predicate='within' checks point.within(polygon)
-            ***REMOVED*** (shapely 2.x applies predicate as input_geom.predicate(tree_geom))
-            ***REMOVED*** Returns (2, N) array: result[0] = point indices, result[1] = geom indices
+            # STRtree query: predicate='within' checks point.within(polygon)
+            # (shapely 2.x applies predicate as input_geom.predicate(tree_geom))
+            # Returns (2, N) array: result[0] = point indices, result[1] = geom indices
             result = tree.query(pts, predicate='within')
 
             if result.shape[1] == 0:
                 continue
 
-            ***REMOVED*** Build masks vectorized
-            pt_indices = candidate_local[result[0]]  ***REMOVED*** local index within chunk
+            # Build masks vectorized
+            pt_indices = candidate_local[result[0]]  # local index within chunk
             geom_indices = result[1]
 
-            ***REMOVED*** Accumulate per-target bits
+            # Accumulate per-target bits
             chunk_masks = np.zeros(end - start, dtype=np.uint16)
             for ti in range(num_targets):
                 target_pts = pt_indices[geom_indices == ti]
                 chunk_masks[target_pts] |= np.uint16(1 << ti)
 
-            ***REMOVED*** Store non-zero assignments
+            # Store non-zero assignments
             nonzero = np.where(chunk_masks != 0)[0]
             for local_idx in nonzero:
                 node_assign[int(osm_ids[start + local_idx])] = int(chunk_masks[local_idx])
@@ -459,7 +459,7 @@ class ShapelySpatialSplitter:
                 self.rel_count += 1
                 counts = [0] * self.num_targets
                 for member in r.members:
-                    ***REMOVED*** pyosmium returns single-letter type codes: 'n', 'w', 'r'
+                    # pyosmium returns single-letter type codes: 'n', 'w', 'r'
                     m_type = member.type
                     m_ref = member.ref
                     if m_type == 'n':
@@ -481,7 +481,7 @@ class ShapelySpatialSplitter:
 
         self._print("  Extracting ways + relations with pyosmium (single pass)...")
         handler = WayRelationHandler(node_assign, num_targets)
-        ***REMOVED*** locations=False: we only need node/way refs, not coordinates — saves memory
+        # locations=False: we only need node/way refs, not coordinates — saves memory
         handler.apply_file(str(pbf_path), locations=False)
 
         self._print(f"    Processing {handler.way_count:,} ways")
@@ -504,24 +504,24 @@ class ShapelySpatialSplitter:
         if not target_geoms:
             return AssignmentIndex({}), AssignmentIndex({}), AssignmentIndex({})
 
-        ***REMOVED*** Union bbox for node pre-filtering
+        # Union bbox for node pre-filtering
         union_geom = unary_union([tg.geometry for tg in target_geoms])
         minx, miny, maxx, maxy = union_geom.bounds
 
-        ***REMOVED*** Extract nodes from PBF (pyosmium bbox filter)
+        # Extract nodes from PBF (pyosmium bbox filter)
         osm_ids, lons, lats = self._extract_nodes_from_pbf(
             pbf_path, (minx, miny, maxx, maxy), target_geoms,
         )
 
-        ***REMOVED*** Assign nodes to targets (vectorized STRtree)
+        # Assign nodes to targets (vectorized STRtree)
         self._print("  Assigning nodes to targets...")
         node_assign = self._assign_nodes_to_targets(osm_ids, lons, lats, target_geoms)
         self._print(f"  Assigned {len(node_assign):,} nodes")
 
-        ***REMOVED*** Free node coordinate arrays — no longer needed
+        # Free node coordinate arrays — no longer needed
         del osm_ids, lons, lats
 
-        ***REMOVED*** Assign ways + relations in a single PBF pass
+        # Assign ways + relations in a single PBF pass
         way_assign, relation_assign = self._assign_ways_and_relations(
             pbf_path, node_assign, target_geoms,
         )
@@ -554,7 +554,7 @@ class ShapelySpatialSplitter:
         if not source_tsv.exists():
             raise FileNotFoundError(f"Source TSV not found: {source_tsv}")
         
-        ***REMOVED*** Skip if all outputs already exist (unless force)
+        # Skip if all outputs already exist (unless force)
         if not force:
             all_exist = True
             for tg in target_geoms:
@@ -569,7 +569,7 @@ class ShapelySpatialSplitter:
                 )
                 return
         
-        ***REMOVED*** Prepare output writers to .tmp paths (using pigz for parallel compression)
+        # Prepare output writers to .tmp paths (using pigz for parallel compression)
         writers: Dict[str, Tuple[PigzWriter, csv.writer, Path, Path]] = {}
         pigz_writers: List[PigzWriter] = []
         for tg in target_geoms:
@@ -584,7 +584,7 @@ class ShapelySpatialSplitter:
             writers[tg.config.slug] = (pigz_writer, writer, tmp_path, final_path)
             pigz_writers.append(pigz_writer)
             
-            ***REMOVED*** Copy header.tsv when present
+            # Copy header.tsv when present
             src_header = source_tsv.parent / "header.tsv"
             if src_header.exists():
                 tgt_header = out_dir / "header.tsv"
@@ -598,15 +598,15 @@ class ShapelySpatialSplitter:
         total_rows = 0
         matched_per_target: Dict[str, int] = {tg.config.slug: 0 for tg in target_geoms}
 
-        ***REMOVED*** Batch process TSV rows — larger batch reduces per-batch overhead
+        # Batch process TSV rows — larger batch reduces per-batch overhead
         batch_rows = []
         batch_size = 50000
 
-        ***REMOVED*** gzip.open in text mode already has internal buffering
+        # gzip.open in text mode already has internal buffering
         with gzip.open(str(source_tsv), "rt") as f:
             reader = csv.reader(f, delimiter="\t")
             for row in reader:
-                if not row or row[0].startswith("***REMOVED***") or len(row) < 2:
+                if not row or row[0].startswith("#") or len(row) < 2:
                     continue
 
                 batch_rows.append(row)
@@ -616,11 +616,11 @@ class ShapelySpatialSplitter:
                     self._process_batch(batch_rows, writers, target_geoms, node_index, way_index, relation_index, matched_per_target)
                     batch_rows = []
 
-            ***REMOVED*** Process remaining
+            # Process remaining
             if batch_rows:
                 self._process_batch(batch_rows, writers, target_geoms, node_index, way_index, relation_index, matched_per_target)
         
-        ***REMOVED*** Close and atomically rename
+        # Close and atomically rename
         for slug, (pigz_writer, _writer, tmp_path, final_path) in writers.items():
             pigz_writer.close()
             os.replace(tmp_path, final_path)
@@ -644,7 +644,7 @@ class ShapelySpatialSplitter:
     ) -> None:
         """Process a batch of TSV rows using dict-based batch lookup (O(1) per ID)."""
 
-        ***REMOVED*** Extract IDs by type
+        # Extract IDs by type
         node_ids = []
         way_ids = []
         relation_ids = []
@@ -669,12 +669,12 @@ class ShapelySpatialSplitter:
             else:
                 row_types.append(("", -1))
 
-        ***REMOVED*** Batch lookups — dict.get per ID, O(1) each
+        # Batch lookups — dict.get per ID, O(1) each
         node_masks = node_index.batch_lookup(node_ids) if node_ids else []
         way_masks = way_index.batch_lookup(way_ids) if way_ids else []
         rel_masks = relation_index.batch_lookup(relation_ids) if relation_ids else []
         
-        ***REMOVED*** Process results
+        # Process results
         for i, (row, (osm_type, idx)) in enumerate(zip(batch_rows, row_types)):
             if idx < 0:
                 continue
@@ -745,7 +745,7 @@ class ShapelySpatialSplitter:
             self._print("  No targets matched country filter; nothing to do.")
             return
         
-        ***REMOVED*** Get PBF path
+        # Get PBF path
         pbf_path = self.continents_root / f"{continent_pbf}.pbf"
         if not pbf_path.exists():
             raise FileNotFoundError(f"Continent PBF not found: {pbf_path}")
@@ -754,13 +754,13 @@ class ShapelySpatialSplitter:
         self._print(f"  Source PBF: {pbf_path}")
         self._print(f"  Targets: {[tg.config.slug for tg in target_geoms]}")
         
-        ***REMOVED*** Build assignments using pyosmium + shapely STRtree
+        # Build assignments using pyosmium + shapely STRtree
         node_index, way_index, relation_index = self._build_assignments_strtree(
             pbf_path=pbf_path,
             target_geoms=target_geoms,
         )
         
-        ***REMOVED*** Dispatch TSV
+        # Dispatch TSV
         self._dispatch_tsv(
             source_tsv=source_tsv,
             continent=continent,

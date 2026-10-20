@@ -1,4 +1,4 @@
-***REMOVED*** Research to Runtime
+# Research to Runtime
 
 The paper-to-pipeline record: how each academic paper's intent was
 translated into running code — what was preserved, what was adapted to

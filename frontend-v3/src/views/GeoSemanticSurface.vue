@@ -8,7 +8,7 @@
     back-to="/"
     leaf-base="/tools/geo-semantic"
   >
-    <template ***REMOVED***default="{ country, snapshotDate, setSearchResults, setQueryGraph, setTemplateVisualization }">
+    <template #default="{ country, snapshotDate, setSearchResults, setQueryGraph, setTemplateVisualization }">
       <SemanticSearchPanel
         v-if="country"
         :country-name="country.name"

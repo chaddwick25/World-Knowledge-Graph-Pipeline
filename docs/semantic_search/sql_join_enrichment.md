@@ -1,4 +1,4 @@
-***REMOVED*** SQL Join Enrichment: Ontology → Temp Table → UPDATE...FROM
+# SQL Join Enrichment: Ontology → Temp Table → UPDATE...FROM
 
 > **Focus:** how `sql_enrich_region()` uses a Postgres temp table +
 > `jsonb_each_text` + `UPDATE...FROM` join with `ROW_NUMBER()` to enrich
@@ -12,7 +12,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. The Enrichment Problem
+## 1. The Enrichment Problem
 
 After Step 1 upserts OSM entities into `OsmEntity` (with `tags` JSONB but no
 `wkg_class`), the pipeline needs to assign each entity a WorldKG ontology
@@ -37,9 +37,9 @@ Desired result:
 
 ---
 
-***REMOVED******REMOVED*** 2. The Two Paths
+## 2. The Two Paths
 
-***REMOVED******REMOVED******REMOVED*** 2.1 Legacy Python Path (slow)
+### 2.1 Legacy Python Path (slow)
 
 `batch_enrich_region()` parallelizes tag prediction across
 `ENRICHMENT_WORKERS` (code default 2) threads via `ThreadPoolExecutor`. For
@@ -51,7 +51,7 @@ pair, picks the deepest match, and `bulk_update`s the entity.
 - Batch size 5000 (5x fewer `bulk_update` DB calls than the original 1000).
 - For Ireland (2.47M entities): ~60 minutes.
 
-***REMOVED******REMOVED******REMOVED*** 2.2 SQL Join Path (fast, current default)
+### 2.2 SQL Join Path (fast, current default)
 
 `sql_enrich_region()` loads the ontology into a Postgres temp table, then
 runs a single `UPDATE...FROM` join. For Ireland (2.47M entities): **2 min
@@ -66,9 +66,9 @@ ontology index is not built.
 
 ---
 
-***REMOVED******REMOVED*** 3. The SQL Join, Step by Step
+## 3. The SQL Join, Step by Step
 
-***REMOVED******REMOVED******REMOVED*** 3.1 Load Ontology into Temp Table
+### 3.1 Load Ontology into Temp Table
 
 ```python
 self._load_ontology_to_temp_table(cursor)
@@ -86,7 +86,7 @@ Creates a temp table `tmp_wkg_ontology` with columns:
 The temp table is session-scoped, dropped automatically when the connection
 closes. Loaded once per `sql_enrich_region()` call.
 
-***REMOVED******REMOVED******REMOVED*** 3.2 The UPDATE...FROM Join
+### 3.2 The UPDATE...FROM Join
 
 ```sql
 WITH matched AS (
@@ -122,7 +122,7 @@ FROM matched m
 WHERE e.id = m.entity_id AND m.rn = 1
 ```
 
-***REMOVED******REMOVED******REMOVED*** 3.3 How It Works
+### 3.3 How It Works
 
 1. **`jsonb_each_text(e.tags::jsonb)`** expands each entity's tags JSONB
    into key-value rows. One entity with 5 tags → 5 rows.
@@ -135,7 +135,7 @@ WHERE e.id = m.entity_id AND m.rn = 1
 4. **`UPDATE...FROM matched m WHERE e.id = m.entity_id AND m.rn = 1`**
    updates each entity with only its deepest match.
 
-***REMOVED******REMOVED******REMOVED*** 3.4 Why This Is Fast
+### 3.4 Why This Is Fast
 
 - **Single SQL round-trip**, no Python loop, no per-entity Redis queries,
   no `bulk_update` batches.
@@ -148,7 +148,7 @@ WHERE e.id = m.entity_id AND m.rn = 1
 
 ---
 
-***REMOVED******REMOVED*** 4. Cross-Step Data Flow
+## 4. Cross-Step Data Flow
 
 The SQL join enrichment is part of a cross-step flow that connects the
 entry script, Step 1, and Step 2:
@@ -177,7 +177,7 @@ for the full cross-step narrative.
 
 ---
 
-***REMOVED******REMOVED*** 5. Failure-Mode Separation
+## 5. Failure-Mode Separation
 
 | Layer | Failure | Effect |
 |---|---|---|
@@ -192,7 +192,7 @@ and Step 3 (IGEA) handle `wkg_class = NULL` gracefully.
 
 ---
 
-***REMOVED******REMOVED*** 6. Invariants
+## 6. Invariants
 
 - The SQL path is the default; `batch_enrich_region()` is the fallback when
   the ontology index is not built.

@@ -45,18 +45,18 @@ logger = logging.getLogger(__name__)
 
 _SINKS = ("none", "console", "file", "langfuse", "memory")
 
-***REMOVED*** Bounded queue + daemon flush thread.
+# Bounded queue + daemon flush thread.
 _QUEUE = None
 _QUEUE_LOCK = threading.Lock()
 _FLUSH_THREAD = None
 
-***REMOVED*** memory sink (tests) + config cache.
+# memory sink (tests) + config cache.
 _MEMORY = []
 _MEMORY_LOCK = threading.Lock()
 _CFG = None
 _CFG_LOCK = threading.Lock()
 
-***REMOVED*** Sink error logging throttle (seconds).
+# Sink error logging throttle (seconds).
 _SINK_LOG_WINDOW = 30.0
 _last_sink_log = {"at": 0.0}
 
@@ -82,7 +82,7 @@ class _RunCtx:
 class TraceService:
     """Stateless trace adapter. All methods are safe to call anywhere."""
 
-    ***REMOVED*** ── Config ────────────────────────────────────────────────────────────
+    # ── Config ────────────────────────────────────────────────────────────
 
     @classmethod
     def _load_cfg(cls) -> dict:
@@ -151,7 +151,7 @@ class TraceService:
     def deterministic_stages_enabled(cls) -> bool:
         return cls._cfg()["deterministic_stages"]
 
-    ***REMOVED*** ── Queue / flush thread ──────────────────────────────────────────────
+    # ── Queue / flush thread ──────────────────────────────────────────────
 
     @classmethod
     def _queue(cls):
@@ -165,7 +165,7 @@ class TraceService:
     @classmethod
     def _ensure_thread(cls) -> None:
         global _FLUSH_THREAD
-        ***REMOVED*** Fast path: the flush thread already exists and is alive — no lock.
+        # Fast path: the flush thread already exists and is alive — no lock.
         if _FLUSH_THREAD is not None and _FLUSH_THREAD.is_alive():
             return
         with _QUEUE_LOCK:
@@ -206,7 +206,7 @@ class TraceService:
             batch = cls._collect_batch(q, first)
             try:
                 cls._send(batch)
-            except Exception:  ***REMOVED*** noqa: BLE001 — observability must never raise
+            except Exception:  # noqa: BLE001 — observability must never raise
                 cls._log_sink_error()
 
     @classmethod
@@ -224,10 +224,10 @@ class TraceService:
         if batch:
             try:
                 cls._send(batch)
-            except Exception:  ***REMOVED*** noqa: BLE001 — observability must never raise
+            except Exception:  # noqa: BLE001 — observability must never raise
                 cls._log_sink_error()
 
-    ***REMOVED*** ── Emit ──────────────────────────────────────────────────────────────
+    # ── Emit ──────────────────────────────────────────────────────────────
 
     @classmethod
     def _emit(cls, kind: str, fields: dict) -> None:
@@ -246,7 +246,7 @@ class TraceService:
             try:
                 q.put_nowait(event)
             except queue.Full:
-                ***REMOVED*** Drop-oldest: make room for the newest event.
+                # Drop-oldest: make room for the newest event.
                 try:
                     q.get_nowait()
                 except queue.Empty:
@@ -254,9 +254,9 @@ class TraceService:
                 try:
                     q.put_nowait(event)
                 except queue.Full:
-                    pass  ***REMOVED*** still full — drop the new event
+                    pass  # still full — drop the new event
             cls._ensure_thread()
-        except Exception:  ***REMOVED*** noqa: BLE001 — observability must never raise
+        except Exception:  # noqa: BLE001 — observability must never raise
             pass
 
     @staticmethod
@@ -277,7 +277,7 @@ class TraceService:
             logger.warning("TraceService dropped invalid event: %s", kind)
         return ok
 
-    ***REMOVED*** ── Public API ────────────────────────────────────────────────────────
+    # ── Public API ────────────────────────────────────────────────────────
 
     @classmethod
     @contextmanager
@@ -331,7 +331,7 @@ class TraceService:
             }
             _local.stack.append(token["span_id"])
             return token
-        except Exception:  ***REMOVED*** noqa: BLE001
+        except Exception:  # noqa: BLE001
             return None
 
     @classmethod
@@ -357,7 +357,7 @@ class TraceService:
                 "status": "error" if error else "ok",
                 "attributes": attrs,
             })
-        except Exception:  ***REMOVED*** noqa: BLE001 — observability must never raise
+        except Exception:  # noqa: BLE001 — observability must never raise
             pass
 
     @classmethod
@@ -392,7 +392,7 @@ class TraceService:
                 "status": "ok",
                 "attributes": dict(attributes or {}),
             })
-        except Exception:  ***REMOVED*** noqa: BLE001 — observability must never raise
+        except Exception:  # noqa: BLE001 — observability must never raise
             pass
 
     @classmethod
@@ -416,10 +416,10 @@ class TraceService:
                     "tool": payload.get("tool"),
                     "args": payload.get("args"),
                 })
-        except Exception:  ***REMOVED*** noqa: BLE001 — observability must never raise
+        except Exception:  # noqa: BLE001 — observability must never raise
             pass
 
-    ***REMOVED*** ── Sinks ─────────────────────────────────────────────────────────────
+    # ── Sinks ─────────────────────────────────────────────────────────────
 
     @classmethod
     def _send(cls, batch: list) -> None:
@@ -481,7 +481,7 @@ class TraceService:
                         },
                     },
                 })
-            else:  ***REMOVED*** span
+            else:  # span
                 start = cls._iso(event["start_ms"])
                 end = cls._iso(event["start_ms"] + event["duration_ms"])
                 body = {

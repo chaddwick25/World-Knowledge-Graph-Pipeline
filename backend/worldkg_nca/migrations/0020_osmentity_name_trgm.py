@@ -10,14 +10,14 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        ***REMOVED*** Expression GIN trigram index on tags->>'name'. EntityGeocoder's
-        ***REMOVED*** contains tier (tags__name__icontains) and the executor's anchor
-        ***REMOVED*** search filter on this exact expression; unindexed, they
-        ***REMOVED*** sequential-scan the country leaf (11M rows for MX -> 40-80s per
-        ***REMOVED*** anchor, the 2026-09-14 desktop query regression). gin_trgm_ops
-        ***REMOVED*** serves ILIKE '%..%' patterns directly, so the contains and
-        ***REMOVED*** abbreviation tiers become index-assisted for every country,
-        ***REMOVED*** independent of name_romanized coverage.
+        # Expression GIN trigram index on tags->>'name'. EntityGeocoder's
+        # contains tier (tags__name__icontains) and the executor's anchor
+        # search filter on this exact expression; unindexed, they
+        # sequential-scan the country leaf (11M rows for MX -> 40-80s per
+        # anchor, the 2026-09-14 desktop query regression). gin_trgm_ops
+        # serves ILIKE '%..%' patterns directly, so the contains and
+        # abbreviation tiers become index-assisted for every country,
+        # independent of name_romanized coverage.
         migrations.RunSQL(
             sql=(
                 "CREATE INDEX IF NOT EXISTS idx_osmentity_name_trgm "

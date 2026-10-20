@@ -36,8 +36,8 @@ def parse_poly_file(poly_path):
     with open(poly_path, 'r') as f:
         lines = f.readlines()
 
-    rings = []          ***REMOVED*** list of coordinate lists, one per ring
-    current = []        ***REMOVED*** coordinates for the ring being parsed
+    rings = []          # list of coordinate lists, one per ring
+    current = []        # coordinates for the ring being parsed
     in_ring = False
 
     for line in lines:
@@ -46,8 +46,8 @@ def parse_poly_file(poly_path):
         if not line:
             continue
 
-        ***REMOVED*** A bare integer (optionally preceded by '!' for excluded rings) marks
-        ***REMOVED*** the start of a new ring section.
+        # A bare integer (optionally preceded by '!' for excluded rings) marks
+        # the start of a new ring section.
         stripped = line.lstrip('!')
         if stripped.isdigit():
             if in_ring and current:
@@ -74,25 +74,25 @@ def parse_poly_file(poly_path):
             except (ValueError, IndexError):
                 continue
 
-    ***REMOVED*** Flush any remaining ring
+    # Flush any remaining ring
     if in_ring and current:
         rings.append(current)
 
     if not rings:
         raise ValueError(f"No polygon rings found in {poly_path}")
 
-    ***REMOVED*** Build a Polygon for every ring that has at least 3 valid points.
+    # Build a Polygon for every ring that has at least 3 valid points.
     polygons = []
     for coords in rings:
         if len(coords) < 3:
             continue
-        ***REMOVED*** Ensure the ring is closed
+        # Ensure the ring is closed
         if coords[0] != coords[-1]:
             coords.append(coords[0])
         try:
             polygons.append(Polygon(coords, srid=4326))
         except Exception:
-            ***REMOVED*** Skip rings that produce invalid geometry (e.g., self-intersecting)
+            # Skip rings that produce invalid geometry (e.g., self-intersecting)
             continue
 
     if not polygons:
@@ -129,30 +129,30 @@ def extract_metadata_from_path(poly_path):
           geouid='europe-italy'
     """
     path = Path(poly_path)
-    filename = path.stem  ***REMOVED*** Remove .poly extension
+    filename = path.stem  # Remove .poly extension
     
-    ***REMOVED*** Get parent directories
+    # Get parent directories
     parts = path.parts
     
-    ***REMOVED*** Find country and region from path structure
-    ***REMOVED*** Expected: .../north-america/canada/ontario/golden_horseshoe.poly
-    ***REMOVED*** or: .../europe/italy.poly
+    # Find country and region from path structure
+    # Expected: .../north-america/canada/ontario/golden_horseshoe.poly
+    # or: .../europe/italy.poly
     
     country = None
     region = None
     
-    ***REMOVED*** Look for common continent/country patterns
+    # Look for common continent/country patterns
     for i, part in enumerate(parts):
         if part in ['north-america', 'south-america', 'europe', 'asia', 'africa', 'oceania']:
-            ***REMOVED*** Next part is country
+            # Next part is country
             if i + 1 < len(parts):
                 country = parts[i + 1]
-            ***REMOVED*** Part after that might be region (if not the filename)
+            # Part after that might be region (if not the filename)
             if i + 2 < len(parts) and parts[i + 2] != filename + '.poly':
                 region = parts[i + 2]
             break
     
-    ***REMOVED*** Fallback: use last two directories before filename
+    # Fallback: use last two directories before filename
     if not country:
         if len(parts) >= 3:
             country = parts[-3]
@@ -160,11 +160,11 @@ def extract_metadata_from_path(poly_path):
         elif len(parts) >= 2:
             country = parts[-2]
     
-    ***REMOVED*** Convert filename to human-readable name
-    ***REMOVED*** golden_horseshoe → Golden Horseshoe
+    # Convert filename to human-readable name
+    # golden_horseshoe → Golden Horseshoe
     name = filename.replace('_', ' ').replace('-', ' ').title()
     
-    ***REMOVED*** Generate geouid in Geofabrik format
+    # Generate geouid in Geofabrik format
     if region:
         geouid = f"{country}-{region}-{filename}"
     else:

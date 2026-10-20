@@ -23,22 +23,22 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Role precedence — numeric, not lexicographic ([SPATIAL_AGENT:§B.3] Eq. 7)
+# Role precedence — numeric, not lexicographic ([SPATIAL_AGENT:§B.3] Eq. 7)
 ROLE_ORDER = {
     "EXTENT": 0, "TEXTENT": 0,
     "SUB_COND": 1, "COND": 2,
     "SUPPORT": 3, "MEASURE": 4,
 }
 
-***REMOVED*** Core concept types (must match train_mapqa_parser.CONCEPT_TYPES)
+# Core concept types (must match train_mapqa_parser.CONCEPT_TYPES)
 CONCEPT_TYPES = [
     "LOCATION", "OBJECT", "FIELD", "EVENT",
     "NETWORK", "AMOUNT", "PROPORTION",
 ]
 
-***REMOVED*** WorldKG depth-1 key classes that denote structure/location rather than a
-***REMOVED*** searchable point of interest. A span that geocodes to one of these is an
-***REMOVED*** anchor (LOCATION slot), not a search target (OBJECT slot).
+# WorldKG depth-1 key classes that denote structure/location rather than a
+# searchable point of interest. A span that geocodes to one of these is an
+# anchor (LOCATION slot), not a search target (OBJECT slot).
 _NON_POI_CLASS_SUFFIXES = frozenset({
     "HIGHWAY", "PLACE", "WATERWAY", "NATURAL", "BOUNDARY", "ROUTE",
     "RAILWAY", "LANDUSE",
@@ -63,15 +63,15 @@ def is_poi_wkg_class(wkg_class: str) -> bool:
     return key not in _NON_POI_CLASS_SUFFIXES
 
 
-***REMOVED*** Amenity signal words for the OBJECT/FIELD heuristics. Also the
-***REMOVED*** canonical-vocabulary gate for plural→singular normalization: a candidate
-***REMOVED*** singular is accepted only when it appears here or in the loaded
-***REMOVED*** amenity_vocab artifact, so "amenities"→"amenity" but "gas"→"ga",
-***REMOVED*** "news"→"new", "address"→"addres", "bus"→"bu" are all rejected.
-***REMOVED*** Incident: 2026-09-19 "Which museums are within 2km of Belfast?" extracted
-***REMOVED*** no OBJECT (trained model missed it, this list lacked it) → the executor
-***REMOVED*** skipped the search and the summary reported "no museums found". The list
-***REMOVED*** carries the documented sample_questions.md amenity vocabulary.
+# Amenity signal words for the OBJECT/FIELD heuristics. Also the
+# canonical-vocabulary gate for plural→singular normalization: a candidate
+# singular is accepted only when it appears here or in the loaded
+# amenity_vocab artifact, so "amenities"→"amenity" but "gas"→"ga",
+# "news"→"new", "address"→"addres", "bus"→"bu" are all rejected.
+# Incident: 2026-09-19 "Which museums are within 2km of Belfast?" extracted
+# no OBJECT (trained model missed it, this list lacked it) → the executor
+# skipped the search and the summary reported "no museums found". The list
+# carries the documented sample_questions.md amenity vocabulary.
 _AMENITY_SIGNAL_WORDS = frozenset({
     "bar", "restaurant", "cafe", "hotel", "school", "hospital",
     "shop", "amenity", "pub", "bank", "pharmacy",
@@ -80,30 +80,30 @@ _AMENITY_SIGNAL_WORDS = frozenset({
     "bakery", "library", "cinema", "clinic", "church",
     "university", "gallery", "theatre", "theater", "stadium",
     "swimming", "playground", "brewery", "distillery",
-    ***REMOVED*** Adventure/tourism categories (2026-09-30): "Which peaks are within
-    ***REMOVED*** 40km of Kingston?" extracted no OBJECT because this list lacked
-    ***REMOVED*** them → the executor skipped the search and "hikes" fell through to
-    ***REMOVED*** amenities. Mirrors the 2026-09-19 museums incident; the executor's
-    ***REMOVED*** _resolve_tag_target maps the tokens to their real OSM keys
-    ***REMOVED*** (natural=peak, waterway=waterfall, ...).
+    # Adventure/tourism categories (2026-09-30): "Which peaks are within
+    # 40km of Kingston?" extracted no OBJECT because this list lacked
+    # them → the executor skipped the search and "hikes" fell through to
+    # amenities. Mirrors the 2026-09-19 museums incident; the executor's
+    # _resolve_tag_target maps the tokens to their real OSM keys
+    # (natural=peak, waterway=waterfall, ...).
     "peak", "waterfall", "cave", "viewpoint", "attraction", "reef",
     "cliff", "river", "marina", "lighthouse", "spring", "lagoon",
     "nature reserve", "dive centre", "campsite", "camp site",
     "hostel", "motel", "resort", "guest house", "guesthouse",
     "ruins", "harbour", "harbor",
-    ***REMOVED*** Commercial / services / transit / infrastructure (2026-10-01) — the
-    ***REMOVED*** place-report recipe's slots ("Which fuel stations are within 5km of
-    ***REMOVED*** Belmopan?", "Which bus stops are near the market?"). Mirrors the
-    ***REMOVED*** CATEGORY_TAG_TARGETS entries so _resolve_tag_target round-trips
-    ***REMOVED*** each token to its real OSM key (amenity=fuel, highway=bus_stop, ...).
+    # Commercial / services / transit / infrastructure (2026-10-01) — the
+    # place-report recipe's slots ("Which fuel stations are within 5km of
+    # Belmopan?", "Which bus stops are near the market?"). Mirrors the
+    # CATEGORY_TAG_TARGETS entries so _resolve_tag_target round-trips
+    # each token to its real OSM key (amenity=fuel, highway=bus_stop, ...).
     "fuel", "fuel station", "gas station", "charging station",
     "parking", "atm", "post office", "fast food", "marketplace",
     "bus stop", "bus station", "police", "library", "cinema",
     "kindergarten",
-    ***REMOVED*** Commercial generalization (2026-10-01): markets, bakeries, kiosks,
-    ***REMOVED*** food courts/vendors, and the taco/mexican cuisine family — the
-    ***REMOVED*** OBJECT span match keeps these so "Which taco vendors..." does not
-    ***REMOVED*** collapse to a name search.
+    # Commercial generalization (2026-10-01): markets, bakeries, kiosks,
+    # food courts/vendors, and the taco/mexican cuisine family — the
+    # OBJECT span match keeps these so "Which taco vendors..." does not
+    # collapse to a name search.
     "market", "bakery", "kiosk", "food court", "food truck",
     "vending machine", "convenience store", "mall", "taco", "tacos",
     "taqueria", "mexican",
@@ -118,7 +118,7 @@ class QueryParserService:
 
     _instance = None
 
-    ***REMOVED*** Words that should never be treated as named entities in the regex fallback.
+    # Words that should never be treated as named entities in the regex fallback.
     _QUESTION_WORDS = frozenset({
         "Which", "What", "Where", "When", "Who", "Why", "How",
         "Is", "Are", "Was", "Were", "Do", "Does", "Did", "Can", "Could",
@@ -126,11 +126,11 @@ class QueryParserService:
         "Has", "Have", "Had",
     })
 
-    ***REMOVED*** Cardinal directions must never be extracted as entity names — they are
-    ***REMOVED*** spatial modifiers in 5b cone-search queries ("What is west of X?").
-    ***REMOVED*** Without this exclusion, the multi-entity supplement steals the cardinal
-    ***REMOVED*** as a second LOCATION, bypassing the 5b cone-search branch and computing
-    ***REMOVED*** a meaningless bearing from a place that happens to be named "West"/"East".
+    # Cardinal directions must never be extracted as entity names — they are
+    # spatial modifiers in 5b cone-search queries ("What is west of X?").
+    # Without this exclusion, the multi-entity supplement steals the cardinal
+    # as a second LOCATION, bypassing the 5b cone-search branch and computing
+    # a meaningless bearing from a place that happens to be named "West"/"East".
     _CARDINAL_DIRECTIONS = frozenset({
         "North", "South", "East", "West",
         "Northeast", "Southeast", "Southwest", "Northwest",
@@ -145,14 +145,14 @@ class QueryParserService:
         self.label_encoder = self._load(art / "label_encoder.pkl")
         self.template_specs = self._load_json(art / "template_specs.json")
         self.amenity_vocab = self._load_json(art / "amenity_vocab.json")
-        ***REMOVED*** Canonical amenity terms (vocab artifact, underscore→space, plus
-        ***REMOVED*** the signal words) — the gate for plural→singular normalization.
+        # Canonical amenity terms (vocab artifact, underscore→space, plus
+        # the signal words) — the gate for plural→singular normalization.
         self._amenity_terms = set(_AMENITY_SIGNAL_WORDS)
         for entry in (self.amenity_vocab or []):
             term = str(entry).lower().replace("_", " ").strip()
             if term:
                 self._amenity_terms.add(term)
-        ***REMOVED*** Concept/role models are optional (trained with --no-concept-models skips them)
+        # Concept/role models are optional (trained with --no-concept-models skips them)
         self.concept_extractor = self._load_optional(art / "concept_extractor.pkl")
         self.role_assigner = self._load_optional(art / "role_assigner.pkl")
         self.role_encoder = self._load_optional(art / "role_encoder.pkl")
@@ -169,7 +169,7 @@ class QueryParserService:
         """Force reload on next get_instance() — useful for tests."""
         cls._instance = None
 
-    ***REMOVED*** ── Public API ──────────────────────────────────────────────────────────
+    # ── Public API ──────────────────────────────────────────────────────────
 
     def parse(self, question: str, country_code: str = None,
               object_oracle: callable = None) -> dict:
@@ -188,60 +188,60 @@ class QueryParserService:
         FILTER-AGGREGATE-MEASURE query. The parser stays no-DB: the oracle
         (e.g. geocode + wkg_class check) is injected by the caller.
         """
-        ***REMOVED*** Stage 0: canonicalize plural amenity nouns ("amenities" → "amenity")
-        ***REMOVED*** so the classifier, concept extractor, and span extraction all see
-        ***REMOVED*** one surface form. Vocab-gated — see _singularize_amenity_plurals.
+        # Stage 0: canonicalize plural amenity nouns ("amenities" → "amenity")
+        # so the classifier, concept extractor, and span extraction all see
+        # one surface form. Vocab-gated — see _singularize_amenity_plurals.
         question = self._singularize_amenity_plurals(question)
 
-        ***REMOVED*** Stage 1: classify template
+        # Stage 1: classify template
         X = self.vectorizer.transform([question])
         label_idx = self.classifier.predict(X)[0]
         template = self.label_encoder.inverse_transform([label_idx])[0]
         confidence = float(max(self.classifier.predict_proba(X)[0]))
 
-        ***REMOVED*** Stage 1b: deterministic override — "within X(km|m) of" is always
-        ***REMOVED*** FILTER-AGGREGATE-MEASURE regardless of what the TF-IDF classifier
-        ***REMOVED*** says. The classifier sometimes misclassifies these as
-        ***REMOVED*** PLACE-ATTRIBUTE-QUERY when the amenity word dominates the signal.
+        # Stage 1b: deterministic override — "within X(km|m) of" is always
+        # FILTER-AGGREGATE-MEASURE regardless of what the TF-IDF classifier
+        # says. The classifier sometimes misclassifies these as
+        # PLACE-ATTRIBUTE-QUERY when the amenity word dominates the signal.
         if re.search(r"\bwithin\s+\d+\s*(km|m)\b", question, re.IGNORECASE):
-            if template != "FILTER-AGGREGATE-MEASURE (***REMOVED***1)":
+            if template != "FILTER-AGGREGATE-MEASURE (#1)":
                 logger.info(
-                    "Template override: %s → FILTER-AGGREGATE-MEASURE (***REMOVED***1) "
+                    "Template override: %s → FILTER-AGGREGATE-MEASURE (#1) "
                     "(matched 'within Xkm' pattern)", template
                 )
-                template = "FILTER-AGGREGATE-MEASURE (***REMOVED***1)"
+                template = "FILTER-AGGREGATE-MEASURE (#1)"
 
-        ***REMOVED*** Stage 2: extract concepts
+        # Stage 2: extract concepts
         concepts = self._extract_concepts(question, template)
 
-        ***REMOVED*** Stage 2b: LLM refinement for low-confidence parses. The trained
-        ***REMOVED*** TF-IDF/NB classifier is confident on template-bearing phrasings but
-        ***REMOVED*** degrades on novel wording; when its confidence is below the
-        ***REMOVED*** threshold, ask the platform LLM (Ollama — see
-        ***REMOVED*** core/services/llm_service.py) to re-classify template + concepts.
-        ***REMOVED*** Any failure, invalid output, or disabled model keeps the heuristic
-        ***REMOVED*** parse — the LLM is an accelerator, never a single point of failure.
+        # Stage 2b: LLM refinement for low-confidence parses. The trained
+        # TF-IDF/NB classifier is confident on template-bearing phrasings but
+        # degrades on novel wording; when its confidence is below the
+        # threshold, ask the platform LLM (Ollama — see
+        # core/services/llm_service.py) to re-classify template + concepts.
+        # Any failure, invalid output, or disabled model keeps the heuristic
+        # parse — the LLM is an accelerator, never a single point of failure.
         if confidence < self._llm_fallback_threshold():
             refined = self._llm_refine(question, template, concepts)
             if refined is not None:
                 template, concepts = refined
-                ***REMOVED*** Re-apply the deterministic radius override invariant — the
-                ***REMOVED*** LLM must not route "within X of" away from
-                ***REMOVED*** FILTER-AGGREGATE-MEASURE (***REMOVED***1).
+                # Re-apply the deterministic radius override invariant — the
+                # LLM must not route "within X of" away from
+                # FILTER-AGGREGATE-MEASURE (#1).
                 if re.search(r"\bwithin\s+\d+\s*(km|m)\b", question, re.IGNORECASE):
-                    template = "FILTER-AGGREGATE-MEASURE (***REMOVED***1)"
+                    template = "FILTER-AGGREGATE-MEASURE (#1)"
 
-        ***REMOVED*** Stage 2c: class-verified OBJECT recovery — no retraining. The ML
-        ***REMOVED*** concept extractor misses open-vocabulary brand names ("kfc",
-        ***REMOVED*** "juici patties") and the heuristic amenity list doesn't cover
-        ***REMOVED*** them, so the OBJECT slot comes back empty and the executor has
-        ***REMOVED*** no search target. When the caller provides an object_oracle
-        ***REMOVED*** (data plane), verify the pre-preposition span resolves to a
-        ***REMOVED*** POI-class entity and emit it as OBJECT with the original span.
-        ***REMOVED*** The span extraction is deterministic; the executor's FastText +
-        ***REMOVED*** name-score path already finds brand names once the parser lets
-        ***REMOVED*** them through.
-        if object_oracle is not None and template == "FILTER-AGGREGATE-MEASURE (***REMOVED***1)":
+        # Stage 2c: class-verified OBJECT recovery — no retraining. The ML
+        # concept extractor misses open-vocabulary brand names ("kfc",
+        # "juici patties") and the heuristic amenity list doesn't cover
+        # them, so the OBJECT slot comes back empty and the executor has
+        # no search target. When the caller provides an object_oracle
+        # (data plane), verify the pre-preposition span resolves to a
+        # POI-class entity and emit it as OBJECT with the original span.
+        # The span extraction is deterministic; the executor's FastText +
+        # name-score path already finds brand names once the parser lets
+        # them through.
+        if object_oracle is not None and template == "FILTER-AGGREGATE-MEASURE (#1)":
             if not any(c.get("type") == "OBJECT" for c in concepts):
                 span = self._extract_concept_span(question, "OBJECT", template)
                 if span:
@@ -254,13 +254,13 @@ class QueryParserService:
                             "resolved_value": None,
                         })
 
-        ***REMOVED*** Stage 3: assign roles
+        # Stage 3: assign roles
         roles = self._assign_roles(question, template, concepts)
 
-        ***REMOVED*** Stage 4: compose DAG
+        # Stage 4: compose DAG
         dag = self._compose_dag(template, concepts, roles)
 
-        ***REMOVED*** Stage 5: validate
+        # Stage 5: validate
         validation = self._validate_dag(dag)
         if not validation["valid"]:
             logger.error("DAG validation failed: %s", validation["violations"])
@@ -274,7 +274,7 @@ class QueryParserService:
             "validation": validation,
         }
 
-    ***REMOVED*** ── Question normalization ─────────────────────────────────────────────
+    # ── Question normalization ─────────────────────────────────────────────
 
     def _singularize_amenity_plurals(self, question: str) -> str:
         """Canonicalize plural amenity nouns to their singular forms.
@@ -313,7 +313,7 @@ class QueryParserService:
                 out.append(tok)
         return " ".join(out)
 
-    ***REMOVED*** ── Concept extraction ──────────────────────────────────────────────────
+    # ── Concept extraction ──────────────────────────────────────────────────
 
     def _extract_concepts(self, question: str, template: str) -> list:
         """Extract spatial core concepts from the question.
@@ -325,18 +325,18 @@ class QueryParserService:
             X = self.vectorizer.transform([question])
             concept_vec = self.concept_extractor.predict(X)[0]
             concept_probs = self.concept_extractor.predict_proba(X)[0]
-            ***REMOVED*** Safety net: the trained multi-label classifier misses rare
-            ***REMOVED*** amenity vocabulary — e.g. "bus station within 50km of X" gets
-            ***REMOVED*** OBJECT prob 0.4963, just under the 0.5 decision threshold,
-            ***REMOVED*** because "station" is dominated by LOCATION usage in the MapQA
-            ***REMOVED*** training data. OR the deterministic heuristic presence back in
-            ***REMOVED*** so a near-threshold miss is recovered. Span extraction is
-            ***REMOVED*** open-vocabulary, so extracting a concept is always safe.
+            # Safety net: the trained multi-label classifier misses rare
+            # amenity vocabulary — e.g. "bus station within 50km of X" gets
+            # OBJECT prob 0.4963, just under the 0.5 decision threshold,
+            # because "station" is dominated by LOCATION usage in the MapQA
+            # training data. OR the deterministic heuristic presence back in
+            # so a near-threshold miss is recovered. Span extraction is
+            # open-vocabulary, so extracting a concept is always safe.
             heuristic_vec, heuristic_probs = self._heuristic_concepts(question, template)
             concept_vec = [int(a or b) for a, b in zip(concept_vec, heuristic_vec)]
             concept_probs = [max(a, b) for a, b in zip(concept_probs, heuristic_probs)]
         else:
-            ***REMOVED*** Fallback: heuristic concept detection
+            # Fallback: heuristic concept detection
             concept_vec, concept_probs = self._heuristic_concepts(question, template)
 
         concepts = []
@@ -348,7 +348,7 @@ class QueryParserService:
                     "type": ctype,
                     "text": text_span,
                     "confidence": float(concept_probs[i]) if i < len(concept_probs) else 1.0,
-                    "resolved_value": None,  ***REMOVED*** filled by executor
+                    "resolved_value": None,  # filled by executor
                 })
         return concepts
 
@@ -396,14 +396,14 @@ class QueryParserService:
 
         if concept_type == "OBJECT":
             lower = question.lower()
-            ***REMOVED*** Split on prepositions — the OBJECT is what comes BEFORE the
-            ***REMOVED*** preposition (the search target), the LOCATION is what comes
-            ***REMOVED*** AFTER (the anchor).  This prevents "cafe near a school" from
-            ***REMOVED*** matching "school" as the OBJECT.
-            ***REMOVED***
-            ***REMOVED*** Find the FIRST preposition in the text (not iterate in order)
-            ***REMOVED*** so "chinese food within 100m of a park" splits at "within",
-            ***REMOVED*** not at "of".
+            # Split on prepositions — the OBJECT is what comes BEFORE the
+            # preposition (the search target), the LOCATION is what comes
+            # AFTER (the anchor).  This prevents "cafe near a school" from
+            # matching "school" as the OBJECT.
+            #
+            # Find the FIRST preposition in the text (not iterate in order)
+            # so "chinese food within 100m of a park" splits at "within",
+            # not at "of".
             preps = ("near", "around", "by", "beside", "of", "from", "to",
                      "within", "close to", "next to", "right by", "adjacent to")
             object_part = lower
@@ -416,22 +416,22 @@ class QueryParserService:
             if earliest_match:
                 object_part = lower[:earliest_match.start()].strip()
 
-            ***REMOVED*** Closed-vocabulary slot match: try amenity_vocab first.
-            ***REMOVED*** This handles "restaurant", "cafe", "bus_station", etc.
-            ***REMOVED*** ([MAPQA_BUILD:§3.2] — closed-vocab slots are exact-match)
-            ***REMOVED*** Vocab entries use underscores ("bus_station") while the
-            ***REMOVED*** extracted span is space-separated ("bus station") — compare
-            ***REMOVED*** normalized forms so multi-word amenities match, and return the
-            ***REMOVED*** canonical vocab form so the executor's exact-tag tier hits the
-            ***REMOVED*** real OSM tag value.
+            # Closed-vocabulary slot match: try amenity_vocab first.
+            # This handles "restaurant", "cafe", "bus_station", etc.
+            # ([MAPQA_BUILD:§3.2] — closed-vocab slots are exact-match)
+            # Vocab entries use underscores ("bus_station") while the
+            # extracted span is space-separated ("bus station") — compare
+            # normalized forms so multi-word amenities match, and return the
+            # canonical vocab form so the executor's exact-tag tier hits the
+            # real OSM tag value.
             best = None
             for amenity in self.amenity_vocab:
-                ***REMOVED*** Word-boundary match, not substring: the trained vocab
-                ***REMOVED*** artifact carries junk entries ("ho") that would otherwise
-                ***REMOVED*** shadow any phrase containing them ("which hostels are" →
-                ***REMOVED*** OBJECT "ho"). The question is singularized before span
-                ***REMOVED*** extraction, so plural forms already match their singular
-                ***REMOVED*** vocab entries.
+                # Word-boundary match, not substring: the trained vocab
+                # artifact carries junk entries ("ho") that would otherwise
+                # shadow any phrase containing them ("which hostels are" →
+                # OBJECT "ho"). The question is singularized before span
+                # extraction, so plural forms already match their singular
+                # vocab entries.
                 norm = re.escape(amenity.lower().replace("_", " "))
                 if re.search(rf"\b{norm}\b", object_part):
                     if best is None or len(amenity) > len(best):
@@ -439,16 +439,16 @@ class QueryParserService:
             if best is not None:
                 return best
 
-            ***REMOVED*** Open-vocabulary slot: no amenity_vocab match found.
-            ***REMOVED*** Return the raw phrase before the preposition.  The executor's
-            ***REMOVED*** data-plane 3-tier fallback (exact tag → ontology class →
-            ***REMOVED*** FastText semantic) will resolve it to OSM entities.
-            ***REMOVED*** ([MAPQA_BUILD:§3.2] — open-vocab slots are extraction problems;
-            ***REMOVED***  [MAPQA_TO_EXECUTION_PLAN:§4.1] — parser is control plane,
-            ***REMOVED***  FastText is data plane, they don't share models)
-            ***REMOVED***
-            ***REMOVED*** Strip leading question words ("what", "which", "is", "are")
-            ***REMOVED*** to get the clean noun phrase.
+            # Open-vocabulary slot: no amenity_vocab match found.
+            # Return the raw phrase before the preposition.  The executor's
+            # data-plane 3-tier fallback (exact tag → ontology class →
+            # FastText semantic) will resolve it to OSM entities.
+            # ([MAPQA_BUILD:§3.2] — open-vocab slots are extraction problems;
+            #  [MAPQA_TO_EXECUTION_PLAN:§4.1] — parser is control plane,
+            #  FastText is data plane, they don't share models)
+            #
+            # Strip leading question words ("what", "which", "is", "are")
+            # to get the clean noun phrase.
             stripped = re.sub(
                 r"^(what|which|is|are|the|a|an)\s+", "", object_part
             ).strip()
@@ -500,11 +500,11 @@ class QueryParserService:
                 low = stripped.lower()
                 for qw in QueryParserService._QUESTION_WORDS:
                     qw_low = qw.lower()
-                    ***REMOVED*** The typo must preserve the question word as a PREFIX
-                    ***REMOVED*** (or be a prefix of it): "Whichs" ⊃ "Which", "Wich" ⊂
-                    ***REMOVED*** "Which". This excludes false positives where an entity
-                    ***REMOVED*** word is merely edit-close ("Mill" → "Will", "What" →
-                    ***REMOVED*** "Who" — neither is a prefix of the other).
+                    # The typo must preserve the question word as a PREFIX
+                    # (or be a prefix of it): "Whichs" ⊃ "Which", "Wich" ⊂
+                    # "Which". This excludes false positives where an entity
+                    # word is merely edit-close ("Mill" → "Will", "What" →
+                    # "Who" — neither is a prefix of the other).
                     prefix_linked = (
                         low.startswith(qw_low) or qw_low.startswith(low)
                     )
@@ -523,13 +523,13 @@ class QueryParserService:
         returns the first entity. The executor handles multi-entity extraction
         separately.
         """
-        ***REMOVED*** Remove signal phrases and extract the remainder
+        # Remove signal phrases and extract the remainder
         q = QueryParserService._normalize_question_words(question.strip())
-        ***REMOVED*** Common patterns: "X near Y", "X within 50m of Y", "how far is X from Y"
-        ***REMOVED*** Find the EARLIEST preposition so the structural anchor wins over a
-        ***REMOVED*** later "of" ("Which is closer to Moher Cottage: ... the Cliffs OF
-        ***REMOVED*** Moher?" must anchor on "Moher Cottage", not "Moher"). ":" terminates
-        ***REMOVED*** the span so "X: A or B" compare phrasings stop at the colon.
+        # Common patterns: "X near Y", "X within 50m of Y", "how far is X from Y"
+        # Find the EARLIEST preposition so the structural anchor wins over a
+        # later "of" ("Which is closer to Moher Cottage: ... the Cliffs OF
+        # Moher?" must anchor on "Moher Cottage", not "Moher"). ":" terminates
+        # the span so "X: A or B" compare phrasings stop at the colon.
         preps = ("of", "from", "to", "near", "around", "by", "beside")
         earliest = None
         for prep in preps:
@@ -542,7 +542,7 @@ class QueryParserService:
             entity = (m2.group(1) if m2 else rest).strip().rstrip("?").strip()
             if entity:
                 return entity
-        ***REMOVED*** Fallback: capitalized tokens
+        # Fallback: capitalized tokens
         tokens = q.replace("?", "").split()
         caps = [t for t in tokens if t[0].isupper() and len(t) > 2]
         if caps:
@@ -560,17 +560,17 @@ class QueryParserService:
             question.strip().rstrip("?")
         )
 
-        ***REMOVED*** Pattern 1: "How far is X from Y?"
+        # Pattern 1: "How far is X from Y?"
         m = re.match(r"how far is\s+(.+?)\s+from\s+(.+)$", q, re.I)
         if m:
             return [m.group(1).strip(), m.group(2).strip()]
 
-        ***REMOVED*** Pattern 2: "Which direction is X from Y?"
+        # Pattern 2: "Which direction is X from Y?"
         m = re.match(r"which direction is\s+(.+?)\s+from\s+(.+)$", q, re.I)
         if m:
             return [m.group(1).strip(), m.group(2).strip()]
 
-        ***REMOVED*** Pattern 3: "Which/What is closer to Z: X or Y?" (or "X, Y or Z")
+        # Pattern 3: "Which/What is closer to Z: X or Y?" (or "X, Y or Z")
         m = re.match(
             r"(?:which|what)\s+is closer to\s+(.+?):\s*(.+?)\s+or\s+(.+)$",
             q, re.I,
@@ -580,7 +580,7 @@ class QueryParserService:
                 m.group(2), m.group(3), m.group(1),
             )
 
-        ***REMOVED*** Pattern 4: "Which/What X is closer to Y: A or B?"
+        # Pattern 4: "Which/What X is closer to Y: A or B?"
         m = re.match(
             r"(?:which|what)\s+.+?\s+is closer to\s+(.+?):\s*(.+?)\s+or\s+(.+)$",
             q, re.I,
@@ -590,14 +590,14 @@ class QueryParserService:
                 m.group(2), m.group(3), m.group(1),
             )
 
-        ***REMOVED*** Pattern 5: "Which X is nearest/closest to Y?"
+        # Pattern 5: "Which X is nearest/closest to Y?"
         m = re.match(r"which\s+(.+?)\s+is\s+(?:the\s+)?(?:nearest|closest)\s+to\s+(.+)$", q, re.I)
         if m:
-            ***REMOVED*** The anchor (Y) is the only named place; X is the OBJECT concept.
+            # The anchor (Y) is the only named place; X is the OBJECT concept.
             return [m.group(2).strip()]
 
-        ***REMOVED*** Fallback: extract capitalized token sequences, skipping question words
-        ***REMOVED*** and cardinal directions (which are spatial modifiers, not place names).
+        # Fallback: extract capitalized token sequences, skipping question words
+        # and cardinal directions (which are spatial modifiers, not place names).
         _skip = QueryParserService._QUESTION_WORDS | QueryParserService._CARDINAL_DIRECTIONS
         tokens = q.split()
         entities = []
@@ -629,14 +629,14 @@ class QueryParserService:
         candidates.append(anchor.strip())
         return candidates
 
-    ***REMOVED*** ── Role assignment ─────────────────────────────────────────────────────
+    # ── Role assignment ─────────────────────────────────────────────────────
 
     def _assign_roles(self, question: str, template: str,
                       concepts: list) -> list:
         """Assign functional roles to extracted concepts."""
         if self.role_assigner is not None and self.role_encoder is not None:
             return self._ml_role_assignment(question, concepts)
-        ***REMOVED*** Fallback: deterministic per-template mapping
+        # Fallback: deterministic per-template mapping
         return self._deterministic_role_assignment(template, concepts)
 
     def _ml_role_assignment(self, question: str, concepts: list) -> list:
@@ -673,7 +673,7 @@ class QueryParserService:
         roles.sort(key=lambda r: ROLE_ORDER.get(r["role"], 99))
         return roles
 
-    ***REMOVED*** ── DAG composition ─────────────────────────────────────────────────────
+    # ── DAG composition ─────────────────────────────────────────────────────
 
     def _compose_dag(self, template: str, concepts: list,
                      roles: list) -> list:
@@ -690,7 +690,7 @@ class QueryParserService:
         for node_spec in spec["nodes"]:
             node = dict(node_spec)
             role = node["role"]
-            ***REMOVED*** Bind concept to this node
+            # Bind concept to this node
             bound = False
             if role in role_to_concept:
                 rc = role_to_concept[role]
@@ -699,7 +699,7 @@ class QueryParserService:
                 node["resolved_value"] = None
                 bound = True
             if not bound:
-                ***REMOVED*** Try to find a concept matching the node's expected type
+                # Try to find a concept matching the node's expected type
                 for c in concepts:
                     if c["type"] == node_spec.get("concept_type"):
                         node["concept_type"] = c["type"]
@@ -713,7 +713,7 @@ class QueryParserService:
             dag.append(node)
         return dag
 
-    ***REMOVED*** ── Validation ──────────────────────────────────────────────────────────
+    # ── Validation ──────────────────────────────────────────────────────────
 
     @staticmethod
     def _validate_dag(dag: list) -> dict:
@@ -732,7 +732,7 @@ class QueryParserService:
             "constraints_satisfied_by_construction": ["G1", "G3", "G4", "G5"],
         }
 
-    ***REMOVED*** ── LLM refinement ─────────────────────────────────────────────────────
+    # ── LLM refinement ─────────────────────────────────────────────────────
 
     @staticmethod
     def _llm_fallback_threshold() -> float:
@@ -758,13 +758,13 @@ class QueryParserService:
             if not llm.is_available():
                 return None
 
-            ***REMOVED*** sklearn's classes_ are a numpy array — normalize to plain str so
-            ***REMOVED*** `not in` works, and check `is not None` (NOT truthiness, which
-            ***REMOVED*** raises "ambiguous truth value" on multi-element arrays).
+            # sklearn's classes_ are a numpy array — normalize to plain str so
+            # `not in` works, and check `is not None` (NOT truthiness, which
+            # raises "ambiguous truth value" on multi-element arrays).
             classes = getattr(self.label_encoder, "classes_", None)
             valid_templates = [str(t) for t in classes] if classes is not None else []
             if not valid_templates:
-                valid_templates = [template]  ***REMOVED*** no label set → at least keep current
+                valid_templates = [template]  # no label set → at least keep current
 
             heuristic_summary = ", ".join(
                 f"{c.get('type')}: {c.get('text') or '(none)'}" for c in concepts
@@ -825,11 +825,11 @@ class QueryParserService:
                 template, new_template, len(new_concepts),
             )
             return new_template, new_concepts
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — refinement must never break parse
+        except Exception as exc:  # noqa: BLE001 — refinement must never break parse
             logger.warning("LLM parser refinement failed; keeping heuristic parse: %s", exc)
             return None
 
-    ***REMOVED*** ── Loading helpers ─────────────────────────────────────────────────────
+    # ── Loading helpers ─────────────────────────────────────────────────────
 
     @staticmethod
     def _load(path: Path):
@@ -850,24 +850,24 @@ class QueryParserService:
             return json.load(f)
 
 
-***REMOVED*** Fallback template→concept→role mapping (matches train_mapqa_parser.TEMPLATE_ROLE_MAP)
+# Fallback template→concept→role mapping (matches train_mapqa_parser.TEMPLATE_ROLE_MAP)
 _TEMPLATE_ROLE_MAP_FALLBACK = {
-    "FILTER-AGGREGATE-MEASURE (***REMOVED***1)": {
+    "FILTER-AGGREGATE-MEASURE (#1)": {
         "OBJECT": "SUB_COND", "AMOUNT": "COND",
         "LOCATION": "SUPPORT", "FIELD": "MEASURE",
     },
-    "GEOCODE-BATCH-COMPARE (***REMOVED***4)": {
+    "GEOCODE-BATCH-COMPARE (#4)": {
         "OBJECT": "SUB_COND", "LOCATION": "SUPPORT",
         "AMOUNT": "MEASURE",
     },
-    "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)": {
+    "PLACE-ATTRIBUTE-QUERY (#8)": {
         "OBJECT": "SUB_COND", "FIELD": "SUPPORT",
         "LOCATION": "MEASURE",
     },
-    "LOCATION-BEARING-CLASSIFY (***REMOVED***5)": {
+    "LOCATION-BEARING-CLASSIFY (#5)": {
         "LOCATION": "SUB_COND", "AMOUNT": "MEASURE",
     },
-    "OBJECT-FIELD-MEASURE (***REMOVED***2)": {
+    "OBJECT-FIELD-MEASURE (#2)": {
         "LOCATION": "SUB_COND", "AMOUNT": "MEASURE",
     },
 }

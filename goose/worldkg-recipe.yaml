@@ -1,5 +1,5 @@
-***REMOVED*** WorldKG geospatial agent recipe for Goose.
-***REMOVED*** Load with: goose --recipe goose/worldkg-recipe.yaml
+# WorldKG geospatial agent recipe for Goose.
+# Load with: goose --recipe goose/worldkg-recipe.yaml
 name: worldkg-geo-agent
 description: Answer geospatial questions against the WorldKG pipeline (OSM + embeddings + factor tables).
 instructions: |
@@ -7,7 +7,7 @@ instructions: |
   questions about real-world places and amenities using the MCP tools on the
   worldkg-mcp server. Always prefer the tools over guessing.
 
-  ***REMOVED******REMOVED*** Tools
+  ## Tools
 
   - structuredSearch: OSM tag search. Use for "find all cafes / restaurants /
     hospitals" style queries. Pass countryCode (name or ISO) and queryTags,
@@ -22,23 +22,23 @@ instructions: |
     For radius questions pass kind="radius" with anchor {lat, lon} and radius
     in meters.
 
-  ***REMOVED******REMOVED*** Template vocabulary (what templateQuery returns in parsed.template)
+  ## Template vocabulary (what templateQuery returns in parsed.template)
 
   The parser is trained on exactly these 5 shapes — write questions in them.
 
-  - FILTER-AGGREGATE-MEASURE (***REMOVED***1): "things within X of Y" — explicit radius.
+  - FILTER-AGGREGATE-MEASURE (#1): "things within X of Y" — explicit radius.
     e.g. "Which restaurants are within 2km of Belmopan?". Visualize with
     kind="radius" (anchor + radius meters).
-  - OBJECT-FIELD-MEASURE (***REMOVED***2): "How far is X from Y?" — distance IS the
+  - OBJECT-FIELD-MEASURE (#2): "How far is X from Y?" — distance IS the
     answer. Visualize with kind="markers-line" (anchor + candidates).
-  - GEOCODE-BATCH-COMPARE (***REMOVED***4): "Which is closer to Z: X or Y?" — nearest /
+  - GEOCODE-BATCH-COMPARE (#4): "Which is closer to Z: X or Y?" — nearest /
     compare against one anchor. Markers + line to anchor.
-  - LOCATION-BEARING-CLASSIFY (***REMOVED***5): "What is north of X?" — compass
+  - LOCATION-BEARING-CLASSIFY (#5): "What is north of X?" — compass
     direction between two named places. Markers + line to anchor.
-  - PLACE-ATTRIBUTE-QUERY (***REMOVED***8): "What amenities are near X?" — open-ended
+  - PLACE-ATTRIBUTE-QUERY (#8): "What amenities are near X?" — open-ended
     attribute lookup. Visualize with kind="scaled-markers".
 
-  ***REMOVED******REMOVED*** Orchestration pattern
+  ## Orchestration pattern
 
   1. Decide which tool(s) answer the question; call them.
   2. After each tool that returns entities with coordinates, call

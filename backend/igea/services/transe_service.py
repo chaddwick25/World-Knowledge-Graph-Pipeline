@@ -17,7 +17,7 @@ from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** TODO: refactoe and make notebook
+# TODO: refactoe and make notebook
 class TransEGraphEmbeddingService:
     """
     Native PyTorch TransE implementation for spatial link prediction.
@@ -70,7 +70,7 @@ class TransEGraphEmbeddingService:
         if self.entity_embeddings is None or self.relation_embeddings is None:
             return 0.0
         
-        ***REMOVED*** Map IDs to embedding indices
+        # Map IDs to embedding indices
         head_idx = self.entity2id.get(str(head_id))
         tail_idx = self.entity2id.get(str(tail_id))
         rel_idx = self.rel2id.get(relation)
@@ -78,15 +78,15 @@ class TransEGraphEmbeddingService:
         if head_idx is None or tail_idx is None or rel_idx is None:
             return 0.0
         
-        ***REMOVED*** Get embeddings
+        # Get embeddings
         h = self.entity_embeddings[head_idx]
         r = self.relation_embeddings[rel_idx]
         t = self.entity_embeddings[tail_idx]
         
-        ***REMOVED*** TransE distance: ||h + r - t||_1
+        # TransE distance: ||h + r - t||_1
         distance = torch.norm(h + r - t, p=1).item()
         
-        ***REMOVED*** Convert to score: c = 1 / (1 + d)
+        # Convert to score: c = 1 / (1 + d)
         score = 1.0 / (1.0 + distance)
         
         return score

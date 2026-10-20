@@ -28,9 +28,9 @@ from pipeline.tasks.country_pipeline_steps.step_5c_graph_spectral import (
 )
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Fix A: GraphML skip guard
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Fix A: GraphML skip guard
+# --------------------------------------------------------------------------- #
 
 def test_serialize_graph_skipped_for_large_graph(tmp_path):
     """Graphs ≥ GRAPHML_NODE_THRESHOLD nodes → no file written, info log."""
@@ -44,7 +44,7 @@ def test_serialize_graph_skipped_for_large_graph(tmp_path):
 
 def test_serialize_graph_written_for_small_graph(tmp_path):
     """Graphs < GRAPHML_NODE_THRESHOLD nodes → GraphML file written."""
-    G = nx.path_graph(100)  ***REMOVED*** well below threshold
+    G = nx.path_graph(100)  # well below threshold
     with mock.patch("django.conf.settings.GRAPH_ARTIFACT_DIR", str(tmp_path)):
         result = _serialize_graph(G, "XX", "2025_12_31")
     assert result == "written"
@@ -71,9 +71,9 @@ def test_serialize_graph_no_graph_artifact_dir(tmp_path):
     assert result == "skipped_no_dir"
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Run report
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Run report
+# --------------------------------------------------------------------------- #
 
 class _MockEnv:
     """Minimal stand-in for CountryEnvelope used by _write_report."""
@@ -108,7 +108,7 @@ def test_write_report_no_dir_does_not_crash(tmp_path):
     report = {"country": "BZ", "status": "completed"}
     with mock.patch("django.conf.settings.SPECTRAL_REPORT_DIR", None):
         _write_report(report, _MockEnv())
-    ***REMOVED*** Should not crash — just log the report inline
+    # Should not crash — just log the report inline
 
 
 def test_serialize_graph_returns_status_string(tmp_path):

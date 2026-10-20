@@ -24,7 +24,7 @@ from core.services.planet_init.country_relations import get_country_by_iso
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** Module-level cache for bbox resolution to avoid repeated lookups
+# Module-level cache for bbox resolution to avoid repeated lookups
 _bbox_cache: Dict = {}
 
 def resolve_country_bbox(
@@ -61,7 +61,7 @@ def resolve_country_bbox(
 
 
 
-    ***REMOVED*** Check cache first
+    # Check cache first
 
     cache_key = f"{iso_code}:{poly_file_path}"
 
@@ -71,7 +71,7 @@ def resolve_country_bbox(
 
 
 
-    ***REMOVED*** 1. Explicit poly file
+    # 1. Explicit poly file
 
     if poly_file_path:
 
@@ -99,7 +99,7 @@ def resolve_country_bbox(
 
 
 
-    ***REMOVED*** -- Step 0: Pre-resolve QID / country name to a real ISO code ----------
+    # -- Step 0: Pre-resolve QID / country name to a real ISO code ----------
 
     code = iso_code.strip().upper()
 
@@ -117,17 +117,17 @@ def resolve_country_bbox(
 
         )
 
-    ***REMOVED*** If resolution failed, keep `code` as the original input and let the
+    # If resolution failed, keep `code` as the original input and let the
 
-    ***REMOVED*** downstream steps fail gracefully with a clear error log.
+    # downstream steps fail gracefully with a clear error log.
 
 
 
-    ***REMOVED*** 2. OsmBoundary DB lookup (high precision from recipes)
+    # 2. OsmBoundary DB lookup (high precision from recipes)
 
-    ***REMOVED***    Try by iso_code, then by QID, then by name.
+    #    Try by iso_code, then by QID, then by name.
 
-    ***REMOVED***    If the bbox is too small, expand it symmetrically to meet the minimum span.
+    #    If the bbox is too small, expand it symmetrically to meet the minimum span.
 
     try:
 
@@ -135,15 +135,15 @@ def resolve_country_bbox(
 
 
 
-        ***REMOVED*** Multiple lookup strategies.
+        # Multiple lookup strategies.
 
-        ***REMOVED*** ⚠️  Do NOT use name__icontains with a 2-letter ISO code — it matches
+        # ⚠️  Do NOT use name__icontains with a 2-letter ISO code — it matches
 
-        ***REMOVED*** substrings in unrelated country names (e.g. "IL" → "Brazil",
+        # substrings in unrelated country names (e.g. "IL" → "Brazil",
 
-        ***REMOVED*** "CD" → "Heard Mcdonald", "SN" → "Bosnia Herzegovina").  Only use
+        # "CD" → "Heard Mcdonald", "SN" → "Bosnia Herzegovina").  Only use
 
-        ***REMOVED*** name lookups when the input is a full country name (len > 3).
+        # name lookups when the input is a full country name (len > 3).
 
         ob = None
 
@@ -151,13 +151,13 @@ def resolve_country_bbox(
 
         if len(code) > 3:
 
-            ***REMOVED*** Input looks like a country name, not an ISO code — safe to
+            # Input looks like a country name, not an ISO code — safe to
 
-            ***REMOVED*** do exact and contains name lookups.
+            # do exact and contains name lookups.
 
             strategies.extend([
 
-                ("name__iexact", iso_code),        ***REMOVED*** e.g. "Australia"
+                ("name__iexact", iso_code),        # e.g. "Australia"
 
                 ("name__iexact", iso_code.replace("_", " ")),
 
@@ -175,7 +175,7 @@ def resolve_country_bbox(
 
         if ob is None and resolved_iso:
 
-            ***REMOVED*** Also try with the resolved ISO code
+            # Also try with the resolved ISO code
 
             ob = OsmBoundary.objects.filter(iso_code__iexact=resolved_iso).first()
 
@@ -223,9 +223,9 @@ def resolve_country_bbox(
 
 
 
-    ***REMOVED*** 3. CountryPipelineProfile.country_relations_payload.bbox (authoritative from country_relations.json)
+    # 3. CountryPipelineProfile.country_relations_payload.bbox (authoritative from country_relations.json)
 
-    ***REMOVED***    If the bbox is too small, expand it symmetrically to meet the minimum span.
+    #    If the bbox is too small, expand it symmetrically to meet the minimum span.
 
     try:
 
@@ -261,7 +261,7 @@ def resolve_country_bbox(
 
                 else:
 
-                    ***REMOVED*** Expand small bbox to meet minimum span
+                    # Expand small bbox to meet minimum span
 
                     bbox = expand_bbox_to_min_span(bbox, MIN_BBOX_SPAN)
 
@@ -285,21 +285,21 @@ def resolve_country_bbox(
 
 
 
-    ***REMOVED*** 4. Runtime-generated snapshot poly file (from _preprocess_snapshot Phase 3).
+    # 4. Runtime-generated snapshot poly file (from _preprocess_snapshot Phase 3).
 
-    ***REMOVED***    The .poly file is generated during Step 1 preprocessing and lives alongside
+    #    The .poly file is generated during Step 1 preprocessing and lives alongside
 
-    ***REMOVED***    the snapshot PBF in the temporal_snapshots directory:
+    #    the snapshot PBF in the temporal_snapshots directory:
 
-    ***REMOVED***      {osm_wikidata_extractions}/{continent}/{country}/temporal_snapshots/{country}_{date}.osm.poly
+    #      {osm_wikidata_extractions}/{continent}/{country}/temporal_snapshots/{country}_{date}.osm.poly
 
-    ***REMOVED***
+    #
 
-    ***REMOVED***    Temporal preprocessing honours overrides.json for special-case slugs
+    #    Temporal preprocessing honours overrides.json for special-case slugs
 
-    ***REMOVED***    (via get_country_slug). To avoid slug mismatches (e.g. 'bahamas'
+    #    (via get_country_slug). To avoid slug mismatches (e.g. 'bahamas'
 
-    ***REMOVED***    vs 'the_bahamas'), try both canonical and override-based slugs.
+    #    vs 'the_bahamas'), try both canonical and override-based slugs.
 
     try:
 
@@ -331,7 +331,7 @@ def resolve_country_bbox(
 
         if not profile:
 
-            ***REMOVED*** Fall back to OSMWikiDataHierarchy for countries not yet in profiles
+            # Fall back to OSMWikiDataHierarchy for countries not yet in profiles
 
             hierarchy_data = get_country_by_iso(code)
 
@@ -373,7 +373,7 @@ def resolve_country_bbox(
 
             candidate_slugs.append(base_slug)
 
-            ***REMOVED*** Even without a profile, let overrides.json remap BS→the_bahamas
+            # Even without a profile, let overrides.json remap BS→the_bahamas
 
             override_slug = get_override_country_slug(code, base_slug)
 
@@ -389,7 +389,7 @@ def resolve_country_bbox(
 
             if not cont_slug:
 
-                ***REMOVED*** Try to derive continent from hierarchy
+                # Try to derive continent from hierarchy
 
                 hierarchy_profile = OSMWikiDataHierarchy.objects.filter(
 
@@ -403,9 +403,9 @@ def resolve_country_bbox(
 
 
 
-            ***REMOVED*** Build candidate slugs: canonical, override (from overrides.json), and
+            # Build candidate slugs: canonical, override (from overrides.json), and
 
-            ***REMOVED*** normalized variants, de-duplicated while preserving order.
+            # normalized variants, de-duplicated while preserving order.
 
             candidate_slugs.append(base_slug)
 
@@ -427,7 +427,7 @@ def resolve_country_bbox(
 
 
 
-        ***REMOVED*** Try each candidate slug when resolving the snapshot PBF/poly path.
+        # Try each candidate slug when resolving the snapshot PBF/poly path.
 
         for slug_candidate in candidate_slugs:
 
@@ -487,13 +487,13 @@ def resolve_country_bbox(
 
 
 
-    ***REMOVED*** 5. Vectors DB extent fallback — compute bbox from actual entity geometries.
+    # 5. Vectors DB extent fallback — compute bbox from actual entity geometries.
 
-    ***REMOVED***    This is a last resort when no other source has the bbox.
+    #    This is a last resort when no other source has the bbox.
 
-    ***REMOVED***    It uses the addr:country tag or the OSM admin boundary relation ID
+    #    It uses the addr:country tag or the OSM admin boundary relation ID
 
-    ***REMOVED***    to filter entities, then computes the spatial extent via ST_Extent().
+    #    to filter entities, then computes the spatial extent via ST_Extent().
 
     try:
 
@@ -503,7 +503,7 @@ def resolve_country_bbox(
 
         with connections["vectors"].cursor() as cursor:
 
-            ***REMOVED*** Try addr:country tag first (most reliable)
+            # Try addr:country tag first (most reliable)
 
             cursor.execute(
 
@@ -519,10 +519,10 @@ def resolve_country_bbox(
 
             if row and row[0]:
 
-                extent_str = row[0]  ***REMOVED*** "BOX(min_lon min_lat, max_lon max_lat)"
+                extent_str = row[0]  # "BOX(min_lon min_lat, max_lon max_lat)"
 
-                ***REMOVED*** ST_Extent on an empty result set returns "BOX(NaN NaN,NaN NaN)"
-                ***REMOVED*** instead of NULL. Reject it early — NaN coordinates crash GEOS.
+                # ST_Extent on an empty result set returns "BOX(NaN NaN,NaN NaN)"
+                # instead of NULL. Reject it early — NaN coordinates crash GEOS.
                 if "NaN" in extent_str:
 
                     logger.debug(
@@ -631,7 +631,7 @@ def populate_bbox_for_profile(profile) -> Optional[Tuple[float, float, float, fl
 
 
 
-    ***REMOVED*** 1. Direct country_poly polygon
+    # 1. Direct country_poly polygon
 
     country_poly = getattr(profile, "country_poly", None)
 
@@ -659,7 +659,7 @@ def populate_bbox_for_profile(profile) -> Optional[Tuple[float, float, float, fl
 
 
 
-    ***REMOVED*** 2. PBF-level metrics
+    # 2. PBF-level metrics
 
     country_pbf = getattr(profile, "country_pbf", None)
 
@@ -717,7 +717,7 @@ def populate_bbox_for_profile(profile) -> Optional[Tuple[float, float, float, fl
 
 
 
-    ***REMOVED*** 3. ISO-based resolution (calls resolve_country_bbox which logs its own source)
+    # 3. ISO-based resolution (calls resolve_country_bbox which logs its own source)
 
     code = iso_code
 
@@ -823,7 +823,7 @@ def resolve_bbox_for_profile(profile) -> Optional[Tuple[float, float, float, flo
 
 
 
-    ***REMOVED*** 1. Direct country_poly polygon
+    # 1. Direct country_poly polygon
 
     country_poly = getattr(profile, "country_poly", None)
 
@@ -841,7 +841,7 @@ def resolve_bbox_for_profile(profile) -> Optional[Tuple[float, float, float, flo
 
 
 
-    ***REMOVED*** 2. PBF-level metrics (bounding_box JSON)
+    # 2. PBF-level metrics (bounding_box JSON)
 
     country_pbf = getattr(profile, "country_pbf", None)
 
@@ -897,7 +897,7 @@ def resolve_bbox_for_profile(profile) -> Optional[Tuple[float, float, float, flo
 
 
 
-    ***REMOVED*** 3. ISO-based resolution
+    # 3. ISO-based resolution
 
     iso2 = getattr(profile, "iso2", None)
 

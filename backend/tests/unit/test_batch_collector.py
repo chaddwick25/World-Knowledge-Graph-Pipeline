@@ -33,15 +33,15 @@ from geovectors_encoder.services.batch_collector import (
 )
 
 
-***REMOVED*** --------------------------------------------------------------------------
-***REMOVED*** Stubs
-***REMOVED*** --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Stubs
+# --------------------------------------------------------------------------
 
 class StubModel:
     """Encode model that returns a deterministic vector per record."""
 
     def __init__(self, fail_on=None):
-        ***REMOVED*** ``fail_on`` is a set of osm_ids that should raise during encode.
+        # ``fail_on`` is a set of osm_ids that should raise during encode.
         self.fail_on = fail_on or set()
         self.calls = 0
 
@@ -79,9 +79,9 @@ def _relation_record(osm_id):
     return (osm_id, "relation", [("type", "boundary")], 5.0, 6.0)
 
 
-***REMOVED*** --------------------------------------------------------------------------
-***REMOVED*** BatchCollector
-***REMOVED*** --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# BatchCollector
+# --------------------------------------------------------------------------
 
 @pytest.mark.unit
 def test_batch_collector_batching_45k_records():
@@ -92,14 +92,14 @@ def test_batch_collector_batching_45k_records():
     for i in range(45000):
         collector.add_line(_node_record(i))
 
-    ***REMOVED*** Two full batches should already be on the queue.
+    # Two full batches should already be on the queue.
     assert q.qsize() == 2
     assert len(collector._buffer) == 5000
 
     collector.finish(n_workers=1)
-    ***REMOVED*** 2 full + 1 partial + 1 sentinel = 4 items.
+    # 2 full + 1 partial + 1 sentinel = 4 items.
     assert q.qsize() == 4
-    ***REMOVED*** Drain batches, verify the sentinel is last.
+    # Drain batches, verify the sentinel is last.
     items = []
     while True:
         item = q.get_nowait()
@@ -108,7 +108,7 @@ def test_batch_collector_batching_45k_records():
             break
     assert len(items) == 4
     assert items[-1] is SENTINEL
-    ***REMOVED*** Partial batch has 5K records.
+    # Partial batch has 5K records.
     assert len(items[2]) == 5000
 
 
@@ -118,7 +118,7 @@ def test_batch_collector_flush_empty_is_noop():
     q: queue.Queue = queue.Queue(maxsize=10)
     collector = BatchCollector(q, batch_size=20000)
 
-    ***REMOVED*** Repeated flushes on an empty collector.
+    # Repeated flushes on an empty collector.
     for _ in range(5):
         collector.flush()
 
@@ -139,7 +139,7 @@ def test_batch_collector_flush_pushes_partial_batch():
     assert q.qsize() == 1
     batch = q.get_nowait()
     assert len(batch) == 100
-    ***REMOVED*** Buffer is cleared after flush.
+    # Buffer is cleared after flush.
     assert collector._buffer == []
 
 
@@ -169,14 +169,14 @@ def test_batch_collector_storage_is_self():
     q: queue.Queue = queue.Queue(maxsize=1)
     collector = BatchCollector(q)
     assert collector.storage is collector
-    ***REMOVED*** And storage.flush reaches the collector's flush.
-    collector.storage.flush()  ***REMOVED*** no-op on empty, must not raise
+    # And storage.flush reaches the collector's flush.
+    collector.storage.flush()  # no-op on empty, must not raise
     assert q.empty()
 
 
-***REMOVED*** --------------------------------------------------------------------------
-***REMOVED*** ErrorBox
-***REMOVED*** --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# ErrorBox
+# --------------------------------------------------------------------------
 
 @pytest.mark.unit
 def test_error_box_records_first_exception_only():
@@ -186,16 +186,16 @@ def test_error_box_records_first_exception_only():
     box.set(ValueError("first"))
     assert box.is_set()
 
-    ***REMOVED*** Second set is ignored.
+    # Second set is ignored.
     box.set(RuntimeError("second"))
     exc, _ = box.get()
     assert isinstance(exc, ValueError)
     assert str(exc) == "first"
 
 
-***REMOVED*** --------------------------------------------------------------------------
-***REMOVED*** encoding_worker — sentinel handling
-***REMOVED*** --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# encoding_worker — sentinel handling
+# --------------------------------------------------------------------------
 
 @pytest.mark.unit
 def test_encoding_worker_terminates_on_single_sentinel():
@@ -205,7 +205,7 @@ def test_encoding_worker_terminates_on_single_sentinel():
     error_box = ErrorBox()
     ft = StubModel()
 
-    ***REMOVED*** Enqueue two real batches then one sentinel.
+    # Enqueue two real batches then one sentinel.
     q.put([_node_record(1), _node_record(2)])
     q.put([_way_record(3)])
     q.put(SENTINEL)
@@ -218,8 +218,8 @@ def test_encoding_worker_terminates_on_single_sentinel():
     t.start()
     t.join(timeout=5.0)
     assert not t.is_alive(), "worker hung waiting for sentinel"
-    ***REMOVED*** All three records were encoded and pushed to the upsert queue.
-    ***REMOVED*** The encoding worker pushes one encoded batch per input batch.
+    # All three records were encoded and pushed to the upsert queue.
+    # The encoding worker pushes one encoded batch per input batch.
     encoded_batches = []
     while True:
         try:
@@ -242,7 +242,7 @@ def test_encoding_worker_n_sentinels_terminate_n_workers():
     error_box = ErrorBox()
     ft = StubModel()
 
-    ***REMOVED*** 8 batches of 1 record each, then 4 sentinels.
+    # 8 batches of 1 record each, then 4 sentinels.
     for i in range(8):
         q.put([_node_record(i)])
     for _ in range(n):
@@ -261,7 +261,7 @@ def test_encoding_worker_n_sentinels_terminate_n_workers():
     for t in threads:
         t.join(timeout=5.0)
     assert not any(t.is_alive() for t in threads), "a worker hung"
-    ***REMOVED*** 8 records distributed across 4 workers (no double-processing).
+    # 8 records distributed across 4 workers (no double-processing).
     encoded_batches = []
     while True:
         try:
@@ -275,9 +275,9 @@ def test_encoding_worker_n_sentinels_terminate_n_workers():
     assert not error_box.is_set()
 
 
-***REMOVED*** --------------------------------------------------------------------------
-***REMOVED*** encoding_worker — error propagation
-***REMOVED*** --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# encoding_worker — error propagation
+# --------------------------------------------------------------------------
 
 @pytest.mark.unit
 def test_encoding_worker_error_propagates_and_drains_queue():
@@ -289,8 +289,8 @@ def test_encoding_worker_error_propagates_and_drains_queue():
     error_box = ErrorBox()
     ft = StubModel(fail_on={42})
 
-    ***REMOVED*** Start the worker BEFORE filling the queue so puts don't block on
-    ***REMOVED*** a full bounded queue with no consumer running.
+    # Start the worker BEFORE filling the queue so puts don't block on
+    # a full bounded queue with no consumer running.
     t = threading.Thread(
         target=encoding_worker,
         args=(0, q, upsert_q, error_box, ft, None),
@@ -298,12 +298,12 @@ def test_encoding_worker_error_propagates_and_drains_queue():
     )
     t.start()
 
-    ***REMOVED*** Batch with the failing record.
+    # Batch with the failing record.
     q.put([_node_record(42), _node_record(1)])
-    ***REMOVED*** Fill the queue behind it so a non-draining worker would block the
-    ***REMOVED*** producer.  maxsize=2, one slot already used → one more fits.
+    # Fill the queue behind it so a non-draining worker would block the
+    # producer.  maxsize=2, one slot already used → one more fits.
     q.put([_node_record(2)])
-    ***REMOVED*** Sentinel (the producer's finish() would enqueue this).
+    # Sentinel (the producer's finish() would enqueue this).
     q.put(SENTINEL)
 
     t.join(timeout=5.0)
@@ -327,7 +327,7 @@ def test_upsert_worker_closes_django_connections_in_finally(monkeypatch):
 
     monkeypatch.setattr(django.db, "connections", FakeConnections())
 
-    ***REMOVED*** Stub VectorStorageService so we don't need Django/DB.
+    # Stub VectorStorageService so we don't need Django/DB.
     import sys
     import geovectors_encoder.services.batch_collector as bc_module
 
@@ -356,16 +356,16 @@ def test_upsert_worker_closes_django_connections_in_finally(monkeypatch):
     assert not t.is_alive()
     assert closed["calls"] == 1
 
-    ***REMOVED*** Restore the real module.
+    # Restore the real module.
     if real_vss is not None:
         sys.modules["geovectors_encoder.services.vector_storage_service"] = real_vss
     else:
         sys.modules.pop("geovectors_encoder.services.vector_storage_service", None)
 
 
-***REMOVED*** --------------------------------------------------------------------------
-***REMOVED*** Backpressure
-***REMOVED*** --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Backpressure
+# --------------------------------------------------------------------------
 
 @pytest.mark.unit
 def test_backpressure_producer_blocks_on_full_queue():
@@ -383,9 +383,9 @@ def test_backpressure_producer_blocks_on_full_queue():
 
     def slow_consumer():
         started.set()
-        ***REMOVED*** Wait until the producer has filled the queue (or blocked).
+        # Wait until the producer has filled the queue (or blocked).
         time.sleep(0.2)
-        ***REMOVED*** Drain one batch + the eventual sentinel.
+        # Drain one batch + the eventual sentinel.
         while True:
             item = q.get()
             if item is SENTINEL:
@@ -396,8 +396,8 @@ def test_backpressure_producer_blocks_on_full_queue():
     consumer.start()
     started.wait(timeout=2.0)
 
-    ***REMOVED*** Push 6 records (batch_size=2 → 3 batches).  With maxsize=1 the
-    ***REMOVED*** producer must block after the first batch until the consumer drains.
+    # Push 6 records (batch_size=2 → 3 batches).  With maxsize=1 the
+    # producer must block after the first batch until the consumer drains.
     for i in range(6):
         collector.add_line(_node_record(i))
 
@@ -405,24 +405,24 @@ def test_backpressure_producer_blocks_on_full_queue():
     consumer.join(timeout=5.0)
     assert not consumer.is_alive(), "consumer hung"
 
-    ***REMOVED*** The queue never exceeded its maxsize at any observable point —
-    ***REMOVED*** the producer blocked instead of growing unboundedly.
+    # The queue never exceeded its maxsize at any observable point —
+    # the producer blocked instead of growing unboundedly.
     assert collector.total == 6
 
 
-***REMOVED*** --------------------------------------------------------------------------
-***REMOVED*** spawn_encode_workers
-***REMOVED*** --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# spawn_encode_workers
+# --------------------------------------------------------------------------
 
 @pytest.mark.unit
 def test_spawn_encode_workers_starts_n_threads(monkeypatch):
     """spawn_encode_workers starts exactly n_workers daemon threads and
     returns them with a shared error_box.
     """
-    ***REMOVED*** Stub VectorStorageService so we don't need Django/DB.
-    ***REMOVED*** The real module imports OsmEntity (a Django model) at the top level,
-    ***REMOVED*** which requires Django settings.  Inject a fake module into sys.modules
-    ***REMOVED*** before spawn_encode_workers runs its deferred import.
+    # Stub VectorStorageService so we don't need Django/DB.
+    # The real module imports OsmEntity (a Django model) at the top level,
+    # which requires Django settings.  Inject a fake module into sys.modules
+    # before spawn_encode_workers runs its deferred import.
     import sys
     import geovectors_encoder.services.batch_collector as bc_module
 
@@ -452,16 +452,16 @@ def test_spawn_encode_workers_starts_n_threads(monkeypatch):
         assert all(t.is_alive() for t in threads)
         assert upsert_thread.daemon
         assert upsert_thread.is_alive()
-        ***REMOVED*** Let encoding workers terminate cleanly.
+        # Let encoding workers terminate cleanly.
         for _ in range(n):
             q.put(SENTINEL)
         for t in threads:
             t.join(timeout=5.0)
-        ***REMOVED*** Signal the upsert worker to stop.
+        # Signal the upsert worker to stop.
         upsert_queue.put(SENTINEL)
         upsert_thread.join(timeout=5.0)
     finally:
-        ***REMOVED*** Restore the real module (or remove the fake if there was none).
+        # Restore the real module (or remove the fake if there was none).
         if real_vss is not None:
             sys.modules["geovectors_encoder.services.vector_storage_service"] = real_vss
         else:

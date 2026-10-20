@@ -94,8 +94,8 @@ def test_changepoint_detection_empty_series():
 def test_changepoint_detects_large_jump():
     """CUSUM flags the index where the structural jump occurs."""
     svc = SpectralForecastService()
-    ***REMOVED*** Constant baseline then a big jump
+    # Constant baseline then a big jump
     distances = [0.05, 0.05, 0.05, 0.05, 2.0, 2.0]
     cp = svc.detect_changepoints(distances)
-    ***REMOVED*** The CUSUM magnitude (signed) should be large in absolute value
+    # The CUSUM magnitude (signed) should be large in absolute value
     assert abs(cp["changepoint_magnitude"]) > 0.5

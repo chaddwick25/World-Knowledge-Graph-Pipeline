@@ -49,48 +49,48 @@ from sklearn.preprocessing import LabelEncoder
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** ── Constants ──────────────────────────────────────────────────────────────
+# ── Constants ──────────────────────────────────────────────────────────────
 
-***REMOVED*** Core spatial concept space C ([SPATIAL_AGENT:§A.1])
+# Core spatial concept space C ([SPATIAL_AGENT:§A.1])
 CONCEPT_TYPES = [
     "LOCATION", "OBJECT", "FIELD", "EVENT",
     "NETWORK", "AMOUNT", "PROPORTION",
 ]
 
-***REMOVED*** Functional role space R ([SPATIAL_AGENT:§B.1])
+# Functional role space R ([SPATIAL_AGENT:§B.1])
 ROLE_TYPES = [
     "EXTENT", "TEXTENT", "SUB_COND", "COND", "SUPPORT", "MEASURE",
 ]
 
-***REMOVED*** Template → concept type → role mapping ([SPATIAL_AGENT:§B.4] — Table 5)
+# Template → concept type → role mapping ([SPATIAL_AGENT:§B.4] — Table 5)
 TEMPLATE_ROLE_MAP = {
-    "FILTER-AGGREGATE-MEASURE (***REMOVED***1)": {
+    "FILTER-AGGREGATE-MEASURE (#1)": {
         "OBJECT": "SUB_COND", "AMOUNT": "COND",
         "LOCATION": "SUPPORT", "FIELD": "MEASURE",
     },
-    "GEOCODE-BATCH-COMPARE (***REMOVED***4)": {
+    "GEOCODE-BATCH-COMPARE (#4)": {
         "OBJECT": "SUB_COND", "LOCATION": "SUPPORT",
         "AMOUNT": "MEASURE",
     },
-    "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)": {
+    "PLACE-ATTRIBUTE-QUERY (#8)": {
         "OBJECT": "SUB_COND", "FIELD": "SUPPORT",
         "LOCATION": "MEASURE",
     },
-    "LOCATION-BEARING-CLASSIFY (***REMOVED***5)": {
+    "LOCATION-BEARING-CLASSIFY (#5)": {
         "LOCATION": "SUB_COND", "AMOUNT": "MEASURE",
     },
-    "OBJECT-FIELD-MEASURE (***REMOVED***2)": {
+    "OBJECT-FIELD-MEASURE (#2)": {
         "LOCATION": "SUB_COND", "AMOUNT": "MEASURE",
     },
 }
 
-***REMOVED*** The 5 DAG skeletons — nodes ordered by role precedence.
-***REMOVED*** Each node specifies a role and the concept type it binds to.
-***REMOVED*** The MEASURE node is terminal (produces the answer).
-***REMOVED*** TODO: move this to a yaml file
-***REMOVED*** TODO: Generate the metrics for distribution of concepts across templates
+# The 5 DAG skeletons — nodes ordered by role precedence.
+# Each node specifies a role and the concept type it binds to.
+# The MEASURE node is terminal (produces the answer).
+# TODO: move this to a yaml file
+# TODO: Generate the metrics for distribution of concepts across templates
 TEMPLATE_SPECS = {
-    "FILTER-AGGREGATE-MEASURE (***REMOVED***1)": {
+    "FILTER-AGGREGATE-MEASURE (#1)": {
         "nodes": [
             {"role": "SUB_COND", "concept_type": "OBJECT",
              "operator": "place_search"},
@@ -102,7 +102,7 @@ TEMPLATE_SPECS = {
              "operator": "count"},
         ],
     },
-    "GEOCODE-BATCH-COMPARE (***REMOVED***4)": {
+    "GEOCODE-BATCH-COMPARE (#4)": {
         "nodes": [
             {"role": "SUB_COND", "concept_type": "OBJECT",
              "operator": "place_search"},
@@ -112,7 +112,7 @@ TEMPLATE_SPECS = {
              "operator": "rank_by_distance"},
         ],
     },
-    "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)": {
+    "PLACE-ATTRIBUTE-QUERY (#8)": {
         "nodes": [
             {"role": "SUB_COND", "concept_type": "OBJECT",
              "operator": "place_search"},
@@ -122,7 +122,7 @@ TEMPLATE_SPECS = {
              "operator": "report"},
         ],
     },
-    "LOCATION-BEARING-CLASSIFY (***REMOVED***5)": {
+    "LOCATION-BEARING-CLASSIFY (#5)": {
         "nodes": [
             {"role": "SUB_COND", "concept_type": "LOCATION",
              "operator": "geocode_a"},
@@ -134,7 +134,7 @@ TEMPLATE_SPECS = {
              "operator": "bearing_to_direction"},
         ],
     },
-    "OBJECT-FIELD-MEASURE (***REMOVED***2)": {
+    "OBJECT-FIELD-MEASURE (#2)": {
         "nodes": [
             {"role": "SUB_COND", "concept_type": "LOCATION",
              "operator": "geocode_a"},
@@ -148,19 +148,19 @@ TEMPLATE_SPECS = {
     },
 }
 
-***REMOVED*** Signal-phrase vocabulary for concept detection heuristics
-***REMOVED*** TODO: do some EDA to see if these are good enough or maybe they can be factorized
-***REMOVED*** TODO: Double check the paper to gain any insights
-***REMOVED*** TODO: Figure how to leverage WorldKG's arifacts(Classes, Predicted Links) (soft edges) as signals or let a LLM agent handle that
+# Signal-phrase vocabulary for concept detection heuristics
+# TODO: do some EDA to see if these are good enough or maybe they can be factorized
+# TODO: Double check the paper to gain any insights
+# TODO: Figure how to leverage WorldKG's arifacts(Classes, Predicted Links) (soft edges) as signals or let a LLM agent handle that
 AMOUNT_PATTERNS = [re.compile(r"\d+\s*m\b", re.I), re.compile(r"\d+\s*km\b", re.I)]
 OBJECT_SIGNALS = {"bar", "restaurant", "cafe", "hotel", "school", "hospital",
                   "shop", "amenity", "bar", "pub", "bank", "pharmacy",
                   "park", "church", "library", "cinema", "theatre",
                   "gas", "fuel", "parking", "toilet", "atm",
-                  ***REMOVED*** Transit amenities — without these, rows like
-                  ***REMOVED*** "What charging_station is close to Howdy's?" get NO
-                  ***REMOVED*** OBJECT label and the concept model learns "station" is
-                  ***REMOVED*** always a LOCATION (see the bus-station bug report).
+                  # Transit amenities — without these, rows like
+                  # "What charging_station is close to Howdy's?" get NO
+                  # OBJECT label and the concept model learns "station" is
+                  # always a LOCATION (see the bus-station bug report).
                   "bus", "station", "train", "taxi", "airport", "ferry"}
 LOCATION_SIGNALS = {"near", "of", "from", "to", "around", "by", "beside",
                     "next to", "close to"}
@@ -169,66 +169,66 @@ DIRECTION_SIGNALS = {"north", "south", "east", "west", "northeast",
                      "northwest", "southeast", "southwest",
                      "n", "s", "e", "w", "ne", "nw", "se", "sw"}
 
-***REMOVED*** ── Template mapping ──────────────────────────────────────────────────────
-***REMOVED*** Each entry: (macro_template, concept_transformation, metric_produced)
+# ── Template mapping ──────────────────────────────────────────────────────
+# Each entry: (macro_template, concept_transformation, metric_produced)
 TEMPLATE_MAP = {
     "amenities_dataset": (
-        "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)",
+        "PLACE-ATTRIBUTE-QUERY (#8)",
         "OBJECT → POI details → amenity attribute → MEASURE",
         "Place amenity type (e.g. studio, fast_food)",
     ),
     "nearest_amenity": (
-        "GEOCODE-BATCH-COMPARE (***REMOVED***4)",
+        "GEOCODE-BATCH-COMPARE (#4)",
         "OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(nearest) → MEASURE",
         "Nearest entity of a given type around an anchor",
     ),
     "amenities_around": (
-        "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
+        "FILTER-AGGREGATE-MEASURE (#1)",
         "OBJECT(anchor) + SUB_COND(radius) → SUPPORT(within_radius) → MEASURE",
         "List of amenities within a radius",
     ),
     "amenities-around-specific": (
-        "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
+        "FILTER-AGGREGATE-MEASURE (#1)",
         "SUB_COND(amenity_type + radius) → SUPPORT(within_radius) → MEASURE",
         "List of specific amenity type within a radius",
     ),
     "adjacent": (
-        "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)",
+        "PLACE-ATTRIBUTE-QUERY (#8)",
         "OBJECT(anchor) + SUB_COND(amenity_type) → SUPPORT(adjacency) → MEASURE",
         "Adjacent entity of a given type",
     ),
     "compare-closer": (
-        "GEOCODE-BATCH-COMPARE (***REMOVED***4)",
+        "GEOCODE-BATCH-COMPARE (#4)",
         "LOCATIONs → coordinates → SUPPORT(distance) × 2 → MEASURE(argmin)",
         "Which candidate is closest to the anchor",
     ),
     "direction_nearest": (
-        "LOCATION-BEARING-CLASSIFY (***REMOVED***5)",
+        "LOCATION-BEARING-CLASSIFY (#5)",
         "SUB_COND(direction) + SUPPORT(nearest in direction) → MEASURE",
         "Nearest entity in a cardinal direction from anchor",
     ),
     "distance": (
-        "OBJECT-FIELD-MEASURE (***REMOVED***2)",
+        "OBJECT-FIELD-MEASURE (#2)",
         "OBJECT(a) + OBJECT(b) → FIELD(haversine distance) → MEASURE",
         "Distance in meters between two entities",
     ),
     "intersection": (
-        "GEOCODE-BATCH-COMPARE (***REMOVED***4)",
+        "GEOCODE-BATCH-COMPARE (#4)",
         "SUPPORT(geocode road intersection) + SUPPORT(nearest) → MEASURE",
         "Nearest entity to a road intersection point",
     ),
 }
 
-***REMOVED*** MapQA dataset regions
+# MapQA dataset regions
 _DATASET_REGIONS = ["california_full", "illinois_test"]
 
-***REMOVED*** ── Extended CSV schema (coverage-expansion §5) ─────
-***REMOVED*** Columns appended to the training CSV (nullable; old CSVs keep working via
-***REMOVED*** _load_csv defaults). Source distinguishes provenance:
-***REMOVED***   mapqa-llm      — raw MapQA dataset rows (california_full / illinois_test)
-***REMOVED***   hand-curated   — natural_language_qa_pairs.csv augmentation rows
-***REMOVED***   self_supervised— generated from OsmEntity ground truth by
-***REMOVED***                    generate_mapqa_training_data
+# ── Extended CSV schema (coverage-expansion §5) ─────
+# Columns appended to the training CSV (nullable; old CSVs keep working via
+# _load_csv defaults). Source distinguishes provenance:
+#   mapqa-llm      — raw MapQA dataset rows (california_full / illinois_test)
+#   hand-curated   — natural_language_qa_pairs.csv augmentation rows
+#   self_supervised— generated from OsmEntity ground truth by
+#                    generate_mapqa_training_data
 CSV_FIELD_NAMES = [
     "Macro-template", "Concept transformation", "What metric it produces",
     "MapQA question", "Question type", "Region", "Answer",
@@ -236,10 +236,10 @@ CSV_FIELD_NAMES = [
     "Country_code",
 ]
 
-***REMOVED*** Train-region sets: train grows with self_supervised rows; illinois_test
-***REMOVED*** stays the zero-shot holdout; self_supervised_test is the per-class held-out
-***REMOVED*** slice the generator carves out of its own rows (reported in metrics.json
-***REMOVED*** alongside the Illinois headline metric — never mixed into training).
+# Train-region sets: train grows with self_supervised rows; illinois_test
+# stays the zero-shot holdout; self_supervised_test is the per-class held-out
+# slice the generator carves out of its own rows (reported in metrics.json
+# alongside the Illinois headline metric — never mixed into training).
 TRAIN_REGIONS = ("california_full", "augmented", "self_supervised")
 TEST_REGIONS = ("illinois_test",)
 HOLDOUT_REGIONS = ("self_supervised_test",)
@@ -278,7 +278,7 @@ class Command(BaseCommand):
         artifacts_dir = data_dir / "artifacts"
         artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-        ***REMOVED*** Auto-generate training CSV from raw dataset if missing
+        # Auto-generate training CSV from raw dataset if missing
         if not csv_path.exists():
             self.stdout.write(
                 f"Training CSV not found at {csv_path} — "
@@ -294,7 +294,7 @@ class Command(BaseCommand):
             self._generate_training_csv(raw_dir, csv_path)
             self.stdout.write(f"Generated {csv_path}")
 
-        ***REMOVED*** Copy bundled natural_language_qa_pairs.csv if not present
+        # Copy bundled natural_language_qa_pairs.csv if not present
         nl_csv = training_dir / "natural_language_qa_pairs.csv"
         if not nl_csv.exists():
             bundled_nl = Path(__file__).resolve().parent.parent.parent / "data" / "natural_language_qa_pairs.csv"
@@ -306,19 +306,19 @@ class Command(BaseCommand):
         rows = self._load_csv(csv_path)
         self.stdout.write(f"  {len(rows)} rows loaded")
 
-        ***REMOVED*** Load supplementary natural-language QA pairs (cuisine descriptors,
-        ***REMOVED*** colloquial amenity names) to improve concept extractor coverage
-        ***REMOVED*** for phrases not in the OSM amenity vocabulary.
-        ***REMOVED*** ([SPATIAL_AGENT:§3.2] — semantic domain vs spatial domain grounding)
+        # Load supplementary natural-language QA pairs (cuisine descriptors,
+        # colloquial amenity names) to improve concept extractor coverage
+        # for phrases not in the OSM amenity vocabulary.
+        # ([SPATIAL_AGENT:§3.2] — semantic domain vs spatial domain grounding)
         nl_csv = data_dir / "training_data" / "natural_language_qa_pairs.csv"
         if nl_csv.exists():
             nl_rows = self._load_csv(nl_csv)
             self.stdout.write(f"  Natural-language augmentation: {len(nl_rows)} rows")
-            ***REMOVED*** Add to training set (Region="augmented" → treated as train)
+            # Add to training set (Region="augmented" → treated as train)
             rows.extend(nl_rows)
 
-        ***REMOVED*** Split: California + augmented + self_supervised = train,
-        ***REMOVED*** Illinois = zero-shot test, self_supervised_test = per-class holdout.
+        # Split: California + augmented + self_supervised = train,
+        # Illinois = zero-shot test, self_supervised_test = per-class holdout.
         train_rows, test_rows, holdout_rows = self._split_rows(rows)
         self.stdout.write(f"  Train (CA + augmented + self-supervised): {len(train_rows)}")
         self.stdout.write(f"  Illinois test:                          {len(test_rows)}")
@@ -329,9 +329,9 @@ class Command(BaseCommand):
         test_questions = [r["MapQA question"] for r in test_rows]
         test_templates = [r["Macro-template"] for r in test_rows]
 
-        ***REMOVED*** ── Stage 1: TF-IDF + MultinomialNB (template classifier) ──────────
+        # ── Stage 1: TF-IDF + MultinomialNB (template classifier) ──────────
         self.stdout.write("\n=== Stage 1: Template classifier ===")
-        ***REMOVED*** Fit vectorizer on TRAIN ONLY (fixes §4.3 leakage caveat)
+        # Fit vectorizer on TRAIN ONLY (fixes §4.3 leakage caveat)
         vectorizer = TfidfVectorizer(
             ngram_range=(1, 2),
             min_df=2,
@@ -364,11 +364,11 @@ class Command(BaseCommand):
         misclassified = int((y_pred != y_test).sum())
         self.stdout.write(f"  Misclassified: {misclassified}/{len(y_test)}")
 
-        ***REMOVED*** ── Stage 1b: self-supervised holdout evaluation ────────────────────
-        ***REMOVED*** Informational per-class metrics on the generator's own 20% holdout
-        ***REMOVED*** (self_supervised_test). Illinois remains the headline zero-shot
-        ***REMOVED*** metric — mixing generated rows into the headline would leak the
-        ***REMOVED*** generation distribution into the "zero-shot" claim.
+        # ── Stage 1b: self-supervised holdout evaluation ────────────────────
+        # Informational per-class metrics on the generator's own 20% holdout
+        # (self_supervised_test). Illinois remains the headline zero-shot
+        # metric — mixing generated rows into the headline would leak the
+        # generation distribution into the "zero-shot" claim.
         holdout_report = {}
         if holdout_rows:
             X_holdout = vectorizer.transform(
@@ -390,7 +390,7 @@ class Command(BaseCommand):
                 f"F1-macro: {holdout_report['macro avg']['f1-score']:.4f}"
             )
 
-        ***REMOVED*** ── Stage 2: Concept extractor (multi-label) ────────────────────────
+        # ── Stage 2: Concept extractor (multi-label) ────────────────────────
         concept_extractor = None
         concept_report = {}
         role_assigner = None
@@ -424,7 +424,7 @@ class Command(BaseCommand):
                 f"  Concept F1-macro: {concept_report['macro avg']['f1-score']:.4f}"
             )
 
-            ***REMOVED*** ── Stage 3: Role assigner (multi-class) ────────────────────────
+            # ── Stage 3: Role assigner (multi-class) ────────────────────────
             self.stdout.write("\n=== Stage 3: Role assigner ===")
             role_questions, role_labels = self._build_role_training_data(
                 train_rows, concept_labels_train
@@ -441,7 +441,7 @@ class Command(BaseCommand):
             )
             role_assigner.fit(X_roles, y_roles)
 
-            ***REMOVED*** Evaluate role assigner on test
+            # Evaluate role assigner on test
             role_questions_test, role_labels_test = self._build_role_training_data(
                 test_rows, concept_labels_test
             )
@@ -459,13 +459,13 @@ class Command(BaseCommand):
                 f"  Role F1-macro: {role_report['macro avg']['f1-score']:.4f}"
             )
 
-        ***REMOVED*** ── Amenity vocabulary ──────────────────────────────────────────────
+        # ── Amenity vocabulary ──────────────────────────────────────────────
         amenity_vocab = self._load_amenity_vocab(
             opts["amenities_path"], data_dir
         )
         self.stdout.write(f"\nAmenity vocabulary: {len(amenity_vocab)} values")
 
-        ***REMOVED*** ── Serialize artifacts ─────────────────────────────────────────────
+        # ── Serialize artifacts ─────────────────────────────────────────────
         self.stdout.write(f"\nSerializing artifacts to {artifacts_dir}/")
         self._save(artifacts_dir / "vectorizer.pkl", vectorizer)
         self._save(artifacts_dir / "template_classifier.pkl", classifier)
@@ -479,7 +479,7 @@ class Command(BaseCommand):
             self._save(artifacts_dir / "role_assigner.pkl", role_assigner)
             self._save(artifacts_dir / "role_encoder.pkl", role_encoder)
 
-        ***REMOVED*** Metrics
+        # Metrics
         metrics = {
             "train_accuracy": round(train_acc, 4),
             "test_accuracy": round(test_acc, 4),
@@ -538,7 +538,7 @@ class Command(BaseCommand):
             f"  F1-macro: {report['macro avg']['f1-score']:.4f}"
         ))
 
-    ***REMOVED*** ── Data loading ────────────────────────────────────────────────────────
+    # ── Data loading ────────────────────────────────────────────────────────
 
     @classmethod
     def _load_csv(cls, csv_path: Path) -> list:
@@ -595,7 +595,7 @@ class Command(BaseCommand):
         holdout_rows = [r for r in rows if r["Region"] in HOLDOUT_REGIONS]
         return train_rows, test_rows, holdout_rows
 
-    ***REMOVED*** ── Training CSV generation (from raw MapQA dataset) ───────────────────
+    # ── Training CSV generation (from raw MapQA dataset) ───────────────────
 
     @classmethod
     def _generate_training_csv(cls, raw_llm_dir: Path, output_path: Path) -> None:
@@ -695,28 +695,28 @@ class Command(BaseCommand):
         if amenities_path:
             p = Path(amenities_path)
         else:
-            ***REMOVED*** Try canonical copy first (Docker-safe)
+            # Try canonical copy first (Docker-safe)
             p = data_dir / "training_data" / "amenities.csv"
             if not p.exists():
-                ***REMOVED*** Fall back to raw dataset symlink (host-only)
+                # Fall back to raw dataset symlink (host-only)
                 p = data_dir / "raw" / "MapQA-dataset-main" / "llm" / "california_full" / "amenities.csv"
         if not p.exists():
             logger.warning("amenities.csv not found at %s, using fallback vocab", p)
             return sorted(OBJECT_SIGNALS)
         vocab = []
         with open(p, "r", encoding="utf-8") as f:
-            ***REMOVED*** Format: "amenity" header, then one value per line (quoted)
+            # Format: "amenity" header, then one value per line (quoted)
             for line in f:
                 val = line.strip().strip('"').strip()
                 if val and val.lower() != "amenity" and val.lower() != "null":
                     vocab.append(val)
-        ***REMOVED*** Also include fallback signals
+        # Also include fallback signals
         for s in OBJECT_SIGNALS:
             if s not in vocab:
                 vocab.append(s)
         return sorted(set(vocab))
 
-    ***REMOVED*** ── Concept label derivation ────────────────────────────────────────────
+    # ── Concept label derivation ────────────────────────────────────────────
 
     @staticmethod
     def _derive_concept_labels(rows: list) -> list:
@@ -733,42 +733,42 @@ class Command(BaseCommand):
             template = row["Macro-template"]
             concepts = set()
 
-            ***REMOVED*** AMOUNT: radius or distance
+            # AMOUNT: radius or distance
             if any(p.search(q_lower) for p in AMOUNT_PATTERNS):
                 concepts.add("AMOUNT")
             if "how far" in q_lower or "distance" in q_lower:
                 concepts.add("AMOUNT")
 
-            ***REMOVED*** OBJECT: amenity type
+            # OBJECT: amenity type
             for obj_sig in OBJECT_SIGNALS:
                 if obj_sig in q_lower:
                     concepts.add("OBJECT")
                     break
 
-            ***REMOVED*** LOCATION: entity names (proper nouns near prepositions)
+            # LOCATION: entity names (proper nouns near prepositions)
             if any(sig in q_lower for sig in LOCATION_SIGNALS):
                 concepts.add("LOCATION")
-            ***REMOVED*** Compare-closer and distance always have 2+ locations
+            # Compare-closer and distance always have 2+ locations
             if "closer" in q_lower or "how far" in q_lower:
                 concepts.add("LOCATION")
 
-            ***REMOVED*** FIELD: attribute queries
+            # FIELD: attribute queries
             if any(sig in q_lower for sig in FIELD_SIGNALS):
                 concepts.add("FIELD")
 
-            ***REMOVED*** Template-specific guarantees
-            if template == "LOCATION-BEARING-CLASSIFY (***REMOVED***5)":
+            # Template-specific guarantees
+            if template == "LOCATION-BEARING-CLASSIFY (#5)":
                 concepts.add("LOCATION")
-                concepts.add("AMOUNT")  ***REMOVED*** bearing angle
-            if template == "OBJECT-FIELD-MEASURE (***REMOVED***2)":
+                concepts.add("AMOUNT")  # bearing angle
+            if template == "OBJECT-FIELD-MEASURE (#2)":
                 concepts.add("LOCATION")
-                concepts.add("AMOUNT")  ***REMOVED*** distance
+                concepts.add("AMOUNT")  # distance
 
-            ***REMOVED*** Ensure at least one concept
+            # Ensure at least one concept
             if not concepts:
                 concepts.add("LOCATION")
 
-            ***REMOVED*** Convert to binary vector matching CONCEPT_TYPES order
+            # Convert to binary vector matching CONCEPT_TYPES order
             label_vec = [1 if ct in concepts else 0 for ct in CONCEPT_TYPES]
             labels.append(label_vec)
         return labels
@@ -791,7 +791,7 @@ class Command(BaseCommand):
                     role_labels.append(role)
         return role_questions, role_labels
 
-    ***REMOVED*** ── Serialization helpers ──────────────────────────────────────────────
+    # ── Serialization helpers ──────────────────────────────────────────────
 
     @staticmethod
     def _save(path: Path, obj):

@@ -1,4 +1,4 @@
-***REMOVED*** Preserving the OSM-to-Built-Form Transfer Technique
+# Preserving the OSM-to-Built-Form Transfer Technique
 
 How the measured building context from the GlobalBuildingAtlas (GBA, TUM)
 combines with the pipeline's global OSM-derived embedding stack to make
@@ -8,7 +8,7 @@ rigorous. Originated 2026-09-10 from the GBA Africa integration work.
 
 ---
 
-***REMOVED******REMOVED*** 1. The Problem
+## 1. The Problem
 
 GBA enriches African pipeline countries with measured building context:
 height at the entity point, footprint area, local density (BCR), FAR proxy,
@@ -28,7 +28,7 @@ Two properties of the dataset define the design space:
 GBA answers "what is physically built here" for the countries that get
 measured. The question that follows: how does that signal leave Africa?
 
-***REMOVED******REMOVED*** 2. The Fusion: Measured Atlas × Global Substrate
+## 2. The Fusion: Measured Atlas × Global Substrate
 
 The homogeneous global substrate already exists in the repo: the embedding
 stack. GV-Tags (300D, "what you are") and GV-NLE (100D, "where you are")
@@ -60,9 +60,9 @@ between them.
           any country, any snapshot
 ```
 
-***REMOVED******REMOVED*** 3. Four Workflows the Fusion Enables
+## 3. Four Workflows the Fusion Enables
 
-| ***REMOVED*** | Workflow | Mechanism | Novel question it answers | Repo fit |
+| # | Workflow | Mechanism | Novel question it answers | Repo fit |
 |---|----------|-----------|---------------------------|----------|
 | W1 | **Learned built-form layer** | Train per-entity/regional OSM feature vector (gv_tags + tag profile + density covariates) → GBA built metrics (Africa labels). Apply the mapping to any country/snapshot with embeddings. Artifact: a global predicted built-form factor ("GV-BF" in repo naming) | "What is the built form of a place that has no measured height data, at any point in time?" | Learned-layer infra exists (GV-NLE, USLP, parser training) |
 | W2 | **Morphology twins (Doppelganger)** | Notebook-08 PCA axes trained on GBA-measured regions; project OSM-only regions into that space via the same feature representation | "Which cities globally are physically analogous to Westlands, Nairobi?" — cross-continent analog search | Notebook 08 is a working prototype |
@@ -85,7 +85,7 @@ between them.
               +-- W4: temporal projection = W1 applied to old snapshots
 ```
 
-***REMOVED******REMOVED*** 4. Why W1 Is the Priority: the Vintage Fix
+## 4. Why W1 Is the Priority: the Vintage Fix
 
 GBA is 2024/2025; a 2017 snapshot receives 2024 buildings. W1 fixes that by
 construction: the learned mapping is applied to *that snapshot's own OSM
@@ -96,11 +96,11 @@ has.
 The deeper insight: the measured Atlas is the training set; the embeddings
 make it computable everywhere and everywhen.
 
-***REMOVED******REMOVED*** 5. The Two Transport Problems
+## 5. The Two Transport Problems
 
 One definition covers both problems. Two operators solve them.
 
-***REMOVED******REMOVED******REMOVED*** 5.1 Definition: the circular chart
+### 5.1 Definition: the circular chart
 
 Transport is defined by a loop. A signal in one domain is described into a
 feature space, transported to the other domain, and compared. The loop
@@ -124,9 +124,9 @@ Two problems, one circle. They differ only in what `describe` means:
 | tau / C | functional map (analytic) | learned projection E (W1) |
 | Status | ✅ solved, BZ-validated 2026-08-20 | ⚠️ planned, draft 2026-09-10 |
 
-***REMOVED******REMOVED******REMOVED*** 5.2 Problem 1: cross-subgraph spectral diffusion (✅ solved 2026-08-20)
+### 5.2 Problem 1: cross-subgraph spectral diffusion (✅ solved 2026-08-20)
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 5.2.1 The gauge problem: one thing, two languages
+#### 5.2.1 The gauge problem: one thing, two languages
 
 Each subgraph has its own eigenbasis (its own Laplacian, its own
 eigenvectors). Loadings are coordinates in that basis. Adjacent subgraphs
@@ -150,7 +150,7 @@ et al. 2023 show the map survives non-isomorphic subgraphs. The failure
 this solves: a diffusion query near the Dublin/Meath border could not
 reach Cork via the spectral path, and the executor fell back to PostGIS.
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 5.2.2 The dictionary: two objective terms
+#### 5.2.2 The dictionary: two objective terms
 
 The buffer zones overlap, so shared entities carry loadings in both bases.
 They are the bilingual corpus. The functional map is the dictionary.
@@ -184,7 +184,7 @@ it: the dictionary must respect each graph's grammar, not just the sample
 sentences. C must approximately commute with both Laplacians, which pulls
 the constraint from the border out to the whole graph.
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 5.2.3 The flow, walked with real numbers
+#### 5.2.3 The flow, walked with real numbers
 
 Tiny example: A = {a1, c}, B = {c, b1}, one shared entity c.
 
@@ -215,7 +215,7 @@ entities, better dictionary, less neutrality. (Both graphs are identical
 here, so term 2 is degenerate; it binds when A and B differ, the real
 case.)
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 5.2.4 Runtime flow
+#### 5.2.4 Runtime flow
 
 One matrix-vector multiply per crossing, then the existing pgvector path:
 
@@ -230,15 +230,15 @@ One matrix-vector multiply per crossing, then the existing pgvector path:
   loadings in B's basis
         |
         v
-  pgvector <***REMOVED***> against B's factor rows
+  pgvector <#> against B's factor rows
         |
         v
   ranked candidates across the border
 ```
 
-***REMOVED******REMOVED******REMOVED*** 5.3 Problem 2: built-form transfer (⚠️ planned 2026-09-10)
+### 5.3 Problem 2: built-form transfer (⚠️ planned 2026-09-10)
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 5.3.1 Measured vs unmeasured
+#### 5.3.1 Measured vs unmeasured
 
 GBA measures built form in some regions (Africa Phase 1). OSM features
 exist everywhere. Problem 1 transported between two graph eigenbases;
@@ -259,7 +259,7 @@ coordinates, learned from the measured regions.
   height always loads on the axes
 ```
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 5.3.2 Height always rides in the components
+#### 5.3.2 Height always rides in the components
 
 The PCA basis Ψ is defined on the measured domain (GBA regions, height in
 the training matrix), so every axis carries a height loading by
@@ -281,29 +281,29 @@ height, on different loadings:
   PCA loadings (notebook 08, Boston / Cambridge / Somerville)
 
   PC1 - built density & verticality vs footprint fragmentation
-    far_proxy              0.502  ***REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED***
-    mean_height            0.499  ***REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED***
-    avg_shape_complexity  -0.485  ***REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED***     <- fragmentation pole
-    bcr                    0.429  ***REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED***
-    height_variance        0.239  ***REMOVED******REMOVED******REMOVED******REMOVED***
-    max_height            -0.152  ***REMOVED******REMOVED******REMOVED***          <- fragmentation pole
+    far_proxy              0.502  ########
+    mean_height            0.499  ########
+    avg_shape_complexity  -0.485  ########     <- fragmentation pole
+    bcr                    0.429  #######
+    height_variance        0.239  ####
+    max_height            -0.152  ###          <- fragmentation pole
 
     reads as: dense, uniformly tall blocks vs fragmented footprints.
     query:    "find dense built-up blocks"
 
   PC2 - height dispersion vs footprint compactness
-    max_height             0.653  ***REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED***
-    height_variance        0.604  ***REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED***
-    bcr                   -0.369  ***REMOVED******REMOVED******REMOVED******REMOVED******REMOVED******REMOVED***      <- compactness pole
-    avg_shape_complexity  -0.208  ***REMOVED******REMOVED******REMOVED***         <- compactness pole
-    mean_height            0.133  ***REMOVED******REMOVED***
-    far_proxy             -0.109  ***REMOVED******REMOVED***          <- compactness pole
+    max_height             0.653  ###########
+    height_variance        0.604  ##########
+    bcr                   -0.369  ######      <- compactness pole
+    avg_shape_complexity  -0.208  ###         <- compactness pole
+    mean_height            0.133  ##
+    far_proxy             -0.109  ##          <- compactness pole
 
     reads as: a few towers over uniform blocks vs low compact blocks.
     query:    "find high-rise districts"
 ```
 
-***REMOVED******REMOVED******REMOVED******REMOVED*** 5.3.3 The seal as training signal
+#### 5.3.3 The seal as training signal
 
 A descriptor-commutativity regularizer (proposed, not
 implemented) makes the loop a regularizer: descriptors commute with
@@ -340,7 +340,7 @@ apply the learned regularity to the borderless pairs. Structural
 similarity replaces physical proximity. That is what carries the signal
 from measured Africa to the rest of the world.
 
-***REMOVED******REMOVED******REMOVED*** 5.4 Both solutions on one axis
+### 5.4 Both solutions on one axis
 
 The two problems are the same circle with different `describe` maps.
 Side by side:
@@ -402,7 +402,7 @@ The linear learned case converges to the analytic C on the same pairs, so
 it is a strict generalization; its value is the boundary-free supervision
 path and the smooth step into nonlinearity.
 
-***REMOVED******REMOVED*** 6. The Architecture
+## 6. The Architecture
 
 A sheaf-like structure: local descriptions per subgraph (`E_sub`), glued by
 the transport matrices the repo already built and validated on BZ. The
@@ -436,7 +436,7 @@ transports, so training is a joint solve over the subgraph graph, not
 per-subgraph fitting. The BZ-validated transport matrices are the coupling
 data that make the solve tractable.
 
-***REMOVED******REMOVED*** 7. Honest Caveats (they decide the design)
+## 7. Honest Caveats (they decide the design)
 
 1. **Circularity is partial**: GBA.Polygon fuses OSM + Microsoft footprints,
    so footprint-derived labels (BCR, FAR) are partly circular with the OSM
@@ -469,7 +469,7 @@ data that make the solve tractable.
    nonsense. `commutativity_residual` on `factor_subgraph_transport` is the
    canary: it measures exactly this.
 
-***REMOVED******REMOVED*** 8. Recommendation and Next Steps
+## 8. Recommendation and Next Steps
 
 W1 first (the enabler, fixes the vintage flaw), W2 second (the genuinely
 novel workflow, prototyped in notebook 08), W3 as a cheap enrichment loop
@@ -481,7 +481,7 @@ cross-continent test set.
 Next step: the OSM-to-built-form transfer work,
 with W1 + W2, the four caveats and the commutativity constraint as gates.
 
-***REMOVED******REMOVED*** 9. Source References
+## 9. Source References
 
 - Transport matrices: functional maps
   (C = Φ_Bᵀ S Φ_A, regularized objective; BZ-validated

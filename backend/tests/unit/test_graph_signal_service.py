@@ -29,9 +29,9 @@ def _path_graph(n: int) -> nx.Graph:
     return nx.path_graph(n)
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Dirichlet energy invariants
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Dirichlet energy invariants
+# --------------------------------------------------------------------------- #
 
 def test_dirichlet_energy_non_negative():
     """sᵀLs ≥ 0 for all signals (Phase 0 invariant — L is PSD)."""
@@ -65,9 +65,9 @@ def test_smooth_signal_lower_than_noisy_signal():
     """Spatially clustered classes → lower Dirichlet energy than random."""
     G = _path_graph(30)
     svc = GraphSignalService()
-    ***REMOVED*** Smooth: first half class 0, second half class 1
+    # Smooth: first half class 0, second half class 1
     smooth_signal = np.array([0.0] * 15 + [1.0] * 15)
-    ***REMOVED*** Noisy: random assignment
+    # Noisy: random assignment
     rng = np.random.default_rng(7)
     noisy_signal = rng.integers(0, 2, size=30).astype(float)
     smooth_energy = svc.signal_smoothness(G, smooth_signal)
@@ -75,9 +75,9 @@ def test_smooth_signal_lower_than_noisy_signal():
     assert smooth_energy < noisy_energy
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Class signal construction
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Class signal construction
+# --------------------------------------------------------------------------- #
 
 def test_build_class_signal_assigns_class_indices():
     """build_class_signal returns a per-node signal + class→index map."""
@@ -87,9 +87,9 @@ def test_build_class_signal_assigns_class_indices():
     signal, class_index = svc.build_class_signal(G, entity_class_map)
     assert set(class_index.keys()) == {"wkgs:Cafe", "wkgs:School"}
     assert signal.shape == (5,)
-    ***REMOVED*** Nodes not in the map get class index 0
+    # Nodes not in the map get class index 0
     assert signal[3] == 0.0
-    ***REMOVED*** Nodes in the map get the correct class index
+    # Nodes in the map get the correct class index
     assert signal[0] == class_index["wkgs:Cafe"]
     assert signal[2] == class_index["wkgs:School"]
 
@@ -101,13 +101,13 @@ def test_build_onehot_signal_shape():
     svc = GraphSignalService()
     onehot, class_index = svc.build_onehot_signal(G, entity_class_map)
     assert onehot.shape == (4, 3)
-    ***REMOVED*** Each row sums to 1 (one-hot)
+    # Each row sums to 1 (one-hot)
     np.testing.assert_allclose(onehot.sum(axis=1), np.ones(4))
 
 
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
-***REMOVED*** Signal diffusion
-***REMOVED*** --------------------------------------------------------------------------- ***REMOVED***
+# --------------------------------------------------------------------------- #
+# Signal diffusion
+# --------------------------------------------------------------------------- #
 
 def test_diffuse_signal_returns_signal_shape():
     """(L + μI)⁻¹s returns a vector of the same length as the signal."""
@@ -123,9 +123,9 @@ def test_diffuse_signal_smooths_the_input():
     """Diffusion reduces the variance of the signal (smoothing)."""
     G = _path_graph(20)
     svc = GraphSignalService()
-    ***REMOVED*** Spike at one node
+    # Spike at one node
     signal = np.zeros(20)
     signal[10] = 1.0
     diffused = svc.diffuse_signal(G, signal, mu=0.5)
-    ***REMOVED*** Variance should decrease after smoothing
+    # Variance should decrease after smoothing
     assert np.var(diffused) < np.var(signal)

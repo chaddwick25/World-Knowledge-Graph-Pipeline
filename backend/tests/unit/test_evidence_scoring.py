@@ -20,7 +20,7 @@ from semantic_search.services.research_service import (
 )
 
 
-***REMOVED*** ── Twin score: channel combination ──────────────────────────────────
+# ── Twin score: channel combination ──────────────────────────────────
 
 def test_twin_score_multi_channel():
     rows = [{
@@ -31,12 +31,12 @@ def test_twin_score_multi_channel():
     out = EvidenceScoringService.score_candidates(
         "wkgs:Pub", rows, uslp_by_osm_id=uslp,
     )
-    ***REMOVED*** weights: cosine .6, class .25, uslp .15 → all channels agree high
+    # weights: cosine .6, class .25, uslp .15 → all channels agree high
     r = out[0]
     assert r["twin_score"] == pytest.approx(
         0.6 * 0.9 + 0.25 * 1.0 + 0.15 * 0.8, abs=1e-4,
     )
-    ***REMOVED*** agreement: 1 - (max - min) over {0.9, 1.0, 0.8}
+    # agreement: 1 - (max - min) over {0.9, 1.0, 0.8}
     assert r["twin_confidence"] == pytest.approx(1.0 - 0.2)
     assert r["twin_channels"] == ["class", "cosine", "uslp"]
 
@@ -46,7 +46,7 @@ def test_twin_score_single_channel_confidence_is_none():
              "similarity": 0.7}]
     out = EvidenceScoringService.score_candidates(None, rows)
     assert out[0]["twin_score"] == pytest.approx(0.7)
-    ***REMOVED*** A single channel is honest unknown, never faked.
+    # A single channel is honest unknown, never faked.
     assert out[0]["twin_confidence"] is None
     assert out[0]["twin_channels"] == ["cosine"]
 
@@ -55,7 +55,7 @@ def test_twin_score_class_mismatch_pulls_down():
     rows = [{"osm_id": 1, "name": "X", "wkg_class": "wkgs:Shop",
              "similarity": 0.9}]
     out = EvidenceScoringService.score_candidates("wkgs:Pub", rows)
-    ***REMOVED*** cosine .6 * .9 + class .25 * 0 = .54 / .85 (service rounds to 4dp)
+    # cosine .6 * .9 + class .25 * 0 = .54 / .85 (service rounds to 4dp)
     assert out[0]["twin_score"] == pytest.approx(0.54 / 0.85, abs=1e-4)
 
 
@@ -84,18 +84,18 @@ def test_twin_score_cosine_clamped():
     assert out[0]["twin_score"] == 1.0
 
 
-***REMOVED*** ── Presence posterior ───────────────────────────────────────────────
+# ── Presence posterior ───────────────────────────────────────────────
 
 def test_presence_absent_when_dense_probe_has_no_class_matches():
-    ***REMOVED*** Dense probe (30 evidence-worthy rows), zero match the asked class:
-    ***REMOVED*** the posterior upper bound falls under the bar → absent.
+    # Dense probe (30 evidence-worthy rows), zero match the asked class:
+    # the posterior upper bound falls under the bar → absent.
     out = EvidenceScoringService.presence_posterior(0, 30)
     assert out["decision"] == "absent"
     assert out["n_class"] == 0 and out["n_total"] == 30
 
 
 def test_presence_uncertain_when_sparse_probe():
-    ***REMOVED*** Under MIN_PROBE rows the probe says nothing: replan still runs.
+    # Under MIN_PROBE rows the probe says nothing: replan still runs.
     out = EvidenceScoringService.presence_posterior(0, 3)
     assert out["decision"] == "uncertain"
 
@@ -103,7 +103,7 @@ def test_presence_uncertain_when_sparse_probe():
 def test_presence_uncertain_when_class_matches_present():
     out = EvidenceScoringService.presence_posterior(2, 30)
     assert out["decision"] == "uncertain"
-    ***REMOVED*** alpha = 1 + 2, beta = 4 + 28 → p = 3/35
+    # alpha = 1 + 2, beta = 4 + 28 → p = 3/35
     assert out["p_present"] == pytest.approx(3 / 35, abs=1e-4)
 
 
@@ -113,14 +113,14 @@ def test_presence_n_class_clamped_to_total():
 
 
 def test_presence_prior_mean_is_weak():
-    ***REMOVED*** Zero evidence: the posterior is the prior (mean 0.2), never a
-    ***REMOVED*** confident absence.
+    # Zero evidence: the posterior is the prior (mean 0.2), never a
+    # confident absence.
     out = EvidenceScoringService.presence_posterior(0, 0)
     assert out["decision"] == "uncertain"
     assert out["p_present"] == pytest.approx(0.2)
 
 
-***REMOVED*** ── Run confidence ───────────────────────────────────────────────────
+# ── Run confidence ───────────────────────────────────────────────────
 
 def test_compose_confidence_bands():
     cov = [
@@ -149,7 +149,7 @@ def test_compose_confidence_empty_ledger_is_low():
     assert out["value"] == 0.0 and out["band"] == "low"
 
 
-***REMOVED*** ── Wiring: pre-plan twin scoring (fail-soft) ────────────────────────
+# ── Wiring: pre-plan twin scoring (fail-soft) ────────────────────────
 
 def test_score_preplan_twins_scores_and_reranks(monkeypatch):
     from semantic_search.services import evidence_scoring_service as es
@@ -181,7 +181,7 @@ def test_score_preplan_twins_scores_and_reranks(monkeypatch):
     )
     assert out[0]["name"] == "Strong"
     assert out[0]["twin_confidence"] is not None
-    ***REMOVED*** The rows were scored in place: the tool record carries them.
+    # The rows were scored in place: the tool record carries them.
     assert calls[0]["output"][0]["name"] == "Strong"
 
 
@@ -228,7 +228,7 @@ def test_score_preplan_twins_never_raises(monkeypatch):
     ) is None
 
 
-***REMOVED*** ── Evidence text rendering ──────────────────────────────────────────
+# ── Evidence text rendering ──────────────────────────────────────────
 
 def test_tool_evidence_text_carries_scores():
     calls = [{
@@ -255,10 +255,10 @@ def test_tool_evidence_text_unscored_rows_unchanged():
     assert text == "- similarEntities: Madigan's (IE)"
 
 
-***REMOVED*** ── Repair ladder: the presence gate ─────────────────────────────────
+# ── Repair ladder: the presence gate ─────────────────────────────────
 
 def _run_repair(monkeypatch, probe_rows, presence_gate):
-    """One empty ***REMOVED***1 slot through the repair ladder with a controlled
+    """One empty #1 slot through the repair ladder with a controlled
     probe; returns (records, repairs, replan_called)."""
     from semantic_search.services import research_service as rs
     from semantic_search.services.query_parser_service import (
@@ -270,7 +270,7 @@ def _run_repair(monkeypatch, probe_rows, presence_gate):
 
     records = [{
         "question": "Which restaurants are within 5km of downtown X?",
-        "slot": "eat", "template": "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
+        "slot": "eat", "template": "FILTER-AGGREGATE-MEASURE (#1)",
         "result_count": 0,
     }]
     replan_called = []
@@ -286,7 +286,7 @@ def _run_repair(monkeypatch, probe_rows, presence_gate):
         QueryParserService, "get_instance",
         staticmethod(lambda: type("P", (), {
             "parse": staticmethod(
-                lambda q: {"template": "PLACE-ATTRIBUTE-QUERY (***REMOVED***8)"},
+                lambda q: {"template": "PLACE-ATTRIBUTE-QUERY (#8)"},
             ),
         })()),
     )
@@ -313,8 +313,8 @@ def _run_repair(monkeypatch, probe_rows, presence_gate):
 
 
 def test_presence_gate_skips_replan_when_absent(monkeypatch):
-    ***REMOVED*** Dense probe, zero class matches: the posterior says absent, the
-    ***REMOVED*** LLM replan is skipped, the evidence fallback records the digest.
+    # Dense probe, zero class matches: the posterior says absent, the
+    # LLM replan is skipped, the evidence fallback records the digest.
     probe = [{"tags": {"amenity": t}, "name": f"p{i}"}
              for i, t in enumerate(["cafe"] * 30)]
     records, repairs, replan_called = _run_repair(
@@ -337,7 +337,7 @@ def test_presence_gate_off_keeps_replan(monkeypatch):
 
 
 def test_presence_gate_uncertain_still_replans(monkeypatch):
-    ***REMOVED*** Sparse probe: the posterior is uncertain, the replan runs.
+    # Sparse probe: the posterior is uncertain, the replan runs.
     probe = [{"tags": {"amenity": "cafe"}, "name": "p0"}]
     records, repairs, replan_called = _run_repair(
         monkeypatch, probe, presence_gate=True,
@@ -347,6 +347,6 @@ def test_presence_gate_uncertain_still_replans(monkeypatch):
 
 
 def test_presence_gate_flag_defaults_off():
-    ***REMOVED*** The module default (no env set in the test process): the repair
-    ***REMOVED*** flow is unchanged unless RESEARCH_PRESENCE_GATE is enabled.
+    # The module default (no env set in the test process): the repair
+    # flow is unchanged unless RESEARCH_PRESENCE_GATE is enabled.
     assert _PRESENCE_GATE_ENABLED is False

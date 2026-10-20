@@ -1,4 +1,4 @@
-"""Unit tests for the GEOCODE-BATCH-COMPARE (***REMOVED***4) branch decision.
+"""Unit tests for the GEOCODE-BATCH-COMPARE (#4) branch decision.
 
 Hermetic — no DB, no geocoding. Verifies that the compare-closer branch
 fires when multi-entity extraction produced 3+ named locations, even when
@@ -89,4 +89,4 @@ class TestCompareCloserBranch:
             "LK", "2025_12_31", [],
         )
         assert out == "SEARCHED"
-        assert sentinel == "COMPARE"  ***REMOVED*** untouched sentinel proves no compare call
+        assert sentinel == "COMPARE"  # untouched sentinel proves no compare call

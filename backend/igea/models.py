@@ -11,15 +11,15 @@ class EntityAlignment(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
-    ***REMOVED*** OSM entity reference (cross-database FK to worldkg_nca.OsmEntity)
+    # OSM entity reference (cross-database FK to worldkg_nca.OsmEntity)
     osm_type = models.CharField(max_length=10, db_index=True)
     osm_id = models.BigIntegerField(db_index=True)
     
-    ***REMOVED*** Wikidata alignment
+    # Wikidata alignment
     wikidata_uri = models.CharField(max_length=200, db_index=True)
     wikidata_label = models.CharField(max_length=500, null=True, blank=True)
     
-    ***REMOVED*** Alignment metadata
+    # Alignment metadata
     alignment_method = models.CharField(
         max_length=20,
         choices=[
@@ -37,14 +37,14 @@ class EntityAlignment(models.Model):
         help_text="IGEA iteration when alignment was accepted"
     )
     
-    ***REMOVED*** Spatial validation
+    # Spatial validation
     distance_meters = models.FloatField(
         null=True,
         blank=True,
         help_text="Haversine distance between OSM and Wikidata coordinates"
     )
     
-    ***REMOVED*** Timestamps
+    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -72,22 +72,22 @@ class SpatialTripletScore(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
-    ***REMOVED*** Head entity (cross-database FK to worldkg_nca.OsmEntity)
+    # Head entity (cross-database FK to worldkg_nca.OsmEntity)
     head_osm_type = models.CharField(max_length=10, db_index=True)
     head_osm_id = models.BigIntegerField(db_index=True)
     
-    ***REMOVED*** Tail entity (cross-database FK to worldkg_nca.OsmEntity)
+    # Tail entity (cross-database FK to worldkg_nca.OsmEntity)
     tail_osm_type = models.CharField(max_length=10, db_index=True)
     tail_osm_id = models.BigIntegerField(db_index=True)
     
-    ***REMOVED*** Relation
+    # Relation
     relation = models.CharField(
         max_length=50,
         db_index=True,
         help_text="Spatial relation (e.g., isInCounty, addrSuburb)"
     )
     
-    ***REMOVED*** USLP tri-space scores (Section 3.3)
+    # USLP tri-space scores (Section 3.3)
     geo_score = models.FloatField(
         help_text="Geohash distance score (precision by relation)"
     )
@@ -108,13 +108,13 @@ class SpatialTripletScore(models.Model):
         help_text="Normalized score = unnormalized_score / 3.0 (range [0, 1.0])"
     )
     
-    ***REMOVED*** Acceptance
+    # Acceptance
     predicted = models.BooleanField(
         default=False,
         help_text="True if normalized_score >= ACCEPTANCE_THRESHOLD (0.7)"
     )
     
-    ***REMOVED*** Metadata
+    # Metadata
     geohash_precision = models.IntegerField(
         help_text="Geohash precision used for geo_score"
     )
@@ -146,15 +146,15 @@ class SpatialTripletScore(models.Model):
             models.Index(fields=['predicted']),
             models.Index(fields=['snapshot_id']),
             models.Index(fields=['country_name']),
-            ***REMOVED*** Phase 3 of USLP data flow: Composite index for dashboard queries
-            ***REMOVED*** +--------+---------------------------------------------------------------+----------------------------------------------------------+
-            ***REMOVED*** | Phase  | What happens                                                  | Where                                                    |
-            ***REMOVED*** +========+===============================================================+==========================================================+
-            ***REMOVED*** | 3      | Composite index on (country_name, snapshot_id, predicted)    | Migration igea.0003_spatialtripletscore_igea_triplet_csp |
-            ***REMOVED*** |        | enables Index Only Scan for dashboard WHERE clause           | _idx on vectors DB                                       |
-            ***REMOVED*** +--------+---------------------------------------------------------------+----------------------------------------------------------+
-            ***REMOVED*** Used by AugmentedDataService.get_summary() filter():
-            ***REMOVED***   filter(country_name=..., snapshot_id=..., predicted=True)
+            # Phase 3 of USLP data flow: Composite index for dashboard queries
+            # +--------+---------------------------------------------------------------+----------------------------------------------------------+
+            # | Phase  | What happens                                                  | Where                                                    |
+            # +========+===============================================================+==========================================================+
+            # | 3      | Composite index on (country_name, snapshot_id, predicted)    | Migration igea.0003_spatialtripletscore_igea_triplet_csp |
+            # |        | enables Index Only Scan for dashboard WHERE clause           | _idx on vectors DB                                       |
+            # +--------+---------------------------------------------------------------+----------------------------------------------------------+
+            # Used by AugmentedDataService.get_summary() filter():
+            #   filter(country_name=..., snapshot_id=..., predicted=True)
             models.Index(
                 fields=['country_name', 'snapshot_id', 'predicted'],
                 name='igea_triplet_csp_idx'
@@ -178,22 +178,22 @@ class SpatialTripletScoreRejected(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    ***REMOVED*** Head entity (cross-database FK to worldkg_nca.OsmEntity)
+    # Head entity (cross-database FK to worldkg_nca.OsmEntity)
     head_osm_type = models.CharField(max_length=10, db_index=True)
     head_osm_id = models.BigIntegerField(db_index=True)
 
-    ***REMOVED*** Tail entity (cross-database FK to worldkg_nca.OsmEntity)
+    # Tail entity (cross-database FK to worldkg_nca.OsmEntity)
     tail_osm_type = models.CharField(max_length=10, db_index=True)
     tail_osm_id = models.BigIntegerField(db_index=True)
 
-    ***REMOVED*** Relation
+    # Relation
     relation = models.CharField(
         max_length=50,
         db_index=True,
         help_text="Spatial relation (e.g., isInCounty, addrSuburb)"
     )
 
-    ***REMOVED*** USLP tri-space scores (Section 3.3)
+    # USLP tri-space scores (Section 3.3)
     geo_score = models.FloatField(
         help_text="Geohash distance score (precision by relation)"
     )
@@ -214,7 +214,7 @@ class SpatialTripletScoreRejected(models.Model):
         help_text="Normalized score = unnormalized_score / 3.0 (range [0, 1.0])"
     )
 
-    ***REMOVED*** Metadata
+    # Metadata
     geohash_precision = models.IntegerField(
         help_text="Geohash precision used for geo_score"
     )

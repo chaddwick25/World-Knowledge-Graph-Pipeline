@@ -20,7 +20,7 @@ class DataSource(models.Model):
     api_key = models.CharField(max_length=500, blank=True, null=True)
     country_code = models.CharField(max_length=10, blank=True)
     is_active = models.BooleanField(default=True)
-    config = models.JSONField(default=dict)  ***REMOVED*** adapter-specific config
+    config = models.JSONField(default=dict)  # adapter-specific config
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -39,9 +39,9 @@ class GeoDataset(models.Model):
         on_delete=models.CASCADE,
         related_name='datasets',
     )
-    source_dataset_id = models.CharField(max_length=200)  ***REMOVED*** CKAN pkg ID, StatCan table ID
+    source_dataset_id = models.CharField(max_length=200)  # CKAN pkg ID, StatCan table ID
     title = models.CharField(max_length=500)
-    name = models.CharField(max_length=200)  ***REMOVED*** slug
+    name = models.CharField(max_length=200)  # slug
     description = models.TextField(blank=True)
     publisher = models.CharField(max_length=200, blank=True)
     license = models.CharField(max_length=200, blank=True)
@@ -51,7 +51,7 @@ class GeoDataset(models.Model):
     temporal_end = models.DateField(null=True, blank=True)
     keywords = models.JSONField(default=list)
     is_retired = models.BooleanField(default=False)
-    metadata = models.JSONField(default=dict)  ***REMOVED*** full source metadata
+    metadata = models.JSONField(default=dict)  # full source metadata
     last_synced_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -77,7 +77,7 @@ class GeoResource(models.Model):
     )
     source_resource_id = models.CharField(max_length=200, unique=True)
     name = models.CharField(max_length=500)
-    format = models.CharField(max_length=50, db_index=True)  ***REMOVED*** CSV, JSON, SHP, GTFS, GPKG
+    format = models.CharField(max_length=50, db_index=True)  # CSV, JSON, SHP, GTFS, GPKG
     url = models.URLField(max_length=1000)
     size_bytes = models.BigIntegerField(null=True, blank=True)
     mimetype = models.CharField(max_length=100, blank=True, null=True)
@@ -178,10 +178,10 @@ class GeoRecord(models.Model):
         on_delete=models.CASCADE,
         related_name='records',
     )
-    source_id = models.CharField(max_length=200, db_index=True)  ***REMOVED*** row ID from source
-    attributes = models.JSONField(default=dict)  ***REMOVED*** the actual data — flexible schema
-    geom = gis_models.GeometryField(null=True, blank=True, srid=4326)  ***REMOVED*** PostGIS geometry
-    ingestion_date = models.DateField(null=True, blank=True, db_index=True)  ***REMOVED*** for temporal data
+    source_id = models.CharField(max_length=200, db_index=True)  # row ID from source
+    attributes = models.JSONField(default=dict)  # the actual data — flexible schema
+    geom = gis_models.GeometryField(null=True, blank=True, srid=4326)  # PostGIS geometry
+    ingestion_date = models.DateField(null=True, blank=True, db_index=True)  # for temporal data
     imported_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

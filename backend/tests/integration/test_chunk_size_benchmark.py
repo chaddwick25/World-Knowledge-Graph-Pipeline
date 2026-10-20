@@ -10,7 +10,7 @@ fundamentally different regime.  Tripling the batch size reduces per-batch
 SQL overhead (fewer WAL flushes / transaction commits) and gives each
 encoding thread more work between queue handoffs.
 
-***REMOVED******REMOVED*** Configurations swept
+## Configurations swept
 
 | Label | Workers | Chunk size | Rationale |
 |-------|---------|------------|-----------|
@@ -22,7 +22,7 @@ encoding thread more work between queue handoffs.
 | 4w-20k | 4 | 20 000 | Mid-parallelism reference |
 | 4w-40k | 4 | 40 000 | Mid-parallelism + larger batch |
 
-***REMOVED******REMOVED*** Requirements
+## Requirements
 
 - Docker services up (postgres-default, postgres-vectors, redis, backend)
 - A country snapshot PBF on disk (default: Belize ``BZ``, ~21 MB / ~3K
@@ -31,28 +31,28 @@ encoding thread more work between queue handoffs.
 - Leaf partitions created before each run via
   ``create_country_partitions --country XX --skip-data --skip-mv``
 
-***REMOVED******REMOVED*** Running
+## Running
 
-    ***REMOVED*** Quick: Belize (~3K entities, ~10s per config)
+    # Quick: Belize (~3K entities, ~10s per config)
     docker compose exec backend python -m pytest \
         tests/integration/test_chunk_size_benchmark.py \
         -m integration -s -p no:asyncio
 
-    ***REMOVED*** Larger: Ireland (~9.7M entities, ~50-70 min per config)
+    # Larger: Ireland (~9.7M entities, ~50-70 min per config)
     BENCH_COUNTRY=IE BENCH_ENABLED=1 docker compose exec backend python -m pytest \
         tests/integration/test_chunk_size_benchmark.py \
         -m integration -s -p no:asyncio
 
-    ***REMOVED*** Or run directly (no pytest):
+    # Or run directly (no pytest):
     BENCH_ENABLED=1 docker compose exec backend python \
         tests/integration/test_chunk_size_benchmark.py
 
-    ***REMOVED*** Custom sweep (comma-separated):
+    # Custom sweep (comma-separated):
     BENCH_SWEEP="1:20000,2:60000,1:60000" BENCH_ENABLED=1 \
         docker compose exec backend python \
         tests/integration/test_chunk_size_benchmark.py
 
-***REMOVED******REMOVED*** Output
+## Output
 
 Prints a per-configuration table:
 
@@ -77,13 +77,13 @@ from typing import Dict, List, Optional, Tuple
 
 import pytest
 
-***REMOVED*** Ensure DJANGO_SETTINGS_MODULE is set for direct-script execution
+# Ensure DJANGO_SETTINGS_MODULE is set for direct-script execution
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
 
 
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
-***REMOVED*** Configuration
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────
+# Configuration
+# ────────────────────────────────────────────────────────────────────────────
 
 def _enabled() -> bool:
     return os.environ.get("BENCH_ENABLED", "0") == "1"
@@ -122,9 +122,9 @@ def _repeats() -> int:
     return int(os.environ.get("BENCH_REPEATS", "1"))
 
 
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
-***REMOVED*** Result tracking
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────
+# Result tracking
+# ────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class BenchResult:
@@ -142,9 +142,9 @@ class BenchResult:
             self.rows_per_s = self.entity_count / self.wall_clock_s
 
 
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
-***REMOVED*** Helpers
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ────────────────────────────────────────────────────────────────────────────
 
 def _truncate_leaf(snapshot_id: str, country_code: str) -> None:
     from worldkg_nca.models import OsmEntity
@@ -172,18 +172,18 @@ def _run_embed(workers: int, chunk_size: int, iso: str, run_label: str) -> Dict:
     from pipeline import hyperparams as _hyperparams_mod
     from pipeline.envelopes import CountryEnvelope, ModelHyperparams
 
-    ***REMOVED*** Build the base envelope, then patch snapshot_date on the mutable state.
-    ***REMOVED*** snapshot_date lives on CountryRunState (mutable), accessed via env.state.
-    ***REMOVED*** IMPORTANT: use underscores, not hyphens — the snapshot_id becomes part
-    ***REMOVED*** of the leaf partition table name (embeddings_<snapshot>_<country>),
-    ***REMOVED*** and PostgreSQL identifiers can't contain hyphens.
+    # Build the base envelope, then patch snapshot_date on the mutable state.
+    # snapshot_date lives on CountryRunState (mutable), accessed via env.state.
+    # IMPORTANT: use underscores, not hyphens — the snapshot_id becomes part
+    # of the leaf partition table name (embeddings_<snapshot>_<country>),
+    # and PostgreSQL identifiers can't contain hyphens.
     env = CountryEnvelope.from_db(iso)
     base_snapshot = env.snapshot_date
     env.state.snapshot_date = f"{base_snapshot}_{run_label}"
 
-    ***REMOVED*** Patch the hyperparams cache (parallel_upsert section) so this run uses
-    ***REMOVED*** the sweep's workers + chunk_size.  The YAML-loaded defaults are frozen
-    ***REMOVED*** per process; replacing the cache is the per-run override mechanism.
+    # Patch the hyperparams cache (parallel_upsert section) so this run uses
+    # the sweep's workers + chunk_size.  The YAML-loaded defaults are frozen
+    # per process; replacing the cache is the per-run override mechanism.
     hp = ModelHyperparams.load_from_yaml()
     _hyperparams_mod._HYPERPARAMS_CACHE = replace(
         hp,
@@ -200,13 +200,13 @@ def _run_embed(workers: int, chunk_size: int, iso: str, run_label: str) -> Dict:
 def _config_label(workers: int, chunk_size: int) -> str:
     if workers == 1 and chunk_size == 20_000:
         return "baseline"
-    ***REMOVED*** Use underscores — label becomes part of the SQL partition table name
+    # Use underscores — label becomes part of the SQL partition table name
     return f"{workers}w_{chunk_size // 1000}k"
 
 
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
-***REMOVED*** Benchmark runner
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────
+# Benchmark runner
+# ────────────────────────────────────────────────────────────────────────────
 
 def run_benchmark() -> List[BenchResult]:
     """Run the full sweep and return results.
@@ -220,7 +220,7 @@ def run_benchmark() -> List[BenchResult]:
     sweep = _sweep()
     repeats = _repeats()
 
-    ***REMOVED*** Probe the base snapshot date
+    # Probe the base snapshot date
     probe = CountryEnvelope.from_db(iso)
     base_snapshot = probe.snapshot_date
 
@@ -235,7 +235,7 @@ def run_benchmark() -> List[BenchResult]:
             run_label = f"{label}_r{rep}" if repeats > 1 else label
             snap = f"{base_snapshot}_{run_label}"
 
-            ***REMOVED*** Create + truncate the leaf partition
+            # Create + truncate the leaf partition
             try:
                 call_command(
                     "create_country_partitions",
@@ -243,11 +243,11 @@ def run_benchmark() -> List[BenchResult]:
                     skip_data=True, skip_mv=True,
                 )
             except Exception as exc:
-                ***REMOVED*** Partition may already exist — that's fine
+                # Partition may already exist — that's fine
                 pass
             _truncate_leaf(snap, iso)
 
-            ***REMOVED*** Run + time it
+            # Run + time it
             t0 = time.monotonic()
             try:
                 svc_result = _run_embed(workers, chunk_size, iso, run_label)
@@ -258,7 +258,7 @@ def run_benchmark() -> List[BenchResult]:
                 if repeats == 1:
                     result.wall_clock_s = elapsed
                 else:
-                    ***REMOVED*** Use the median repeat
+                    # Use the median repeat
                     result.repeats.sort()
                     result.wall_clock_s = result.repeats[len(result.repeats) // 2]
                 result.compute_throughput()
@@ -282,7 +282,7 @@ def print_results_table(results: List[BenchResult]):
         print("No results to display.")
         return
 
-    ***REMOVED*** Find the baseline for comparison
+    # Find the baseline for comparison
     baseline = next((r for r in results if r.label == "baseline"), None)
     baseline_rps = baseline.rows_per_s if baseline and baseline.rows_per_s > 0 else None
 
@@ -315,7 +315,7 @@ def print_results_table(results: List[BenchResult]):
         else:
             print(f"  → No improvement over baseline (single-threaded wins)")
 
-    ***REMOVED*** Print repeat variance if multiple repeats
+    # Print repeat variance if multiple repeats
     has_repeats = any(len(r.repeats) > 1 for r in results)
     if has_repeats:
         print("\nRepeat variance:")
@@ -327,9 +327,9 @@ def print_results_table(results: List[BenchResult]):
                 print(f"  {r.label}: mean={mean:.1f}s stdev={stdev:.1f}s cv={stdev/mean*100:.1f}%")
 
 
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
-***REMOVED*** Test class (pytest-compatible)
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────
+# Test class (pytest-compatible)
+# ────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.integration
 @pytest.mark.django_db(transaction=False)
@@ -346,7 +346,7 @@ class ChunkSizeBenchmark(unittest.TestCase):
         results = run_benchmark()
         print_results_table(results)
 
-        ***REMOVED*** Sanity: every non-error result should have upserted some rows
+        # Sanity: every non-error result should have upserted some rows
         for r in results:
             if not r.error:
                 self.assertGreater(
@@ -354,7 +354,7 @@ class ChunkSizeBenchmark(unittest.TestCase):
                     f"{r.label}: expected non-zero entity count",
                 )
 
-        ***REMOVED*** Print a recommendation hint
+        # Print a recommendation hint
         baseline = next((r for r in results if r.label == "baseline"), None)
         if baseline and baseline.rows_per_s > 0:
             winners = [r for r in results if r.rows_per_s > baseline.rows_per_s * 1.10]
@@ -366,14 +366,14 @@ class ChunkSizeBenchmark(unittest.TestCase):
                 print("\n>>> RECOMMENDATION: No config beat baseline by >10%. Keep single-threaded 20k.")
 
 
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
-***REMOVED*** __main__ entry point (run without pytest)
-***REMOVED*** ────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────
+# __main__ entry point (run without pytest)
+# ────────────────────────────────────────────────────────────────────────────
 
 def main() -> int:
     import sys
-    ***REMOVED*** Ensure the backend package is importable when running as a script
-    ***REMOVED*** (pytest handles this via python_paths, but direct execution doesn't)
+    # Ensure the backend package is importable when running as a script
+    # (pytest handles this via python_paths, but direct execution doesn't)
     _backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if _backend_root not in sys.path:
         sys.path.insert(0, _backend_root)

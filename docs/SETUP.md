@@ -1,4 +1,4 @@
-***REMOVED*** Setup
+# Setup
 
 Environment setup for the WorldKG Pipeline. Covers Docker Compose,
 database extensions, migrations, planet initialization, name romanization,
@@ -11,7 +11,7 @@ For architecture and operational details, see:
 
 ---
 
-***REMOVED******REMOVED*** Prerequisites
+## Prerequisites
 
 - Docker and Docker Compose
 - NVIDIA GPU + NVIDIA Container Toolkit (for GV-NLE, IGEA, USLP — CPU fallback exists for some steps)
@@ -19,19 +19,19 @@ For architecture and operational details, see:
 
 ---
 
-***REMOVED******REMOVED*** Docker Compose (recommended)
+## Docker Compose (recommended)
 
 The project uses Docker Compose to orchestrate all services. This is the
 recommended development and deployment method.
 
 ```bash
-***REMOVED*** Build and start all services
+# Build and start all services
 docker compose -f docker-compose.yml -f compose.override.yml up -d
 
-***REMOVED*** View logs
+# View logs
 docker compose logs -f backend worker
 
-***REMOVED*** Stop services
+# Stop services
 docker compose down
 ```
 
@@ -41,18 +41,18 @@ backend at `http://localhost:8000`:
 ```bash
 cd frontend-v3
 npm install
-npm run dev        ***REMOVED*** Dev server on http://localhost:5173
-npm run build      ***REMOVED*** Production build
+npm run dev        # Dev server on http://localhost:5173
+npm run build      # Production build
 ```
 
 ---
 
-***REMOVED******REMOVED*** Database extensions (one-time)
+## Database extensions (one-time)
 
 Both databases need their extensions enabled after the first `up`:
 
 ```bash
-***REMOVED*** default DB (port 5432) — PostGIS + pgvector
+# default DB (port 5432) — PostGIS + pgvector
 docker compose exec postgres-default bash -c '
   psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h localhost -p 5432 \
        -c "CREATE EXTENSION IF NOT EXISTS postgis;";
@@ -60,7 +60,7 @@ docker compose exec postgres-default bash -c '
        -c "CREATE EXTENSION IF NOT EXISTS vector;"
 '
 
-***REMOVED*** vectors DB (port 5433) — pgvector + PostGIS
+# vectors DB (port 5433) — pgvector + PostGIS
 docker compose exec postgres-vectors bash -c 'psql -U "$PGVECTOR_USER" -d "$PGVECTOR_DB" -c "CREATE EXTENSION IF NOT EXISTS vector;"'
 ```
 
@@ -69,7 +69,7 @@ The vectors database must have both `pgvector` and `PostGIS` extensions
 
 ---
 
-***REMOVED******REMOVED*** Migrations
+## Migrations
 
 ```bash
 docker compose exec backend python manage.py migrate
@@ -83,7 +83,7 @@ starting.
 
 ---
 
-***REMOVED******REMOVED*** Planet initialization (one-time, idempotent)
+## Planet initialization (one-time, idempotent)
 
 A single `init_planet` management command runs once as a Docker entrypoint
 step after migrations. It is idempotent (gated by a `PlanetSnapshot` soft
@@ -91,13 +91,13 @@ lock) and initializes: planet/continent PBFs, OSM-Wikidata hierarchy,
 country paths, subgraph profiles, Wikidata IDs, embedding scans, WorldKG
 ontology, and OSM boundaries.
 ```bash
-***REMOVED*** Run all 16 steps (idempotent — short-circuits if a COMPLETED row exists for today)
+# Run all 16 steps (idempotent — short-circuits if a COMPLETED row exists for today)
 docker compose exec backend python manage.py init_planet
 
-***REMOVED*** Run a single step
+# Run a single step
 docker compose exec backend python manage.py init_planet --step <name>
 
-***REMOVED*** Force re-run (bypass the soft lock)
+# Force re-run (bypass the soft lock)
 docker compose exec backend python manage.py init_planet --no-lock
 ```
 
@@ -111,7 +111,7 @@ and skips the command entirely when one exists. The worker has
 For the 16-step list and architecture, see
 `platform/docker_entrypoint_init.md`.
 
-***REMOVED******REMOVED*** Path verification (boot-time)
+## Path verification (boot-time)
 
 `verify_paths` validates the configured path table, DB connectivity, and
 (since 2026-09-11) every file referenced by `overrides.json` — the override
@@ -128,7 +128,7 @@ Deployments without an `overrides.json` skip the overrides section cleanly
 
 ---
 
-***REMOVED******REMOVED*** Overrides (cold-storage configuration)
+## Overrides (cold-storage configuration)
 
 `overrides.json` carries country slug mappings, embedding split/merge
 targets, shared-embedding edge cases, and optional continent overrides. It
@@ -146,15 +146,15 @@ explanation lives in those `_docs` keys.
 To bootstrap a deployment:
 
 ```bash
-***REMOVED*** 1. Copy the example to your cold-storage path and edit values
+# 1. Copy the example to your cold-storage path and edit values
 cp overrides.example.json /media/.../OSM/overrides.json
-***REMOVED*** then edit: country slugs, split polys (point at real .poly files in
-***REMOVED*** POLYGON_FILES_DIR), merge shards, edge cases.
+# then edit: country slugs, split polys (point at real .poly files in
+# POLYGON_FILES_DIR), merge shards, edge cases.
 
-***REMOVED*** 2. Point the env var at it (if not using the default location)
+# 2. Point the env var at it (if not using the default location)
 export OVERRIDES_JSON_PATH=/media/.../OSM/overrides.json
 
-***REMOVED*** 3. Validate at boot
+# 3. Validate at boot
 docker compose exec backend python manage.py verify_paths --strict
 ```
 
@@ -174,7 +174,7 @@ level, but the structured schema in the example is preferred).
 
 ---
 
-***REMOVED******REMOVED*** Romanize entity names (one-time per country)
+## Romanize entity names (one-time per country)
 
 The `romanizing_names` service converts non-Latin and diacritic-bearing OSM
 names to a Latin phonetic fingerprint for PostgreSQL trigram similarity
@@ -182,13 +182,13 @@ search. It runs as a standalone management command, decoupled from country
 ingestion — idempotent and resumable.
 
 ```bash
-***REMOVED*** Romanize all pending entities (processes where name_romanized IS NULL)
+# Romanize all pending entities (processes where name_romanized IS NULL)
 docker compose exec backend python manage.py romanize_names
 
-***REMOVED*** Romanize a specific country
+# Romanize a specific country
 docker compose exec backend python manage.py romanize_names --country-code KR
 
-***REMOVED*** Dry run (no DB writes)
+# Dry run (no DB writes)
 docker compose exec backend python manage.py romanize_names --country-code KR --dry-run
 ```
 
@@ -197,7 +197,7 @@ for the full architecture.
 
 ---
 
-***REMOVED******REMOVED*** Worker configuration
+## Worker configuration
 
 - `--pool=prefork --concurrency=4` — 4 CPU workers for parallel upserts/IGEA/USLP
 - GPU tasks use per-GPU slot locks — all subgraphs go to `cuda:0` with
@@ -209,22 +209,22 @@ for the full architecture.
 
 ---
 
-***REMOVED******REMOVED*** Fresh database reset
+## Fresh database reset
 
 After dropping and recreating both databases:
 
 ```bash
-***REMOVED*** 1. Migrate both databases
+# 1. Migrate both databases
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py migrate
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py migrate --database=vectors
 
-***REMOVED*** 2. Initialize planet data (hierarchy, profiles, paths, embeddings, ontology, boundaries)
+# 2. Initialize planet data (hierarchy, profiles, paths, embeddings, ontology, boundaries)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py init_planet
 
-***REMOVED*** 3. Romanize entity names (cross-script name matching)
+# 3. Romanize entity names (cross-script name matching)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py romanize_names
 
-***REMOVED*** 4. Amenity → WorldKG class mappings (rule 6.2 lookup table)
+# 4. Amenity → WorldKG class mappings (rule 6.2 lookup table)
 docker compose -f docker-compose.yml -f compose.override.yml exec backend python manage.py compute_amenity_class_mappings
 ```
 

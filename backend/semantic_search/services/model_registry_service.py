@@ -44,7 +44,7 @@ class ModelRegistryService:
         """Provides a lightweight mock for environments without the 7GB binary."""
         class MockFastText:
             def get_word_vector(self, word):
-                ***REMOVED*** Deterministic random vector for stable testing
+                # Deterministic random vector for stable testing
                 np.random.seed(hash(word) % (2**32))
                 return np.random.randn(300).astype(np.float32)
             def get_dimension(self):

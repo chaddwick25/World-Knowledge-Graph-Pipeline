@@ -54,8 +54,8 @@ def step_3_run_igea(self, env: CountryEnvelope) -> CountryEnvelope:
         pipeline_run_id=env.pipeline_run_id,
     )
 
-    ***REMOVED*** Pass IGEA stats to step 4 via envelope state so it can skip USLP
-    ***REMOVED*** if no links were accepted
+    # Pass IGEA stats to step 4 via envelope state so it can skip USLP
+    # if no links were accepted
     return env.with_state(
         igea_stats=stats,
         igea_accepted=stats.get('total_accepted', 0),

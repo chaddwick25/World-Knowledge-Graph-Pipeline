@@ -51,13 +51,13 @@ class GPUHaversineService:
         Returns:
             Distance in kilometers
         """
-        ***REMOVED*** Convert to radians
+        # Convert to radians
         lat1_rad = np.radians(lat1)
         lon1_rad = np.radians(lon1)
         lat2_rad = np.radians(lat2)
         lon2_rad = np.radians(lon2)
         
-        ***REMOVED*** Haversine formula
+        # Haversine formula
         dlat = lat2_rad - lat1_rad
         dlon = lon2_rad - lon1_rad
         
@@ -81,19 +81,19 @@ class GPUHaversineService:
         Returns:
             Distance tensor in kilometers
         """
-        ***REMOVED*** Convert inputs to tensors
+        # Convert inputs to tensors
         lat1_t = self._to_tensor(lat1)
         lon1_t = self._to_tensor(lon1)
         lat2_t = self._to_tensor(lat2)
         lon2_t = self._to_tensor(lon2)
         
-        ***REMOVED*** Convert to radians
+        # Convert to radians
         lat1_rad = torch.deg2rad(lat1_t)
         lon1_rad = torch.deg2rad(lon1_t)
         lat2_rad = torch.deg2rad(lat2_t)
         lon2_rad = torch.deg2rad(lon2_t)
         
-        ***REMOVED*** Haversine formula (vectorized)
+        # Haversine formula (vectorized)
         dlat = lat2_rad - lat1_rad
         dlon = lon2_rad - lon1_rad
         
@@ -117,31 +117,31 @@ class GPUHaversineService:
         Returns:
             Distance matrix (N, M) in kilometers
         """
-        ***REMOVED*** Convert to tensors
+        # Convert to tensors
         lat1_t = self._to_tensor(lat1)
         lon1_t = self._to_tensor(lon1)
         lat2_t = self._to_tensor(lat2)
         lon2_t = self._to_tensor(lon2)
         
-        ***REMOVED*** Ensure 1D
+        # Ensure 1D
         lat1_t = lat1_t.flatten()
         lon1_t = lon1_t.flatten()
         lat2_t = lat2_t.flatten()
         lon2_t = lon2_t.flatten()
         
-        ***REMOVED*** Convert to radians
+        # Convert to radians
         lat1_rad = torch.deg2rad(lat1_t)
         lon1_rad = torch.deg2rad(lon1_t)
         lat2_rad = torch.deg2rad(lat2_t)
         lon2_rad = torch.deg2rad(lon2_t)
         
-        ***REMOVED*** Broadcast to (N, M) shape
-        lat1_rad = lat1_rad.unsqueeze(1)  ***REMOVED*** (N, 1)
-        lon1_rad = lon1_rad.unsqueeze(1)  ***REMOVED*** (N, 1)
-        lat2_rad = lat2_rad.unsqueeze(0)  ***REMOVED*** (1, M)
-        lon2_rad = lon2_rad.unsqueeze(0)  ***REMOVED*** (1, M)
+        # Broadcast to (N, M) shape
+        lat1_rad = lat1_rad.unsqueeze(1)  # (N, 1)
+        lon1_rad = lon1_rad.unsqueeze(1)  # (N, 1)
+        lat2_rad = lat2_rad.unsqueeze(0)  # (1, M)
+        lon2_rad = lon2_rad.unsqueeze(0)  # (1, M)
         
-        ***REMOVED*** Haversine formula (broadcasted)
+        # Haversine formula (broadcasted)
         dlat = lat2_rad - lat1_rad
         dlon = lon2_rad - lon1_rad
         
@@ -167,10 +167,10 @@ class GPUHaversineService:
         Returns:
             Tuple of (indices, distances) for candidates within radius
         """
-        ***REMOVED*** Calculate distances
+        # Calculate distances
         distances = self.haversine_batch(head_lat, head_lon, candidate_lats, candidate_lons)
         
-        ***REMOVED*** Filter by radius
+        # Filter by radius
         mask = distances <= radius_km
         indices = torch.where(mask)[0]
         filtered_distances = distances[mask]
@@ -196,6 +196,6 @@ class GPUHaversineService:
             'cuda_available': True,
             'device_name': torch.cuda.get_device_name(self.device),
             'dtype': str(self.dtype),
-            'memory_allocated': torch.cuda.memory_allocated(self.device) / 1024**3,  ***REMOVED*** GB
-            'memory_reserved': torch.cuda.memory_reserved(self.device) / 1024**3,  ***REMOVED*** GB
+            'memory_allocated': torch.cuda.memory_allocated(self.device) / 1024**3,  # GB
+            'memory_reserved': torch.cuda.memory_reserved(self.device) / 1024**3,  # GB
         }

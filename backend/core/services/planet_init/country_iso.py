@@ -55,7 +55,7 @@ def resolve_iso_code(input_code: str) -> str:
 
 
 
-    ***REMOVED*** Already looks like a real ISO 3166-1 alpha-2 (2 letters) - return as-is
+    # Already looks like a real ISO 3166-1 alpha-2 (2 letters) - return as-is
 
     if len(code) == 2 and code.isalpha():
 
@@ -63,7 +63,7 @@ def resolve_iso_code(input_code: str) -> str:
 
 
 
-    ***REMOVED*** Check non-sovereign synthetic registry first (fast, no DB hit)
+    # Check non-sovereign synthetic registry first (fast, no DB hit)
 
     try:
 
@@ -79,7 +79,7 @@ def resolve_iso_code(input_code: str) -> str:
 
 
 
-    ***REMOVED*** Try OSMWikiDataHierarchy lookup by QID
+    # Try OSMWikiDataHierarchy lookup by QID
 
     try:
 
@@ -103,7 +103,7 @@ def resolve_iso_code(input_code: str) -> str:
 
                 return profile.iso2.upper()
 
-            ***REMOVED*** Fallback: cross-reference via get_country_relations_dict()
+            # Fallback: cross-reference via get_country_relations_dict()
 
             relations = get_country_relations_dict()
 
@@ -125,7 +125,7 @@ def resolve_iso_code(input_code: str) -> str:
 
 
 
-    ***REMOVED*** Try OSMWikiDataHierarchy lookup by name
+    # Try OSMWikiDataHierarchy lookup by name
 
     try:
 
@@ -185,7 +185,7 @@ def resolve_iso_code(input_code: str) -> str:
 
 
 
-    ***REMOVED*** Try via get_country_by_name as a final fallback
+    # Try via get_country_by_name as a final fallback
 
     try:
 
@@ -213,9 +213,9 @@ def resolve_iso_code(input_code: str) -> str:
 
 
 
-    ***REMOVED*** Try slug-based fuzzy matching (handles cases where the display name
+    # Try slug-based fuzzy matching (handles cases where the display name
 
-    ***REMOVED*** differs from the DB name, e.g. "Ireland And Northern Ireland" → "Ireland")
+    # differs from the DB name, e.g. "Ireland And Northern Ireland" → "Ireland")
 
     try:
 

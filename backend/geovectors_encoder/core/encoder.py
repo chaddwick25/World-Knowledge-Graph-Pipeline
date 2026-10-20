@@ -47,7 +47,7 @@ def run_on_dump(args, input, output):
 
 
 def run_dumps(args):
-    ***REMOVED*** identify targets in directory
+    # identify targets in directory
     targets = [f for f in listdir(args.input) if f.endswith(".osm.pbf")]
 
     if not os.path.isdir(args.output):

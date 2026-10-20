@@ -28,10 +28,10 @@ class ResearchRun(models.Model):
     status = models.CharField(
         max_length=10, choices=STATUS_CHOICES, default="running", db_index=True
     )
-    ***REMOVED*** Ordered SSE events as emitted ({event, ...} dicts, JSONB).
+    # Ordered SSE events as emitted ({event, ...} dicts, JSONB).
     events = models.JSONField(default=list)
-    ***REMOVED*** The terminal `done` payload (questions, coverage, confidence,
-    ***REMOVED*** tool_calls, summary) or the error message.
+    # The terminal `done` payload (questions, coverage, confidence,
+    # tool_calls, summary) or the error message.
     result = models.JSONField(null=True, blank=True)
     error = models.TextField(blank=True)
     recipe = models.CharField(max_length=60, blank=True)

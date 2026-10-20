@@ -9,7 +9,7 @@ class BaseService(abc.ABC):
     Each service must implement the `execute` method.
     """
     def __init__(self):
-        ***REMOVED*** Provide a dedicated logger for each service instance
+        # Provide a dedicated logger for each service instance
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def setup(self, config: Dict[str, Any]):

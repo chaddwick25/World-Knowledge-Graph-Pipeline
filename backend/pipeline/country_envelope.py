@@ -21,9 +21,9 @@ from pipeline.hyperparams import ModelHyperparams
 logger = logging.getLogger(__name__)
 
 
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
-***REMOVED*** StorageTarget (frozen — the sharding primitive)
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# StorageTarget (frozen — the sharding primitive)
+# ──────────────────────────────────────────────────────────────────────────
 @dataclasses.dataclass(frozen=True)
 class StorageTarget:
     """Which shard to query — a typed address, not a connection."""
@@ -34,9 +34,9 @@ class StorageTarget:
     table: Optional[str] = None
 
 
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
-***REMOVED*** CountryIdentity (frozen)
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# CountryIdentity (frozen)
+# ──────────────────────────────────────────────────────────────────────────
 @dataclasses.dataclass(frozen=True)
 class CountryIdentity:
     """Who is this country — frozen at from_db time."""
@@ -48,9 +48,9 @@ class CountryIdentity:
     osm_relation_id: Optional[int] = None
 
 
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
-***REMOVED*** CountryPaths (frozen)
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# CountryPaths (frozen)
+# ──────────────────────────────────────────────────────────────────────────
 @dataclasses.dataclass(frozen=True)
 class CountryPaths:
     """Resolved filesystem paths — frozen at from_db time."""
@@ -68,9 +68,9 @@ class CountryPaths:
         return None
 
 
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
-***REMOVED*** CountryRunState (mutable — the ONLY mutable part)
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# CountryRunState (mutable — the ONLY mutable part)
+# ──────────────────────────────────────────────────────────────────────────
 @dataclasses.dataclass
 class CountryRunState:
     """Mutable run state — set during the run, passed task→task."""
@@ -82,16 +82,16 @@ class CountryRunState:
     has_subgraphs: bool = False
     igea_accepted: int = 0
     igea_stats: Optional[dict] = None
-    ***REMOVED*** Transient (NOT serialized by to_dict): artifact descriptors produced by
-    ***REMOVED*** the task body, consumed by the @pipeline_step on_success hook to emit
-    ***REMOVED*** PipelineAsset rows. Each descriptor is a dict with keys like
-    ***REMOVED*** asset_type, asset_name, stage_name, storage_path, record_count, ...
+    # Transient (NOT serialized by to_dict): artifact descriptors produced by
+    # the task body, consumed by the @pipeline_step on_success hook to emit
+    # PipelineAsset rows. Each descriptor is a dict with keys like
+    # asset_type, asset_name, stage_name, storage_path, record_count, ...
     pending_assets: List[dict] = dataclasses.field(default_factory=list)
 
 
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
-***REMOVED*** CountryEnvelope (frozen except state)
-***REMOVED*** ──────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# CountryEnvelope (frozen except state)
+# ──────────────────────────────────────────────────────────────────────────
 @dataclasses.dataclass(frozen=True)
 class CountryEnvelope:
     """The message passed between country-pipeline Celery tasks."""
@@ -102,7 +102,7 @@ class CountryEnvelope:
     state: CountryRunState
     storage: StorageTarget
 
-    ***REMOVED*** ── Convenience accessors (match legacy CountryConfig field names) ───
+    # ── Convenience accessors (match legacy CountryConfig field names) ───
     @property
     def iso(self) -> str:
         return self.identity.iso
@@ -183,7 +183,7 @@ class CountryEnvelope:
     def pbf_path(self) -> Optional[str]:
         return self.paths.pbf_path
 
-    ***REMOVED*** Hyperparam accessors (match legacy CountryConfig field names)
+    # Hyperparam accessors (match legacy CountryConfig field names)
     @property
     def uslp_threshold(self) -> float:
         return self.hyperparams.uslp_threshold
@@ -252,13 +252,13 @@ class CountryEnvelope:
     def fasttext_model_path(self) -> Optional[str]:
         return self.hyperparams.fasttext_model_path
 
-    ***REMOVED*** ── State mutation ───────────────────────────────────────────────────
+    # ── State mutation ───────────────────────────────────────────────────
     def with_state(self, **kw) -> "CountryEnvelope":
         """Return a copy with updated run state."""
         new_state = dataclasses.replace(self.state, **kw)
         return dataclasses.replace(self, state=new_state)
 
-    ***REMOVED*** ── Serialization ────────────────────────────────────────────────────
+    # ── Serialization ────────────────────────────────────────────────────
     def to_dict(self) -> dict:
         """Serialize for Celery.
 
@@ -272,20 +272,20 @@ class CountryEnvelope:
         if self.hyperparams != yaml_hp:
             hp_overrides = dataclasses.asdict(self.hyperparams)
         return {
-            ***REMOVED*** Identity
+            # Identity
             "iso": self.identity.iso,
             "name": self.identity.name,
             "slug": self.identity.slug,
             "continent": self.identity.continent,
             "wikidata_qid": self.identity.wikidata_qid,
             "osm_relation_id": self.identity.osm_relation_id,
-            ***REMOVED*** Paths
+            # Paths
             "geovectors_tsv_path": self.paths.geovectors_tsv_path,
             "pickle_path": self.paths.pickle_path,
             "embedding_slug": self.paths.embedding_slug,
             "snapshot_pbf_path": self.paths.snapshot_pbf_path,
             "poly_path": self.paths.poly_path,
-            ***REMOVED*** State
+            # State
             "pipeline_run_id": self.state.pipeline_run_id,
             "snapshot_date": self.state.snapshot_date,
             "skip_enrich": self.state.skip_enrich,
@@ -294,12 +294,12 @@ class CountryEnvelope:
             "has_subgraphs": self.state.has_subgraphs,
             "igea_accepted": self.state.igea_accepted,
             "igea_stats": self.state.igea_stats,
-            ***REMOVED*** Subgraphs
+            # Subgraphs
             "subgraphs": [sg.to_dict() for sg in self.subgraphs],
-            ***REMOVED*** Storage
+            # Storage
             "storage_shard_key": self.storage.shard_key,
             "storage_db_alias": self.storage.db_alias,
-            ***REMOVED*** Hyperparam overrides (only present if mutated at runtime)
+            # Hyperparam overrides (only present if mutated at runtime)
             "hyperparam_overrides": hp_overrides,
         }
 
@@ -371,7 +371,7 @@ class CountryEnvelope:
         )
         from core.models import OSMWikiDataHierarchy
 
-        ***REMOVED*** ── 1. Resolve country profile ──────────────────────────────────
+        # ── 1. Resolve country profile ──────────────────────────────────
         profile = (
             CountryPipelineProfile.objects.filter(
                 iso2__iexact=iso,
@@ -388,7 +388,7 @@ class CountryEnvelope:
             )
 
         if not profile:
-            ***REMOVED*** Non-sovereign synthetic ISO handling
+            # Non-sovereign synthetic ISO handling
             from core.services.planet_init.non_sovereign_territories import (
                 is_non_sovereign_synthetic_iso,
                 synthetic_iso_to_info,
@@ -438,7 +438,7 @@ class CountryEnvelope:
                     f"has embeddings in cold storage."
                 )
 
-        ***REMOVED*** ── 1b. Enrich from OSMWikiDataHierarchy ────────────────────────
+        # ── 1b. Enrich from OSMWikiDataHierarchy ────────────────────────
         from core.services.planet_init.non_sovereign_territories import (
             is_non_sovereign_synthetic_iso as _is_synth,
             synthetic_iso_to_info as _synth_info,
@@ -477,14 +477,14 @@ class CountryEnvelope:
         if not enriched_continent and profile.continent_profile:
             enriched_continent = profile.continent_profile.slug
 
-        ***REMOVED*** ── 2. Subgraphs ────────────────────────────────────────────────
-        ***REMOVED*** Try filesystem discovery FIRST — it's always authoritative since
-        ***REMOVED*** subgraph directories on disk reflect the actual available data.
-        ***REMOVED*** DB SubgraphProfile records may be stale, incomplete, or missing.
+        # ── 2. Subgraphs ────────────────────────────────────────────────
+        # Try filesystem discovery FIRST — it's always authoritative since
+        # subgraph directories on disk reflect the actual available data.
+        # DB SubgraphProfile records may be stale, incomplete, or missing.
         has_subgraphs = False
         subgraphs: List[SubgraphConfig] = []
 
-        ***REMOVED*** Filesystem discovery
+        # Filesystem discovery
         try:
             from core.services.snapshot.subgraph_list_service import build_subgraph_list
             fs_subgraphs = build_subgraph_list(
@@ -510,9 +510,9 @@ class CountryEnvelope:
                 iso, exc,
             )
 
-        ***REMOVED*** Enrich filesystem-discovered subgraphs with QID / bbox / relation_id
-        ***REMOVED*** from SubgraphProfile DB records (populated by the pipeline's
-        ***REMOVED*** sync_subgraph_profiles helper).
+        # Enrich filesystem-discovered subgraphs with QID / bbox / relation_id
+        # from SubgraphProfile DB records (populated by the pipeline's
+        # sync_subgraph_profiles helper).
         if has_subgraphs and subgraphs:
             import dataclasses as _dc
             sg_by_slug = {sg.slug: sg for sg in subgraphs}
@@ -528,7 +528,7 @@ class CountryEnvelope:
                 sg = sg_by_slug.get(db_sg["slug"])
                 if not sg:
                     continue
-                ***REMOVED*** Build replacement dict — only fill in missing fields
+                # Build replacement dict — only fill in missing fields
                 repl = {}
                 if db_sg["wikidata_id"] and not sg.wikidata_qid:
                     repl["wikidata_qid"] = db_sg["wikidata_id"]
@@ -557,7 +557,7 @@ class CountryEnvelope:
                     enriched_count, len(subgraphs), iso,
                 )
 
-        ***REMOVED*** DB fallback
+        # DB fallback
         if not has_subgraphs:
             subgraph_profiles = SubgraphProfile.objects.filter(
                 country_profile=profile,
@@ -576,12 +576,12 @@ class CountryEnvelope:
                     len(subgraphs), profile.canonical_name, iso,
                 )
 
-        ***REMOVED*** ── 3. Resolve continent ────────────────────────────────────────
+        # ── 3. Resolve continent ────────────────────────────────────────
         continent = enriched_continent
         if not continent and profile.continent_profile:
             continent = profile.continent_profile.slug
 
-        ***REMOVED*** ── 4. Resolve paths ────────────────────────────────────────────
+        # ── 4. Resolve paths ────────────────────────────────────────────
         cont_norm = normalize_country_slug(continent)
         country_norm = profile.canonical_slug or normalize_country_slug(profile.canonical_name)
 
@@ -596,7 +596,7 @@ class CountryEnvelope:
         if normed not in candidate_slugs:
             candidate_slugs.append(normed)
 
-        ***REMOVED*** Snapshot PBF path
+        # Snapshot PBF path
         snapshot_pbf_path = None
         try:
             snap_date = snapshot_date or getattr(settings, "SINGLE_SNAPSHOT_DATE", "2025_12_31")
@@ -621,7 +621,7 @@ class CountryEnvelope:
         except Exception:
             pass
 
-        ***REMOVED*** Pickle path
+        # Pickle path
         pickle_path = None
         try:
             for candidate in candidate_slugs:
@@ -633,7 +633,7 @@ class CountryEnvelope:
         except Exception:
             pass
 
-        ***REMOVED*** GeoVectors TSV path
+        # GeoVectors TSV path
         geovectors_tsv_path = None
         rel_payload = profile.country_relations_payload or {}
         tsv_rel = rel_payload.get("geovectors_location_tsv")
@@ -649,12 +649,12 @@ class CountryEnvelope:
             if tsv_path.exists():
                 geovectors_tsv_path = str(tsv_path)
 
-        ***REMOVED*** Country PBF path
+        # Country PBF path
         pbf_path = _resolve_country_pbf_path(
             regional_path_service, cont_norm, candidate_slugs,
         )
 
-        ***REMOVED*** ── 4. Assemble ─────────────────────────────────────────────────
+        # ── 4. Assemble ─────────────────────────────────────────────────
         hyperparams = ModelHyperparams.load_from_yaml()
 
         identity = CountryIdentity(

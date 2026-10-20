@@ -112,7 +112,7 @@ def _emit_pipeline_assets(inv: dict, task_id) -> None:
         return
     try:
         from core.models import PipelineAsset, PipelineRun
-    except Exception as exc:  ***REMOVED*** pragma: no cover - import-time safety
+    except Exception as exc:  # pragma: no cover - import-time safety
         logger.warning("PipelineAsset import failed, skipping emission: %s", exc)
         return
 
@@ -164,7 +164,7 @@ def _emit_pipeline_assets(inv: dict, task_id) -> None:
             if parent_id:
                 asset.parent_asset_id = parent_id
             asset.save()
-        except Exception as exc:  ***REMOVED*** pragma: no cover - per-descriptor safety
+        except Exception as exc:  # pragma: no cover - per-descriptor safety
             logger.warning("PipelineAsset emit failed for one descriptor: %s", exc)
 
 
@@ -214,13 +214,13 @@ def pipeline_step(
     def decorator(func: Callable[..., E]) -> Callable[..., dict]:
         @functools.wraps(func)
         def wrapper(self, config_dict: dict) -> dict:
-            ***REMOVED*** ── Dedup guard ───────────────────────────────────────────────
-            ***REMOVED*** Broker visibility-timeout redelivery can enqueue a second copy
-            ***REMOVED*** of a task while the first is still running, so the same task ID
-            ***REMOVED*** could execute twice concurrently. SET NX wins: only one process
-            ***REMOVED*** runs the body; the loser logs and returns the config unchanged
-            ***REMOVED*** so the chain continues. Released on completion/failure so
-            ***REMOVED*** legitimate retries (same task ID) are not blocked.
+            # ── Dedup guard ───────────────────────────────────────────────
+            # Broker visibility-timeout redelivery can enqueue a second copy
+            # of a task while the first is still running, so the same task ID
+            # could execute twice concurrently. SET NX wins: only one process
+            # runs the body; the loser logs and returns the config unchanged
+            # so the chain continues. Released on completion/failure so
+            # legitimate retries (same task ID) are not blocked.
             task_id = getattr(self.request, "id", None)
             dedup_key = f"task-dedup:{task_id}" if task_id else None
             dedup_held = False
@@ -249,7 +249,7 @@ def pipeline_step(
                             task_id, step_name,
                         )
                         return config_dict
-                except Exception as exc:  ***REMOVED*** pragma: no cover — best-effort guard
+                except Exception as exc:  # pragma: no cover — best-effort guard
                     logger.warning(
                         "Dedup guard unavailable (%s) — proceeding.", exc
                     )
@@ -258,12 +258,12 @@ def pipeline_step(
                 if dedup_held and dedup_key and _dedup_client is not None:
                     try:
                         _dedup_client.delete(dedup_key)
-                    except Exception:  ***REMOVED*** pragma: no cover — best-effort cleanup
+                    except Exception:  # pragma: no cover — best-effort cleanup
                         pass
 
-            ***REMOVED*** 1. Validate config dict (data-plane concern — lives here, not on
-            ***REMOVED***    the Celery Task base class). File logger setup is handled by
-            ***REMOVED***    the task_prerun signal (Celery primitive) in celery_app.py.
+            # 1. Validate config dict (data-plane concern — lives here, not on
+            #    the Celery Task base class). File logger setup is handled by
+            #    the task_prerun signal (Celery primitive) in celery_app.py.
             if not isinstance(config_dict, dict):
                 raise TypeError(
                     f"Expected dict for config_dict, got {type(config_dict).__name__}"
@@ -272,16 +272,16 @@ def pipeline_step(
                 if key not in config_dict:
                     raise ValueError(f"Missing required config key: {key}")
 
-            ***REMOVED*** 2. Reconstruct envelope from dict
+            # 2. Reconstruct envelope from dict
             env = envelope_cls.from_dict(config_dict)
 
-            ***REMOVED*** 3. Extract context
+            # 3. Extract context
             run_id = _resolve_run_id(env)
             iso = getattr(env, "iso", None) or ""
             continent = getattr(env, "continent", None) or ""
             task_id = getattr(self.request, "id", None)
 
-            ***REMOVED*** 4. Initialize DB-backed logger
+            # 4. Initialize DB-backed logger
             from pipeline.pipeline_logger import PipelineLogger
             plog = PipelineLogger(
                 pipeline_run_id=run_id,
@@ -289,7 +289,7 @@ def pipeline_step(
                 continent=continent,
             )
 
-            ***REMOVED*** 5. Start-phase: step-start log, PipelineRun start, WS in_progress
+            # 5. Start-phase: step-start log, PipelineRun start, WS in_progress
             plog.step_start(step_name, step_index, task_id)
             _update_run_stage(run_id, step_name, started=True)
             from pipeline.tasks.helper import _push_update
@@ -301,7 +301,7 @@ def pipeline_step(
                 pct=10,
             )
 
-            ***REMOVED*** 6. Register invocation so on_success/on_failure hooks can finish
+            # 6. Register invocation so on_success/on_failure hooks can finish
             self._invocations[task_id] = {
                 "start": time.monotonic(),
                 "plog": plog,
@@ -312,23 +312,23 @@ def pipeline_step(
                 "iso": iso,
             }
 
-            ***REMOVED*** 7. Data plane — run the task body (pure transform env → env')
+            # 7. Data plane — run the task body (pure transform env → env')
             try:
                 result_env = func(self, env)
             except Exception as exc:
-                ***REMOVED*** on_failure hook: PipelineLogEntry, PipelineRun, WS push
-                ***REMOVED*** (idempotent — Celery's trace will call it again, no-op)
+                # on_failure hook: PipelineLogEntry, PipelineRun, WS push
+                # (idempotent — Celery's trace will call it again, no-op)
                 self.on_failure(exc, task_id, (config_dict,), {})
                 _release_dedup()
                 raise
 
-            ***REMOVED*** 8. Stash metrics + artifact descriptors for on_success, serialize
+            # 8. Stash metrics + artifact descriptors for on_success, serialize
             self._invocations[task_id]["metrics"] = _extract_metrics(result_env)
             self._invocations[task_id]["pending_assets"] = _extract_pending_assets(result_env)
             retval = result_env.to_dict()
 
-            ***REMOVED*** 9. on_success hook: step-complete log + metrics, PipelineRun, WS push
-            ***REMOVED*** (idempotent — Celery's trace will call it again, no-op)
+            # 9. on_success hook: step-complete log + metrics, PipelineRun, WS push
+            # (idempotent — Celery's trace will call it again, no-op)
             self.on_success(retval, task_id, (config_dict,), {})
             _release_dedup()
             return retval

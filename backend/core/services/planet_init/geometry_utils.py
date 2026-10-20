@@ -18,17 +18,17 @@ from django.db import models
 logger = logging.getLogger(__name__)
 from core.models import OSMWikiDataHierarchy
 from core.services.snapshot.country_override_service import get_country_slug as get_override_country_slug
-***REMOVED*** TODO: implement a better caching system
+# TODO: implement a better caching system
 
-***REMOVED*** Module-level cache for country relations to avoid repeated DB queries
+# Module-level cache for country relations to avoid repeated DB queries
 _country_relations_cache: Dict[str, dict] = None
 
-***REMOVED*** Module-level cache for bbox resolution to avoid repeated lookups
+# Module-level cache for bbox resolution to avoid repeated lookups
 _bbox_cache: Dict[str, Tuple[float, float, float, float]] = {}
 
-***REMOVED*** ----------------------------------------------------------------------
-***REMOVED*** Polygon helpers (shared across apps)
-***REMOVED*** ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+# Polygon helpers (shared across apps)
+# ----------------------------------------------------------------------
 
 def parse_poly_bbox(poly_path: str) -> Optional[Tuple[float, float, float, float]]:
 
@@ -108,7 +108,7 @@ def parse_poly_to_wkt(poly_path: str) -> Optional[str]:
 
                     if reading_outer and coords:
 
-                        break  ***REMOVED*** end of first (outer) ring — stop here
+                        break  # end of first (outer) ring — stop here
 
                     reading_outer = False
 
@@ -118,7 +118,7 @@ def parse_poly_to_wkt(poly_path: str) -> Optional[str]:
 
                 if len(parts) == 1:
 
-                    ***REMOVED*** Ring number line: positive = outer ring, '!' prefix = hole
+                    # Ring number line: positive = outer ring, '!' prefix = hole
 
                     reading_outer = not stripped.startswith("!")
 
@@ -142,7 +142,7 @@ def parse_poly_to_wkt(poly_path: str) -> Optional[str]:
 
 
 
-        ***REMOVED*** Close the ring if open
+        # Close the ring if open
 
         if coords[0] != coords[-1]:
 
@@ -184,19 +184,19 @@ def bbox_to_wkt(min_lon: float, min_lat: float, max_lon: float, max_lat: float) 
 
 
 
-***REMOVED*** ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
-***REMOVED*** Bounding box expansion helpers
+# Bounding box expansion helpers
 
-***REMOVED*** ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 
 
-***REMOVED*** Minimum bounding box span in degrees (applied to both lon and lat).
+# Minimum bounding box span in degrees (applied to both lon and lat).
 
-***REMOVED*** Countries with spans below this threshold (e.g. Monaco, Vatican City)
+# Countries with spans below this threshold (e.g. Monaco, Vatican City)
 
-***REMOVED*** will be symmetrically expanded outward to meet the minimum.
+# will be symmetrically expanded outward to meet the minimum.
 
 MIN_BBOX_SPAN = 0.5
 
@@ -260,11 +260,11 @@ def expand_bbox_to_min_span(
 
 
 
-    ***REMOVED*** Handle antimeridian: if span > 180° the bbox already wraps around,
+    # Handle antimeridian: if span > 180° the bbox already wraps around,
 
-    ***REMOVED*** so we don't need to expand lon (it's already large enough).
+    # so we don't need to expand lon (it's already large enough).
 
-    ***REMOVED*** However, a span < -180° would indicate invalid ordering; fix it.
+    # However, a span < -180° would indicate invalid ordering; fix it.
 
     if lon_span < 0:
 
@@ -274,7 +274,7 @@ def expand_bbox_to_min_span(
 
 
 
-    ***REMOVED*** Expand longitude axis
+    # Expand longitude axis
 
     if lon_span < min_span:
 
@@ -286,7 +286,7 @@ def expand_bbox_to_min_span(
 
 
 
-    ***REMOVED*** Expand latitude axis
+    # Expand latitude axis
 
     if lat_span < min_span:
 
@@ -298,11 +298,11 @@ def expand_bbox_to_min_span(
 
 
 
-    ***REMOVED*** Clamp latitude to [-90, 90]
+    # Clamp latitude to [-90, 90]
 
     if min_lat < -90:
 
-        ***REMOVED*** Shift the box so it stays within [-90, 90]
+        # Shift the box so it stays within [-90, 90]
 
         max_lat += (-90 - min_lat)
 
@@ -314,7 +314,7 @@ def expand_bbox_to_min_span(
 
         max_lat = 90.0
 
-    ***REMOVED*** Re-check min_lat after adjustment
+    # Re-check min_lat after adjustment
 
     if min_lat < -90:
 
@@ -322,11 +322,11 @@ def expand_bbox_to_min_span(
 
 
 
-    ***REMOVED*** Clamp longitude to [-180, 180]
+    # Clamp longitude to [-180, 180]
 
-    ***REMOVED*** For antimeridian-crossing bboxes, we allow the span to exceed 180,
+    # For antimeridian-crossing bboxes, we allow the span to exceed 180,
 
-    ***REMOVED*** but we still wrap individual values.
+    # but we still wrap individual values.
 
     if lon_span >= 0:
 
@@ -346,11 +346,11 @@ def expand_bbox_to_min_span(
 
 
 
-***REMOVED*** ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
-***REMOVED*** Country bbox resolution (DB-only, no fallbacks)
+# Country bbox resolution (DB-only, no fallbacks)
 
-***REMOVED*** ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 
 

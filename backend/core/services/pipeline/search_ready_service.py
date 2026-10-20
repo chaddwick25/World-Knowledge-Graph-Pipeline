@@ -51,7 +51,7 @@ class SearchReadyService:
         )
         from osmsnapshot.models import SnapshotJob
 
-        ***REMOVED*** 1. Upsert CountrySearchProcessing
+        # 1. Upsert CountrySearchProcessing
         country_processing, created = CountrySearchProcessing.objects.update_or_create(
             country_name=(cfg.slug or cfg.name).replace('-', '_'),
             defaults={
@@ -64,7 +64,7 @@ class SearchReadyService:
             cfg.iso, created,
         )
 
-        ***REMOVED*** 2. Finalize PipelineRun as COMPLETED
+        # 2. Finalize PipelineRun as COMPLETED
         run_finalized = False
         run = None
         try:
@@ -79,7 +79,7 @@ class SearchReadyService:
                 cfg.pipeline_run_id,
             )
 
-        ***REMOVED*** 3. Transition the linked SnapshotJob to COMPLETED (DB ground truth)
+        # 3. Transition the linked SnapshotJob to COMPLETED (DB ground truth)
         snapshot_job_updated = False
         if run is not None:
             for job in SnapshotJob.objects.filter(pipeline_run=run):
@@ -102,7 +102,7 @@ class SearchReadyService:
                         job.id, exc,
                     )
 
-        ***REMOVED*** 4. Send pipeline_complete WebSocket message
+        # 4. Send pipeline_complete WebSocket message
         try:
             from channels.layers import get_channel_layer
             from asgiref.sync import async_to_sync

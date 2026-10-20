@@ -5,7 +5,7 @@ class Command(BaseCommand):
     
     def handle(self, *args, **options):
         from core.models import OSMWikiDataHierarchy
-        ***REMOVED*** Get or create planet-level OSMWikiDataHierarchy
+        # Get or create planet-level OSMWikiDataHierarchy
         planet_hierarchy, _ = OSMWikiDataHierarchy.objects.get_or_create(
             slug='planet',
             defaults={
@@ -15,7 +15,7 @@ class Command(BaseCommand):
             }
         )
         
-        ***REMOVED*** Execute planet initialization
+        # Execute planet initialization
         from core.services.planet_init.planet_initialization_service import PlanetInitializationService
         service = PlanetInitializationService(planet_hierarchy.processing_policy)
         results = service.execute()

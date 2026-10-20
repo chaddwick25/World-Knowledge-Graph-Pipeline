@@ -54,18 +54,18 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         self.use_fp64 = use_fp64
         
-        ***REMOVED*** GPU services
+        # GPU services
         self.gpu_fasttext = None
         self.gpu_haversine = None
         
-        ***REMOVED*** GPU cache for candidate pool
+        # GPU cache for candidate pool
         self._gpu_pool_coords = None
         self._gpu_pool_embeddings = None
         self._gpu_pool_class_embeddings = None
-        ***REMOVED*** Per-precision pool geohash-center coords (N, 2) and per-row d_max
-        ***REMOVED*** (N,) — both aligned with self._gpu_pool_coords rows.  Used by the
-        ***REMOVED*** geo score to compute center-to-center distances with the paper's
-        ***REMOVED*** 1 - d/d_max formula (Fix 1, §3.1.3).
+        # Per-precision pool geohash-center coords (N, 2) and per-row d_max
+        # (N,) — both aligned with self._gpu_pool_coords rows.  Used by the
+        # geo score to compute center-to-center distances with the paper's
+        # 1 - d/d_max formula (Fix 1, §3.1.3).
         self._gpu_pool_center_coords: Dict[int, torch.Tensor] = {}
         self._gpu_pool_d_max: Dict[int, torch.Tensor] = {}
         
@@ -102,10 +102,10 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
         Returns:
             Number of candidates loaded
         """
-        ***REMOVED*** Call parent to load pool
+        # Call parent to load pool
         count = super().load_candidate_pool(entities)
         
-        ***REMOVED*** Precompute GPU data
+        # Precompute GPU data
         self._precompute_gpu_data()
         
         return count
@@ -119,16 +119,16 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
         
         logger.info(f"GPU USLP: Precomputing embeddings for {len(self._pool):,} candidates...")
         
-        ***REMOVED*** Extract coordinates
+        # Extract coordinates
         coords = np.array([[e['lat'], e['lon']] for e in self._pool], dtype=np.float32)
         self._gpu_pool_coords = torch.from_numpy(coords).to(self.device)
         
-        ***REMOVED*** Log candidate pool bounds for debugging
+        # Log candidate pool bounds for debugging
         lats = coords[:, 0]
         lons = coords[:, 1]
         logger.info(f"GPU USLP: Candidate pool bounds - lat: [{lats.min():.4f}, {lats.max():.4f}], lon: [{lons.min():.4f}, {lons.max():.4f}]")
         
-        ***REMOVED*** Precompute name embeddings (names are in tags dict, matching CPU _name_score)
+        # Precompute name embeddings (names are in tags dict, matching CPU _name_score)
         names = []
         for e in self._pool:
             tags = e.get('tags', {})
@@ -136,7 +136,7 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
             names.append(name or '')
         self._gpu_pool_embeddings = self.gpu_fasttext.precompute_embeddings(names)
         
-        ***REMOVED*** Precompute class embeddings (fall back to OSM tags when wkg_class is None)
+        # Precompute class embeddings (fall back to OSM tags when wkg_class is None)
         classes = []
         for e in self._pool:
             wkg_class = e.get('wkg_class')
@@ -146,9 +146,9 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
                 classes.append(SpatialLinkPredictionService._derive_class_text_from_tags(e.get('tags', {})) or '')
         self._gpu_pool_class_embeddings = self.gpu_fasttext.precompute_embeddings(classes)
 
-        ***REMOVED*** Precompute per-precision geohash cluster-center coords and per-row
-        ***REMOVED*** d_max for the paper's geo formula (1 - d/d_max on cluster centers,
-        ***REMOVED*** not raw coordinates).  Mirrors TorchUSLP's _geohash_matrices.
+        # Precompute per-precision geohash cluster-center coords and per-row
+        # d_max for the paper's geo formula (1 - d/d_max on cluster centers,
+        # not raw coordinates).  Mirrors TorchUSLP's _geohash_matrices.
         self._gpu_pool_center_coords = {}
         self._gpu_pool_d_max = {}
         for precision in (1, 3, 4):
@@ -198,11 +198,11 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
             relation = TAG_TO_RELATION.get(tag_key, tag_key)
             literal = tag_value.strip()
             
-            ***REMOVED*** Get search radius
+            # Get search radius
             precision = RELATION_GEOHASH_PRECISION.get(relation, 4)
             radius_km = {1: 5000, 3: 156, 4: 39}.get(precision, 156)
             
-            ***REMOVED*** GPU-accelerated spatial filtering
+            # GPU-accelerated spatial filtering
             candidate_lats = self._gpu_pool_coords[:, 0]
             candidate_lons = self._gpu_pool_coords[:, 1]
             
@@ -212,14 +212,14 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
                 radius_km
             )
             
-            ***REMOVED*** Debug: log first few entities with spatial filtering results
-            ***REMOVED*** if head_osm_id in [self._pool[i]['osm_id'] for i in range(min(5, len(self._pool)))] or len(all_scored) == 0:
-            ***REMOVED***     logger.info(f"GPU USLP: Entity {head_osm_id} at ({head_lat:.4f}, {head_lon:.4f}), relation={relation}, radius={radius_km}km, candidates_in_radius={len(indices)}/{len(self._pool)}")
+            # Debug: log first few entities with spatial filtering results
+            # if head_osm_id in [self._pool[i]['osm_id'] for i in range(min(5, len(self._pool)))] or len(all_scored) == 0:
+            #     logger.info(f"GPU USLP: Entity {head_osm_id} at ({head_lat:.4f}, {head_lon:.4f}), relation={relation}, radius={radius_km}km, candidates_in_radius={len(indices)}/{len(self._pool)}")
             
             if len(indices) == 0:
                 continue
             
-            ***REMOVED*** Filter out self
+            # Filter out self
             mask = torch.tensor([self._pool[i]['osm_id'] != head_osm_id for i in indices.cpu().numpy()],
                               device=self.device)
             indices = indices[mask]
@@ -228,25 +228,25 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
             if len(indices) == 0:
                 continue
             
-            ***REMOVED*** GPU-accelerated scoring
+            # GPU-accelerated scoring
             total_scores, geo_scores, name_scores, class_scores = self._score_candidates_gpu(
                 literal, relation, distances, indices, head_lat, head_lon, precision
             )
             
-            ***REMOVED*** total_scores are unnormalized sums [0, 3.0]
+            # total_scores are unnormalized sums [0, 3.0]
             normalized_scores = total_scores / 3.0
             
-            ***REMOVED*** Debug: log top scores for first few entities (log regardless of threshold)
-            if len(all_scored) < 5:  ***REMOVED*** Log first 5 entities processed
+            # Debug: log top scores for first few entities (log regardless of threshold)
+            if len(all_scored) < 5:  # Log first 5 entities processed
                 top_k_scores = torch.topk(normalized_scores, min(3, len(normalized_scores)))
                 top_indices = torch.topk(normalized_scores, min(3, len(normalized_scores))).indices
-                ***REMOVED*** logger.info(f"GPU USLP: Entity {head_osm_id} relation={relation} literal={literal} top scores: {top_k_scores.values.cpu().numpy()} (threshold={threshold})")
-                ***REMOVED*** if len(top_indices) > 0:
-                ***REMOVED***     logger.info(f"Calculating scores for top candidates...")
-                ***REMOVED*** for i, idx in enumerate(top_indices):
-                ***REMOVED***     logger.info(f"GPU USLP:   - [{i}] geo={geo_scores[idx]:.3f}, name={name_scores[idx]:.3f}, class={class_scores[idx]:.3f}, total={total_scores[idx]:.3f}, norm={normalized_scores[idx]:.3f}")
+                # logger.info(f"GPU USLP: Entity {head_osm_id} relation={relation} literal={literal} top scores: {top_k_scores.values.cpu().numpy()} (threshold={threshold})")
+                # if len(top_indices) > 0:
+                #     logger.info(f"Calculating scores for top candidates...")
+                # for i, idx in enumerate(top_indices):
+                #     logger.info(f"GPU USLP:   - [{i}] geo={geo_scores[idx]:.3f}, name={name_scores[idx]:.3f}, class={class_scores[idx]:.3f}, total={total_scores[idx]:.3f}, norm={normalized_scores[idx]:.3f}")
             
-            ***REMOVED*** Collect all scored candidates (threshold filtering done in persist_links)
+            # Collect all scored candidates (threshold filtering done in persist_links)
             for idx, total, norm, geo, name, cls in zip(
                 indices.cpu().numpy(),
                 total_scores.cpu().numpy(),
@@ -261,14 +261,14 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
                     'tail_osm_id': self._pool[idx]['osm_id'],
                     'unnormalized_score': round(float(total), 4),
                     'normalized_score': round(float(norm), 4),
-                    'score': round(float(norm), 4),  ***REMOVED*** backward-compat alias
+                    'score': round(float(norm), 4),  # backward-compat alias
                     'geo_score': round(float(geo), 4),
                     'name_score': round(float(name), 4),
                     'topo_score': round(float(cls), 4),
                     'literal': literal,
                 })
         
-        ***REMOVED*** Sort and return top_k
+        # Sort and return top_k
         all_scored.sort(key=lambda x: x['normalized_score'], reverse=True)
         return all_scored[:top_k]
     
@@ -301,16 +301,16 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
         (not raw entity coordinates) and d_max is the per-tail-cluster
         max cluster-center distance precomputed at pool-load time.
         """
-        ***REMOVED*** Geo score: paper formula 1 - d/d_max on geohash CLUSTER CENTERS
-        ***REMOVED*** (dataprep_utils.py:83), d_max per tail cluster (column max).
+        # Geo score: paper formula 1 - d/d_max on geohash CLUSTER CENTERS
+        # (dataprep_utils.py:83), d_max per tail cluster (column max).
         gh_h = geohash2.encode(head_lat, head_lon, precision=precision)
         c_h_lat, c_h_lon = (float(x) for x in geohash2.decode(gh_h))
-        center_coords = self._gpu_pool_center_coords[precision]  ***REMOVED*** (N_pool, 2) degrees
-        d_max_all = self._gpu_pool_d_max[precision]              ***REMOVED*** (N_pool,) km
+        center_coords = self._gpu_pool_center_coords[precision]  # (N_pool, 2) degrees
+        d_max_all = self._gpu_pool_d_max[precision]              # (N_pool,) km
 
-        ***REMOVED*** (N,) km center-to-center distances for the filtered candidates.
-        cand_centers = center_coords[indices]  ***REMOVED*** (N, 2)
-        cand_d_max = d_max_all[indices]        ***REMOVED*** (N,)
+        # (N,) km center-to-center distances for the filtered candidates.
+        cand_centers = center_coords[indices]  # (N, 2)
+        cand_d_max = d_max_all[indices]        # (N,)
         lat1 = torch.deg2rad(torch.tensor(c_h_lat, device=cand_centers.device, dtype=cand_centers.dtype))
         lon1 = torch.deg2rad(torch.tensor(c_h_lon, device=cand_centers.device, dtype=cand_centers.dtype))
         lat2 = torch.deg2rad(cand_centers[:, 0])
@@ -322,18 +322,18 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
         center_dists = 6371.0 * 2 * torch.arcsin(torch.sqrt(a.clamp(0, 1)))
         geo_scores = torch.clamp(1.0 - center_dists / cand_d_max, min=0.0, max=1.0)
 
-        ***REMOVED*** Name score: cosine similarity
+        # Name score: cosine similarity
         literal_emb = self.gpu_fasttext.calculate_embedding_batch([literal])
         candidate_name_embs = self._gpu_pool_embeddings[indices]
         name_scores = self.gpu_fasttext.cosine_similarity_batch(literal_emb, candidate_name_embs)
 
-        ***REMOVED*** Class score: cosine similarity (use natural language mapping for relation)
+        # Class score: cosine similarity (use natural language mapping for relation)
         rel_text = RELATION_TO_NATURAL_TEXT.get(relation, relation)
         relation_emb = self.gpu_fasttext.calculate_embedding_batch([rel_text])
         candidate_class_embs = self._gpu_pool_class_embeddings[indices]
         class_scores = self.gpu_fasttext.cosine_similarity_batch(relation_emb, candidate_class_embs)
 
-        ***REMOVED*** Total score (sum of three components)
+        # Total score (sum of three components)
         total_scores = geo_scores + name_scores + class_scores
 
         return total_scores, geo_scores, name_scores, class_scores

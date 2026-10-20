@@ -1,15 +1,15 @@
-***REMOVED*** Preserving the MapQA Model Architecture
+# Preserving the MapQA Model Architecture
 
 How the natural-language geospatial question answering methodology from the [MapQA: Open-domain Geospatial Question Answering](https://papers/WernerKuhn/MapQA:%20Open-domain%20Geospatial%20Question%20Answering.pdf) research paper (Kuhn et al.) was integrated into the Django pipeline.
 
 ---
 
-***REMOVED******REMOVED*** 1. Template Classification (TF-IDF + Naive Bayes)
+## 1. Template Classification (TF-IDF + Naive Bayes)
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The MapQA paper frames geospatial question answering as a template-classification problem. Natural-language questions are classified into a library of geospatial templates, each defining a structured query skeleton with concept slots and role assignments. The paper uses TF-IDF vectorization over question text and a Naive Bayes classifier for template selection.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline preserves the paper's classification approach using scikit-learn, trained on a self-supervised question corpus generated from real OSM data.
 
 * **Mechanism:** `QueryParserService` in `backend/semantic_search/services/query_parser_service.py` loads a pretrained `TfidfVectorizer` (ngram_range=(1,2), min_df=2, sublinear_tf=True) and `MultinomialNB` (alpha=0.1) classifier at startup.
@@ -20,13 +20,13 @@ The pipeline preserves the paper's classification approach using scikit-learn, t
 
 | ID | Template Name | Description |
 |----|---------------|-------------|
-| ***REMOVED***1 | `FILTER-AGGREGATE-MEASURE` | Count amenities within a radius of a location |
-| ***REMOVED***2 | `OBJECT-FIELD-MEASURE` | Distance between two geocoded entities |
-| ***REMOVED***4 | `GEOCODE-BATCH-COMPARE` | Nearest amenity or compare-closer between multiple locations |
-| ***REMOVED***5 | `LOCATION-BEARING-CLASSIFY` | Bearing or directional cone between two locations |
-| ***REMOVED***8 | `PLACE-ATTRIBUTE-QUERY` | Adjacent amenity or attribute lookup (heat kernel when factor tables available) |
+| #1 | `FILTER-AGGREGATE-MEASURE` | Count amenities within a radius of a location |
+| #2 | `OBJECT-FIELD-MEASURE` | Distance between two geocoded entities |
+| #4 | `GEOCODE-BATCH-COMPARE` | Nearest amenity or compare-closer between multiple locations |
+| #5 | `LOCATION-BEARING-CLASSIFY` | Bearing or directional cone between two locations |
+| #8 | `PLACE-ATTRIBUTE-QUERY` | Adjacent amenity or attribute lookup (heat kernel when factor tables available) |
 
-**Paper vs Code:** The paper describes a 10-template library. The implementation trains 5 templates with full coverage; the remaining 5 have 0% coverage and are not trained. An additional 4 spectral/graph templates (***REMOVED***11 SPECTRAL-ANALYSIS, ***REMOVED***12 TEMPORAL-DRIFT, ***REMOVED***13 COMMUNITY-DETECT, ***REMOVED***14 EVENT-DIFFUSION) are wired in the executor but require factor-table data that the parser does not currently emit.
+**Paper vs Code:** The paper describes a 10-template library. The implementation trains 5 templates with full coverage; the remaining 5 have 0% coverage and are not trained. An additional 4 spectral/graph templates (#11 SPECTRAL-ANALYSIS, #12 TEMPORAL-DRIFT, #13 COMMUNITY-DETECT, #14 EVENT-DIFFUSION) are wired in the executor but require factor-table data that the parser does not currently emit.
 
 **Code Reference:** `backend/semantic_search/services/query_parser_service.py`
 ```python
@@ -37,12 +37,12 @@ confidence = float(max(self.classifier.predict_proba(X)[0]))
 
 ---
 
-***REMOVED******REMOVED*** 2. Concept Extraction (OneVsRest Logistic Regression)
+## 2. Concept Extraction (OneVsRest Logistic Regression)
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The MapQA paper uses Kuhn's core concepts of spatial information as the feature space for concept extraction. Each question is decomposed into typed concept slots (location, object, field, network, etc.) that fill the template skeleton.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline implements concept extraction as a multi-label classification problem using `OneVsRestClassifier(LogisticRegression)`, combining ML predictions with heuristic regex extraction.
 
 * **Mechanism:** `_extract_concepts()` in `query_parser_service.py` predicts a 7-label binary vector over the concept vocabulary, then merges with heuristic extraction (regex for radii, amounts, location names).
@@ -83,12 +83,12 @@ def _extract_concepts(self, question: str, template: str) -> list:
 
 ---
 
-***REMOVED******REMOVED*** 3. Role Assignment and G2 Precedence Validation
+## 3. Role Assignment and G2 Precedence Validation
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The MapQA/Spatial-Agent papers define a role hierarchy for DAG nodes. Each concept slot in a template is assigned a functional role (SUB_COND, COND, SUPPORT, MEASURE, EXTENT), and the DAG must satisfy constraint G2: roles must appear in precedence order.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline assigns roles via a multiclass `LogisticRegression` model trained on `question [CONCEPT:TYPE]` strings, then validates the resulting DAG against the G2 precedence constraint.
 
 **Role Precedence (G2):**
@@ -128,12 +128,12 @@ def _validate_dag(dag: list) -> dict:
 
 ---
 
-***REMOVED******REMOVED*** 4. DAG Composition (GeoFlow)
+## 4. DAG Composition (GeoFlow)
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The paper composes a GeoFlow DAG from the classified template, extracted concepts, and assigned roles. The DAG is a directed acyclic graph where each node represents a query operation (filter, aggregate, measure) and edges represent data flow.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline builds the DAG from fixed template skeletons stored in `TEMPLATE_SPECS`. Each skeleton defines a list of nodes with `role`, `concept_type`, and `operator`. The `_compose_dag()` method fills the skeleton with the extracted concepts and assigned roles.
 
 * **Mechanism:** `template_specs` in `train_mapqa_parser.py` (lines 93-149) defines the skeleton for each of the 5 trained templates. `_compose_dag()` in `query_parser_service.py` (lines 464-500) instantiates the DAG by mapping roles to concepts.
@@ -141,29 +141,29 @@ The pipeline builds the DAG from fixed template skeletons stored in `TEMPLATE_SP
 
 ---
 
-***REMOVED******REMOVED*** 5. Executor: Template to PostGIS + pgvector
+## 5. Executor: Template to PostGIS + pgvector
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The MapQA paper maps each template to a structured query over geospatial data. The executor translates the GeoFlow DAG into database operations.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline maps each template to a dedicated handler in `QueryExecutorService` that constructs PostGIS spatial queries and pgvector similarity queries.
 
 **Template to Handler Mapping:**
 
 | Template | Handler | Primary Operations |
 |----------|---------|-------------------|
-| ***REMOVED***1 FILTER-AGGREGATE-MEASURE | `_execute_filter_aggregate_measure` | Geocode anchor → `ST_DWithin` radius → count |
-| ***REMOVED***2 OBJECT-FIELD-MEASURE | `_execute_object_field_measure` | Haversine distance between two geocoded points |
-| ***REMOVED***4 GEOCODE-BATCH-COMPARE | `_execute_geocode_batch_compare` | Nearest-amenity or compare-closer (multi-anchor) |
-| ***REMOVED***5 LOCATION-BEARING-CLASSIFY | `_execute_location_bearing_classify` | Bearing or cardinal cone search |
-| ***REMOVED***8 PLACE-ATTRIBUTE-QUERY | `_execute_place_attribute_query` | Heat kernel via `factor_spectral_node_metric` when available, else PostGIS fallback |
-| ***REMOVED***11 SPECTRAL-ANALYSIS | `_execute_spectral_analysis` | Factor-table backed (not parser-emitted) |
-| ***REMOVED***12 TEMPORAL-DRIFT | `_execute_temporal_drift` | Factor-table backed (not parser-emitted) |
-| ***REMOVED***13 COMMUNITY-DETECT | `_execute_community_detect` | Factor-table backed (not parser-emitted) |
-| ***REMOVED***14 EVENT-DIFFUSION | `_execute_event_diffusion` | Factor-table backed (not parser-emitted) |
+| #1 FILTER-AGGREGATE-MEASURE | `_execute_filter_aggregate_measure` | Geocode anchor → `ST_DWithin` radius → count |
+| #2 OBJECT-FIELD-MEASURE | `_execute_object_field_measure` | Haversine distance between two geocoded points |
+| #4 GEOCODE-BATCH-COMPARE | `_execute_geocode_batch_compare` | Nearest-amenity or compare-closer (multi-anchor) |
+| #5 LOCATION-BEARING-CLASSIFY | `_execute_location_bearing_classify` | Bearing or cardinal cone search |
+| #8 PLACE-ATTRIBUTE-QUERY | `_execute_place_attribute_query` | Heat kernel via `factor_spectral_node_metric` when available, else PostGIS fallback |
+| #11 SPECTRAL-ANALYSIS | `_execute_spectral_analysis` | Factor-table backed (not parser-emitted) |
+| #12 TEMPORAL-DRIFT | `_execute_temporal_drift` | Factor-table backed (not parser-emitted) |
+| #13 COMMUNITY-DETECT | `_execute_community_detect` | Factor-table backed (not parser-emitted) |
+| #14 EVENT-DIFFUSION | `_execute_event_diffusion` | Factor-table backed (not parser-emitted) |
 
-***REMOVED******REMOVED******REMOVED*** 3-Tier Amenity Fallback
+### 3-Tier Amenity Fallback
 
 The executor resolves amenity/object queries through a 3-tier fallback chain:
 
@@ -186,15 +186,15 @@ decides pool membership and the re-rank decides order.
 `combined_score = diffusion_score + name_score + geo_score + uslp_boost`.
 For proper-name OBJECTs, `name_score` is the FastText cosine between the
 OBJECT span and each entity's `name` (exact brands ≈ 1.0, nameless 0.0);
-category queries skip it. The re-rank now runs on ***REMOVED***1
-(FILTER-AGGREGATE-MEASURE) and ***REMOVED***8 (PLACE-ATTRIBUTE-QUERY); previously only
-***REMOVED***8. Without it, ***REMOVED***1 returned the raw distance-sorted pool, burying exact
+category queries skip it. The re-rank now runs on #1
+(FILTER-AGGREGATE-MEASURE) and #8 (PLACE-ATTRIBUTE-QUERY); previously only
+#8. Without it, #1 returned the raw distance-sorted pool, burying exact
 brand matches ("Island Grill" ranked below a nearer "cook shop").
 See `DIFFUSION_SCORE_AND_QUERY_FUSION.md` for the fusion provenance.
 
 **Code Reference:** `backend/semantic_search/services/query_executor_service/`
 ```python
-***REMOVED*** Spatial SQL construction
+# Spatial SQL construction
 qs = qs.extra(
     where=["ST_DWithin(geom::geography, ST_MakePoint(%s, %s)::geography, %s)"],
     params=[float(anchor_point.x), float(anchor_point.y), float(radius_m)],
@@ -206,18 +206,18 @@ qs = qs.annotate(
     )
 ).order_by("distance_m")
 
-***REMOVED*** pgvector FastText (exact cosine, not HNSW)
+# pgvector FastText (exact cosine, not HNSW)
 RawSQL("(gv_tags_embedding <=> %s::vector) + 0", (query_list,), ...)
 ```
 
 ---
 
-***REMOVED******REMOVED*** 6. Self-Supervised Training Data Generation
+## 6. Self-Supervised Training Data Generation
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The MapQA paper requires labeled (question, template, concepts) triples for training. Manual annotation is expensive and does not scale to new countries or snapshot dates.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline generates training data automatically from real OSM data using a self-supervised question generator and a rule-based paraphraser.
 
 * **Question Generator:** `MapQAQuestionGenerator.generate(country_code, snapshot_id, templates=(1,2,4,5,8), per_class, ...)` in `backend/semantic_search/services/mapqa_question_generator.py`. Queries real entities from the snapshot, fills template slots with actual amenity names, locations, and radii, and produces labeled questions.
@@ -226,12 +226,12 @@ The pipeline generates training data automatically from real OSM data using a se
 
 ---
 
-***REMOVED******REMOVED*** 7. Answer Enrichment (Direct Path vs Agent Path)
+## 7. Answer Enrichment (Direct Path vs Agent Path)
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The MapQA paper generates a natural-language answer from the executed query results. The Spatial-Agent paper extends this with a research loop where an LLM selects tools (nameSearch, structuredSearch) to gather additional context before synthesizing.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline implements two enrichment paths:
 
 **Direct Path (default, deterministic):**
@@ -251,7 +251,7 @@ The pipeline implements two enrichment paths:
 
 ---
 
-***REMOVED******REMOVED*** 8. SSE Streaming
+## 8. SSE Streaming
 
 The executor streams results to the frontend via Server-Sent Events:
 
@@ -270,12 +270,12 @@ event: done          → {final result}
 
 ---
 
-***REMOVED******REMOVED*** 9. HITL Confirmation Modal
+## 9. HITL Confirmation Modal
 
-***REMOVED******REMOVED******REMOVED*** The Original Implementation
+### The Original Implementation
 The Spatial-Agent paper describes a human-in-the-loop confirmation step where the user reviews and edits the parsed query before execution.
 
-***REMOVED******REMOVED******REMOVED*** The Updated Implementation
+### The Updated Implementation
 The pipeline implements HITL as a Pinia-driven Vue 3 modal:
 
 * **Modal:** `QueryConfirmationModal.vue` renders `proposedQuery.template`, editable concept slots, and confidence score. Buttons: `Reject`, `Save Edits & Approve`, `Approve`.
@@ -286,7 +286,7 @@ See `SPATIAL_AGENT.md` for the full MCP tool surface and agent orchestration flo
 
 ---
 
-***REMOVED******REMOVED*** 10. Cross-References
+## 10. Cross-References
 
 | Topic | Document |
 |-------|----------|

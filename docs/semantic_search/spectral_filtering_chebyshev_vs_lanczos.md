@@ -1,4 +1,4 @@
-***REMOVED*** Spectral Filtering: Chebyshev vs. Lanczos
+# Spectral Filtering: Chebyshev vs. Lanczos
 
 > **Added 2026-08-19.** This document clarifies the distinction between two
 > polynomial filtering approaches for graph spectral analysis, both
@@ -13,7 +13,7 @@
 > Chebyshev for batch eigenvector computation (Step 5c), Lanczos for the
 > runtime GPU learned layer (Schematics V2 §05).
 
-***REMOVED******REMOVED*** 1. The Shared Foundation: Polynomial Filtering on the Laplacian
+## 1. The Shared Foundation: Polynomial Filtering on the Laplacian
 
 Both approaches exploit the same identity from spectral graph theory:
 
@@ -48,9 +48,9 @@ This is the "stream the calculations through the entire graph" property.
 The polynomial propagates the filter across the graph topology using only
 the sparse Laplacian structure.
 
-***REMOVED******REMOVED*** 2. Chebyshev: Fixed Filter, Transductive (Step 5c Batch Path)
+## 2. Chebyshev: Fixed Filter, Transductive (Step 5c Batch Path)
 
-***REMOVED******REMOVED******REMOVED*** What "Fixed" Means
+### What "Fixed" Means
 
 The Chebyshev coefficients `c₀, c₁, ..., c_K` are computed analytically from
 a **chosen filter function**, not learned from graph data. For the
@@ -72,7 +72,7 @@ via Lanczos. For IE, `λ_max ≈ 1.30` (not the theoretical bound of 2.0,
 because the IE k-NN graph is not bipartite). The rest is mathematical
 computation on the filter shape.
 
-***REMOVED******REMOVED******REMOVED*** What "Transductive" Means
+### What "Transductive" Means
 
 The Chebyshev path finds the eigenvectors of **this specific graph**. It
 doesn't generalize to other graphs. Each graph gets its own Laplacian, its
@@ -80,7 +80,7 @@ own `λ_max`, its own coefficients, its own eigenvectors. The pipeline is
 *reusable* (same code works for any graph) but the output is *specific* to
 the input graph.
 
-***REMOVED******REMOVED******REMOVED*** Why It's the Right Choice for Step 5c
+### Why It's the Right Choice for Step 5c
 
 Step 5c needs the **actual eigenvectors** of the Laplacian. They are
 materialized as factor rows in `factor_spectral_node_metric` and resolved at
@@ -94,7 +94,7 @@ The filter `exp(-tλ)` is universally appropriate because graph Laplacians
 mathematical property of the Laplacian, not a dataset-specific pattern. No
 learning is needed; the filter shape is known a priori.
 
-***REMOVED******REMOVED******REMOVED*** The Algorithm (prototype removed, Chebyshev approach rejected)
+### The Algorithm (prototype removed, Chebyshev approach rejected)
 
 1. Build the sparse Laplacian L (`SparseGraph.normalized_laplacian`)
 2. Estimate `λ_max` via Lanczos (one scalar from the graph)
@@ -109,9 +109,9 @@ learning is needed; the filter shape is known a priori.
 Memory: sparse L (~1.5 GB IE, ~7.5 GB CA) + sketch (N × ℓ × 8 bytes) +
 workspace. **No GPU. No VRAM. CPU only.**
 
-***REMOVED******REMOVED*** 3. Lanczos: Learned Filter, Inductive (Runtime GPU Layer)
+## 3. Lanczos: Learned Filter, Inductive (Runtime GPU Layer)
 
-***REMOVED******REMOVED******REMOVED*** What "Learned" Means
+### What "Learned" Means
 
 In Lanczos Networks (Liao et al., 2019b), the polynomial coefficients are
 **learned from data during training**. A GNN learns the optimal filter shape
@@ -127,14 +127,14 @@ for the task. The filter adapts to what the model needs:
 The coefficients are task-dependent, not fixed. This is the inductive
 learning layer.
 
-***REMOVED******REMOVED******REMOVED*** What "Inductive" Means
+### What "Inductive" Means
 
 A learned filter generalizes across graphs and tasks. Once trained, the
 filter can be applied to a new graph without recomputing eigenvectors. The
 polynomial recursion works on any Laplacian. This is critical for the
 runtime layer, where a full eigendecomposition per query is unaffordable.
 
-***REMOVED******REMOVED******REMOVED*** Why It's the Right Choice for the Runtime GPU Layer
+### Why It's the Right Choice for the Runtime GPU Layer
 
 The runtime layer (Schematics V2 §05 Learned Layer) operates on **graph
 signals**, not eigenvectors. A query like "find cafes similar to this one"
@@ -148,7 +148,7 @@ USLP, semantic, geographic, ontological) become the filter's training
 signal. The learned filter discovers which spectral components matter for
 each task and composes them into a single polynomial.
 
-***REMOVED******REMOVED******REMOVED*** The Conceptual Algorithm (future runtime path)
+### The Conceptual Algorithm (future runtime path)
 
 1. Pre-train: GNN learns filter coefficients per task type (trained on
    factor tables + query patterns during the pipeline)
@@ -160,7 +160,7 @@ each task and composes them into a single polynomial.
 3. No eigenvector computation at runtime. No factor table join needed (the
    filter replaces the lookup).
 
-***REMOVED******REMOVED*** 4. The Two-Layer Architecture
+## 4. The Two-Layer Architecture
 
 | | Batch (pipeline Step 5c) | Runtime (Schematics V2 §05) |
 |---|---|---|
@@ -182,7 +182,7 @@ filter path avoids the factor table lookup entirely. The factor tables
 remain as the training data for the learned filters and as the fallback when
 the GPU path is unavailable.
 
-***REMOVED******REMOVED*** 5. Why the Distinction Matters
+## 5. Why the Distinction Matters
 
 The Chebyshev and Lanczos approaches are often conflated because both use
 polynomials of the Laplacian. But they serve fundamentally different
@@ -204,7 +204,7 @@ efficiently by preconditioning the spectrum. The Lanczos path is a
 **machine learning method**. It learns to filter signals without
 eigenvectors. Both are valid; they solve different problems.
 
-***REMOVED******REMOVED*** 6. References
+## 6. References
 
 - Hamilton, W.L., *Graph Representation Learning*, Ch 7.1.3, spectral graph
   convolutions, the identity `f(L)·x = U·f(Λ)·Uᵀ·x`, and the

@@ -59,7 +59,7 @@ def load_overrides() -> Dict[str, Any]:
         logger.warning("Failed to load overrides.json from %s: %s", path, exc)
         data = {}
 
-    ***REMOVED*** Ensure we always have dicts for known sections when using structured schema
+    # Ensure we always have dicts for known sections when using structured schema
     if isinstance(data, dict):
         if any(k in data for k in ("continents", "country_iso_overrides", "embedding_edge_cases")):
             data.setdefault("continents", {})
@@ -84,10 +84,10 @@ def get_country_override_record(iso: str) -> Optional[Dict[str, Any]]:
     if not isinstance(data, dict) or not data:
         return None
 
-    ***REMOVED*** Structured schema: explicit country_iso_overrides section
+    # Structured schema: explicit country_iso_overrides section
     section = data.get("country_iso_overrides")
     if isinstance(section, dict) and section:
-        ***REMOVED*** Case-insensitive lookup on keys
+        # Case-insensitive lookup on keys
         for key, record in section.items():
             try:
                 if str(key).upper() == iso_key:
@@ -95,16 +95,16 @@ def get_country_override_record(iso: str) -> Optional[Dict[str, Any]]:
             except Exception:
                 continue
 
-    ***REMOVED*** Legacy schema: treat top-level keys as ISO/QID
+    # Legacy schema: treat top-level keys as ISO/QID
     for key, record in data.items():
-        ***REMOVED*** Skip known structured sections
+        # Skip known structured sections
         if key in ("continents", "country_iso_overrides", "embedding_edge_cases"):
             continue
         try:
             if str(key).upper() == iso_key:
-                ***REMOVED*** If the record is already a dict, return as-is. If it's a bare
-                ***REMOVED*** string (e.g. {"IE": "ireland"}), interpret it as
-                ***REMOVED*** country_slug for backward compatibility.
+                # If the record is already a dict, return as-is. If it's a bare
+                # string (e.g. {"IE": "ireland"}), interpret it as
+                # country_slug for backward compatibility.
                 if isinstance(record, dict):
                     return record
                 return {"country_slug": str(record)}

@@ -33,8 +33,8 @@ class TestSystemStatusView:
         assert data["snapshot"] is None
 
     def test_not_ready_when_register_planet_row_only(self, client):
-        ***REMOVED*** register_planet writes a COMPLETED row with snapshot_date_str NULL
-        ***REMOVED*** before the rest of init runs — must NOT count as ready.
+        # register_planet writes a COMPLETED row with snapshot_date_str NULL
+        # before the rest of init runs — must NOT count as ready.
         PlanetSnapshot.objects.create(
             snapshot_date=date.today(),
             planet_osm_path="/data/planet.osm.pbf",

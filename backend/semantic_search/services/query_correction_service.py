@@ -37,21 +37,21 @@ from worldkg_nca.models import OsmEntity
 
 logger = logging.getLogger(__name__)
 
-***REMOVED*** pg_trgm similarity floor — the geocoder uses 0.4 for NAME matching;
-***REMOVED*** amenity tags are short canonical words, so require a tighter overlap.
+# pg_trgm similarity floor — the geocoder uses 0.4 for NAME matching;
+# amenity tags are short canonical words, so require a tighter overlap.
 MIN_SIMILARITY = 0.5
-***REMOVED*** fuzzystrmatch: accept at most this many character edits.
+# fuzzystrmatch: accept at most this many character edits.
 MAX_LEVENSHTEIN = 3
-***REMOVED*** Combined score floor (max of trigram similarity and normalized
-***REMOVED*** edit-distance ratio). Rejects junk ("zzqxw") and multi-word
-***REMOVED*** open-vocabulary phrases ("italian food") that are not near any tag.
+# Combined score floor (max of trigram similarity and normalized
+# edit-distance ratio). Rejects junk ("zzqxw") and multi-word
+# open-vocabulary phrases ("italian food") that are not near any tag.
 MIN_SCORE = 0.55
 
-***REMOVED*** The amenity vocabulary changes only on pipeline backfill. A short TTL
-***REMOVED*** re-fired the DISTINCT tags->>'amenity' scan (1.3M-row heap fetch on a
-***REMOVED*** 42M-row leaf, ~30-50s) every 5 minutes. Default 1h keeps it out of the
-***REMOVED*** request path; clear_cache() runs on backfill regardless (mirrors the
-***REMOVED*** snapshot_utils cache pattern).
+# The amenity vocabulary changes only on pipeline backfill. A short TTL
+# re-fired the DISTINCT tags->>'amenity' scan (1.3M-row heap fetch on a
+# 42M-row leaf, ~30-50s) every 5 minutes. Default 1h keeps it out of the
+# request path; clear_cache() runs on backfill regardless (mirrors the
+# snapshot_utils cache pattern).
 _VOCAB_CACHE_DEFAULT_TTL = 3600.0
 
 
@@ -70,7 +70,7 @@ class QueryCorrectionService:
 
     _vocab_cache = {}
 
-    ***REMOVED*** ── Public API ────────────────────────────────────────────────────────
+    # ── Public API ────────────────────────────────────────────────────────
 
     @classmethod
     def correct_amenity(cls, phrase, country_code=None, snapshot_id=None):
@@ -91,16 +91,16 @@ class QueryCorrectionService:
         if not vocab:
             return None
 
-        ***REMOVED*** Exact pass — the phrase is already a canonical tag (fast path,
-        ***REMOVED*** no SQL scoring needed).
+        # Exact pass — the phrase is already a canonical tag (fast path,
+        # no SQL scoring needed).
         if norm in vocab:
             return (norm, 1.0, "exact")
 
-        ***REMOVED*** SQL scoring tier: pg_trgm similarity + fuzzystrmatch levenshtein
-        ***REMOVED*** over the candidate vocabulary, in one pass.
+        # SQL scoring tier: pg_trgm similarity + fuzzystrmatch levenshtein
+        # over the candidate vocabulary, in one pass.
         try:
             best = cls._score_candidates(vocab, norm)
-        except Exception as exc:  ***REMOVED*** noqa: BLE001 — extension unavailable → no-op
+        except Exception as exc:  # noqa: BLE001 — extension unavailable → no-op
             logger.warning(
                 "Amenity correction unavailable (%s); keeping phrase %r",
                 exc, phrase,
@@ -113,9 +113,9 @@ class QueryCorrectionService:
         score = max(sim, lev_ratio)
         if score < MIN_SCORE:
             return None
-        ***REMOVED*** The tier that ADMITTED the candidate: the trigram floor decides
-        ***REMOVED*** (both functions run in one pass; levenshtein is the safety net
-        ***REMOVED*** for short words that defeat trigrams).
+        # The tier that ADMITTED the candidate: the trigram floor decides
+        # (both functions run in one pass; levenshtein is the safety net
+        # for short words that defeat trigrams).
         method = "pg_trgm" if sim >= MIN_SIMILARITY else "fuzzystrmatch"
         return (candidate, round(score, 4), method)
 
@@ -136,8 +136,8 @@ class QueryCorrectionService:
         )
         if country_code:
             qs = qs.filter(country_code=country_code.upper())
-        ***REMOVED*** DISTINCT in SQL — the live snapshot has millions of amenity rows;
-        ***REMOVED*** the distinct value set is only a few hundred.
+        # DISTINCT in SQL — the live snapshot has millions of amenity rows;
+        # the distinct value set is only a few hundred.
         vocab = sorted(
             {t for t in qs.values_list("tags__amenity", flat=True).distinct() if t}
         )
@@ -149,7 +149,7 @@ class QueryCorrectionService:
         """Drop the vocabulary cache (tests, backfill)."""
         cls._vocab_cache = {}
 
-    ***REMOVED*** ── Internals ─────────────────────────────────────────────────────────
+    # ── Internals ─────────────────────────────────────────────────────────
 
     @staticmethod
     def _score_candidates(vocab, phrase):

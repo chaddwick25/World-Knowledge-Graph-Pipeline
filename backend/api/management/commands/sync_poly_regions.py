@@ -36,16 +36,16 @@ class Command(BaseCommand):
                 if item.is_dir():
                     if item.name in EXCLUDED_DIRS:
                         continue
-                    ***REMOVED*** Normalize continent names to use underscores (database convention)
+                    # Normalize continent names to use underscores (database convention)
                     normalized_name = normalize_continent_slug(item.name) if parent_obj is None else item.name
-                    ***REMOVED*** Determine region_type based on parent
+                    # Determine region_type based on parent
                     region_type = RegionHierarchy.RegionType.CONTINENT if parent_obj is None else RegionHierarchy.RegionType.COUNTRY
                     region_obj, created = RegionHierarchy.objects.get_or_create(
                         name=normalized_name,
                         parent=parent_obj,
                         defaults={'poly_file_path': None, 'region_type': region_type}
                     )
-                    ***REMOVED*** Update region_type if it wasn't set
+                    # Update region_type if it wasn't set
                     if not created and not region_obj.region_type:
                         region_obj.region_type = region_type
                         region_obj.save(update_fields=['region_type'])
@@ -54,18 +54,18 @@ class Command(BaseCommand):
                 elif item.is_file() and item.suffix == '.poly':
                     resolved_path = str(item.resolve())
                     
-                    ***REMOVED*** Special Rule: If the file name matches the parent folder name (e.g. africa/africa.poly),
-                    ***REMOVED*** we use the parent object itself instead of creating a child.
+                    # Special Rule: If the file name matches the parent folder name (e.g. africa/africa.poly),
+                    # we use the parent object itself instead of creating a child.
                     if parent_obj and item.stem.lower() == parent_obj.name.lower():
                         region_obj = parent_obj
                         if not region_obj.poly_file_path:
                             region_obj.poly_file_path = resolved_path
-                        ***REMOVED*** Ensure region_type is set
+                        # Ensure region_type is set
                         if not region_obj.region_type:
                             region_obj.region_type = RegionHierarchy.RegionType.CONTINENT
                         region_obj.save(update_fields=['poly_file_path', 'region_type'])
                     else:
-                        ***REMOVED*** Determine region_type based on parent
+                        # Determine region_type based on parent
                         region_type = RegionHierarchy.RegionType.CONTINENT if parent_obj is None else RegionHierarchy.RegionType.COUNTRY
                         region_obj, created = RegionHierarchy.objects.get_or_create(
                             name=item.stem,
@@ -80,7 +80,7 @@ class Command(BaseCommand):
                                 region_obj.region_type = region_type
                             region_obj.save(update_fields=['poly_file_path', 'region_type'])
 
-                    ***REMOVED*** Link PolygonFile
+                    # Link PolygonFile
                     poly_file_obj, p_created = PolygonFile.objects.get_or_create(
                         file_path=resolved_path,
                         defaults={'name': item.stem, 'region_name': item.stem}
@@ -89,8 +89,8 @@ class Command(BaseCommand):
                         region_obj.polygon_file = poly_file_obj
                         region_obj.save(update_fields=['polygon_file'])
                     
-                    ***REMOVED*** Initialize RegionalExtractionState
-                    ***REMOVED*** A continent is either a root .poly file OR a .poly file inside a root folder that matches the folder name
+                    # Initialize RegionalExtractionState
+                    # A continent is either a root .poly file OR a .poly file inside a root folder that matches the folder name
                     is_continent = (parent_obj is None) or (parent_obj.parent is None and item.stem.lower() == parent_obj.name.lower())
                     r_type = RegionalExtractionState.RegionType.CONTINENT if is_continent else RegionalExtractionState.RegionType.COUNTRY
                     
@@ -106,7 +106,7 @@ class Command(BaseCommand):
 
         sync_directory(folder_path)
         
-        ***REMOVED*** Deduplication logic
+        # Deduplication logic
         continents = RegionHierarchy.objects.filter(region_type=RegionHierarchy.RegionType.CONTINENT)
         duplicates = (
             RegionHierarchy.objects

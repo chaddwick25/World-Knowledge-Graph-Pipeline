@@ -48,8 +48,8 @@ class Command(BaseCommand):
         if country:
             snapshots = snapshots.filter(country_code__iexact=country)
 
-        ***REMOVED*** Group each country's snapshots in date order — the CharField
-        ***REMOVED*** YYYY_MM_DD key sorts lexicographically.
+        # Group each country's snapshots in date order — the CharField
+        # YYYY_MM_DD key sorts lexicographically.
         by_country = {}
         for snap in snapshots:
             by_country.setdefault(snap.country_code.upper(), []).append(snap)

@@ -77,7 +77,7 @@ class WorldKGOntologyService:
                 "canonical_osm_value": "cafe",
                 "wikidata_equivalent": "http://www.wikidata.org/entity/Q30022",
                 "dbpedia_equivalent": "http://dbpedia.org/ontology/Cafe",
-                "canonical_tags": {"amenity": "cafe"}  ***REMOVED*** kept for backward compat
+                "canonical_tags": {"amenity": "cafe"}  # kept for backward compat
             },
             ...
         }
@@ -89,7 +89,7 @@ class WorldKGOntologyService:
         for class_name, metadata in ontology_dict.items():
             all_classes.add(class_name)
             
-            ***REMOVED*** Store superclasses
+            # Store superclasses
             superclasses = metadata.get('superclasses', [])
             pipe.delete(self._class_key(class_name, 'superclasses'))
             if superclasses:
@@ -97,11 +97,11 @@ class WorldKGOntologyService:
                 for parent in superclasses:
                     subclass_map[parent].add(class_name)
             
-            ***REMOVED*** Store depth
+            # Store depth
             depth = metadata.get('depth', 0)
             pipe.set(self._class_key(class_name, 'depth'), depth)
             
-            ***REMOVED*** Store canonical tags (backward compat) and structured OSM key/value
+            # Store canonical tags (backward compat) and structured OSM key/value
             canonical_tags = metadata.get('canonical_tags', {})
             pipe.set(
                 self._class_key(class_name, 'canonical_tags'),
@@ -130,12 +130,12 @@ class WorldKGOntologyService:
             else:
                 pipe.delete(self._class_key(class_name, 'dbpedia_equivalent'))
         
-        ***REMOVED*** Store reverse mapping (subclasses)
+        # Store reverse mapping (subclasses)
         for parent, children in subclass_map.items():
             pipe.delete(self._class_key(parent, 'subclasses'))
             pipe.rpush(self._class_key(parent, 'subclasses'), *children)
         
-        ***REMOVED*** Store all classes set
+        # Store all classes set
         pipe.delete(f"{self._cache_prefix}:ontology:all_classes")
         pipe.sadd(f"{self._cache_prefix}:ontology:all_classes", *all_classes)
         
@@ -164,7 +164,7 @@ class WorldKGOntologyService:
         if not recursive:
             return direct_subclasses
         
-        ***REMOVED*** BFS to get all descendants
+        # BFS to get all descendants
         all_descendants = set()
         queue = list(direct_subclasses)
         
@@ -223,7 +223,7 @@ class WorldKGOntologyService:
         if parent in superclasses:
             return True
         
-        ***REMOVED*** Recursive check
+        # Recursive check
         for superclass in superclasses:
             if self.is_subclass_of(superclass, parent):
                 return True
@@ -243,7 +243,7 @@ class WorldKGOntologyService:
         if not common:
             return None
         
-        ***REMOVED*** Return the deepest common ancestor
+        # Return the deepest common ancestor
         return max(common, key=lambda c: self.get_depth(c))
     
     def _get_all_ancestors(self, class_name: str) -> Set[str]:
@@ -275,7 +275,7 @@ class WorldKGOntologyService:
         
         lca = self.get_common_ancestor(class1, class2)
         if lca is None:
-            ***REMOVED*** No common ancestor - return large distance
+            # No common ancestor - return large distance
             return 999
         
         depth1 = self.get_depth(class1)
@@ -435,7 +435,7 @@ class WorldKGOntologyService:
         logger.info(f"Cleared {len(keys)} WorldKG ontology keys from Redis")
 
 
-***REMOVED*** Singleton instance
+# Singleton instance
 _ontology_service = None
 
 def get_worldkg_ontology_service() -> WorldKGOntologyService:

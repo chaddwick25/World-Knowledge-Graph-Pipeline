@@ -34,16 +34,16 @@ class DBOnlyWriter:
     def __init__(self, encoder, storage_service, boundary=None):
         self.encoder = encoder
         self.storage = storage_service
-        self.boundary = boundary  ***REMOVED*** shapely Polygon for spatial filtering
+        self.boundary = boundary  # shapely Polygon for spatial filtering
 
     def add_line(self, record):
-        ***REMOVED*** record: (id, type, tags, lat, lon)
-        ***REMOVED*** Apply spatial filtering if boundary is set
+        # record: (id, type, tags, lat, lon)
+        # Apply spatial filtering if boundary is set
         from shapely.geometry import Point
         if self.boundary and record[3] is not None and record[4] is not None:
-            point = Point(record[4], record[3])  ***REMOVED*** lon, lat
+            point = Point(record[4], record[3])  # lon, lat
             if not self.boundary.contains(point):
-                return  ***REMOVED*** Skip entity outside boundary
+                return  # Skip entity outside boundary
 
         vector = self.encoder.encode_instance(record)
         if vector is not None:
@@ -71,8 +71,8 @@ def process_single_snapshot_combined(country_name, continent, snap_date, snap_pa
 
         from worldkg_nca.models import OsmEntity
 
-        ***REMOVED*** Use a country-specific version key (date first) to avoid cross-country conflicts
-        ***REMOVED*** Example: '2025_12_31_ireland_and_northern_ireland'
+        # Use a country-specific version key (date first) to avoid cross-country conflicts
+        # Example: '2025_12_31_ireland_and_northern_ireland'
         version_key = f"{snap_date}_{country_norm}"
 
         if not force:
@@ -89,11 +89,11 @@ def process_single_snapshot_combined(country_name, continent, snap_date, snap_pa
 
         tags_storage = VectorStorageService(model_type="tags", version=version_key)
 
-        ***REMOVED*** TODO(two-axis-removal): the NLE-from-pickle phase of this legacy
-        ***REMOVED*** single-pass path was removed with DualEncodingWriter 2026-09-10
-        ***REMOVED*** (TICKET_REMOVE_DUAL_ENCODER).  GV-NLE comes from
-        ***REMOVED*** Step 5 training + the inductive query-time path, so this endpoint
-        ***REMOVED*** is FastText-only regardless of pickle availability.
+        # TODO(two-axis-removal): the NLE-from-pickle phase of this legacy
+        # single-pass path was removed with DualEncodingWriter 2026-09-10
+        # (TICKET_REMOVE_DUAL_ENCODER).  GV-NLE comes from
+        # Step 5 training + the inductive query-time path, so this endpoint
+        # is FastText-only regardless of pickle availability.
         tags_writer = DBOnlyWriter(ft_model, tags_storage)
         snapshot_start = time.time()
         n_data, w_data, r_data = read_from_snapshot(snap_path, writer=tags_writer, max_runs=2)
@@ -134,7 +134,7 @@ def process_single_snapshot(country_name, continent, snap_date, snap_path, sessi
     Args:
         force: If True, skip duplicate checks and process regardless
     """
-    ***REMOVED*** Prevent child processes from sharing the parent's database connection socket
+    # Prevent child processes from sharing the parent's database connection socket
     from django.db import connections
     for conn in connections.all():
         conn.close()
@@ -147,42 +147,42 @@ def process_single_snapshot(country_name, continent, snap_date, snap_path, sessi
     import itertools
     import traceback
 
-    ***REMOVED*** Re-initialize Django connections in the child process
+    # Re-initialize Django connections in the child process
     for conn in connections.all():
         conn.close()
 
     logger.info(f"[{snap_date}] Processing snapshot for {country_name}")
 
     try:
-        ***REMOVED*** --- Path resolution ---
+        # --- Path resolution ---
         cont_norm    = normalize_country_slug(continent)
         country_norm = normalize_country_slug(country_name)
         pickle_dir   = regional_path_service.get_pickle_dir(cont_norm, country_norm)
 
-        ***REMOVED*** --- Check if already processed (Resume Capability) ---
+        # --- Check if already processed (Resume Capability) ---
         from worldkg_nca.models import OsmEntity
 
-        ***REMOVED*** Use a country-specific version key here as well (date first)
+        # Use a country-specific version key here as well (date first)
         version_key = f"{snap_date}_{country_norm}"
 
-        ***REMOVED*** Skip duplicate check if force=True
+        # Skip duplicate check if force=True
         if not force:
-            ***REMOVED*** Simple check: if any entity has this gv_tags_version, skip
-            ***REMOVED*** This prevents reprocessing the same date for the same country
+            # Simple check: if any entity has this gv_tags_version, skip
+            # This prevents reprocessing the same date for the same country
             if OsmEntity.objects.using('vectors').filter(gv_tags_version=version_key).exists():
                 logger.info(f"[{version_key}] Already exists in DB for {country_name}. Skipping.")
                 return
         else:
             logger.info(f"[{version_key}] Force mode enabled - skipping duplicate check.")
 
-        ***REMOVED*** --- Phase 1: Tag Encoding (FastText) ---
+        # --- Phase 1: Tag Encoding (FastText) ---
         logger.info(f"[{snap_date}] Phase 1: FastText tag encoding...")
 
         phase1_start = time.time()
 
-        ***REMOVED*** Load FastText model (can be heavy if using full cc.en.300.bin)
+        # Load FastText model (can be heavy if using full cc.en.300.bin)
         ft_load_start = time.time()
-        ft_model = FastTextModel()  ***REMOVED*** Uses ModelRegistryService internally
+        ft_model = FastTextModel()  # Uses ModelRegistryService internally
         ft_load_duration = time.time() - ft_load_start
         logger.info(
             f"[{snap_date}] Phase 1: FastText model ready in {ft_load_duration:.2f}s"
@@ -190,11 +190,11 @@ def process_single_snapshot(country_name, continent, snap_date, snap_path, sessi
 
         tags_storage = VectorStorageService(model_type='tags', version=version_key)
 
-        ***REMOVED*** Use our streaming writer to prevent OOM
+        # Use our streaming writer to prevent OOM
         tags_writer = DBOnlyWriter(ft_model, tags_storage)
 
-        ***REMOVED*** Stream PBF — nodes stream via tags_writer.add_line()
-        ***REMOVED*** w_data and r_data are still returned as lists, but we handle them next
+        # Stream PBF — nodes stream via tags_writer.add_line()
+        # w_data and r_data are still returned as lists, but we handle them next
         snapshot_start = time.time()
         n_data, w_data, r_data = read_from_snapshot(snap_path, writer=tags_writer, max_runs=2)
         snapshot_duration = time.time() - snapshot_start
@@ -216,7 +216,7 @@ def process_single_snapshot(country_name, continent, snap_date, snap_path, sessi
             f"(nodes={n_count}, ways={w_count}, relations={r_count})"
         )
 
-        ***REMOVED*** Process ways and relations (nodes already done via writer)
+        # Process ways and relations (nodes already done via writer)
         for record in itertools.chain(w_data, r_data):
             tags_writer.add_line(record)
 
@@ -225,23 +225,23 @@ def process_single_snapshot(country_name, continent, snap_date, snap_path, sessi
         phase1_duration = time.time() - phase1_start
         logger.info(f"[{snap_date}] Phase 1 complete in {phase1_duration:.2f}s.")
 
-        ***REMOVED*** --- Phase 2: NLE Encoding (DeepWalk / wdw.pickle) ---
-        ***REMOVED*** Check for both country-level pickle and subgraph pickles
+        # --- Phase 2: NLE Encoding (DeepWalk / wdw.pickle) ---
+        # Check for both country-level pickle and subgraph pickles
         pickle_file = pickle_dir / 'wdw.pickle'
         has_pickle = pickle_file.exists()
 
-        ***REMOVED*** If no country-level pickle, check for subgraph pickles
+        # If no country-level pickle, check for subgraph pickles
         if not has_pickle:
             pickles_dir = regional_path_service.get_country_dir(cont_norm, country_norm) / 'pickles'
             if pickles_dir.exists():
-                ***REMOVED*** Check if any subgraph has a wdw.pickle
+                # Check if any subgraph has a wdw.pickle
                 for subgraph_path in pickles_dir.iterdir():
                     if subgraph_path.is_dir():
                         subgraph_pickle = subgraph_path / 'wdw.pickle'
                         if subgraph_pickle.exists():
                             has_pickle = True
                             logger.info(f"[{snap_date}] Found subgraph pickle at {subgraph_pickle}")
-                            ***REMOVED*** Use the first subgraph pickle found
+                            # Use the first subgraph pickle found
                             pickle_file = subgraph_pickle
                             break
 
@@ -256,7 +256,7 @@ def process_single_snapshot(country_name, continent, snap_date, snap_path, sessi
             nle_storage = VectorStorageService(model_type='nle', version=snap_date)
             nle_writer = DBOnlyWriter(nle_model, nle_storage)
 
-            ***REMOVED*** Re-parse PBF for NLE
+            # Re-parse PBF for NLE
             n_data, w_data, r_data = read_from_snapshot(snap_path, writer=nle_writer, max_runs=2)
 
             for record in itertools.chain(w_data, r_data):
@@ -285,28 +285,28 @@ def process_subgraph_snapshot(country_name, continent, subgraph_slug, subgraph_n
     - Uses subgraph-specific pickle for NLE encoding
     - Uses unique version identifier (snap_date + subgraph_slug)
     """
-    ***REMOVED*** Close parent connections
+    # Close parent connections
     from django.db import connections
     for conn in connections.all():
         conn.close()
 
-    ***REMOVED*** Re-initialize connections in child process
+    # Re-initialize connections in child process
     for conn in connections.all():
         conn.close()
 
     logger.info(f"[{subgraph_name}] Processing subgraph snapshot for {country_name}")
 
     try:
-        ***REMOVED*** Resolve paths
+        # Resolve paths
         cont_norm = normalize_country_slug(continent)
         country_norm = normalize_country_slug(country_name)
         country_dir = regional_path_service.get_country_dir(cont_norm, country_norm)
 
-        ***REMOVED*** Load subgraph .poly file for spatial filtering
-        ***REMOVED*** Try multiple possible locations for .poly files
+        # Load subgraph .poly file for spatial filtering
+        # Try multiple possible locations for .poly files
         poly_path = None
 
-        ***REMOVED*** Try 1: Look in data/osm_polygon_files (project data directory)
+        # Try 1: Look in data/osm_polygon_files (project data directory)
         base_data_dir = Path(settings.BASE_DIR) / 'data' / 'osm_polygon_files'
         poly_candidates = [
             base_data_dir / cont_norm / country_norm / f'{subgraph_slug}.poly',
@@ -314,8 +314,8 @@ def process_subgraph_snapshot(country_name, continent, subgraph_slug, subgraph_n
             base_data_dir / cont_norm / country_norm / f'{subgraph_slug.replace("_city", "")}.poly',
         ]
 
-        ***REMOVED*** Try 2: Look in osm_wikidata_extractions subgraphs directory using regional_path_service
-        ***REMOVED*** We also check variations without _province and _city
+        # Try 2: Look in osm_wikidata_extractions subgraphs directory using regional_path_service
+        # We also check variations without _province and _city
         poly_candidates.extend([
             regional_path_service.get_subgraph_poly_path(cont_norm, country_norm, subgraph_slug),
             regional_path_service.get_subgraph_poly_path(cont_norm, country_norm, subgraph_slug.replace("_province", "")),
@@ -331,21 +331,21 @@ def process_subgraph_snapshot(country_name, continent, subgraph_slug, subgraph_n
             logger.warning(f"[{subgraph_name}] .poly file not found, skipping spatial filtering")
             boundary = None
         else:
-            ***REMOVED*** Lazy import keeps the module import-order acyclic (geovectors_service
-            ***REMOVED*** imports snapshot_processors).  NOTE: GeoVectorsEncoderService has no
-            ***REMOVED*** _parse_poly_file method — pre-existing AttributeError, moved faithfully.
+            # Lazy import keeps the module import-order acyclic (geovectors_service
+            # imports snapshot_processors).  NOTE: GeoVectorsEncoderService has no
+            # _parse_poly_file method — pre-existing AttributeError, moved faithfully.
             from geovectors_encoder.services.geovectors_service import GeoVectorsEncoderService
             boundary = GeoVectorsEncoderService._parse_poly_file(poly_path)
             logger.info(f"[{subgraph_name}] Using boundary for spatial filtering from {poly_path}")
 
-        ***REMOVED*** Subgraph-specific pickle path
+        # Subgraph-specific pickle path
         pickle_dir = country_dir / 'pickles' / subgraph_slug
         pickle_file = pickle_dir / 'wdw.pickle'
 
-        ***REMOVED*** Unique version identifier for this subgraph
+        # Unique version identifier for this subgraph
         subgraph_version = f"{snap_date}_{subgraph_slug}"
 
-        ***REMOVED*** Phase 1: FastText tag encoding (with spatial filtering)
+        # Phase 1: FastText tag encoding (with spatial filtering)
         logger.info(f"[{subgraph_name}] Phase 1: FastText tag encoding with spatial filtering...")
 
         from .vector_storage_service import VectorStorageService
@@ -368,7 +368,7 @@ def process_subgraph_snapshot(country_name, continent, subgraph_slug, subgraph_n
         tags_storage.flush()
         logger.info(f"[{subgraph_name}] Phase 1 complete.")
 
-        ***REMOVED*** Phase 2: NLE encoding (if pickle exists)
+        # Phase 2: NLE encoding (if pickle exists)
         if not pickle_file.exists():
             logger.warning(f"[{subgraph_name}] Pickle not found at {pickle_file}, skipping Phase 2")
         else:

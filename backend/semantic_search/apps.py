@@ -30,8 +30,8 @@ class SemanticSearchConfig(AppConfig):
         is_asgi = 'daphne' in argv or 'gunicorn' in argv
         is_reloader_child = os.environ.get('RUN_MAIN') == 'true'
 
-        ***REMOVED*** runserver: only preload in the child process (RUN_MAIN=true)
-        ***REMOVED*** daphne/gunicorn/celery: no autoreload parent, always preload
+        # runserver: only preload in the child process (RUN_MAIN=true)
+        # daphne/gunicorn/celery: no autoreload parent, always preload
         should_preload = is_celery or is_asgi or (is_runserver and is_reloader_child)
 
         if should_preload:

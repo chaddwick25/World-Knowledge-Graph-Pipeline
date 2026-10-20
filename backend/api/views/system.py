@@ -10,8 +10,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 
-***REMOVED*** NOTE: Heavy service imports (OsmiumFacade, osm_wikidata_resolver, regional_path_service)
-***REMOVED*** are imported lazily inside the methods that use them to avoid slow startup.
+# NOTE: Heavy service imports (OsmiumFacade, osm_wikidata_resolver, regional_path_service)
+# are imported lazily inside the methods that use them to avoid slow startup.
 from api.models import (
     RegionHierarchy, PbfFile
 )
@@ -24,7 +24,7 @@ class InitialStatusView(APIView):
     """Provides the initial status for the data generation GUI."""
 
     def get(self, request, *args, **kwargs):
-        ***REMOVED*** 1. Check for the planet file
+        # 1. Check for the planet file
         planet_file = PbfFile.objects.filter(
             pbf_file_type=PbfFile.PbfType.PLANET,
             status=PbfFile.PbfStatus.COMPLETED
@@ -32,7 +32,7 @@ class InitialStatusView(APIView):
 
         planet_file_available = planet_file is not None
 
-        ***REMOVED*** 2. Build the region hierarchy if the planet file is available
+        # 2. Build the region hierarchy if the planet file is available
         regions_data = []
         availability_context = {'planet_file_available': planet_file_available}
 
@@ -43,7 +43,7 @@ class InitialStatusView(APIView):
             serializer = RegionHierarchySerializer(top_level_regions, many=True, context=availability_context)
             regions_data = serializer.data
 
-        ***REMOVED*** 3. Construct the final response
+        # 3. Construct the final response
         response_data = {
             'planet_file_available': planet_file_available,
             'planet_file_details': PbfFileSerializer(planet_file).data if planet_file else None,
@@ -56,11 +56,11 @@ class InitialStatusView(APIView):
     def _prepare_availability_context(self, nodes, context, parent_available):
         """Recursively traverse nodes to build the availability context for the serializer."""
         for node in nodes:
-            ***REMOVED*** A node is considered available if its parent is available.
+            # A node is considered available if its parent is available.
             is_currently_available = parent_available
             context[f'is_available_{node.id}'] = is_currently_available
             
-            ***REMOVED*** The availability of its children depends on whether its *own* PBF has been generated.
+            # The availability of its children depends on whether its *own* PBF has been generated.
             children_are_available = node.corresponding_pbf is not None
             
             if node.children.exists():
@@ -98,8 +98,8 @@ class SystemStatusView(APIView):
         )
         from api.views.pipeline_status import build_snapshot_dates_payload
 
-        ***REMOVED*** register_planet rows leave snapshot_date_str NULL; finalize rows
-        ***REMOVED*** set it — so this selects the most recent *finalized* snapshot.
+        # register_planet rows leave snapshot_date_str NULL; finalize rows
+        # set it — so this selects the most recent *finalized* snapshot.
         latest = (
             PlanetSnapshot.objects.exclude(snapshot_date_str__isnull=True)
             .order_by("-snapshot_date", "-created_at")
@@ -144,8 +144,8 @@ class SystemStatusView(APIView):
             "continents_extracted": continents_extracted,
             "countries_with_embeddings": countries_with_embeddings,
             "total_countries": total_countries,
-            ***REMOVED*** Slug names of countries marked search-ready (Step 6) — the
-            ***REMOVED*** home page renders a green "queryable" dot per list row.
+            # Slug names of countries marked search-ready (Step 6) — the
+            # home page renders a green "queryable" dot per list row.
             "processed_countries": list(
                 CountrySearchProcessing.objects.filter(is_processed=True)
                 .values_list("country_name", flat=True)
@@ -167,17 +167,17 @@ class RegionMapDataView(APIView):
         from core.models import RegionHierarchy, OsmBoundary
         
         try:
-            ***REMOVED*** Check if we have OSM boundaries with polygon file links
+            # Check if we have OSM boundaries with polygon file links
             osm_boundaries_with_poly = OsmBoundary.objects.filter(
                 admin_level=2,
                 polygon_file__isnull=False
             ).exists()
 
             if osm_boundaries_with_poly:
-                ***REMOVED*** Use OSM boundaries (cartographic quality)
+                # Use OSM boundaries (cartographic quality)
                 countries = self._get_countries_from_osm_boundaries()
             else:
-                ***REMOVED*** Fallback to polygon file GeoJSON
+                # Fallback to polygon file GeoJSON
                 countries = self._get_countries_from_polygon_files()
             
             return Response({
@@ -205,18 +205,18 @@ class RegionMapDataView(APIView):
         countries = []
         seen_names = set()
         
-        ***REMOVED*** Get all country-level OSM boundaries with polygon file links
+        # Get all country-level OSM boundaries with polygon file links
         boundaries = OsmBoundary.objects.filter(
             admin_level=2,
             polygon_file__isnull=False
         ).select_related('polygon_file__region_hierarchy__parent').order_by('name')
         
-        ***REMOVED*** Load relations for GeoVectors support check from OSMWikiDataHierarchy
+        # Load relations for GeoVectors support check from OSMWikiDataHierarchy
         from core.services.planet_init.osm_wikidata_resolver import get_country_relations_dict
         relations = get_country_relations_dict()
 
         for boundary in boundaries:
-            ***REMOVED*** Deduplicate by name — keep the first occurrence
+            # Deduplicate by name — keep the first occurrence
             name_lower = boundary.name.lower()
             if name_lower in seen_names:
                 continue
@@ -233,7 +233,7 @@ class RegionMapDataView(APIView):
                 
                 status_data = RegionStatusService.get_region_status(region)
                 
-                ***REMOVED*** Check GeoVectors support
+                # Check GeoVectors support
                 from core.services.snapshot.regional_path_service import normalize_country_slug
                 is_supported = False
                 search_term_underscore = normalize_country_slug(region.name)
@@ -275,14 +275,14 @@ class RegionMapDataView(APIView):
         
         countries = []
         
-        ***REMOVED*** Load relations for GeoVectors support check from OSMWikiDataHierarchy
+        # Load relations for GeoVectors support check from OSMWikiDataHierarchy
         from core.services.planet_init.osm_wikidata_resolver import get_country_relations_dict
         relations = get_country_relations_dict()
         
         def _collect(region, continent_name, continent_id, depth=0):
             """Recursively collect a region and its children into the map."""
             if depth > 3:
-                return  ***REMOVED*** safety: prevent infinite recursion
+                return  # safety: prevent infinite recursion
             
             geometry = None
             if region.polygon_file:
@@ -294,13 +294,13 @@ class RegionMapDataView(APIView):
             if geometry is not None:
                 status_data = RegionStatusService.get_region_status(region)
                 
-                ***REMOVED*** Check GeoVectors support
+                # Check GeoVectors support
                 from core.services.snapshot.regional_path_service import normalize_country_slug
                 is_supported = False
                 search_term_underscore = normalize_country_slug(region.name)
                 search_term_hyphen = search_term_underscore.replace('_', '-')
                 
-                ***REMOVED*** 1. Check OSMWikiDataHierarchy relations (authoritative)
+                # 1. Check OSMWikiDataHierarchy relations (authoritative)
                 for k, v in relations.items():
                     slug = v.get('slug', '')
                     name = normalize_country_slug(v.get('name', ''))
@@ -309,9 +309,9 @@ class RegionMapDataView(APIView):
                             is_supported = True
                             break
                 
-                ***REMOVED*** 2. Fallback: check if a location TSV exists on disk
-                ***REMOVED***    (covers split countries like england/scotland/wales
-                ***REMOVED***     that have TSVs but no OSMWikiDataHierarchy entry)
+                # 2. Fallback: check if a location TSV exists on disk
+                #    (covers split countries like england/scotland/wales
+                #     that have TSVs but no OSMWikiDataHierarchy entry)
                 if not is_supported:
                     from django.conf import settings
                     emb_root = Path(settings.EMBEDDINGS_ROOT)
@@ -329,12 +329,12 @@ class RegionMapDataView(APIView):
                     'is_geovectors_supported': is_supported
                 })
             
-            ***REMOVED*** Recurse into children
+            # Recurse into children
             children = RegionHierarchy.objects.filter(parent=region).select_related('polygon_file', 'corresponding_pbf')
             for child in children:
                 _collect(child, continent_name, continent_id, depth + 1)
         
-        ***REMOVED*** Get all continents and collect their entire subtree
+        # Get all continents and collect their entire subtree
         continents = RegionHierarchy.objects.filter(
             region_type=RegionHierarchy.RegionType.CONTINENT
         ).prefetch_related(

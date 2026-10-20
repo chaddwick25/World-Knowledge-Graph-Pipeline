@@ -1,14 +1,14 @@
-***REMOVED*** Frontend Dockerfile for Vue 3 + Vite dev server
+# Frontend Dockerfile for Vue 3 + Vite dev server
 
 FROM node:20-alpine
 
 WORKDIR /app
 
-***REMOVED*** Install dependencies
+# Install dependencies
 COPY package.json package-lock.json* ./
 RUN npm ci || npm install
 
-***REMOVED*** Copy source
+# Copy source
 COPY . .
 
 EXPOSE 5173

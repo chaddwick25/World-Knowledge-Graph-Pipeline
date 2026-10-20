@@ -39,7 +39,7 @@ def step_1_embed_osm_entities(self, env: CountryEnvelope) -> CountryEnvelope:
     Small territories (Monaco, Belize, etc.) with has_subgraphs=False
     automatically skip the subgraph fan-out and run at country level only.
     """
-    ***REMOVED*** Rehydrate subgraphs from DB to ensure fresh data
+    # Rehydrate subgraphs from DB to ensure fresh data
     if not env.has_subgraphs or not env.subgraphs:
         try:
             fresh = CountryEnvelope.from_db(env.iso, snapshot_date=env.snapshot_date)
@@ -78,9 +78,9 @@ def step_1_embed_osm_entities(self, env: CountryEnvelope) -> CountryEnvelope:
         pipeline_run_id=env.pipeline_run_id,
     )
 
-    ***REMOVED*** Ensure the leaf partition exists before upserting.
-    ***REMOVED*** On a fresh DB, the first call converts the empty monolith to a
-    ***REMOVED*** partitioned table (one-time).  Subsequent calls are idempotent.
+    # Ensure the leaf partition exists before upserting.
+    # On a fresh DB, the first call converts the empty monolith to a
+    # partitioned table (one-time).  Subsequent calls are idempotent.
     from django.core.management import call_command
     try:
         call_command(
@@ -101,9 +101,9 @@ def step_1_embed_osm_entities(self, env: CountryEnvelope) -> CountryEnvelope:
             pipeline_run_id=env.pipeline_run_id,
         )
 
-    ***REMOVED*** Snapshot preprocessing (v2 helper with explicit logger).
-    ***REMOVED*** Returns a (possibly replaced) envelope — the input is frozen, so path
-    ***REMOVED*** updates come back as a new envelope instead of mutating in place.
+    # Snapshot preprocessing (v2 helper with explicit logger).
+    # Returns a (possibly replaced) envelope — the input is frozen, so path
+    # updates come back as a new envelope instead of mutating in place.
     env = preprocess_snapshot(env, logger=logger)
 
     from core.services.snapshot.embedding_service import EmbeddingService
@@ -123,10 +123,10 @@ def step_1_embed_osm_entities(self, env: CountryEnvelope) -> CountryEnvelope:
             entropy=result["entropy"], threshold=env.min_entropy,
         )
 
-    ***REMOVED*** Subgraph fan-out is handled by canvas.py via a chord so the chain
-    ***REMOVED*** waits for all subgraph embeddings to complete before proceeding to
-    ***REMOVED*** Step 2.  This task returns the envelope; canvas.py wraps it with
-    ***REMOVED*** chord([_embed_subgraph.si(...)], step_1b_finalize_subgraphs.s(cfg)).
+    # Subgraph fan-out is handled by canvas.py via a chord so the chain
+    # waits for all subgraph embeddings to complete before proceeding to
+    # Step 2.  This task returns the envelope; canvas.py wraps it with
+    # chord([_embed_subgraph.si(...)], step_1b_finalize_subgraphs.s(cfg)).
 
     _log(
         logger,

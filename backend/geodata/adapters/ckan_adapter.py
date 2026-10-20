@@ -16,8 +16,8 @@ from django.utils.dateparse import parse_date
 from ..models import GeoResource
 from .base import BaseSourceAdapter
 
-***REMOVED*** Increase CSV field size limit for large geometry fields
-csv.field_size_limit(10485760)  ***REMOVED*** 10MB
+# Increase CSV field size limit for large geometry fields
+csv.field_size_limit(10485760)  # 10MB
 
 
 class CkanAdapter(BaseSourceAdapter):
@@ -31,8 +31,8 @@ class CkanAdapter(BaseSourceAdapter):
     ``request_delay_seconds``).
     """
 
-    ***REMOVED*** Common date column names used for temporal datasets (in priority order).
-    ***REMOVED*** Note: Toronto's TTC datasets use mixed-case 'Date'.
+    # Common date column names used for temporal datasets (in priority order).
+    # Note: Toronto's TTC datasets use mixed-case 'Date'.
     DATE_FIELD_CANDIDATES = [
         'count_date', 'date', 'Date', 'DATE', 'application_date',
         'measurement_date', 'latest_count_date', 'MEASUREMENT_DATE',
@@ -53,9 +53,9 @@ class CkanAdapter(BaseSourceAdapter):
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.bulk_batch_size = int(cfg.get('bulk_insert_batch_size', 1000))
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** CKAN API plumbing
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # CKAN API plumbing
+    # ------------------------------------------------------------------
 
     def _get_ssl_context(self) -> ssl.SSLContext:
         """Create SSL context for CKAN API requests."""
@@ -122,9 +122,9 @@ class CkanAdapter(BaseSourceAdapter):
             self.logger.error(f"Failed to download {url}: {e}")
             return None
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** BaseSourceAdapter interface
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # BaseSourceAdapter interface
+    # ------------------------------------------------------------------
 
     def list_datasets(self) -> List[dict]:
         """List dataset names from the CKAN ``package_list`` action."""
@@ -205,8 +205,8 @@ class CkanAdapter(BaseSourceAdapter):
         try:
             data = json.loads(content)
         except json.JSONDecodeError:
-            ***REMOVED*** Some CKAN resources are labelled GEOJSON/JSON but their
-            ***REMOVED*** datastore dump endpoint returns CSV — fall back to rows.
+            # Some CKAN resources are labelled GEOJSON/JSON but their
+            # datastore dump endpoint returns CSV — fall back to rows.
             self.logger.warning(
                 f"{file_path.name} is not valid JSON; falling back to CSV parsing"
             )
@@ -214,7 +214,7 @@ class CkanAdapter(BaseSourceAdapter):
             return
 
         if isinstance(data, dict) and 'features' in data:
-            ***REMOVED*** GeoJSON FeatureCollection
+            # GeoJSON FeatureCollection
             for feature in data.get('features', []):
                 props = feature.get('properties', {})
                 yield {
@@ -224,7 +224,7 @@ class CkanAdapter(BaseSourceAdapter):
                     'ingestion_date': None,
                 }
         elif isinstance(data, list):
-            ***REMOVED*** Plain JSON array of objects
+            # Plain JSON array of objects
             for item in data:
                 if not isinstance(item, dict):
                     continue
@@ -235,9 +235,9 @@ class CkanAdapter(BaseSourceAdapter):
                     'ingestion_date': self._date_from_row(item, None),
                 }
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Quality tracking (generalized from CkanQaService)
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Quality tracking (generalized from CkanQaService)
+    # ------------------------------------------------------------------
 
     def check_quality(self, dataset_id: str) -> Dict[str, Any]:
         """Fetch quality metrics for a single dataset."""
@@ -282,7 +282,7 @@ class CkanAdapter(BaseSourceAdapter):
                 continue
             records.append({
                 'dataset_id': package_id,
-                'score': float(entry.get('score', 0)) * 100,  ***REMOVED*** convert to percentage
+                'score': float(entry.get('score', 0)) * 100,  # convert to percentage
                 'grade': entry.get('grade', 'Unknown'),
                 'freshness': float(entry.get('freshness', 0)),
                 'metadata_score': float(entry.get('metadata', 0)),
@@ -293,9 +293,9 @@ class CkanAdapter(BaseSourceAdapter):
             })
         return records
 
-    ***REMOVED*** ------------------------------------------------------------------
-    ***REMOVED*** Parsing helpers
-    ***REMOVED*** ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Parsing helpers
+    # ------------------------------------------------------------------
 
     def _geom_from_geojson(self, geometry: Any) -> Optional[GEOSGeometry]:
         if not geometry:
@@ -331,7 +331,7 @@ class CkanAdapter(BaseSourceAdapter):
             value = row.get(key)
             if not value:
                 continue
-            date_str = str(value).split('T')[0]  ***REMOVED*** strip time component
+            date_str = str(value).split('T')[0]  # strip time component
             try:
                 return parse_date(date_str)
             except Exception:

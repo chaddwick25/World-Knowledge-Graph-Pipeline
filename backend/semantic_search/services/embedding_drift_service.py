@@ -43,7 +43,7 @@ class EmbeddingDriftService:
         if X is None or Y is None or X.size == 0 or Y.size == 0:
             return 0.0
 
-        ***REMOVED*** Ensure 2D arrays
+        # Ensure 2D arrays
         if X.ndim == 1:
             X = X.reshape(1, -1)
         if Y.ndim == 1:
@@ -51,13 +51,13 @@ class EmbeddingDriftService:
 
         dim = X.shape[1]
 
-        ***REMOVED*** Consistent random generator
+        # Consistent random generator
         rng = np.random.default_rng(seed)
 
-        ***REMOVED*** Generate random projection vectors on the unit sphere
+        # Generate random projection vectors on the unit sphere
         projections = rng.normal(size=(num_projections, dim))
         norms = np.linalg.norm(projections, axis=1, keepdims=True)
-        ***REMOVED*** Avoid division by zero
+        # Avoid division by zero
         norms[norms == 0] = 1e-10
         projections /= norms
 
@@ -67,7 +67,7 @@ class EmbeddingDriftService:
             X_proj = X @ proj
             Y_proj = Y @ proj
 
-            ***REMOVED*** 1D Wasserstein distance (Earth Mover's Distance)
+            # 1D Wasserstein distance (Earth Mover's Distance)
             d = wasserstein_distance(X_proj, Y_proj)
             distances.append(d)
 
@@ -123,17 +123,17 @@ class EmbeddingDriftService:
             snapshot_id=snapshot_id
         )
 
-        ***REMOVED*** Apply field existence filter
+        # Apply field existence filter
         filter_dict = {f"{embedding_field}__isnull": False}
         queryset = queryset.filter(**filter_dict)
 
-        ***REMOVED*** Apply spatial filter if bbox is provided
+        # Apply spatial filter if bbox is provided
         if bbox:
             min_lon, min_lat, max_lon, max_lat = bbox
             bbox_polygon = Polygon.from_bbox((min_lon, min_lat, max_lon, max_lat))
             queryset = queryset.filter(geom__isnull=False, geom__within=bbox_polygon)
 
-        ***REMOVED*** Optimize by loading only the embedding field values
+        # Optimize by loading only the embedding field values
         embeddings_list = list(queryset.values_list(embedding_field, flat=True))
 
         if len(embeddings_list) == 0:
@@ -170,7 +170,7 @@ class EmbeddingDriftService:
         Returns:
             dict containing global and subdivision-level Wasserstein distances and freshness scores.
         """
-        ***REMOVED*** 1. Fetch country-wide embeddings
+        # 1. Fetch country-wide embeddings
         sem_from = self.fetch_embeddings(
             country_code, snapshot_from, 'gv_tags_embedding',
             mock_if_empty=mock_missing, mock_dim=300, seed=seed
@@ -189,7 +189,7 @@ class EmbeddingDriftService:
             mock_if_empty=mock_missing, mock_dim=100, seed=seed + 3
         )
 
-        ***REMOVED*** Calculate global distances
+        # Calculate global distances
         semantic_w = self.compute_sliced_wasserstein_distance(sem_from, sem_to, num_projections, seed)
         spatial_w = self.compute_sliced_wasserstein_distance(spat_from, spat_to, num_projections, seed + 4)
 
@@ -211,7 +211,7 @@ class EmbeddingDriftService:
             "subdivisions": {}
         }
 
-        ***REMOVED*** 2. Fetch subdivisions (subgraphs)
+        # 2. Fetch subdivisions (subgraphs)
         subgraphs = SubgraphProfile.objects.filter(
             country_profile__iso2=country_code
         )
@@ -258,7 +258,7 @@ class EmbeddingDriftService:
         return results
 
 
-***REMOVED*** Singleton instance
+# Singleton instance
 _embedding_drift_service = None
 
 

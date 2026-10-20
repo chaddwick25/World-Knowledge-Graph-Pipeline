@@ -43,7 +43,7 @@ class TestPlaceScore:
         assert EntityGeocoder._place_score({"place": "city"}) == 2
         assert EntityGeocoder._place_score(
             {"place": "city", "capital": "yes", "admin_level": "2"},
-        ) == 3  ***REMOVED*** place=city (+2) + admin-ness (+1)
+        ) == 3  # place=city (+2) + admin-ness (+1)
         assert EntityGeocoder._place_score({"place": "village"}) == 2
 
     def test_marker_scores_low(self):

@@ -38,7 +38,7 @@ IMPLEMENTATION DIFFERENCES (optimization, not algorithm):
 
 REFERENCE:
 - GeoVectors paper: https://hal.science/hal-03203496/document
-- PyG Node2Vec: https://pytorch-geometric.readthedocs.io/en/latest/modules/nn.html***REMOVED***torch_geometric.nn.models.Node2Vec
+- PyG Node2Vec: https://pytorch-geometric.readthedocs.io/en/latest/modules/nn.html#torch_geometric.nn.models.Node2Vec
 - Preservation guide: docs/research_to_runtime/GEOVECTORS.md §2
 
 Aligned with preservation principles:
@@ -112,11 +112,11 @@ class PyGDeepWalkService:
         """
         logger.info("Converting k-NN graph to PyTorch Geometric format...")
         
-        ***REMOVED*** Create node mapping
+        # Create node mapping
         self.node_to_idx = {node: idx for idx, node in enumerate(sorted(graph.keys()))}
         self.idx_to_node = {idx: node for node, idx in self.node_to_idx.items()}
         
-        ***REMOVED*** Build edge lists
+        # Build edge lists
         src_nodes = []
         dst_nodes = []
         weights = []
@@ -129,7 +129,7 @@ class PyGDeepWalkService:
                 dst_nodes.append(dst_idx)
                 weights.append(weight)
         
-        ***REMOVED*** Convert to tensors
+        # Convert to tensors
         edge_index = torch.tensor([src_nodes, dst_nodes], dtype=torch.long)
         edge_weight = torch.tensor(weights, dtype=torch.float)
         
@@ -205,7 +205,7 @@ class PyGDeepWalkService:
         logger.info(f"  Batch size: {batch_size}")
         logger.info(f"  Epochs: {epochs}")
         
-        ***REMOVED*** Convert graph to PyG format
+        # Convert graph to PyG format
         edge_index, edge_weight = self._graph_to_pyg(graph)
         model_device = self._select_model_device(len(graph))
         logger.info(
@@ -214,45 +214,45 @@ class PyGDeepWalkService:
             model_device,
         )
         
-        ***REMOVED*** Create Node2Vec model
-        ***REMOVED*** Note: edge_weight is stored and used during walk generation
-        ***REMOVED*** PyG Node2Vec will use it automatically when calling pos_sample()
+        # Create Node2Vec model
+        # Note: edge_weight is stored and used during walk generation
+        # PyG Node2Vec will use it automatically when calling pos_sample()
         self.model = Node2Vec(
             edge_index,
             embedding_dim=self.embedding_dim,
             walk_length=walk_length,
             context_size=window_size,
             walks_per_node=num_walks,
-            num_negative_samples=5,  ***REMOVED*** Standard for Skip-gram
-            p=1.0,  ***REMOVED*** Return parameter (1.0 = unbiased DeepWalk)
-            q=1.0,  ***REMOVED*** In-out parameter (1.0 = unbiased DeepWalk)
-            sparse=True  ***REMOVED*** Use sparse gradients (memory efficient)
+            num_negative_samples=5,  # Standard for Skip-gram
+            p=1.0,  # Return parameter (1.0 = unbiased DeepWalk)
+            q=1.0,  # In-out parameter (1.0 = unbiased DeepWalk)
+            sparse=True  # Use sparse gradients (memory efficient)
         ).to(model_device)
         
-        ***REMOVED*** Store edge weights for weighted random walk sampling
-        ***REMOVED*** CRITICAL: This preserves GeoVectors edge weighting formula
+        # Store edge weights for weighted random walk sampling
+        # CRITICAL: This preserves GeoVectors edge weighting formula
         self.edge_weight = edge_weight
         
         logger.info(f"Node2Vec model created with {sum(p.numel() for p in self.model.parameters())} parameters")
         
-        ***REMOVED*** Create data loader
-        ***REMOVED*** NOTE: PyG Node2Vec doesn't support weighted walks natively in loader()
-        ***REMOVED*** However, the spatial structure is still preserved via the graph topology
-        ***REMOVED*** The edge weights influence which edges exist (k-NN selection), which
-        ***REMOVED*** indirectly preserves spatial proximity in the walks
+        # Create data loader
+        # NOTE: PyG Node2Vec doesn't support weighted walks natively in loader()
+        # However, the spatial structure is still preserved via the graph topology
+        # The edge weights influence which edges exist (k-NN selection), which
+        # indirectly preserves spatial proximity in the walks
         loader = self.model.loader(
             batch_size=batch_size,
             shuffle=True,
-            num_workers=0  ***REMOVED*** Must be 0 for GPU
+            num_workers=0  # Must be 0 for GPU
         )
         
         logger.info("Note: PyG Node2Vec uses unweighted walks over weighted k-NN graph")
         logger.info("Spatial structure preserved via graph topology (k-NN selection)")
         
-        ***REMOVED*** Optimizer
+        # Optimizer
         optimizer = torch.optim.SparseAdam(list(self.model.parameters()), lr=learning_rate)
         
-        ***REMOVED*** Training loop
+        # Training loop
         logger.info("Starting training...")
         self.model.train()
         
@@ -275,13 +275,13 @@ class PyGDeepWalkService:
             avg_loss = total_loss / num_batches
             logger.info(f"Epoch {epoch+1}/{epochs} complete, Avg Loss: {avg_loss:.4f}")
         
-        ***REMOVED*** Extract embeddings
+        # Extract embeddings
         logger.info("Extracting embeddings...")
         self.model.eval()
         with torch.no_grad():
             embeddings_tensor = self.model().cpu().numpy()
         
-        ***REMOVED*** Map back to original node IDs
+        # Map back to original node IDs
         embeddings_dict = {
             self.idx_to_node[idx]: embeddings_tensor[idx]
             for idx in range(len(embeddings_tensor))
@@ -289,7 +289,7 @@ class PyGDeepWalkService:
         
         logger.info(f"Training complete! Generated {len(embeddings_dict)} embeddings")
         
-        ***REMOVED*** Report GPU memory usage
+        # Report GPU memory usage
         if torch.cuda.is_available() and model_device.type == 'cuda':
             memory_allocated = torch.cuda.memory_allocated(model_device) / 1e9
             memory_reserved = torch.cuda.memory_reserved(model_device) / 1e9
@@ -373,7 +373,7 @@ class PyGDeepWalkService:
         self.idx_to_node = checkpoint['idx_to_node']
         self.embedding_dim = checkpoint['embedding_dim']
         
-        ***REMOVED*** Recreate model
+        # Recreate model
         self.model = Node2Vec(
             edge_index,
             embedding_dim=self.embedding_dim,
