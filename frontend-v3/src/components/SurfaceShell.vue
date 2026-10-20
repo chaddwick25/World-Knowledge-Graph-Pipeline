@@ -39,6 +39,7 @@
           :template-visualization="templateVisualization"
           :seed-overlay="seedOverlay"
           :twins-overlay="twinsOverlay"
+          :seed-actions="surface === 'doppelganger'"
           @countries-loaded="onCountriesLoaded"
           @country-toggled="onCountryToggled"
         />

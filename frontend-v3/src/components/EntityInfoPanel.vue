@@ -61,10 +61,9 @@
           <a :href="wikidataUrl" target="_blank" rel="noopener">{{ wikidataQid }}</a>
         </span>
       </div>
-      <div v-if="canBeSeed && !isConfirmedSeed" class="entity-info-panel__actions">
+      <div v-if="seedActions && canBeSeed && !isConfirmedSeed" class="entity-info-panel__actions">
         <!-- The only seeding gesture (2026-10-19): open the info box
-             and click seed. Hover links to the candidate row in the
-             chat list (shared hoveredKey in seedStore). -->
+             and click seed. Agent mode only (seedActions). -->
         <button
           type="button"
           class="btn btn-sm btn-success py-0 px-2 text-truncate"
@@ -75,7 +74,7 @@
           @mouseleave="seedStore.clearHoveredKey(entityKeyStr)"
         >Use as seed: {{ title }}</button>
       </div>
-      <div v-else-if="isConfirmedSeed" class="entity-info-panel__actions">
+      <div v-else-if="seedActions && isConfirmedSeed" class="entity-info-panel__actions">
         <span class="badge bg-success">Seed ✓</span>
         <button
           type="button"
@@ -108,6 +107,12 @@ export default {
     position: {
       type: Object,
       default: null,
+    },
+    // Show the seed actions (Use as seed / Unseed). Agent mode only
+    // (2026-10-19): the tools surface keeps the info box read-only.
+    seedActions: {
+      type: Boolean,
+      default: false,
     },
   },
   setup() {

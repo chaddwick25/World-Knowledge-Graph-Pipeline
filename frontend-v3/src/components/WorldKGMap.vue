@@ -8,8 +8,9 @@
     </div>
 
     <!-- Focused-entity info popover (marker click or results-table hover),
-         anchored to the entity's map point -->
-    <EntityInfoPanel :position="infoPanelPos" />
+         anchored to the entity's map point. Seed actions only in agent
+         mode (SurfaceShell passes seedActions). -->
+    <EntityInfoPanel :position="infoPanelPos" :seed-actions="seedActions" />
 
     <!-- Relation legend (only when augmented links are visible) -->
     <div v-if="activeRelationLegend.length" class="map-legend">
@@ -155,6 +156,11 @@ export default {
     selectedIds: {
       type: Array,
       default: () => [],
+    },
+    // Seed actions in the info box: agent mode only (SurfaceShell).
+    seedActions: {
+      type: Boolean,
+      default: false,
     },
     searchResults: {
       type: Array,
