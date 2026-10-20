@@ -2,7 +2,7 @@
 Google Places Validation Service
 
 Validates low-confidence USLP spatial links using Google Geocoding API.
-Implements the amplification layer described in docs/plans/validating_layer.md.
+Implements the USLP amplification layer.
 
 Architecture:
   USLP Rejected Links (normalized_score < 0.7)

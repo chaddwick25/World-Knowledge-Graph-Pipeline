@@ -3,8 +3,7 @@ query_enrichment_service.py — LLM-driven answer enrichment.
 
 The direct query path (execute-query/stream) calls ``synthesize()``: one LLM
 call grounded in pre-fetched entity context (EntityContextService: USLP
-links + communities + class distribution) — no tool selection
-(docs/plans/DIRECT_PATH_ENRICHMENT_PLAN.md).
+links + communities + class distribution) — no tool selection.
 
 The research orchestrator (research_service.py) reuses the tool helpers here
 (``_validate_tool_calls`` / ``_call_search_tool`` / ``_primary_digest``) for
@@ -116,14 +115,19 @@ RESEARCH_TOOLS = {
         },
     },
     "structuredSearch": {
-        "description": "Find entities by OSM tags.",
+        "description": (
+            "Find entities by OSM tags. Tag keys include amenity, cuisine, "
+            "shop, tourism, leisure, natural; multi-word values accept "
+            "spaces or underscores (\"bubble tea\" = \"bubble_tea\")."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
                 "queryTags": {
                     "type": "object",
                     "description": (
-                        "OSM tag key-value map, e.g. {\"amenity\": \"cafe\"}."
+                        "OSM tag key-value map, e.g. {\"amenity\": \"cafe\"} "
+                        "or {\"cuisine\": \"bubble_tea\"}."
                     ),
                 },
                 "topK": {
@@ -134,7 +138,77 @@ RESEARCH_TOOLS = {
             "required": ["queryTags"],
         },
     },
+    "similarEntities": {
+        "description": (
+            "Find entities SIMILAR to a named entity (doppelgangers): "
+            "embedding k-NN over the entity's tag vector, any distance. "
+            "Use for 'similar to X' / 'twins of X' asks; structuredSearch "
+            "answers 'near X' (proximity), this answers 'like X' "
+            "(similarity)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "entity": {
+                    "type": "string",
+                    "description": "The seed entity's name.",
+                },
+                "topK": {
+                    "type": "integer",
+                    "description": "Max results (default 8).",
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["same_country", "all"],
+                    "description": (
+                        "same_country (default) or all (cross-country "
+                        "twins)."
+                    ),
+                },
+            },
+            "required": ["entity"],
+        },
+    },
+    "classDrift": {
+        "description": (
+            "Data profile + freshness for the scoped country. Returns the "
+            "snapshot's WorldKG class fingerprint (top classes, Shannon "
+            "entropy, unique classes) and, when a second snapshot exists, "
+            "per-pair Jensen-Shannon drift (magnitude low/medium/high/"
+            "extreme, dominant shifts, new/lost classes). Use it to state "
+            "what the country's map actually contains and whether it "
+            "changed — a high or extreme magnitude means the map moved "
+            "between snapshots; tell the user the data may be out of date."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
 }
+
+***REMOVED*** OSM venue types the LLM drops under `cuisine` ("same cuisine" ->
+***REMOVED*** {"cuisine": "fast_food"} — guaranteed empty, the 2026-10-16 Island
+***REMOVED*** Grill run). cuisine holds food types (jerk, regional); these belong to
+***REMOVED*** amenity. Guarded in _call_search_tool's structuredSearch branch.
+_AMENITY_VENUE_VALUES = {
+    "restaurant", "fast_food", "cafe", "bar", "pub", "food_court",
+    "ice_cream", "biergarten", "nightclub", "marketplace",
+}
+
+
+def _distances_degenerate(results) -> bool:
+    """True when 2+ results all carry the same distance_m (e.g. all 0m):
+    the distances are unreliable. Shared by the digest (which strips
+    them) and the research coverage ledger."""
+    if not isinstance(results, list):
+        return False
+    ds = [
+        r.get("distance_m") for r in results
+        if isinstance(r, dict) and r.get("distance_m") is not None
+    ]
+    return len(ds) >= 2 and len(set(ds)) == 1
 
 
 class QueryEnrichmentService:
@@ -315,22 +389,29 @@ class QueryEnrichmentService:
         lines.append(
             "classes: " + ", ".join(f"{c} ({n})" for c, n in top_classes)
         )
+        ***REMOVED*** Degenerate distances are stripped, not flagged (2026-10-11
+        ***REMOVED*** tavern run): the prompt rule alone did not hold — the assembler
+        ***REMOVED*** still wrote "clustered in the same location" over all-0m rows.
+        ***REMOVED*** Removing the numbers leaves nothing to narrate over.
+        degenerate = _distances_degenerate(results)
         named = []
         for r in results:
             name = r.get("name") or (r.get("tags") or {}).get("name")
             if not name:
                 continue
             item = {"name": name}
-            if r.get("distance_m") is not None:
-                item["distance_m"] = float(r["distance_m"])
-            elif r.get("distance_km") is not None:
-                item["distance_km"] = float(r["distance_km"])
+            if not degenerate:
+                if r.get("distance_m") is not None:
+                    item["distance_m"] = float(r["distance_m"])
+                elif r.get("distance_km") is not None:
+                    item["distance_km"] = float(r["distance_km"])
             named.append(item)
-        named.sort(
-            key=lambda x: x.get("distance_m") if "distance_m" in x else (
-                x.get("distance_km", float("inf"))
-            ),
-        )
+        if not degenerate:
+            named.sort(
+                key=lambda x: x.get("distance_m") if "distance_m" in x else (
+                    x.get("distance_km", float("inf"))
+                ),
+            )
         for item in named[:8]:
             d = item.get("distance_m")
             if d is not None:
@@ -342,6 +423,11 @@ class QueryEnrichmentService:
                     lines.append(f"- {item['name']} ({d:.0f}m)")
             else:
                 lines.append(f"- {item['name']}")
+        if degenerate and named:
+            lines.append(
+                "distances: unavailable (degenerate result set; make no "
+                "spatial-proximity claims)"
+            )
         return "\n".join(lines)
 
     @staticmethod
@@ -442,7 +528,7 @@ class QueryEnrichmentService:
         trace shows the decision → call → result chain.
         """
         from core.services.trace_service import TraceService
-        token = TraceService.begin_span("execute_tool", attributes={
+        span = TraceService.begin_span("execute_tool", attributes={
             "gen_ai.tool.name": tool,
             "gen_ai.tool.call.id": uuid.uuid4().hex,
             "gen_ai.tool.call.arguments": args,
@@ -450,6 +536,73 @@ class QueryEnrichmentService:
         error = None
         output = None
         try:
+            ***REMOVED*** classDrift reads the drift/fingerprint tables directly —
+            ***REMOVED*** there is no public fingerprint read endpoint, and the tool
+            ***REMOVED*** is a scope-level capability check, not a search.
+            if tool == "classDrift":
+                if not country_code:
+                    return None
+                return cls._class_drift_report(country_code, snapshot_date)
+            ***REMOVED*** similarEntities needs no country (scope=all crosses
+            ***REMOVED*** countries; the seed geocode scopes optionally).
+            if tool == "similarEntities":
+                payload = {
+                    "entity": args.get("entity"),
+                    "top_k": int(args.get("topK") or 8),
+                    "scope": args.get("scope") or "same_country",
+                }
+                if snapshot_date:
+                    payload["snapshot_date"] = snapshot_date
+                if country_code:
+                    payload["country_code"] = country_code
+                from django.test import Client
+                resp = Client().post(
+                    "/api/nca/similar-entities/",
+                    data=json.dumps(payload),
+                    content_type="application/json",
+                    HTTP_HOST="localhost",
+                )
+                try:
+                    data = resp.json()
+                except ValueError:
+                    logger.warning(
+                        "similarEntities returned non-JSON (status %s)",
+                        resp.status_code,
+                    )
+                    return None
+                if data.get("error"):
+                    logger.warning(
+                        "similarEntities error: %s", data["error"]
+                    )
+                    return None
+                rows = [
+                    {
+                        "osm_id": r.get("osm_id"),
+                        "osm_type": r.get("osm_type"),
+                        "name": r.get("name"),
+                        "wkg_class": r.get("wkg_class"),
+                        "lat": r.get("lat"),
+                        "lon": r.get("lon"),
+                        "score": r.get("similarity"),
+                        "tags": r.get("tags") or {},
+                        "country_code": r.get("country_code"),
+                    }
+                    for r in data.get("results", [])
+                ]
+                ***REMOVED*** Self/sibling exclusion: for chains the top embedding
+                ***REMOVED*** twins are the seed's own branches (the 2026-10-16
+                ***REMOVED*** Island Grill run returned 5 entities all named
+                ***REMOVED*** "Island Grill" — correct similarity, useless as
+                ***REMOVED*** doppelgangers). Drop same-name results; the seed's own
+                ***REMOVED*** row is covered by the same check.
+                seed_name = (args.get("entity") or "").strip().casefold()
+                if seed_name:
+                    rows = [
+                        r for r in rows
+                        if (r.get("name") or "").strip().casefold()
+                        != seed_name
+                    ]
+                return rows
             if not country_code:
                 return None
             if tool == "nameSearch":
@@ -459,7 +612,20 @@ class QueryEnrichmentService:
                     "top_k": int(args.get("topK") or 5),
                 }
             elif tool == "structuredSearch":
-                query_tags = args.get("queryTags") or {}
+                query_tags = dict(args.get("queryTags") or {})
+                ***REMOVED*** Tag-key guard: the LLM puts amenity values under
+                ***REMOVED*** cuisine ("same cuisine" -> {"cuisine": "fast_food"},
+                ***REMOVED*** guaranteed empty — the 2026-10-16 Island Grill run).
+                ***REMOVED*** cuisine values are food types (jerk, regional); venue
+                ***REMOVED*** types (fast_food, restaurant, cafe) belong to amenity.
+                cuisine = query_tags.get("cuisine")
+                if isinstance(cuisine, str):
+                    cuisine = cuisine.replace(" ", "_")
+                    if cuisine in _AMENITY_VENUE_VALUES:
+                        del query_tags["cuisine"]
+                        query_tags.setdefault("amenity", cuisine)
+                    else:
+                        query_tags["cuisine"] = cuisine
                 if not query_tags:
                     dominant = cls._dominant_amenity(results)
                     if not dominant:
@@ -516,9 +682,88 @@ class QueryEnrichmentService:
             raise
         finally:
             TraceService.end_span(
-                token, error=error,
+                span, error=error,
                 attributes={"gen_ai.tool.call.result": output},
             )
+
+    @staticmethod
+    def _class_drift_report(country_code: str, snapshot_date: str) -> dict:
+        """classDrift executor: fingerprint + JS-drift digest for the scope.
+
+        Returns {fingerprint: {snapshot_date, top_classes, shannon_entropy,
+        unique_classes, total_entities} | None, drift: {pairs, latest} |
+        None}. Reads the osmsnapshot tables directly — this is a scope-level
+        capability check, not an entity search.
+        """
+        from osmsnapshot.models import (
+            Snapshot,
+            WorldKGClassDrift,
+            WorldKGClassFingerprint,
+        )
+        from core.services.planet_init.osm_wikidata_resolver import (
+            resolve_iso_code,
+        )
+
+        iso = country_code
+        try:
+            resolved = resolve_iso_code(country_code)
+            if resolved:
+                iso = resolved
+        except Exception:  ***REMOVED*** noqa: BLE001 — fall through to the raw value
+            pass
+        iso = (iso or "").upper()
+
+        snaps = list(
+            Snapshot.objects
+            .filter(country_code__iexact=iso)
+            .order_by("snapshot_date")
+        )
+        target = None
+        if snapshot_date:
+            target = next(
+                (s for s in snaps if s.snapshot_date == snapshot_date), None,
+            )
+        if target is None and snaps:
+            target = snaps[-1]
+
+        fingerprint = None
+        if target is not None:
+            row = (
+                WorldKGClassFingerprint.objects
+                .filter(snapshot=target)
+                .order_by("-created_at")
+                .first()
+            )
+            if row is not None:
+                fingerprint = {
+                    "snapshot_date": target.snapshot_date,
+                    "top_classes": row.top_5_classes,
+                    "shannon_entropy": row.shannon_entropy,
+                    "unique_classes": row.unique_classes,
+                    "total_entities": row.total_entities,
+                }
+
+        drift_rows = list(
+            WorldKGClassDrift.objects
+            .filter(region__iexact=iso)
+            .order_by("snapshot_to__snapshot_date")
+        )
+        drift = None
+        if drift_rows:
+            latest = drift_rows[-1]
+            drift = {
+                "pairs": len(drift_rows),
+                "latest": {
+                    "from": latest.snapshot_from.snapshot_date,
+                    "to": latest.snapshot_to.snapshot_date,
+                    "js_divergence": latest.js_divergence,
+                    "drift_magnitude": latest.drift_magnitude,
+                    "dominant_shift": latest.dominant_shift,
+                    "new_classes": latest.new_classes,
+                    "lost_classes": latest.lost_classes,
+                },
+            }
+        return {"fingerprint": fingerprint, "drift": drift}
 
     @staticmethod
     def _dominant_amenity(results: list):

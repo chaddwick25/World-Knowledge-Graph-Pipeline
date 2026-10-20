@@ -27,17 +27,32 @@ class Command(BaseCommand):
             help="Snapshot date. If set with --country, create HNSW only on "
                  "the specified leaf.",
         )
+        parser.add_argument(
+            "--categories", type=str, default=None,
+            help="Comma-separated OSM tag keys for value-vocabulary "
+                 "indexes (per-leaf mode only). Defaults to "
+                 "GENERIC_AMENITY_KEYS (the guaranteed Step 6 slice). "
+                 "Keys are validated against the executor constants in "
+                 "semantic_search/services/query_executor_service/"
+                 "_constants.py.",
+        )
 
     def handle(self, *args, **options):
         country = options.get("country")
         snapshot = options.get("snapshot")
+
+        categories = self._parse_categories(
+            options.get("categories"), country, snapshot,
+        )
+        if categories is None:
+            return
 
         if country and snapshot:
             leaf_name = f"embeddings_{snapshot}_{country.lower()}"
             self.stdout.write(self.style.WARNING(
                 f"Per-leaf mode: creating all indexes on {leaf_name} only..."
             ))
-            created = self._create_leaf_indexes(leaf_name)
+            created = self._create_leaf_indexes(leaf_name, categories)
             self.stdout.write(self.style.SUCCESS(
                 f"Created {created} index(es) on leaf {leaf_name}."
             ))
@@ -63,18 +78,79 @@ class Command(BaseCommand):
     ***REMOVED*** ------------------------------------------------------------------ ***REMOVED***
     ***REMOVED*** Per-leaf mode
     ***REMOVED*** ------------------------------------------------------------------ ***REMOVED***
-    def _create_leaf_indexes(self, leaf_name: str) -> int:
+    @staticmethod
+    def _default_categories():
+        """The guaranteed Step 6 slice: GENERIC_AMENITY_KEYS.
+
+        These are the OSM tag keys the parser can emit as generic OBJECT
+        vocabulary — exactly the bounded value sets a correction or
+        suggestion path can enumerate. Cost measured on the 2025_12_31
+        maintained leaves (ie/jm/mx): ~1.1M index entries total, ~60%
+        of which is amenity alone.
+        """
+        from semantic_search.services.query_executor_service._constants import (
+            GENERIC_AMENITY_KEYS,
+        )
+        return tuple(GENERIC_AMENITY_KEYS)
+
+    def _parse_categories(self, raw, country, snapshot):
+        """Resolve the --categories flag into a validated key tuple.
+
+        Default is GENERIC_AMENITY_KEYS: the parser's generic OBJECT
+        vocabulary, which is where vocabulary enumeration has readers
+        (QueryCorrectionService.correct_amenity is the reference
+        consumer). The allowed set comes from the executor constants
+        (DEC-007), never a hand-maintained list — the same source the
+        opt-in catalog derives from, so a key the executor cannot emit
+        can never get an index. Keys land in raw SQL identifiers, so the
+        whitelist is also the injection guard.
+        """
+        from semantic_search.services.query_executor_service._constants import (
+            CATEGORY_TAG_TARGETS, GENERIC_AMENITY_KEYS,
+        )
+        allowed = set(GENERIC_AMENITY_KEYS) | {
+            v[0] for v in CATEGORY_TAG_TARGETS.values()
+        }
+        requested = (
+            tuple(k.strip().lower() for k in raw.split(",") if k.strip())
+            if raw else self._default_categories()
+        )
+        if not requested:
+            self.stderr.write(self.style.ERROR("--categories is empty."))
+            return None
+        if raw and not (country and snapshot):
+            self.stderr.write(self.style.ERROR(
+                "--categories only applies in per-leaf mode "
+                "(--country + --snapshot)."
+            ))
+            return None
+        invalid = [k for k in requested if k not in allowed]
+        if invalid:
+            self.stderr.write(self.style.ERROR(
+                f"Unknown categor{'y' if len(invalid) == 1 else 'ies'} "
+                f"{invalid!r}. Valid keys: {sorted(allowed)}"
+            ))
+            return None
+        return requested
+
+    def _create_leaf_indexes(self, leaf_name: str,
+                             categories=None) -> int:
         """Rebuild ALL indexes dropped by drop_osmentity_vector_indexes per-leaf mode.
 
         Called after a bulk upsert completes.  Rebuilds:
           1. HNSW vector indexes (gv_tags_embedding, gv_nle_embedding)
-          2. GIST geometry index (geom)
-          3. Auxiliary B-tree indexes (osm_type+osm_id, wikidata_uri, wkg_class)
+          2. Value-vocabulary partial indexes, one per category key
+             (GENERIC_AMENITY_KEYS by default — the guaranteed Step 6
+             slice)
+          3. GIST geometry index (geom)
+          4. Auxiliary B-tree indexes (osm_type+osm_id, wikidata_uri, wkg_class)
 
-        Uses CONCURRENTLY for HNSW (can't hold ShareLock on large data);
-        plain CREATE INDEX for the B-tree/GIST indexes (faster, no transaction
-        issues).
+        Uses CONCURRENTLY for HNSW and vocab indexes (can't hold
+        ShareLock on large data); plain CREATE INDEX for the B-tree/GIST
+        indexes (faster, no transaction issues).
         """
+        if categories is None:
+            categories = self._default_categories()
         conn = connections['vectors']
         created = 0
 
@@ -121,10 +197,37 @@ class Command(BaseCommand):
                     """)
                 self.stdout.write(f"    Created {idx_name}")
                 created += 1
+
+            ***REMOVED*** ---- 2. Value-vocabulary indexes (CONCURRENTLY) ----
+            ***REMOVED*** Partial composite expression index per category key:
+            ***REMOVED***   ((tags->>'<key>'), snapshot_id, country_code)
+            ***REMOVED***   WHERE tags ? '<key>'
+            ***REMOVED*** turns the DISTINCT tags->>'<key>' census into an
+            ***REMOVED*** index-only scan over the key's tagged rows instead of a
+            ***REMOVED*** heap fetch of every match (correct_amenity's 1.3M-row
+            ***REMOVED*** stall on the PL leaf is the reference incident).
+            for key in categories:
+                idx_name = f"idx_{leaf_name}_{key}_vocab"
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT EXISTS (SELECT 1 FROM pg_indexes "
+                        "WHERE indexname = %s);",
+                        [idx_name],
+                    )
+                    if cursor.fetchone()[0]:
+                        continue
+                    self.stdout.write(f"  Creating vocab index {idx_name}...")
+                    cursor.execute(f"""
+                        CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name}
+                        ON {leaf_name} ((tags->>'{key}'), snapshot_id, country_code)
+                        WHERE tags ? '{key}';
+                    """)
+                    self.stdout.write(f"    Created {idx_name}")
+                    created += 1
         finally:
             conn.set_autocommit(old_autocommit)
 
-        ***REMOVED*** ---- 2. GIST geometry index + auxiliary B-tree indexes ----
+        ***REMOVED*** ---- 3. GIST geometry index + auxiliary B-tree indexes ----
         ***REMOVED*** These are plain CREATE INDEX (no CONCURRENTLY needed — no live
         ***REMOVED*** readers during Step 1 rebuild window).
         aux_indexes = [

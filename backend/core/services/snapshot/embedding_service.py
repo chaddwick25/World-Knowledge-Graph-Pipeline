@@ -4,7 +4,7 @@ Handles FastText model loading, writer setup, snapshot reading,
 WorldKG class enrichment, and entropy computation.  Step 1 is
 FastText-only (GV-Tags); GV-NLE comes from Step 5 training and the
 inductive query-time path (see
-docs/Schematics/01_Encoder/01_Two_Axis_vs_Single_Axis_Encoding.md).
+docs/geovectors_encoder/two_axis_vs_single_axis_encoding.md).
 
 Pure data plane — no Celery, no logging dispatcher, no WS push.
 Receives a CountryEnvelope, reads files, writes to DB,
@@ -102,7 +102,7 @@ class EmbeddingService:
 
         ***REMOVED*** Step 1 is FastText-only (GV-Tags).  The two-axis Step-1 path
         ***REMOVED*** (DualEncodingWriter / _run_parallel_dual) was removed 2026-09-10 —
-        ***REMOVED*** see docs/issues/TICKET_REMOVE_DUAL_ENCODER.md.  GV-NLE comes from
+        ***REMOVED*** see TICKET_REMOVE_DUAL_ENCODER.  GV-NLE comes from
         ***REMOVED*** Step 5 training + the inductive query-time path, so the parallel
         ***REMOVED*** path needs no NLE gating.
         if workers > 1:
@@ -258,7 +258,7 @@ def _parallel_upsert_chunk_size() -> int:
     per-batch SQL overhead (fewer WAL flushes / transaction commits) at the
     cost of higher peak memory.  Tripling to 60000 with 2 workers is a
     proposed throughput optimization — see
-    ``docs/Schematics/OSM_Streaming_Core_Pattern.md`` §9.3 and the
+    ``docs/geovectors_encoder/streaming_batched_encoding.md`` and the
     benchmark test ``tests/integration/test_chunk_size_benchmark.py``.
 
     Memory note: each encoded record is ~400D × 4 bytes = ~1.6 KB for the

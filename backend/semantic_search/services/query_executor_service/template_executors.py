@@ -20,6 +20,7 @@ from semantic_search.services.query_executor_service._constants import (
     DEFAULT_NEAR_RADIUS_M,
     DIRECTION_NEAREST_RADIUS_M,
     PROXIMITY_QUESTION_RE,
+    strip_trailing_fragments,
 )
 
 logger = logging.getLogger(__name__)
@@ -206,10 +207,16 @@ class TemplateExecutorsMixin:
         anchor_coords = None
         anchor_is_category = False
         if anchor and anchor["text"]:
-            anchor_is_category = (
-                cls._resolve_amenity_tag(
-                    anchor["text"], country_code, snapshot_date,
-                ) is not None
+            ***REMOVED*** Exact tiers only for the ANCHOR (2026-10-11 Ireland run):
+            ***REMOVED*** the fuzzy correction tier admitted "Dublin" as amenity
+            ***REMOVED*** "public" (levenshtein 2 edits, ratio 0.667 >= MIN_SCORE), so
+            ***REMOVED*** "within 3km of Dublin" silently became "within 3km of ANY
+            ***REMOVED*** amenity=public entity" (co-located pairs at 0m ranked
+            ***REMOVED*** first). A place name is not a typo of an amenity value; an
+            ***REMOVED*** anchor is a category only when it exactly names one, else
+            ***REMOVED*** it gets geocoded.
+            anchor_is_category = cls._anchor_is_category(
+                anchor["text"], country_code, snapshot_date,
             )
             if not anchor_is_category:
                 anchor_coords = EntityGeocoder.geocode(
@@ -234,8 +241,19 @@ class TemplateExecutorsMixin:
             })
 
         ***REMOVED*** 2. PostGIS spatial search (graph path removed — factor tables
-        ***REMOVED***    don't cover this template; PostGIS is the primary path)
-        if radius_m and anchor_coords and anchor_coords.get("lat") is not None:
+        ***REMOVED***    don't cover this template; PostGIS is the primary path).
+        ***REMOVED***    Finite-anchor guard (2026-10-11): NaN is truthy in Python, so
+        ***REMOVED***    `is not None` passes NaN coordinates; a NaN anchor matches
+        ***REMOVED***    only NaN-geometry entities at ST_Distance = 0. Require
+        ***REMOVED***    finite coordinates, else the honest empty below.
+        anchor_finite = False
+        if anchor_coords and anchor_coords.get("lat") is not None:
+            try:
+                anchor_finite = math.isfinite(float(anchor_coords["lat"])) \
+                    and math.isfinite(float(anchor_coords["lon"]))
+            except (TypeError, ValueError):
+                anchor_finite = False
+        if radius_m and anchor_finite:
             anchor_point = Point(
                 anchor_coords["lon"], anchor_coords["lat"], srid=4326
             )
@@ -549,6 +567,35 @@ class TemplateExecutorsMixin:
         return None
 
     @classmethod
+    def _anchor_is_category(cls, text, country_code=None, snapshot_date=None):
+        """Whether an ANCHOR text is an amenity category: exact tiers
+        only, never the fuzzy correction tier (2026-10-11 Ireland run).
+
+        The correction tier admitted "Dublin" as amenity "public"
+        (levenshtein 2 edits, ratio 0.667 >= MIN_SCORE 0.55): a place
+        name is not a typo of an amenity value. An anchor is a category
+        only when it exactly names one (alias map, ontology map, or the
+        exact DB tag); anything else is a place and gets geocoded.
+        """
+        if not text:
+            return False
+        key = text.lower().strip().rstrip("s")
+        alias_key = key.replace(" ", "_")
+        if alias_key in AMENITY_TAG_ALIASES:
+            return True
+        if key in AMENITY_TO_WKGS:
+            return True
+        from worldkg_nca.models import OsmEntity
+        snapshot_id = snapshot_date or cls._get_snapshot_id(None)
+        qs = OsmEntity.objects.using("vectors").filter(
+            snapshot_id=snapshot_id,
+            tags__contains={"amenity": key},
+        )
+        if country_code:
+            qs = qs.filter(country_code=country_code.upper())
+        return qs.exists()
+
+    @classmethod
     def _resolve_tag_target(cls, text: str):
         """Category token → the real OSM (key, value) target, or None.
 
@@ -561,22 +608,27 @@ class TemplateExecutorsMixin:
 
         Trailing verb/copula fragments from the parser's open-vocabulary
         OBJECT span are stripped first ("peak are" → "peak"), mirroring
-        ``_generic_amenity_keys``.
+        ``_generic_amenity_keys`` (shared gate: ``strip_trailing_fragments``).
+
+        Tag-phrase gate (2026-10-11): space and underscore forms
+        round-trip ("bubble tea" / "bubble_tea" / "Bubble Tea" all
+        resolve), and a compound phrase whose head noun is generic
+        ("bubble tea cafe") drops the head once and retries the
+        modifier as the category.
         """
         if not text:
             return None
-        phrase = text.lower().strip()
-        for frag in (" are", " is", " near", " around", " close",
-                     " nearby", " within", " in", " of", " at",
-                     ***REMOVED*** 2026-10-01: "taco vendors" / "food vendors" —
-                     ***REMOVED*** the planner rephrases vague intents, but the
-                     ***REMOVED*** executor stays resilient when one slips through.
-                     " vendors of", " vendors"):
-            if phrase.endswith(frag):
-                phrase = phrase[:-len(frag)].rstrip()
-                break
+        phrase = strip_trailing_fragments(text)
+        if not phrase:
+            return None
         key = phrase.rstrip("s").replace("_", " ")
-        return CATEGORY_TAG_TARGETS.get(key)
+        target = CATEGORY_TAG_TARGETS.get(key)
+        if target:
+            return target
+        if " " in key:
+            shortened = key.rsplit(" ", 1)[0]
+            return CATEGORY_TAG_TARGETS.get(shortened.rstrip("s"))
+        return None
 
     @staticmethod
     def _generic_amenity_keys(text) -> Optional[tuple]:
@@ -591,12 +643,7 @@ class TemplateExecutorsMixin:
         """
         if not text:
             return None
-        phrase = text.lower().strip()
-        for frag in (" are", " is", " near", " around", " close", " nearby",
-                     " within", " in", " of", " at"):
-            if phrase.endswith(frag):
-                phrase = phrase[:-len(frag)].rstrip()
-                break
+        phrase = strip_trailing_fragments(text)
         if phrase in GENERIC_AMENITY_PHRASES:
             return GENERIC_AMENITY_KEYS
         return None
@@ -641,7 +688,7 @@ class TemplateExecutorsMixin:
             if anchor_coords:
                 anchor_osm_id = anchor_coords.get("osm_id")
 
-        ***REMOVED*** Factor-table path (FACTOR_NODE_RUNTIME_JOINS_PLAN.md): SQL-only
+        ***REMOVED*** Factor-table path: SQL-only
         ***REMOVED*** heat-kernel ranking via stored eigen-loadings.
         if (country_code and anchor_osm_id and amenity_type):
             table_results = cls._heat_kernel_search_via_tables(
@@ -944,6 +991,31 @@ class TemplateExecutorsMixin:
     ***REMOVED***   1. SUB_COND + COND: geocode both locations → find their nodes in graph
     ***REMOVED***   2. SUPPORT: Dijkstra shortest path between the two nodes
     ***REMOVED***   3. MEASURE: report graph distance + geographic distance
+
+    ***REMOVED*** Superlative qualifier on a class phrase ("the nearest tavern",
+    ***REMOVED*** "the second closest cafe"): stripped before class resolution, with
+    ***REMOVED*** the ordinal kept for nearest-by-class. CASE-SENSITIVE on purpose:
+    ***REMOVED*** "The Top Bar" (a place name, title-case) must not strip; the
+    ***REMOVED*** planner's placeholder convention writes lowercase ("the top
+    ***REMOVED*** tavern").
+    _GENERIC_QUALIFIER_RE = re.compile(
+        r"^(?:the\s+)?(second\s+|third\s+)?(?:nearest|closest|top)\s+"
+    )
+
+    @classmethod
+    def _strip_generic_qualifiers(cls, text):
+        """("the nearest tavern") → ("tavern", 0); ("the second nearest
+        tavern") → ("tavern", 1). Unmatched text returns (text, 0)."""
+        t = (text or "").strip()
+        ordinal = 0
+        m = cls._GENERIC_QUALIFIER_RE.match(t)
+        if m:
+            ordinal = {"second": 1, "third": 2}.get(
+                (m.group(1) or "").strip(), 0
+            )
+            t = t[m.end():].strip()
+        return t, ordinal
+
     @classmethod
     def _execute_object_field_measure(cls, concepts, country_code,
                                       snapshot_date, trace):
@@ -955,14 +1027,64 @@ class TemplateExecutorsMixin:
                 return [{"error": "Need two locations to compute distance"}]
             return []
 
-        a = EntityGeocoder.geocode(locations[0]["text"], country_code, snapshot_date)
-        b = EntityGeocoder.geocode(locations[1]["text"], country_code, snapshot_date)
+        texts = [locations[0]["text"], locations[1]["text"]]
+        ***REMOVED*** Nearest-by-class (2026-10-11 Ireland run): a superlative class
+        ***REMOVED*** phrase ("the nearest tavern") is not a place name; the fuzzy
+        ***REMOVED*** name tier matched "tavern"-named entities 146-302km away for
+        ***REMOVED*** what the data answers at meters. Strip the qualifier, resolve
+        ***REMOVED*** the class, and answer nearest-from the other endpoint.
+        stripped = [cls._strip_generic_qualifiers(t) for t in texts]
+        targets = [
+            cls._resolve_tag_target(s) if s else None for s, _o in stripped
+        ]
+        resolved = [None, None]
+        for i in (0, 1):
+            if targets[i] is None:
+                entity = EntityGeocoder.geocode(
+                    texts[i], country_code, snapshot_date
+                )
+                if entity and entity.get("lat") is not None:
+                    resolved[i] = entity
         trace.append({"step": "batch_geocode",
-                      "inputs": [locations[0]["text"], locations[1]["text"]],
-                      "outputs": [a, b]})
+                      "inputs": texts,
+                      "outputs": [resolved[0], resolved[1]]})
 
-        if not a or not b or not a.get("osm_id") or not b.get("osm_id") \
-                or not a.get("lat") or not b.get("lat"):
+        for i in (0, 1):
+            if targets[i] is None:
+                continue
+            j = 1 - i
+            other = resolved[j]
+            if not other or other.get("lat") is None:
+                trace.append({"step": "class_nearest_resolve",
+                              "input": texts[i], "target": targets[i],
+                              "error": "other endpoint has no coordinates"})
+                return [{"error": "Could not geocode one or both entities"}]
+            other_point = Point(other["lon"], other["lat"], srid=4326)
+            class_text, ordinal = stripped[i]
+            hits = cls._search_by_amenity_spatial(
+                class_text, country_code, snapshot_date,
+                anchor_point=other_point, radius_m=None,
+                top_k=ordinal + 1, trace=trace, tag_target=targets[i],
+            )
+            hits = [h for h in (hits or []) if h.get("lat") is not None]
+            if len(hits) <= ordinal:
+                trace.append({"step": "class_nearest_resolve",
+                              "input": texts[i], "target": targets[i],
+                              "error": "no entities of the class"})
+                return [{"error": "Could not geocode one or both entities"}]
+            hit = hits[ordinal]
+            trace.append({"step": "class_nearest_resolve",
+                          "input": texts[i], "target": targets[i],
+                          "resolved": hit.get("name"),
+                          "distance_m": hit.get("distance_m")})
+            resolved[i] = {
+                "lat": hit["lat"], "lon": hit["lon"],
+                "name": hit.get("name"), "osm_id": hit.get("osm_id"),
+                "osm_type": hit.get("osm_type"),
+            }
+
+        a, b = resolved[0], resolved[1]
+        if not a or not b or not a.get("lat") or not b.get("lat"):
             if trace and trace[-1].get("step") == "batch_geocode":
                 trace[-1]["error"] = "Could not geocode one or both entities"
             return [{"error": "Could not geocode one or both entities"}]
@@ -977,10 +1099,14 @@ class TemplateExecutorsMixin:
 
         result = {"distance_km": round(geo_dist_km, 3),
                   "distance_m": round(geo_dist_m, 1),
-                  "from": locations[0]["text"],
-                  "to": locations[1]["text"],
+                  "from": texts[0],
+                  "to": texts[1],
                   "from_coords": {"lat": a["lat"], "lon": a["lon"]},
                   "to_coords": {"lat": b["lat"], "lon": b["lon"]}}
+        if targets[0] is not None:
+            result["from_resolved"] = a.get("name")
+        if targets[1] is not None:
+            result["to_resolved"] = b.get("name")
         return [result]
 
     ***REMOVED*** ── Data-plane search helper ────────────────────────────────────────────

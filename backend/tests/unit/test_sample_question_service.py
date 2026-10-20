@@ -139,8 +139,8 @@ class TestGenerateSubdivision:
             SampleQuestionService, "_amenities_near",
             return_value=[("place_of_worship", 3)],
         ), mock.patch.object(
-            SampleQuestionService, "_verify_question",
-            return_value={"ok": True, "result_count": 1},
+            SampleQuestionService, "_amenity_entity_count",
+            return_value=3,
         ), mock.patch.object(
             SampleQuestion, "objects",
             mock.Mock(
@@ -157,10 +157,13 @@ class TestGenerateSubdivision:
         assert "Which churches are within 200m of San Pablo?" in questions
 
     def test_verify_drops_questions_without_results(self):
-        ***REMOVED*** Execute-and-keep: a candidate the verifier rejects is not stored.
+        ***REMOVED*** DB-evidence keep: a candidate whose census evidence is below its
+        ***REMOVED*** floor is not stored. The class-LIST forms need >= 3 entities of
+        ***REMOVED*** the amenity in range; the ***REMOVED***2 distance answer (two real named
+        ***REMOVED*** anchors in the pool) always keeps.
         anchors = [
             {"name": "San Pablo", "osm_id": 1, "lat": 1.0, "lon": 1.0},
-            {"name": "San Pablo", "osm_id": 2, "lat": 1.1, "lon": 1.1},
+            {"name": "San Juan", "osm_id": 2, "lat": 1.1, "lon": 1.1},
         ]
         created = []
 
@@ -178,10 +181,10 @@ class TestGenerateSubdivision:
             SampleQuestionService, "_named_entities_in", return_value=anchors,
         ), mock.patch.object(
             SampleQuestionService, "_amenities_near",
-            return_value=[("place_of_worship", 3)],
+            return_value=[("place_of_worship", 1)],
         ), mock.patch.object(
-            SampleQuestionService, "_verify_question",
-            return_value={"ok": False, "result_count": 0, "error": "none"},
+            SampleQuestionService, "_amenity_entity_count",
+            return_value=1,
         ), mock.patch.object(
             SampleQuestion, "objects",
             mock.Mock(
@@ -192,9 +195,10 @@ class TestGenerateSubdivision:
             result = SampleQuestionService.generate_subdivision(
                 "BZ", "Q512273",
             )
-        assert result["generated"] == 0
+        stored = {getattr(o, "template") for o in created}
+        assert result["generated"] == 1  ***REMOVED*** only the ***REMOVED***2 distance question
         assert result["dropped"] >= 1
-        assert created == []
+        assert stored == {"OBJECT-FIELD-MEASURE (***REMOVED***2)"}
 
     def test_one_question_per_template_selected(self):
         ***REMOVED*** Criteria 2026-10-01: the subdivision bank is exactly ONE
@@ -221,8 +225,8 @@ class TestGenerateSubdivision:
             SampleQuestionService, "_amenities_near",
             return_value=[("place_of_worship", 3)],
         ), mock.patch.object(
-            SampleQuestionService, "_verify_question",
-            return_value={"ok": True, "result_count": 3},
+            SampleQuestionService, "_amenity_entity_count",
+            return_value=3,
         ), mock.patch.object(
             SampleQuestion, "objects",
             mock.Mock(
@@ -246,27 +250,22 @@ class TestGenerateSubdivision:
 
     def test_select_one_per_template_uses_candidate_floor(self):
         ***REMOVED*** The >= 3 floor rides the question FORM (a class list), not the
-        ***REMOVED*** template: a class question with < 3 results is dropped, while a
-        ***REMOVED*** structural answer (distance) verifies at >= 1 (2026-10-01).
+        ***REMOVED*** template: a class question whose DB evidence is below its floor
+        ***REMOVED*** is dropped, while a structural answer (distance) keeps at >= 1
+        ***REMOVED*** (2026-10-01; evidence-based since 2026-10-11).
         rows = [
             {"question": "Which churches are within 200m of San Pablo?",
              "template": "FILTER-AGGREGATE-MEASURE (***REMOVED***1)",
-             "anchor": "San Pablo", "min_results": 3},
+             "anchor": "San Pablo", "min_results": 3,
+             "evidence_count": 2},
             {"question": "How far is San Pablo from San Juan?",
              "template": "OBJECT-FIELD-MEASURE (***REMOVED***2)",
-             "anchor": "San Pablo", "min_results": 1},
+             "anchor": "San Pablo", "min_results": 1,
+             "evidence_count": 2},
         ]
-        with mock.patch.object(
-            SampleQuestionService, "_verify_question",
-            side_effect=lambda q, cc, snap, min_results=1: {
-                "ok": min_results <= 1, "result_count": 1,
-            },
-        ):
-            selected, verified, dropped = (
-                SampleQuestionService._select_one_per_template(
-                    rows, "BZ", "2025_12_31",
-                )
-            )
+        selected, verified, dropped = (
+            SampleQuestionService._select_one_per_template(rows)
+        )
         assert [r["template"] for r in selected] == [
             "OBJECT-FIELD-MEASURE (***REMOVED***2)",
         ]

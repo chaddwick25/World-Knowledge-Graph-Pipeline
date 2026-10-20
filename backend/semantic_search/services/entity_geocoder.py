@@ -4,8 +4,6 @@ EntityGeocoder — resolve entity names to OsmEntity objects with lat/lon.
 Uses PostGIS ILIKE name search first (fast, exact-ish), falls back to
 FastText semantic search on the name (handles "Hollywood Boulevard" vs
 "Hollywood Blvd").
-
-Implements MAPQA_TO_EXECUTION_PLAN.md §2.2.3.
 """
 
 import logging
@@ -35,6 +33,12 @@ class EntityGeocoder:
         """
         if not entity_name:
             return None
+
+        ***REMOVED*** Curly vs straight quotes: OSM names and user input both carry
+        ***REMOVED*** U+2018/U+2019 ("Ice N' Beans" fails every exact/ILIKE tier when
+        ***REMOVED*** one side is curly). Normalize the query; the SQL tiers
+        ***REMOVED*** normalize the stored name the same way.
+        entity_name = EntityGeocoder._normalize_quotes(entity_name)
 
         snapshot_id = snapshot_date or get_latest_snapshot_id()
         if not snapshot_id:
@@ -98,9 +102,16 @@ class EntityGeocoder:
             except Exception:  ***REMOVED*** noqa: BLE001 — trigram unavailable → skip
                 break
 
-        ***REMOVED*** 2. Exact name match (case-insensitive) — check the 'name' tag
+        ***REMOVED*** 2. Exact name match (case-insensitive) — check the 'name' tag.
+        ***REMOVED***    The stored name is quote-normalized in SQL so a curly stored
+        ***REMOVED***    apostrophe still matches the straight query (and vice versa).
         for name_variant in variants:
-            qs_exact = qs.filter(tags__name__iexact=name_variant)
+            qs_exact = qs.extra(
+                where=["%s = LOWER(%s)"],
+                params=[name_variant,
+                        "REPLACE(REPLACE(tags->>'name', chr(8216), chr(39)),"
+                        " chr(8217), chr(39))"],
+            )
             entity = EntityGeocoder._pick(list(qs_exact[:5]))
             if entity:
                 result = EntityGeocoder._entity_to_dict(entity)
@@ -111,9 +122,16 @@ class EntityGeocoder:
 
         ***REMOVED*** 3. ILIKE contains match — prefer entities with valid coordinates.
         ***REMOVED***    Unbounded scan on names not romanized (94% of IE) — only hit
-        ***REMOVED***    when both the indexed trigram and exact steps missed.
+        ***REMOVED***    when both the indexed trigram and exact steps missed. Stored
+        ***REMOVED***    name is quote-normalized like the query.
         for name_variant in variants:
-            qs_ilike = qs.filter(tags__name__icontains=name_variant)
+            qs_ilike = qs.extra(
+                where=[
+                    "REPLACE(REPLACE(tags->>'name', chr(8216), chr(39)),"
+                    " chr(8217), chr(39)) ILIKE %s"
+                ],
+                params=[f"%{name_variant}%"],
+            )
             ***REMOVED*** Fragment guard (Kuhn's Template correction layer): a short
             ***REMOVED*** query ("Cliffs", 6 chars) must not substring-match a much
             ***REMOVED*** longer name ("Cliffs of Howth") — that is a truncated span,
@@ -134,7 +152,13 @@ class EntityGeocoder:
         ***REMOVED*** 4. Try with common abbreviations expanded
         expanded = EntityGeocoder._expand_abbreviations(clean_name)
         if expanded != clean_name:
-            qs_exp = qs.filter(tags__name__icontains=expanded)
+            qs_exp = qs.extra(
+                where=[
+                    "REPLACE(REPLACE(tags->>'name', chr(8216), chr(39)),"
+                    " chr(8217), chr(39)) ILIKE %s"
+                ],
+                params=[f"%{expanded}%"],
+            )
             entity = EntityGeocoder._pick(list(qs_exp[:20]))
             if entity:
                 result = EntityGeocoder._entity_to_dict(entity)
@@ -214,6 +238,98 @@ class EntityGeocoder:
         ]
 
     @staticmethod
+    def _trigram_rows(name_variant: str, qs, limit: int, min_sim: float):
+        """One indexed trigram query, ranked by descending similarity,
+        with the fragment guard (a short query must not match a much
+        longer candidate at low similarity). Shared by the live seed
+        path; `geocode()` keeps its own tier-1 query untouched."""
+        from django.contrib.postgres.search import TrigramSimilarity
+        return list(
+            qs.extra(
+                where=[
+                    "name_romanized %% %s AND "
+                    "similarity(name_romanized, %s) >= %s AND "
+                    "NOT (similarity(name_romanized, %s) < 0.6 AND "
+                    "     length(name_romanized) > %s)"
+                ],
+                params=[name_variant, name_variant, min_sim,
+                        name_variant, int(1.6 * len(name_variant))],
+            )
+            .order_by(
+                TrigramSimilarity("name_romanized", name_variant).desc(),
+            )[:limit]
+        )
+
+    @staticmethod
+    def geocode_candidates(entity_name: str, country_code: str = None,
+                           snapshot_date: str = None, limit: int = 5,
+                           min_sim: float = 0.4) -> dict:
+        """Ranked candidates for the live seed resolution (ISSUE-48).
+
+        Trigram tier ONLY — one indexed query (~50ms); the unindexed
+        exact/ILIKE tiers stay finalize-only (4-9s on a miss on IE-scale
+        tables). Returns {"asked", "candidates": [...]} with candidates
+        ranked by similarity, each the `_entity_to_dict` shape; empty
+        list when nothing clears the floor. The head row keeps `_pick`
+        semantics (coordinates first, then place score) so it matches
+        what `geocode()` would return.
+        """
+        empty = {"asked": entity_name, "candidates": []}
+        if not entity_name:
+            return empty
+        entity_name = EntityGeocoder._normalize_quotes(entity_name)
+        snapshot_id = snapshot_date or get_latest_snapshot_id()
+        if not snapshot_id:
+            return empty
+        clean_name = EntityGeocoder._strip_articles(entity_name)
+        qs = OsmEntity.objects.using("vectors").filter(
+            snapshot_id=snapshot_id,
+        )
+        if country_code:
+            qs = qs.filter(country_code=country_code.upper())
+        variants = [v for v in dict.fromkeys([clean_name, entity_name]) if v]
+        for name_variant in variants:
+            try:
+                rows = EntityGeocoder._trigram_rows(
+                    name_variant, qs, limit, min_sim,
+                )
+            except Exception:  ***REMOVED*** noqa: BLE001 — trigram unavailable → skip
+                break
+            candidates = [
+                d for d in (EntityGeocoder._entity_to_dict(e) for e in rows)
+                if d
+            ]
+            if not candidates:
+                continue
+            picked = EntityGeocoder._pick(rows)
+            head = EntityGeocoder._entity_to_dict(picked) if picked else None
+            ordered = []
+            seen = set()
+            for c in ([head] if head else []) + candidates:
+                key = (c.get("osm_type"), c.get("osm_id"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                ordered.append(c)
+            return {"asked": entity_name, "candidates": ordered}
+        return empty
+
+    @staticmethod
+    def seed_suggestions(entity_name: str, country_code: str = None,
+                         snapshot_date: str = None, limit: int = 3) -> list:
+        """Nearest names for the not-found path ("did you mean ...?").
+
+        Lower similarity floor than the geocode floor (0.3 vs 0.4) so a
+        misspelled name still surfaces its likely target; trigram-only,
+        indexed. Same row shape as `geocode_candidates`.
+        """
+        res = EntityGeocoder.geocode_candidates(
+            entity_name, country_code, snapshot_date,
+            limit=limit, min_sim=0.3,
+        )
+        return res.get("candidates") or []
+
+    @staticmethod
     def _entity_to_dict(entity: OsmEntity) -> dict:
         tags = entity.tags or {}
         lat = lon = None
@@ -274,6 +390,21 @@ class EntityGeocoder:
             if lower.startswith(article):
                 return name.strip()[len(article):].strip()
         return name.strip()
+
+    @staticmethod
+    def _normalize_quotes(name: str) -> str:
+        """Curly quotes to straight: U+2018/U+2019/U+201B -> ' and
+        U+201C/U+201D -> \". OSM names and user input both carry the
+        curly forms (keyboards, autocorrect), and every exact/ILIKE
+        tier fails when one side is curly."""
+        if not name:
+            return name
+        return (
+            name
+            .replace("\u2018", "'").replace("\u2019", "'")
+            .replace("\u201b", "'")
+            .replace("\u201c", '"').replace("\u201d", '"')
+        )
 
     @staticmethod
     def _expand_abbreviations(name: str) -> str:

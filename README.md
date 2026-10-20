@@ -1,7 +1,5 @@
 ***REMOVED*** World KG & Geo Spatial Reasoning
 
-Live: [EXAMPLE-TAILNET-HOSTNAME](https://EXAMPLE-TAILNET-HOSTNAME/)
-
 Search places worldwide and get AI-powered answers. The app turns raw
 OpenStreetMap data into a searchable knowledge base, then lets you ask
 questions about any country it has processed and get grounded answers
@@ -118,5 +116,7 @@ suggestions are welcome.
 
 Setup and operation: `docs/SETUP.md` (Docker Compose, database
 extensions, migrations, planet init, workers). Implementation details
-with file-level references: `docs/Schematics/`. Design decisions and
-process narrative: `docs/preserving_the_process/`.
+with file-level references, organized by owning app: `docs/`
+(`core/`, `pipeline/`, `semantic_search/`, `geovectors_encoder/`, …).
+Design decisions and the paper-to-pipeline record:
+`docs/research_to_runtime/`.

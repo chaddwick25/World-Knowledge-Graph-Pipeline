@@ -129,14 +129,18 @@ class TestToolCallValidation:
     def test_tools_schema_shape(self):
         schema = QueryEnrichmentService._research_tools_schema()
         assert [t["function"]["name"] for t in schema] == [
-            "nameSearch", "structuredSearch",
+            "nameSearch", "structuredSearch", "similarEntities",
+            "classDrift",
         ]
         for entry in schema:
             fn = entry["function"]
             assert entry["type"] == "function"
             assert fn["description"]
             assert fn["parameters"]["type"] == "object"
-            assert fn["parameters"]["required"]
+            ***REMOVED*** required may be empty (classDrift is a zero-arg scope-level
+            ***REMOVED*** capability check); when present it must name real props.
+            assert set(fn["parameters"].get("required") or []) <= set(
+                fn["parameters"]["properties"])
 
 
 ***REMOVED*** ── Search tool payload construction (fake client — no DB) ───────────────
@@ -199,6 +203,93 @@ class TestCallSearchTool:
         assert QueryEnrichmentService._call_search_tool(
             "delete-everything", {}, _results(), "BZ", None,
         ) is None
+
+    class _FakeSimilarClient:
+        """similar-entities endpoint stub: name/similarity top-level."""
+        def __init__(self, results):
+            self.calls = []
+            self._results = results
+
+        def post(self, path, data=None, content_type=None, **kwargs):
+            self.calls.append((path, data))
+            return FakeSearchResponse({"results": self._results})
+
+    def test_similar_entities_drops_same_name_chain_siblings(
+            self, monkeypatch):
+        """2026-10-16 Island Grill run: the seed is a chain — all 5
+        returned "twins" were sibling branches named "Island Grill".
+        Same-name results (the seed + chain siblings) must be excluded
+        from the twins channel."""
+        fake = self._FakeSimilarClient([
+            {"osm_id": 1, "osm_type": "node", "name": "Island Grill",
+             "wkg_class": "wkgs:Amenity", "similarity": 0.99},
+            {"osm_id": 2, "osm_type": "node", "name": " ISLAND GRILL",
+             "wkg_class": "wkgs:Amenity", "similarity": 0.95},
+            {"osm_id": 3, "osm_type": "node", "name": "Pepper's Jerk Center",
+             "wkg_class": "wkgs:Amenity", "similarity": 0.80},
+        ])
+        monkeypatch.setattr("django.test.Client", lambda: fake)
+        out = QueryEnrichmentService._call_search_tool(
+            "similarEntities",
+            {"entity": "Island Grill", "topK": 5, "scope": "same_country"},
+            _results(), "JM", None,
+        )
+        assert [r["name"] for r in out] == ["Pepper's Jerk Center"]
+        ***REMOVED*** The endpoint call itself is unchanged — exclusion is local.
+        path, data = fake.calls[0]
+        assert path == "/api/nca/similar-entities/"
+        assert json.loads(data)["entity"] == "Island Grill"
+
+    class _CaptureSearchClient:
+        """Captures the structuredSearch payload; returns canned rows."""
+        def __init__(self):
+            self.data = None
+
+        def post(self, path, data=None, content_type=None, **kwargs):
+            self.data = data
+            return FakeSearchResponse({"results": []})
+
+    def test_structured_search_cuisine_venue_remap(self, monkeypatch):
+        """{"cuisine": "fast_food"} is an amenity value under the wrong
+        key — guaranteed-empty cohort (the Island Grill run). It remaps
+        to {"amenity": "fast_food"}."""
+        fake = self._CaptureSearchClient()
+        monkeypatch.setattr("django.test.Client", lambda: fake)
+        QueryEnrichmentService._call_search_tool(
+            "structuredSearch",
+            {"queryTags": {"cuisine": "fast_food"}, "topK": 5},
+            _results(), "JM", None,
+        )
+        assert json.loads(fake.data)["query_tags"] == {
+            "amenity": "fast_food",
+        }
+
+    def test_structured_search_real_cuisine_kept(self, monkeypatch):
+        """A genuine cuisine value (jerk) passes through untouched."""
+        fake = self._CaptureSearchClient()
+        monkeypatch.setattr("django.test.Client", lambda: fake)
+        QueryEnrichmentService._call_search_tool(
+            "structuredSearch",
+            {"queryTags": {"cuisine": "jerk"}, "topK": 5},
+            _results(), "JM", None,
+        )
+        assert json.loads(fake.data)["query_tags"] == {"cuisine": "jerk"}
+
+    def test_structured_search_venue_value_dropped_when_amenity_set(
+            self, monkeypatch):
+        """{"amenity": "restaurant", "cuisine": "fast_food"}: the bogus
+        cuisine key is dropped, the real amenity kept."""
+        fake = self._CaptureSearchClient()
+        monkeypatch.setattr("django.test.Client", lambda: fake)
+        QueryEnrichmentService._call_search_tool(
+            "structuredSearch",
+            {"queryTags": {"amenity": "restaurant", "cuisine": "fast_food"},
+             "topK": 5},
+            _results(), "JM", None,
+        )
+        assert json.loads(fake.data)["query_tags"] == {
+            "amenity": "restaurant",
+        }
 
 
 ***REMOVED*** ── Primary digest ───────────────────────────────────────────────────────

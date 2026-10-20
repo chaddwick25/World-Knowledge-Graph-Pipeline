@@ -7,7 +7,7 @@ Hosts from ever reaching that branch. The shared host allowlist used to
 include localhost/127.0.0.1 on the PUBLIC edge, so a spoofed
 "Host: localhost" flipped is_public_host() to "trusted" — the one real
 finding of the 2026-10-05 security-review model bake-off
-(docs/Schematics/08_Agent_MCP_LLM/07_Security_Review_Models.md, fixed the
+(docs/platform/security_review_models.md, fixed the
 same day by splitting the allowlist per surface). These tests parse the
 config file so the invariants survive future edits. No DB / network
 required.
@@ -19,8 +19,11 @@ from pathlib import Path
 import pytest
 
 NGINX_CONF = Path(__file__).resolve().parents[3] / 'deploy' / 'nginx.conf'
-FUNNEL_HOST = 'EXAMPLE-TAILNET-HOSTNAME'
-LOOPBACK_HOSTS = {'localhost', '127.0.0.1', '192.0.2.1'}
+
+***REMOVED*** The real funnel hostname and tailnet IP deliberately live only in the
+***REMOVED*** local (gitignored) config; these tests derive them structurally: the
+***REMOVED*** funnel host is the single public-map entry in the .ts.net form, and the
+***REMOVED*** trusted-local set comes from the middleware's own TRUSTED_LOCAL_HOSTS.
 
 
 def _extract_block(text, header_pattern):
@@ -52,6 +55,19 @@ def _map_entries(map_block):
     }
 
 
+def _funnel_host(conf_text):
+    """The funnel hostname, derived from the config itself: the single
+    entry of the public allowlist map, asserted to have the Tailscale
+    funnel hostname form."""
+    entries = _map_entries(_extract_block(
+        conf_text, r'map \$host \$host_allowed_public'
+    ))
+    assert len(entries) == 1, sorted(entries)
+    (host,) = entries
+    assert host.endswith('.ts.net'), host
+    return host
+
+
 def _server_block(text, listen_port):
     for m in re.finditer(r'^server \{', text, re.MULTILINE):
         block = _extract_block(text[m.start():], r'server')
@@ -69,29 +85,42 @@ def _marker_headers(server_block):
 
 @pytest.fixture(scope='module')
 def conf_text():
+    if not NGINX_CONF.exists():
+        ***REMOVED*** The config is local-only (deploy/ is gitignored); a fresh clone
+        ***REMOVED*** has nothing to parse.
+        pytest.skip('host repo layout (deploy/) not present')
     return NGINX_CONF.read_text()
 
 
 class TestHostAllowlists:
     def test_public_map_allows_only_funnel_hostname(self, conf_text):
+        ***REMOVED*** Exactly one entry, and it is the funnel hostname (the .ts.net
+        ***REMOVED*** form): the public edge is funnel-hostname-only.
         entries = _map_entries(_extract_block(
             conf_text, r'map \$host \$host_allowed_public'
         ))
-        assert entries == {FUNNEL_HOST}
+        assert len(entries) == 1, sorted(entries)
+        (host,) = entries
+        assert host.endswith('.ts.net'), host
 
     def test_public_map_has_no_loopback_entries(self, conf_text):
         ***REMOVED*** Loopback entries on :80 let any client spoof a trusted Host and
-        ***REMOVED*** flip the middleware's is_public_host() — the removed hole.
+        ***REMOVED*** flip the middleware's is_public_host() — the removed hole. The
+        ***REMOVED*** trusted set is the middleware's own (TRUSTED_LOCAL_HOSTS), so
+        ***REMOVED*** the tailnet IP needs no hardcoding here.
+        from backend.middleware import _LOCAL_HOSTS
         entries = _map_entries(_extract_block(
             conf_text, r'map \$host \$host_allowed_public'
         ))
-        assert not entries & LOOPBACK_HOSTS
+        assert not entries & set(_LOCAL_HOSTS)
 
     def test_tailnet_map_keeps_loopback_entries(self, conf_text):
         entries = _map_entries(_extract_block(
             conf_text, r'map \$host \$host_allowed_tailnet'
         ))
-        assert {'localhost', '127.0.0.1', FUNNEL_HOST} <= entries
+        assert {'localhost', '127.0.0.1'} <= entries
+        ***REMOVED*** The funnel hostname is servable on the tailnet listener too.
+        assert _funnel_host(conf_text) in entries
 
     def test_tailnet_map_covers_trusted_local_hosts(self, conf_text):
         ***REMOVED*** "Keep the tailnet map in sync with TRUSTED_LOCAL_HOSTS" — every

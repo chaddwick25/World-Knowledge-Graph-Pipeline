@@ -7,7 +7,7 @@ the prompt; the decompose/assemble prompts are rendered from the recipe.
 The repair pipeline reads the recipe's intent vocabulary implicitly via
 the shared TAG_RULES / CATEGORY_TAG_TARGETS (``_constants.py``).
 
-The only recipe today: FOOD_REPORT — a food & drink vendor report
+The recipes today: FOOD_REPORT — a food & drink vendor report
 (restaurants, cafes, bars, pubs, food trucks, street vendors, vending
 machines…), scoped by design: shops, services, health, transit, and
 infrastructure are out. Sections: where to eat and drink, popular
@@ -15,9 +15,14 @@ brands (derived name-frequency tally), local vs international cuisine
 (cuisine-tag split), and getting around measured as distances/clustering
 between food spots. The PLACE_REPORT recipe was replaced 2026-10-02 —
 the owner wanted one focused recipe, not a domain-neutral place survey.
-Further recipes plug into the same engine: a recipe row + a router
-pattern, no loop changes.
+DOPPELGANGER_REPORT (2026-10-11): the similar-entities report — the
+seed entity anchors everything; the twins come from the pre-plan
+similarEntities search, the spread from distance questions between the
+seed and the twins. Further recipes plug into the same engine: a recipe
+row + a router pattern, no loop changes.
 """
+
+import re
 
 ***REMOVED*** ── Registry ─────────────────────────────────────────────────────────────
 
@@ -51,17 +56,23 @@ FOOD_REPORT = {
     "class_vocabulary": (
         "restaurants, cafes, fast food, bars, pubs, taverns, beer "
         "gardens, nightclubs, food courts, food trucks, street food, "
-        "snack bars, ice cream, vending machines, bakeries"
+        "snack bars, ice cream, vending machines, bakeries, bubble tea"
     ),
+    ***REMOVED*** The deterministic subject question's head noun (2026-10-11):
+    ***REMOVED*** "Which {subject} cafes are within X of {anchor}?" — food & drink
+    ***REMOVED*** vendors; other recipes set their own.
+    "subject_head": "cafes",
     "radius_policy": (
         "YOU decide each question's radius (output radius_m) from the "
-        "entity class and the anchor's extent — do not copy a template "
-        "radius. Class-aware bands: a city-scale anchor (Seoul, "
-        "Belmopan) needs at least 2 km, prefer 3-20 km for vendor "
-        "searches across a city; a venue, building, or neighbourhood "
-        "anchor works at 300m-2km; a 'nearest' question stays under "
-        "2 km. Never use 1 km for a city. Never exceed 50 km. State "
-        "the radius in the question text AND as radius_m."
+        "entity class and the anchor's extent: do not copy a template "
+        "radius. Class-aware bands: a city-scale anchor (Kingston, "
+        "Seoul, Belmopan) needs at least 10 km, prefer 10-30 km for "
+        "vendor searches across a city (2026-10-12: the 2 km censuses "
+        "returned thin results; 10 km returned 86 entities); a venue, "
+        "building, or neighbourhood anchor works at 300m-2km; a "
+        "'nearest' question stays under 2 km. Never use 1 km for a "
+        "city. Never exceed 50 km. State the radius in the question "
+        "text AND as radius_m."
     ),
     "anchor_policy": (
         "Anchor every question at a named city or town (they geocode to "
@@ -96,11 +107,60 @@ FOOD_REPORT = {
     "slot_defaults": {
         "eat": "Which restaurants are within 10km of {anchor}?",
         "cuisine": "Which restaurants are within 10km of {anchor}?",
-        "move": "Which cafes are within 1km of {anchor}?",
+        "move": "Which cafes are within 10km of {anchor}?",
     },
 }
 
 _register(FOOD_REPORT)
+
+DOPPELGANGER_REPORT = {
+    "key": "doppelganger_report",
+    "label": "doppelganger report",
+    ***REMOVED*** The seed entity anchors everything. The twins come from the
+    ***REMOVED*** pre-plan similarEntities search (derived — the tool's evidence, not
+    ***REMOVED*** a question); the spread from ***REMOVED***2 distance questions between the
+    ***REMOVED*** seed and the twins.
+    "slots": [
+        {"id": "twins", "section": "The similar entities", "derived": True},
+        {"id": "context", "section": "What the seed is", "derived": True},
+        {"id": "spread", "section": "Where the twins sit"},
+    ],
+    ***REMOVED*** The seed's class vocabulary (the seed entity's own class resolves
+    ***REMOVED*** through CATEGORY_TAG_TARGETS; the planner's questions stay inside
+    ***REMOVED*** it).
+    "class_vocabulary": (
+        "taverns, pubs, bars, restaurants, cafes, fast food, ice cream, "
+        "bakeries, hotels, guest houses, attractions"
+    ),
+    "subject_head": "places",
+    "radius_policy": (
+        "YOU decide each question's radius (output radius_m) from the "
+        "anchor's extent: a city-scale anchor needs at least 10 km, "
+        "prefer 10-30 km (2026-10-12); a venue, building, or "
+        "neighbourhood anchor works at 300m-2km. Never use 1 km for a "
+        "city. Never exceed 50 km. State the radius in the question "
+        "text AND as radius_m."
+    ),
+    "anchor_policy": (
+        "The seed entity is the primary anchor. Distance questions pair "
+        "the seed (or a twin named in the pre-plan evidence) with "
+        "another named entity — never a generic phrase."
+    ),
+    "assemble_sections": (
+        "the similar entities", "what the seed is", "where the twins sit",
+    ),
+    ***REMOVED*** The twins tally is the tool's evidence, so the LLM cites it and
+    ***REMOVED*** never invents twins.
+    "assemble_notes": (
+        " The twins slot is filled by the pre-plan similarEntities "
+        "search: name the twins in similarity order with their "
+        "countries; never invent twins. Spread: use the executed "
+        "distance answers between the seed and the twins; when "
+        "distances are unavailable, say so."
+    ),
+}
+
+_register(DOPPELGANGER_REPORT)
 
 DEFAULT_RECIPE_KEY = "food_report"
 
@@ -118,7 +178,39 @@ def get_recipe(key: str = None) -> dict:
 ***REMOVED*** when one lands, add a pattern here + a recipe row — the loop, repair
 ***REMOVED*** pipeline, and SSE spine stay unchanged.
 
-_ROUTER_PATTERNS = []
+_ROUTER_PATTERNS = [
+    ***REMOVED*** "find similar entities to X" / "twins of X" → the doppelganger
+    ***REMOVED*** report (2026-10-11): the Friars Tavern run answered the similarity
+    ***REMOVED*** ask with a proximity census because no recipe represented it.
+    (
+        re.compile(
+            r"\bsimilar\s+(?:entities|places|venues|to)\b"
+            ***REMOVED*** "similar cafes to X" / "similar cafe to X" (the 2026-10-12
+            ***REMOVED*** Redbones runs: both phrasings missed the alternation and
+            ***REMOVED*** the ask routed to the food census, which answers "similar"
+            ***REMOVED*** with "nearby"): any noun between similar and to/for is the
+            ***REMOVED*** doppelganger ask.
+            r"|\bsimilar\s+\w+\s+(?:to|for)\b"
+            ***REMOVED*** \bdopp\w*\b (not \bdoppelg\w*\b): the 2026-10-12 Redbones
+            ***REMOVED*** run typed "Dopplegangers" (transposed) and the strict
+            ***REMOVED*** spelling missed it; every real word starting "dopp" is
+            ***REMOVED*** this ask.
+            r"|\bdopp\w*\b|\btwins?\b",
+            re.IGNORECASE,
+        ),
+        "doppelganger_report",
+    ),
+    ***REMOVED*** The brief handshake (2026-10-11): the frontend runs with the BRIEF
+    ***REMOVED*** as the prompt, and the brief's rewording drops "similar places" —
+    ***REMOVED*** the Friars Tavern frontend run routed to FOOD_REPORT and produced a
+    ***REMOVED*** proximity/brands report. _verify_seed appends the "Seed:" line only
+    ***REMOVED*** for doppelganger asks it verified against the dataset, so that line
+    ***REMOVED*** is the recipe marker: the finalize decided, the run honors it.
+    (
+        re.compile(r"^\s*Seed:\s", re.MULTILINE),
+        "doppelganger_report",
+    ),
+]
 
 
 def route_to_recipe(prompt: str = None) -> dict:

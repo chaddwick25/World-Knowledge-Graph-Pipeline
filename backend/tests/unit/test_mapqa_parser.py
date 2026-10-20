@@ -276,7 +276,7 @@ class TestMultiEntityExtraction:
     ***REMOVED*** extracted as LOCATION entities by the fallback tokenizer, causing the
     ***REMOVED*** multi-entity supplement to inflate locations to 2 and bypass the 5b
     ***REMOVED*** cone-search branch in the executor.  See
-    ***REMOVED*** docs/issues/resolved/MAPQA_LOCATION_BEARING_5B_CONE_SEARCH_GAP.md
+    ***REMOVED*** MAPQA_LOCATION_BEARING_5B_CONE_SEARCH_GAP
 
     @pytest.mark.parametrize("cardinal", [
         "North", "South", "East", "West",

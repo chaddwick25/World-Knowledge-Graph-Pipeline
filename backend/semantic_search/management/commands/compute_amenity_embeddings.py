@@ -3,8 +3,7 @@
 Writes one ``AmenityEmbedding`` row per vocabulary entry (vectors DB,
 ``factor_amenity_embedding`` table).  At query time the executor's
 semantic fallback tier (``_search_by_fasttext``) looks the query string up
-here first — removing the last runtime FastText call for known amenities
-(FACTOR_NODE_RUNTIME_JOINS_PLAN.md §3.4).
+here first — removing the last runtime FastText call for known amenities.
 
 Usage::
 

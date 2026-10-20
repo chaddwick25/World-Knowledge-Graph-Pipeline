@@ -1,7 +1,6 @@
 """Invariant tests for GraphSignalService.
 
-Pins the Phase 0 invariants from GRAPH_SPECTRAL_TEMPORAL_PLAN.md §"Phase 0:
-Graph Signal Smoothness (Dirichlet Energy)":
+Pins the Phase 0 invariants ("Phase 0: Graph Signal Smoothness (Dirichlet Energy)"):
 
 - sᵀLs ≥ 0 (L is PSD)
 - sᵀLs = 0 for a constant signal on a connected graph

@@ -1,5 +1,5 @@
 """
-trace_service.py — unified LLM/run trace adapter (UNIFIED_LLM_TRACE_PLAN.md).
+trace_service.py — unified LLM/run trace adapter.
 
 One normalized trace schema, pluggable sinks, fail-soft everywhere:
 never raises, never blocks the request path, zero cost when disabled.

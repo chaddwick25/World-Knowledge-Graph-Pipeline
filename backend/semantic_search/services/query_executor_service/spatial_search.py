@@ -245,7 +245,7 @@ class SpatialSearchMixin:
 
         The query embedding comes from the precomputed AmenityEmbedding
         table when the string is in the MapQA vocabulary
-        (FACTOR_NODE_RUNTIME_JOINS_PLAN.md §3.4); runtime FastText is the
+        (factor-node §3.4); runtime FastText is the
         fallback for open-vocabulary strings.
         """
         try:

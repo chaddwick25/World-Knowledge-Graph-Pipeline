@@ -8,7 +8,7 @@
  *   classLabels  [{ label, centroid: [lon, lat], count }]
  *   entityLabels [{ name, position: [lon, lat], score }]
  *
- * Display settings (MapLabelsControls, Phase 1c controls):
+ * Display settings (the map-label display controls, Phase 1c):
  *   classSizeScale / entitySizeScale — multiplies the text size clamps
  *   classLimit / entityLimit         — caps how many labels render
  * Mutating any of them triggers the same $subscribe rebuild as the data.
@@ -18,7 +18,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 // localStorage key for the saved display settings (Save button in
-// MapLabelsControls). Stable across the feature rename so saved settings
+// the label controls). Stable across the feature rename so saved settings
 // survive; loaded once at store creation; missing/corrupt entries fall
 // back to the defaults.
 const SETTINGS_KEY = 'deckLabelSettings'

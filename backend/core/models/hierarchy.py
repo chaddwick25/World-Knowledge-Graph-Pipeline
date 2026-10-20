@@ -13,7 +13,7 @@ from .extraction import PbfFile
 class OSMWikiDataHierarchy(models.Model):
     """
     Django primitive for WorldKG Pipeline configuration.
-    Aligned with docs/preserving_the_process:
+    Aligned with docs/research_to_runtime:
     - Administrative Region as Data Primitive
     - Temporal Geofence (Geofabrik versioning)
     - Cartesian-Semantic Synchronization

@@ -1,4 +1,4 @@
-"""Tests for the factor-node tables (FACTOR_NODE_RUNTIME_JOINS_PLAN.md).
+"""Tests for the factor-node tables (factor-node runtime joins).
 
 Covers:
 - FactorNodeWriter: SpectralNodeMetric rows match the eigenbasis returned

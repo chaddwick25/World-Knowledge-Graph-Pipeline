@@ -1,9 +1,12 @@
 // MCP smoke test — exercises the WorldKG tools exactly like Goose would.
-// Usage: node scripts/mcp-smoke-test.mjs [port]
+// Usage: node scripts/mcp-smoke-test.mjs [port-or-url]
+//   MCP_TOKEN env is sent as a bearer token when set (sidecar auth).
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
-const port = process.argv[2] || "5174";
-const url = `http://localhost:${port}/__mcp`;
+const target = process.argv[2] || "5174";
+const url = target.startsWith("http")
+  ? target
+  : `http://localhost:${target}/__mcp`;
 
 const client = new Client({ name: "worldkg-mcp-smoke", version: "0.1.0" });
 
@@ -26,7 +29,14 @@ const { StreamableHTTPClientTransport } = await import(
 );
 
 try {
-  await client.connect(new StreamableHTTPClientTransport(new URL(url)));
+  const headers = process.env.MCP_TOKEN
+    ? { Authorization: `Bearer ${process.env.MCP_TOKEN}` }
+    : {};
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(url), {
+      requestInit: { headers },
+    }),
+  );
 
   const tools = await client.listTools();
   console.log("Registered tools (%d):", tools.tools.length);

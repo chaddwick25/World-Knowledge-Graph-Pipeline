@@ -3,7 +3,7 @@
 All models that previously lived in the `extraction` and `orchestration` apps
 are now defined in `core`. Their Django app_label is `core`; the underlying
 ``db_table`` names are unchanged so existing data is preserved across the
-consolidation (see ``docs/plans/CORE_APP_CONSOLIDATION_PLAN.md``).
+consolidation.
 
 Module layout matches the old `orchestration/models/` split, plus
 ``extraction.py`` and ``hierarchy.py`` for the former `extraction` models.
@@ -50,6 +50,12 @@ from core.models.artifact import (
     ReasoningWorkflow,
     ReasoningStep,
 )
+from core.models.country_request import (
+    CountryRequest,
+)
+from core.models.research_run import (
+    ResearchRun,
+)
 
 ***REMOVED*** Signal handler must be imported to register the receiver
 from core.models.infrastructure import update_processing_metrics
@@ -72,6 +78,10 @@ __all__ = [
     ***REMOVED*** artifact
     'CountryArtifact', 'EmbeddingArtifact', 'PartitionRegistry',
     'ReasoningWorkflow', 'ReasoningStep',
+    ***REMOVED*** country_request
+    'CountryRequest',
+    ***REMOVED*** research_run
+    'ResearchRun',
     ***REMOVED*** signals
     'update_processing_metrics',
 ]

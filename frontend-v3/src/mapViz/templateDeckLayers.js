@@ -25,7 +25,7 @@ function normalizeLng(lng) {
   return value
 }
 
-export function destinationPoint(lat, lon, bearingDeg, distanceM) {
+function destinationPoint(lat, lon, bearingDeg, distanceM) {
   const angularDistance = distanceM / EARTH_RADIUS_M
   const bearing = toRad(bearingDeg)
   const lat1 = toRad(lat)
@@ -51,7 +51,7 @@ export function buildCirclePolygon(lon, lat, radiusM, segments = 64) {
   return [ring]
 }
 
-export function buildConePolygon(lon, lat, bearingDeg, radiusM, halfAngleDeg = 45, segments = 32) {
+function buildConePolygon(lon, lat, bearingDeg, radiusM, halfAngleDeg = 45, segments = 32) {
   const start = bearingDeg - halfAngleDeg
   const step = (halfAngleDeg * 2) / segments
   const arc = Array.from({ length: segments + 1 }, (_, i) => (

@@ -23,6 +23,9 @@ from worldkg_nca.models import OsmEntity, PrecomputedLinkCandidate
 from worldkg_nca.subdivision_labels import get_subdivision_label
 from core.models import ProjectionWeightAsset
 from semantic_search.services.romanizing_names.registry import RomanizerRegistry
+from semantic_search.services.query_executor_service._constants import (
+    normalize_tag_value,
+)
 from semantic_search.services.worldkg_enrichment_service import get_worldkg_enrichment_service
 from worldkg_nca.services.ontology_service import get_worldkg_ontology_service
 from semantic_search.services.worldkg_drift_service import get_worldkg_drift_service
@@ -279,7 +282,6 @@ def worldkg_semantic_triplet_search(request):
     ***REMOVED*** but be robust to callers that pass slug-style identifiers such as
     ***REMOVED*** "ireland-and-northern-ireland" or "Ireland_and_northern_ireland".
     from core.services.snapshot.country_override_service import get_country_override_record
-    from core.models import OsmBoundary
     from semantic_search.utils.subdivision_resolver import (
         resolve_subdivision_bbox as _resolve_subdivision_bbox,
         resolve_subdivision_country_code,
@@ -308,52 +310,24 @@ def worldkg_semantic_triplet_search(request):
             )
     if subdivision_fallback or not bbox:
         bbox = None
-        ***REMOVED*** Prefer OsmBoundary bbox (same as enrichment service).
-        ***REMOVED*** Be robust to slug-style identifiers like "ireland_and_northern_ireland".
-        human_name = (
-            str(country_code).replace("_", " ").replace("-", " ").strip()
-            if country_code
-            else ""
-        )
-        boundary_qs = OsmBoundary.objects.filter(admin_level=2)
-        if human_name:
-            boundary = (
-                boundary_qs.filter(
-                    Q(name__icontains=country_code)
-                    | Q(name_en__icontains=country_code)
-                    | Q(name__icontains=human_name)
-                    | Q(name_en__icontains=human_name)
-                )
-                .first()
-            )
-        else:
-            boundary = boundary_qs.filter(name__icontains=country_code).first()
-        if boundary and boundary.bbox:
-            bbox = tuple(boundary.bbox)
-        else:
+        ***REMOVED*** Resolve through the shared country resolver FIRST. It handles ISO
+        ***REMOVED*** codes, QIDs, and names safely (resolve_iso_code internally). The
+        ***REMOVED*** previous ad-hoc name__icontains lookup matched 2-letter ISO codes
+        ***REMOVED*** as substrings of unrelated region names ("PL" → "Plzensky") and
+        ***REMOVED*** short-circuited the correct resolver, silently returning an empty
+        ***REMOVED*** bbox for valid ISO inputs.
+        bbox = resolve_country_bbox(country_code, None)
+        if not bbox:
             ***REMOVED*** Fallback to ISO/QID and override-aware resolution.
-            ***REMOVED*** First, try robust ISO resolution via resolve_iso_code(),
-            ***REMOVED*** which already understands slugs and Wikidata IDs.
-            iso_code = None
-            resolved_iso = None
+            iso_code = country_code.upper()
             try:
-                resolved_iso = resolve_iso_code(country_code)
-            except Exception:
-                resolved_iso = None
-
-            if resolved_iso:
-                iso_code = resolved_iso
-            else:
-                ***REMOVED*** Fallback to country override service when the caller passes an
-                ***REMOVED*** ISO/QID directly.
                 override_record = get_country_override_record(country_code)
                 if override_record:
-                    ***REMOVED*** Use override to get the canonical ISO code if available
-                    iso_code = override_record.get("iso_code") or country_code.upper()
-                else:
-                    ***REMOVED*** Try direct ISO/QID resolution
-                    iso_code = country_code.upper()
-
+                    iso_code = (
+                        override_record.get("iso_code") or country_code.upper()
+                    )
+            except Exception:
+                pass
             bbox = resolve_country_bbox(iso_code, None)
             if not bbox:
                 ***REMOVED*** Fallback to name-based lookup via OSMWikiDataHierarchy
@@ -409,7 +383,12 @@ def worldkg_semantic_triplet_search(request):
         tag_filters = Q()
         for key, value in query_tags.items():
             if value and exact_tag_match:
-                tag_filters &= Q(**{f"tags__{key}": value})
+                if key == "name":
+                    ***REMOVED*** name= is free text with OSM casing — exact match
+                    ***REMOVED*** must be case-insensitive ('jerk' == 'Jerk').
+                    tag_filters &= Q(tags__name__iexact=value)
+                else:
+                    tag_filters &= Q(**{f"tags__{key}": value})
             else:
                 tag_filters &= Q(tags__has_key=key)
         qs = qs.filter(tag_filters)
@@ -688,26 +667,51 @@ def worldkg_semantic_triplet_search(request):
     ***REMOVED*** Increase candidate limit when rdf_type is auto-inferred to find class matches
     initial_limit = max(top_k * 50, top_k) if auto_inferred_rdf_type else max(top_k * 10, top_k)
 
-    ***REMOVED*** ── Korean query handling ──────────────────────────────────────────
-    ***REMOVED*** When the query contains Hangul, FastText cc.en.300 cannot meaningfully
-    ***REMOVED*** rank candidates (all Korean OOV tokens produce similar/NaN distances).
-    ***REMOVED*** In this case, use a Postgres ILIKE pre-filter on the name= tag to find
-    ***REMOVED*** entities whose name contains the query text, then score them with the
-    ***REMOVED*** n-gram similarity.  This is a DB-level fallback for same-script Korean
-    ***REMOVED*** matching that the embedding-based path cannot handle.
+    ***REMOVED*** ── Name-term candidate pull ───────────────────────────────────────
+    ***REMOVED*** gv_tags_embedding encodes tag structure, not the name= text, so a
+    ***REMOVED*** name query ('jerk') has no path into the embedding-ordered window —
+    ***REMOVED*** on Jamaica it returned zero rows despite 25+ jerk-named entities
+    ***REMOVED*** (2026-10-16).  Pull name candidates separately and merge them into
+    ***REMOVED*** the embedding window so the substring boost / exact match can rank
+    ***REMOVED*** them.  When the query contains Hangul, FastText cc.en.300 cannot
+    ***REMOVED*** meaningfully rank candidates at all (OOV tokens produce similar/NaN
+    ***REMOVED*** distances), so the pre-filter is the primary retrieval path there.
     _is_korean_query = _contains_hangul(name_search_term)
+    name_candidates = []
     if _is_korean_query and name_search_term:
-        ***REMOVED*** Use ILIKE to find entities with the query text in their name
-        ***REMOVED*** This leverages the GIN index on tags jsonb for fast filtering
-        korean_candidates = list(
+        ***REMOVED*** Hangul never lands in name_romanized; ILIKE on the raw name=
+        ***REMOVED*** tag leverages the tags GIN index for same-script matching.
+        name_candidates = list(
             qs.filter(tags__name__icontains=name_search_term.strip())
             .order_by("name_distance")[:max(top_k * 10, 100)]
         )
+    elif name_search_term:
+        ***REMOVED*** Latin (and other) scripts: index-assisted trigram match on
+        ***REMOVED*** name_romanized (%% is the pg_trgm % operator — a bare % collides
+        ***REMOVED*** with psycopg2 placeholder parsing).  Case-free since romanized
+        ***REMOVED*** names are lowercased, and spelling-tolerant: 'jerk center'
+        ***REMOVED*** matches 'Jerk Centre' at sim 0.6.
+        name_candidates = list(
+            qs.extra(
+                where=["name_romanized %% %s"],
+                params=[name_search_term],
+            )
+            .annotate(
+                trgm_sim=RawSQL(
+                    "similarity(name_romanized, %s)",
+                    (name_search_term,),
+                    output_field=FloatField(),
+                )
+            )
+            .order_by("-trgm_sim")[:max(top_k * 10, 100)]
+        )
+
+    if name_candidates:
         ***REMOVED*** Merge with regular candidates (deduplicated by osm_type+osm_id)
         regular_candidates = list(qs.order_by("name_distance")[:initial_limit])
         seen_ids = set()
         candidates = []
-        for e in korean_candidates + regular_candidates:
+        for e in name_candidates + regular_candidates:
             key = (e.osm_type, e.osm_id)
             if key not in seen_ids:
                 seen_ids.add(key)
@@ -748,11 +752,26 @@ def worldkg_semantic_triplet_search(request):
     ***REMOVED*** (e.g. cuisine=bubble_tea) embed far from the query vector and never
     ***REMOVED*** enter the top-N candidates, so the tag_match boost could never
     ***REMOVED*** surface them — a Tag Query with an explicit value must find them.
-    _exact_pairs = {k: v for k, v in query_tags.items() if v}
-    if _exact_pairs:
+    ***REMOVED*** Tag-phrase gate (2026-10-11): multi-word values normalize to the
+    ***REMOVED*** stored OSM convention ("bubble tea" → "bubble_tea") so a typed
+    ***REMOVED*** space form hits the underscore-stored tag. The `name` key is
+    ***REMOVED*** exempt: entity names are free text, not tag vocabulary.
+    ***REMOVED*** name= values are free text stored with OSM casing, so match them
+    ***REMOVED*** case-insensitively — jsonb containment ('jerk center') misses the
+    ***REMOVED*** stored 'Jerk Center'.
+    _name_exact = (query_tags.get("name") or "").strip()
+    _exact_pairs = {
+        k: normalize_tag_value(v)
+        for k, v in query_tags.items() if v and k != "name"
+    }
+    if _exact_pairs or _name_exact:
+        qs_exact = qs
+        if _exact_pairs:
+            qs_exact = qs_exact.filter(tags__contains=_exact_pairs)
+        if _name_exact:
+            qs_exact = qs_exact.filter(tags__name__iexact=_name_exact)
         exact_matches = list(
-            qs.filter(tags__contains=_exact_pairs)
-            .order_by("name_distance")[:initial_limit]
+            qs_exact.order_by("name_distance")[:initial_limit]
         )
         if exact_matches:
             exact_ids = {(e.osm_type, e.osm_id) for e in exact_matches}
@@ -1167,7 +1186,7 @@ def execute_query_stream(request):
     if not query_text:
         return JsonResponse({"error": "query required"}, status=400)
 
-    ***REMOVED*** Traceability (UNIFIED_LLM_TRACE_PLAN.md): one trace per run; the
+    ***REMOVED*** Traceability: one trace per run; the
     ***REMOVED*** caller can propagate a cross-app id via ?trace_id= (or X-Trace-Id).
     trace_id = request.GET.get("trace_id") or uuid.uuid4().hex
 
@@ -1385,4 +1404,45 @@ def sample_questions(request):
     result = SampleQuestionService.list_questions(
         country_code, subdivision_qid, snapshot_date,
     )
+    return Response(result)
+
+
+@api_view(['POST'])
+def worldkg_similar_entities(request):
+    """
+    Entity-seeded embedding k-NN: the doppelganger primitive.
+
+    POST /api/nca/similar-entities/
+    Body: {
+        "entity": "The Friars Tavern",   ***REMOVED*** Required: the seed entity's name
+        "country_code": "IE",            ***REMOVED*** Optional: scopes the seed lookup
+        "snapshot_date": "2025_12_31",   ***REMOVED*** Optional: snapshot partition key
+        "top_k": 10,                     ***REMOVED*** 1-50, default 10
+        "scope": "same_country",         ***REMOVED*** "same_country" (default) | "all"
+    }
+
+    Answers "like X", not "near X": one exact cosine (<=>) query over the
+    seed's stored gv_tags_embedding. The embeddings are the amortized
+    artifact (Step 1); this is its cheapest consumer.
+
+    Returns: {"seed": {...}, "results": [{name, wkg_class, tags,
+    country_code, lat, lon, similarity}], "count": int} or {"error": str}.
+    """
+    entity = request.data.get("entity")
+    if not entity:
+        return Response(
+            {"error": "entity is required"}, status=status.HTTP_400_BAD_REQUEST
+        )
+    from semantic_search.services.entity_similarity_service import (
+        EntitySimilarityService,
+    )
+    result = EntitySimilarityService.similar_entities(
+        entity,
+        country_code=request.data.get("country_code"),
+        snapshot_date=request.data.get("snapshot_date"),
+        top_k=request.data.get("top_k", 10),
+        scope=request.data.get("scope", "same_country"),
+    )
+    if result.get("error"):
+        return Response(result, status=status.HTTP_404_NOT_FOUND)
     return Response(result)

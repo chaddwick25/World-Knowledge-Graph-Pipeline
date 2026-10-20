@@ -1,19 +1,19 @@
-***REMOVED*** WorldKG Pipeline — Project Rules
+***REMOVED*** WorldKG Pipeline: Project Rules
 
 Project guidance for agent sessions in this repository. The documentation
 is organized in five places:
 
-- `README.md` — layman overview and walkthrough: what the app does, one
+- `README.md`: overview and walkthrough: what the app does, one
   example query. The entry point for anything user-facing.
-- `docs/SETUP.md` — operator setup: Docker Compose, database extensions,
+- `docs/SETUP.md`: operator setup: Docker Compose, database extensions,
   migrations, planet init, romanization, workers, fresh-DB reset.
-- `docs/Schematics/` — implementation with file:line refs, organized in 8
-  categories: `01_Encoder`, `02_Celery`, `03_Postgres`,
-  `04_ETL_Django_Vue_Primitives`, `05_Learned_Layer`, `06_IGEA_USLP`,
-  `07_Romanizer`, `08_Agent_MCP_LLM`. Start at `docs/Schematics/README.md`.
-- `docs/preserving_the_process/` — why it was built this way: process
-  narrative and design decisions (13 docs).
-- `docs/papers/` — the papers the pipeline implements (WorldKG, GeoVectors,
+- `docs/` app folders: implementation with file:line refs, organized by
+  owning app/service: `core/`, `pipeline/`, `geovectors_encoder/`,
+  `semantic_search/`, `igea/`, `worldkg_nca/`, `mcp_agent/`, `platform/`,
+  plus `reference/` for lookup docs. Start at `docs/README.md`.
+- `docs/research_to_runtime/`: why it was built this way: one doc per
+  paper, how each became running code (flat, 13 docs).
+- `docs/papers/`: the papers the pipeline implements (WorldKG, GeoVectors,
   IGEA, USLP, MapQA, Spatial-Agent, functional maps), grouped under
   `Maps/`, `WernerKuhn/`, `WorldKG/`.
 
@@ -24,22 +24,35 @@ Working rules:
 - Run the relevant test suites before declaring a task complete.
 - Do not create git commits; leave staging and commits to the maintainer.
 
-Security review models (empirical, 2026-10-05):
-- Benchmarked public "offensive-security" LLM fine-tunes — 3B
-  `fawazo/qwen2.5-coder-3b-pentest-gguf` and 8B
-  `LLM-PBE/Llama3.1-8b-instruct-LLMPC-Red-Team` (mradermacher i1 repack; a
-  kali-pentester 8B degenerated on a chat-template mismatch and was
-  excluded) — reviewing a self-hosted web deployment's reverse-proxy +
-  middleware configs. Observed behavior:
-  - 8B red-team: defaulted to a DEFENSIVE posture (mitigation / monitoring
-    advice) and misread the host allowlist as "allows any host".
-  - The 3B was the most useful (1 real finding, 1 false alarm); the finding
-    restated an accepted-risk comment already in nginx.conf.
-- None outranked a careful manual review. Treat these models as brainstorming
-  assistants; verify every claim against the actual config before acting.
-- The 3B's finding (spoofed `Host: localhost` flipping middleware trust via
-  the public allowlist) was FIXED 2026-10-05: the public edge allowlist is
-  now funnel-hostname-only. Enforced by
-  `backend/tests/unit/test_nginx_trust_invariants.py` + live probes in
-  `deploy/probes/`.
-- Full bake-off writeup: `docs/Schematics/08_Agent_MCP_LLM/07_Security_Review_Models.md`.
+Task workflow (branch + ticket first):
+- Every planned task, including trivial ones, starts with the maintainer
+  creating two things before any code changes:
+  1. An issue artifact: `deploy/plans/issues/ISSUE-<slug>.md` in the
+     existing format (Milestone/Source/Intent header, Scope, Out of scope,
+     Touchpoints, Test plan, Handoff). For small tasks the artifact can be
+     short (one-line scope is fine) but it must exist.
+  2. A branch named `<issue-number>-<slug>` matching the artifact.
+- If a session is asked to implement something and no issue artifact
+  exists, ask the maintainer to write one (or draft the artifact for their
+  review) instead of implementing directly. The cartographer agent
+  (`.devin/agents/cartographer.md`) executes one artifact at a time and
+  refuses to work off `main`/`dev`.
+- The maintainer owns all mutating git operations (branch, commit, push,
+  GitLab issue creation); agent output ends at printed commands.
+
+Label contract (`glab label list`):
+- `agent-ready`: applied automatically by the `post-commit` hook when a
+  commit on an `<iid>-<slug>` branch adds the matching
+  `deploy/plans/issues/ISSUE-<slug>.md`. `glab issue list -l
+  agent-ready` is the runnable queue. Manual fallback:
+  `glab issue update <iid> -l agent-ready`.
+- `blocked`: the agent stopped on a blocker and reported it; its report
+  includes the `glab issue update <iid> -l blocked` command for the
+  maintainer to run.
+- `tooling` / `docs`: housekeeping tags for workflow/infra and
+  documentation work.
+- Scoped `status::` / `type::` labels are optional and only added when a
+  board or filter needs them.
+
+
+

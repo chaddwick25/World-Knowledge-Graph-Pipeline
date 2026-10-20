@@ -1,6 +1,6 @@
 """Unit tests for the MapQA self-supervised question generator.
 
-Tests generator invariants ([MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §8):
+Tests generator invariants (coverage-expansion §8):
   - ***REMOVED***1 count answer equals an independent ST_DWithin recount
   - ***REMOVED***2 distance answer equals a haversine recompute (±1%)
   - ***REMOVED***5 bearing answer matches bearing→cardinal recompute
@@ -295,7 +295,7 @@ class TestNameSanitization:
 
 class TestTrainSplitAndLoader:
     """train_mapqa_parser must consume self_supervised rows and tolerate
-    both CSV schemas ([MAPQA_TEMPLATE_COVERAGE_EXPANSION_PLAN.md] §5)."""
+    both CSV schemas (coverage-expansion §5)."""
 
     def test_split_includes_self_supervised(self):
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")

@@ -18,8 +18,8 @@ from ..models import (
     IngestionState,
 )
 
-***REMOVED*** Factory registry: adapter_type → adapter class. Phases 2–5 of the
-***REMOVED*** GEODATA_APP_REFACTOR_PLAN add wfs/socrata/direct/rest here.
+***REMOVED*** Factory registry: adapter_type → adapter class. Phases 2–5
+***REMOVED*** add wfs/socrata/direct/rest here.
 ADAPTER_REGISTRY = {
     'ckan': CkanAdapter,
 }

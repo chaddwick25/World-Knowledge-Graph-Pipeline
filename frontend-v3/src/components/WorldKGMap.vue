@@ -8,8 +8,9 @@
     </div>
 
     <!-- Focused-entity info popover (marker click or results-table hover),
-         anchored to the entity's map point -->
-    <EntityInfoPanel :position="infoPanelPos" />
+         anchored to the entity's map point. Seed actions only in agent
+         mode (SurfaceShell passes seedActions). -->
+    <EntityInfoPanel :position="infoPanelPos" :seed-actions="seedActions" />
 
     <!-- Relation legend (only when augmented links are visible) -->
     <div v-if="activeRelationLegend.length" class="map-legend">
@@ -73,6 +74,8 @@ import {
   RELATION_COLORS,
   buildCountryLayer,
   buildSearchResultLayer,
+  buildSeedOverlayLayers,
+  buildTwinOverlayLayers,
   buildQueryGraphLayers,
   buildAugmentedLinkLayers,
   buildAgentOverlayLayers,
@@ -154,6 +157,11 @@ export default {
       type: Array,
       default: () => [],
     },
+    // Seed actions in the info box: agent mode only (SurfaceShell).
+    seedActions: {
+      type: Boolean,
+      default: false,
+    },
     searchResults: {
       type: Array,
       default: () => [],
@@ -167,6 +175,20 @@ export default {
     },
     // Deck.gl visualization payload for Kuhn-template question results.
     templateVisualization: {
+      type: Object,
+      default: null,
+    },
+    // Doppelganger seed overlay (ISSUE-48): {confirmed, candidates} in
+    // the marker shape ({geom: {lat, lon}, seed_kind}). Candidates are
+    // amber multi-hit markers; the confirmed seed is the green pin.
+    seedOverlay: {
+      type: Object,
+      default: null,
+    },
+    // Doppelganger twin overlay (ISSUE-50 Part A): {seed, twins} from a
+    // completed run's similarEntities output. Twins render as teal
+    // markers with seed-to-twin spread lines.
+    twinsOverlay: {
       type: Object,
       default: null,
     },
@@ -295,6 +317,18 @@ export default {
       },
       deep: true,
     },
+    seedOverlay: {
+      handler() {
+        this.renderSeedOverlay()
+      },
+      deep: true,
+    },
+    twinsOverlay: {
+      handler() {
+        this.renderTwinsOverlay()
+      },
+      deep: true,
+    },
     queryGraph: {
       handler() {
         this.renderQueryGraph()
@@ -401,7 +435,9 @@ export default {
           }
           if (obj) {
             // Marker click → open the info popover and keep it open until
-            // dismissed (the × button or another marker click).
+            // dismissed (the × button or another marker click). Seeding
+            // happens ONLY inside the info box (2026-10-19: marker clicks
+            // no longer select the seed).
             this.entityInfoStore.setEntity(obj, 'map')
           }
         },
@@ -410,7 +446,7 @@ export default {
 
     // ── Map Labels layers (mapLabelsStore → labelManager) ────────────────
     // Rebuilds the TextLayers from store state (data + size/limit settings
-    // from MapLabelsControls). Empty stores produce no layers, so the deck
+    // the label controls). Empty stores produce no layers, so the deck
     // canvas stays transparent until labels exist.
     renderMapLabels() {
       if (!this.mapLabelsStore) return
@@ -476,6 +512,15 @@ export default {
       // Leaflet GeoJSON layer and its style/refresh methods were removed
       // 2026-09-28).
       labelManager.setLayerGroup('countries', [buildCountryLayer(features)])
+
+      // Restore the selected country's frame once the geometries exist.
+      // On a page refresh the route's country resolves BEFORE the
+      // countries fetch, so the selectedIds watcher fires against an
+      // empty countryLookup and the flight is a no-op (the map stays at
+      // the default world view) - 2026-10-19. Re-fire here.
+      if (this.selectedIds.length === 1) {
+        this.flyToCountry(this.selectedIds[0])
+      }
     },
 
     renderSearchResults() {
@@ -494,6 +539,42 @@ export default {
         .map((r) => [r.geom.lat, r.geom.lon])
       if (bounds.length && mapInstance) {
         mapInstance.fitBounds(bounds, { padding: [100, 100] })
+      }
+    },
+
+    renderSeedOverlay() {
+      // Doppelganger seed (ISSUE-48): amber candidate markers + the
+      // green confirmed pin, in their own layer group so they coexist
+      // with search results. The frame follows the seed points.
+      const overlay = this.seedOverlay
+      labelManager.setLayerGroup('seed-overlay', buildSeedOverlayLayers(overlay))
+      const points = []
+      for (const c of overlay?.candidates || []) {
+        if (c.geom?.lat != null) points.push([c.geom.lat, c.geom.lon])
+      }
+      if (overlay?.confirmed?.geom?.lat != null) {
+        points.push([overlay.confirmed.geom.lat, overlay.confirmed.geom.lon])
+      }
+      if (points.length && mapInstance) {
+        mapInstance.fitBounds(points, { padding: [100, 100], maxZoom: 14 })
+      }
+    },
+
+    renderTwinsOverlay() {
+      // Doppelganger run results (ISSUE-50 Part A): twin markers + the
+      // seed-to-twin spread lines, in their own layer group so they
+      // coexist with the seed overlay and search results.
+      const overlay = this.twinsOverlay
+      labelManager.setLayerGroup('twin-overlay', buildTwinOverlayLayers(overlay))
+      const points = []
+      if (overlay?.seed?.geom?.lat != null) {
+        points.push([overlay.seed.geom.lat, overlay.seed.geom.lon])
+      }
+      for (const t of overlay?.twins || []) {
+        if (t.geom?.lat != null) points.push([t.geom.lat, t.geom.lon])
+      }
+      if (points.length && mapInstance) {
+        mapInstance.fitBounds(points, { padding: [100, 100], maxZoom: 14 })
       }
     },
 

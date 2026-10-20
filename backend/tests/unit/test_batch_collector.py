@@ -1,7 +1,6 @@
 """Unit tests for ``geovectors_encoder.services.batch_collector``.
 
-Covers the producer/consumer contract documented in
-``docs/plans/PARALLEL_UPSERT_APPROACH_B_PLAN.md`` §5.1:
+Covers the producer/consumer contract of the parallel upsert design:
 
 - Batching: 45K records → 2 full batches + 1 partial on ``finish()``.
 - ``flush()`` with empty buffer is a no-op (SampleHandler calls it every

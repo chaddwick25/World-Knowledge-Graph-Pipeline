@@ -1,6 +1,6 @@
 """FactorNodeWriter — write per-entity factor-node metric tables (batch side).
 
-Implements the batch half of docs/plans/FACTOR_NODE_RUNTIME_JOINS_PLAN.md:
+Implements the batch half of the factor-node runtime joins:
 Step 5c/5d compute graph/spectral metrics in Celery; this service flushes
 them into the flat, join-friendly ``factor_*`` tables on the ``vectors`` DB
 so the runtime executor resolves SUPPORT/factor nodes via SQL joins instead

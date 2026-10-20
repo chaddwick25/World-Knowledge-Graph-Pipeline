@@ -1,10 +1,9 @@
 """Math-correctness unit tests for the USLP geographic-space formula fix.
 
-Implements the test plan from
-``docs/plans/USLP_GEO_SPACE_FORMULA_FIX.md`` §3 (Fix 4).
+Implements the test plan for the USLP geo-space formula fix (Fix 4).
 
 Pins the paper's reference-code invariants
-(``docs/Schematics/SSLPandUSLP-main/dataprep_utils.py:71-83``):
+(``USLP/dataprep_utils.py:71-83`` in the upstream ``SSLPandUSLP-main`` repo):
 
     geo_sim(h, t, r) = 1 - d(h_cluster, t_cluster) / d_max(t_cluster, precision(r))
 

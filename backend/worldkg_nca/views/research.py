@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import threading
+import time
 import uuid
 
 from django.http import JsonResponse, StreamingHttpResponse
@@ -42,11 +43,24 @@ def research_stream(request):
     country_code = request.GET.get("country_code") or None
     snapshot_date = request.GET.get("snapshot_date") or None
     subdivision_qid = request.GET.get("subdivision_qid") or None
+    ***REMOVED*** Recipe hard-select (2026-10-17): the doppelganger surface sends
+    ***REMOVED*** recipe=doppelganger_report so every run on it is a doppelganger
+    ***REMOVED*** run regardless of the ask's vocabulary; /tools sends none.
+    recipe_key = request.GET.get("recipe") or None
 
     if not prompt_text:
         return JsonResponse({"error": "prompt required"}, status=400)
 
-    ***REMOVED*** Traceability (UNIFIED_LLM_TRACE_PLAN.md): one trace per run; the
+    ***REMOVED*** Normalize to ISO before anything downstream — the frontend sends
+    ***REMOVED*** country display names ("Jamaica"); persisting the raw param made
+    ***REMOVED*** /api/nca/research/runs/?country_code=JM miss the row (2026-10-16).
+    if country_code:
+        try:
+            country_code = resolve_iso_code(country_code)
+        except Exception:
+            pass  ***REMOVED*** use as-is if resolution fails
+
+    ***REMOVED*** Traceability: one trace per run; the
     ***REMOVED*** caller can propagate a cross-app id via ?trace_id= (or X-Trace-Id).
     trace_id = request.GET.get("trace_id") or uuid.uuid4().hex
 
@@ -55,6 +69,10 @@ def research_stream(request):
 
         loop = asyncio.get_running_loop()
         events = asyncio.Queue(maxsize=512)
+        ***REMOVED*** Ordered copy of every emitted event for the persisted
+        ***REMOVED*** ResearchRun row; summary_delta tokens coalesce into one entry
+        ***REMOVED*** so the JSONB stays compact.
+        event_log = []
 
         def emit(event, **payload):
             if isinstance(event, dict):
@@ -62,40 +80,77 @@ def research_stream(request):
                 event = event.get("event") or "message"
             ***REMOVED*** Deterministic stage markers (behind TRACE_DETERMINISTIC_STAGES=1).
             TraceService.stage_event(event, payload)
-            loop.call_soon_threadsafe(events.put_nowait, {"event": event, **payload})
+            item = {"event": event, **payload}
+            loop.call_soon_threadsafe(events.put_nowait, item)
+            if event == "summary_delta" and event_log and \
+                    event_log[-1].get("event") == "summary_delta":
+                event_log[-1]["delta"] = \
+                    (event_log[-1].get("delta") or "") + (payload.get("delta") or "")
+            else:
+                event_log.append(item)
 
         def run():
+            from django.utils import timezone
+            from core.models import ResearchRun
+
+            started = time.monotonic()
+            ***REMOVED*** Run persistence is observability — fail-soft: a DB hiccup
+            ***REMOVED*** must never hang the stream (the sentinel below is the only
+            ***REMOVED*** thing that ends the client read).
+            run_row = None
             try:
-                from core.services.trace_service import TraceService
+                run_row = ResearchRun.objects.create(
+                    trace_id=trace_id,
+                    prompt=prompt_text,
+                    country_code=country_code or "",
+                    snapshot_date=snapshot_date or "",
+                    subdivision_qid=subdivision_qid or "",
+                )
+            except Exception:
+                logger.exception("ResearchRun create failed")
+            try:
                 from semantic_search.services.research_service import (
                     ResearchOrchestratorService,
                 )
-                cc = country_code
-                if cc:
-                    try:
-                        cc = resolve_iso_code(cc)
-                    except Exception:
-                        pass  ***REMOVED*** use as-is if resolution fails
                 ***REMOVED*** Thread-local trace: LLM spans from decompose/assemble/follow-ups
                 ***REMOVED*** attach as children; question/tool events become point spans.
                 with TraceService.run_trace(
                     "research", trace_id=trace_id,
                     metadata={
-                        "prompt": prompt_text[:200], "country_code": cc,
+                        "prompt": prompt_text[:200], "country_code": country_code,
                         "snapshot_date": snapshot_date,
                         "subdivision_qid": subdivision_qid,
                     },
                 ):
                     result = ResearchOrchestratorService.plan(
-                        prompt_text, cc, snapshot_date, event_callback=emit,
+                        prompt_text, country_code, snapshot_date, event_callback=emit,
                         subdivision_qid=subdivision_qid,
+                        recipe_key=recipe_key,
                     )
                     if isinstance(result, dict):
                         result["trace_id"] = trace_id
+                        if run_row is not None:
+                            run_row.recipe = result.get("recipe") or ""
+                    if run_row is not None:
+                        run_row.status = "done"
+                        run_row.result = result if isinstance(result, dict) else {}
                     emit("done", result=result)
             except Exception as exc:  ***REMOVED*** noqa: BLE001 — surface errors as an SSE event
+                if run_row is not None:
+                    run_row.status = "error"
+                    run_row.error = str(exc)
                 emit("error", error=str(exc))
             finally:
+                if run_row is not None:
+                    run_row.finished_at = timezone.now()
+                    run_row.duration_ms = int((time.monotonic() - started) * 1000)
+                    run_row.events = json.loads(
+                        json.dumps(event_log, default=str)
+                    )
+                    try:
+                        run_row.save()
+                    except Exception:
+                        logger.exception("ResearchRun persist failed")
                 loop.call_soon_threadsafe(events.put_nowait, None)  ***REMOVED*** sentinel
 
         threading.Thread(target=run, daemon=True).start()
@@ -125,6 +180,11 @@ def research_chat(request):
     Emits the AI SDK v7 UI-message-stream protocol (frontend
     ``useChat``/``DefaultChatTransport`` consumes it):
         data: {"type": "start"}
+        data: {"type": "data-seed", "id": "seed",
+               "data": {found, asked, name?, osm_id?, osm_type?, tags?,
+                        lat?, lon?, candidates?|suggestions?}}
+               (live seed resolution, slot-gated — ISSUE-48; absent on
+               non-candidate turns)
         data: {"type": "text-start", "id": "t1"}
         data: {"type": "text-delta", "id": "t1", "delta": "..."}  (repeated)
         data: {"type": "text-end", "id": "t1"}
@@ -150,7 +210,19 @@ def research_chat(request):
     country_code = body.get("country_code") or None
     snapshot_date = body.get("snapshot_date") or None
     subdivision_qid = body.get("subdivision_qid") or None
+    ***REMOVED*** Recipe hard-select (2026-10-17): gates the live seed resolution's
+    ***REMOVED*** turn-1 doppelganger check on this surface.
+    recipe_key = body.get("recipe") or None
     trace_id = body.get("trace_id") or uuid.uuid4().hex
+    ***REMOVED*** The KE context keeps the display name ("Jamaica"); the live seed
+    ***REMOVED*** geocode needs the ISO code (the frontend sends the display name —
+    ***REMOVED*** the 2026-10-11 Friars Tavern lesson).
+    geocode_country = country_code
+    if geocode_country:
+        try:
+            geocode_country = resolve_iso_code(geocode_country)
+        except Exception:
+            pass  ***REMOVED*** use as-is if resolution fails
 
     from core.services.llm_service import LLMService
     from semantic_search.services.research_service import (
@@ -161,9 +233,26 @@ def research_chat(request):
     if not llm.is_available():
         return JsonResponse({"error": "interviewer LLM unavailable"}, status=503)
 
+    ***REMOVED*** Digest prefetch (2026-10-17): the same builder the classDrift tool
+    ***REMOVED*** uses, injected into the KE context so data-metadata questions are
+    ***REMOVED*** answered from data. Fail-soft: no digest, no narration, interview
+    ***REMOVED*** proceeds.
+    digest_text = None
+    try:
+        from semantic_search.services.query_enrichment_service import (
+            QueryEnrichmentService,
+        )
+        digest_text = ResearchOrchestratorService._render_ke_digest(
+            QueryEnrichmentService._class_drift_report(
+                country_code, snapshot_date,
+            ),
+        )
+    except Exception as exc:  ***REMOVED*** noqa: BLE001 — narration is optional
+        logger.warning("KE digest prefetch failed: %s", exc)
+
     full_messages = ResearchOrchestratorService.chat_messages(
         messages, country_code, snapshot_date,
-        subdivision_qid=subdivision_qid,
+        subdivision_qid=subdivision_qid, digest_text=digest_text,
     )
 
     def _part(part_dict):
@@ -190,6 +279,21 @@ def research_chat(request):
                     },
                 ):
                     emit(_part({"type": "start"}))
+                    ***REMOVED*** Live seed resolution (ISSUE-48): deterministic,
+                    ***REMOVED*** slot-gated; the part precedes the text stream so the
+                    ***REMOVED*** pin renders while the KE thinks. Fail-soft: a
+                    ***REMOVED*** geocoder failure must not kill the interview.
+                    try:
+                        seed_part = ResearchOrchestratorService.live_seed_part(
+                            messages, recipe_key=recipe_key,
+                            country_code=geocode_country,
+                            snapshot_date=snapshot_date,
+                        )
+                    except Exception as exc:  ***REMOVED*** noqa: BLE001
+                        logger.warning("Live seed resolution failed: %s", exc)
+                        seed_part = None
+                    if seed_part is not None:
+                        emit(_part(seed_part))
                     emit(_part({"type": "text-start", "id": "t1"}))
                     for delta in llm.chat_stream(
                         full_messages, temperature=0.4, max_tokens=400,
@@ -246,8 +350,23 @@ def research_finalize(request):
     if not isinstance(messages, list):
         return JsonResponse({"error": "messages required"}, status=400)
     country_code = body.get("country_code") or None
+    if country_code:
+        try:
+            ***REMOVED*** Same resolution as research_stream: the frontend sends the
+            ***REMOVED*** country display name ("Ireland And Northern Ireland"); the
+            ***REMOVED*** seed verification's geocode filters on the ISO code, and an
+            ***REMOVED*** unresolved name matched no rows (the 2026-10-11 Friars
+            ***REMOVED*** Tavern run: "Seed: not found" for an entity that exists).
+            country_code = resolve_iso_code(country_code)
+        except Exception:
+            pass  ***REMOVED*** use as-is if resolution fails (same as research_stream)
     snapshot_date = body.get("snapshot_date") or None
     subdivision_qid = body.get("subdivision_qid") or None
+    ***REMOVED*** Recipe hard-select + the live-confirmed seed (2026-10-17): the
+    ***REMOVED*** doppelganger surface sends both; the confirmed seed skips
+    ***REMOVED*** re-geocoding in finalize_brief.
+    recipe_key = body.get("recipe") or None
+    confirmed_seed = body.get("seed") or None
 
     from semantic_search.services.research_service import (
         ResearchOrchestratorService,
@@ -256,7 +375,208 @@ def research_finalize(request):
     result = ResearchOrchestratorService.finalize_brief(
         messages, country_code, snapshot_date,
         subdivision_qid=subdivision_qid,
+        recipe_key=recipe_key,
+        confirmed_seed=confirmed_seed,
     )
     if not result:
         return JsonResponse({"error": "no brief extractable"}, status=422)
     return JsonResponse(result)
+
+
+@require_GET
+def research_seed_examples(request):
+    """Real entity examples for the doppelganger intake's greeting.
+
+    GET /api/nca/research/seed-examples/?country_code=JM&snapshot_date=...
+
+    Returns {"examples": [{name, kind, osm_id, osm_type, lat, lon}]}:
+    up to 3 named, coordinate-bearing FOOD venues (cuisine-tagged) with
+    tag embeddings, for the country, ordered by tag richness then
+    deterministically (md5 of the entity key - the MapQA sampler's
+    ordering pattern), so the greeting's invocation example is a REAL
+    place in the dataset ("help me find a doppelganger for X") instead
+    of a hardcoded name. The cuisine filter is GIN-indexable (tags
+    has-key), the embedding check guarantees a suggested seed can never
+    fail the run with "seed entity has no tag embedding". Read-only,
+    public (the open-read posture). Fail-soft: an empty list when the
+    country has no data or the query fails; the frontend falls back to
+    generic copy.
+    """
+    country_code = request.GET.get("country_code") or None
+    snapshot_date = request.GET.get("snapshot_date") or None
+    if country_code:
+        try:
+            country_code = resolve_iso_code(country_code)
+        except Exception:
+            pass  ***REMOVED*** use as-is if resolution fails (same as research_stream)
+
+    from django.db.models.expressions import RawSQL
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    from worldkg_nca.models import OsmEntity
+    from worldkg_nca.snapshot_utils import get_latest_snapshot_id
+
+    snapshot_id = snapshot_date or get_latest_snapshot_id()
+    if not snapshot_id or not country_code:
+        return JsonResponse({"examples": []})
+    try:
+        qs = (
+            OsmEntity.objects.using("vectors")
+            .filter(
+                snapshot_id=snapshot_id,
+                country_code=country_code.upper(),
+            )
+            .filter(tags__has_key="name")
+            .filter(tags__has_key="cuisine")
+            .exclude(gv_tags_embedding__isnull=True)
+            .exclude(geom__isnull=True)
+        )
+        ***REMOVED*** Geometry guard (demo fix, ISSUE-50): the country partitions can
+        ***REMOVED*** carry foreign-coordinate rows (extraction-era polygon drift), so
+        ***REMOVED*** a suggested example must fall inside the country's boundary
+        ***REMOVED*** bbox. Fail-soft: no boundary row means no guard, current
+        ***REMOVED*** behavior preserved.
+        bbox = _country_bbox(country_code.upper())
+        if bbox:
+            from django.contrib.gis.geos import Polygon
+            qs = qs.filter(geom__within=Polygon.from_bbox(bbox))
+        rows = list(
+            qs.annotate(
+                tag_count=RawSQL(
+                    "(SELECT count(*) FROM jsonb_object_keys(tags))", []
+                )
+            )
+            .order_by(
+                "-tag_count",
+                RawSQL("md5(concat(osm_type, ':', osm_id::text))", []),
+            )[:30]
+        )
+    except Exception as exc:  ***REMOVED*** noqa: BLE001 — examples are optional
+        logger.warning("seed-examples query failed: %s", exc)
+        return JsonResponse({"examples": []})
+
+    examples = []
+    for entity in rows:
+        example = _entity_to_example(entity)
+        if example is not None:
+            examples.append(example)
+        if len(examples) == 3:
+            break
+    return JsonResponse({"examples": examples})
+
+
+def _country_bbox(country_code):
+    """Country bbox from OsmBoundary (admin_level=2) ->
+    [minLon, minLat, maxLon, maxLat], or None. Fail-soft: a missing
+    boundary (or a DB hiccup) means no geometry guard, never an error.
+    """
+    try:
+        from core.models import OsmBoundary
+        boundary = (
+            OsmBoundary.objects.filter(
+                iso_code__iexact=country_code, admin_level=2,
+            )
+            .exclude(bbox__isnull=True)
+            .order_by("-valid_from")
+            .first()
+        )
+        return boundary.bbox if boundary else None
+    except Exception:  ***REMOVED*** noqa: BLE001 — guard is optional
+        return None
+
+
+def _entity_to_example(entity):
+    """OsmEntity row -> greeting example {name, kind, osm_id, osm_type,
+    lat, lon}; None when unusable (no name, or no usable coordinates -
+    the POINT(NaN NaN) ways the writer guard let through)."""
+    from semantic_search.services.entity_geocoder import EntityGeocoder
+    d = EntityGeocoder._entity_to_dict(entity)
+    if not d or not d.get("name") or d.get("lat") is None:
+        return None
+    tags = d.get("tags") or {}
+    kind = next(
+        (tags[k] for k in ("amenity", "tourism", "leisure", "shop")
+         if tags.get(k)),
+        "",
+    )
+    return {
+        "name": d["name"], "kind": kind,
+        "osm_id": d["osm_id"], "osm_type": d["osm_type"],
+        "lat": d["lat"], "lon": d["lon"],
+    }
+
+
+@require_GET
+def research_runs(request):
+    """List persisted research runs (queryable run history).
+
+    GET /api/nca/research/runs/?country_code=JM&status=done&limit=50
+        &trace_id=<hex>
+
+    Compact rows only (no events/result payload) — detail via
+    research_run_detail.
+    """
+    from core.models import ResearchRun
+
+    qs = ResearchRun.objects.all()
+    country_code = request.GET.get("country_code")
+    if country_code:
+        qs = qs.filter(country_code__iexact=country_code)
+    status = request.GET.get("status")
+    if status:
+        qs = qs.filter(status=status)
+    trace_id = request.GET.get("trace_id")
+    if trace_id:
+        qs = qs.filter(trace_id=trace_id)
+    try:
+        limit = min(int(request.GET.get("limit") or 50), 200)
+    except (TypeError, ValueError):
+        limit = 50
+
+    runs = [
+        {
+            "id": str(r.id),
+            "trace_id": r.trace_id,
+            "prompt": r.prompt[:200],
+            "country_code": r.country_code,
+            "snapshot_date": r.snapshot_date,
+            "status": r.status,
+            "recipe": r.recipe,
+            "duration_ms": r.duration_ms,
+            "error": r.error[:300] if r.error else "",
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            "event_count": len(r.events or []),
+        }
+        for r in qs[:limit]
+    ]
+    return JsonResponse({"runs": runs, "count": len(runs)})
+
+
+@require_GET
+def research_run_detail(request, run_id):
+    """Full run record: events JSONB + terminal result.
+
+    GET /api/nca/research/runs/<uuid>/
+    """
+    from core.models import ResearchRun
+
+    try:
+        run = ResearchRun.objects.get(id=run_id)
+    except (ResearchRun.DoesNotExist, ValueError):
+        return JsonResponse({"error": "run not found"}, status=404)
+    return JsonResponse({
+        "id": str(run.id),
+        "trace_id": run.trace_id,
+        "prompt": run.prompt,
+        "country_code": run.country_code,
+        "snapshot_date": run.snapshot_date,
+        "subdivision_qid": run.subdivision_qid,
+        "status": run.status,
+        "recipe": run.recipe,
+        "events": run.events or [],
+        "result": run.result,
+        "error": run.error,
+        "duration_ms": run.duration_ms,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+    })

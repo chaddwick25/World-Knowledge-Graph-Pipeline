@@ -134,6 +134,11 @@ CATEGORY_TAG_TARGETS = {
     "tacos": ("amenity", "restaurant"),
     "taqueria": ("amenity", "restaurant"),
     "mexican": ("amenity", "restaurant"),
+    ***REMOVED*** Bubble tea (2026-10-11): cuisine-subtype target — the entities are
+    ***REMOVED*** amenity=cafe/shop carrying cuisine=bubble_tea; the cuisine key is
+    ***REMOVED*** the precise filter (the jerk/taco convention: the subtype rides the
+    ***REMOVED*** cuisine tag, not the amenity).
+    "bubble tea": ("cuisine", "bubble_tea"),
     ***REMOVED*** Generic food intent: "Which food vendors..." → the restaurant class
     ***REMOVED*** (coarse — the data rarely separates vendors by tag).
     "food": ("amenity", "restaurant"),
@@ -276,6 +281,11 @@ TAG_RULES = {
             ("cuisine", ("bbq", "barbecue", "grill"))),
     "cookout": (("amenity", ("restaurant", "fast_food")),
                 ("cuisine", ("bbq", "barbecue", "grill"))),
+    ***REMOVED*** Bubble tea (2026-10-11): the subtype rides the cuisine tag
+    ***REMOVED*** ("bubble_tea" stored; "bubble tea" accepted), mirroring the
+    ***REMOVED*** jerk/taco families.
+    "bubble tea": (("amenity", ("cafe", "restaurant", "fast_food")),
+                   ("cuisine", ("bubble_tea", "bubble tea"))),
     "food vendor": (("amenity", FOOD_VENDOR_AMENITIES),),
     "eatery": (("amenity", FOOD_VENDOR_AMENITIES),),
 }
@@ -290,6 +300,65 @@ GENERIC_AMENITY_KEYS = (
     "amenity", "shop", "tourism", "leisure", "office", "craft",
     "healthcare", "public_transport",
 )
+
+***REMOVED*** ── Tag-phrase gate: space ↔ underscore round-trip (2026-10-11) ──────────
+***REMOVED*** Natural phrases ("bubble tea") and stored OSM tag values ("bubble_tea")
+***REMOVED*** differ by whitespace, and searchers type either form. The gate
+***REMOVED*** normalizes both directions: phrase → space form for the space-keyed
+***REMOVED*** dicts, value → underscore form for tags__contains filters, and both
+***REMOVED*** variants for substring matching. OSM convention stores multi-word tag
+***REMOVED*** values underscored; the space form stays as a variant for the rare
+***REMOVED*** space-stored value.
+
+_TRAILING_FRAGMENTS = (
+    " are", " is", " near", " around", " close", " nearby",
+    " within", " in", " of", " at",
+    ***REMOVED*** 2026-10-01: "taco vendors" / "food vendors" — the planner rephrases
+    ***REMOVED*** vague intents, but the executor stays resilient when one slips
+    ***REMOVED*** through.
+    " vendors of", " vendors",
+)
+
+
+def strip_trailing_fragments(phrase: str) -> str:
+    """Drop the parser's trailing verb/copula fragments ("peak are" →
+    "peak"). Shared by _resolve_tag_target and _generic_amenity_keys."""
+    phrase = (phrase or "").lower().strip()
+    for frag in _TRAILING_FRAGMENTS:
+        if phrase.endswith(frag):
+            return phrase[:-len(frag)].rstrip()
+    return phrase
+
+
+def normalize_tag_phrase(text: str) -> str:
+    """Free-text phrase → space-form canonical phrase (dict-lookup form).
+
+    "Bubble_Tea  are" → "bubble tea". Underscores become spaces so the
+    resolver's space-keyed dictionaries round-trip.
+    """
+    return " ".join(
+        strip_trailing_fragments(text).replace("_", " ").split()
+    )
+
+
+def normalize_tag_value(value: str) -> str:
+    """Free-text value → the stored OSM convention (underscored).
+
+    "bubble tea" → "bubble_tea". The `name` key is exempt upstream:
+    entity names are free text, not tag vocabulary.
+    """
+    return " ".join((value or "").split()).replace(" ", "_").lower()
+
+
+def tag_value_variants(text: str) -> tuple:
+    """Both forms of a tag value for substring matching, regardless of
+    the input's form: "bubble tea" and "bubble_tea" both yield
+    ("bubble tea", "bubble_tea")."""
+    phrase = " ".join((text or "").split())
+    if not phrase:
+        return ()
+    underscored = phrase.replace(" ", "_").lower()
+    return (underscored.replace("_", " "), underscored)
 
 ***REMOVED*** ── Default spatial bounds for open-ended questions (no explicit AMOUNT) ──
 ***REMOVED*** "What X are near/around Y?" → walkable 2km (bounds the candidate pool

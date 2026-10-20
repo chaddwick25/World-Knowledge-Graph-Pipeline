@@ -1,8 +1,7 @@
 """SubgraphTransportService — functional map computation and runtime transport.
 
 Implements the batch-time computation and runtime application of k×k functional
-map matrices between adjacent subgraph eigenbases, per
-``docs/plans/SUBGRAPH_FUNCTIONAL_MAPS_PLAN_v2.md``.
+map matrices between adjacent subgraph eigenbases.
 
 Grounded in:
 - Ovsjanikov et al. 2012 — ``C = Φ_Bᵀ S Φ_A`` (functional map definition)

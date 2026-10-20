@@ -1,6 +1,5 @@
 /**
- * ResearchPanel — interactive research with the KE interviewer
- * (RESEARCH_ORCHESTRATOR_MVP_PLAN.md).
+ * ResearchPanel — interactive research with the KE interviewer.
  *
  * The "research prompt" section is a live chat with the KE (Knowledge
  * Engineer) on the interactive LLM (the 4070). The KE asks clarifying
@@ -19,18 +18,34 @@
  *   snapshotDate   - Optional. Snapshot date string (e.g. "2025_12_31").
  *   subdivisionQid - Optional. Wikidata QID — scopes the run's results to
  *                    the subdivision polygon (2026-10-01).
+ *   recipe         - Optional. Hard-selected recipe key ("doppelganger_report"
+ *                    on the doppelganger surface) — sent on chat, finalize,
+ *                    and stream so routing is bypassed, not guessed (ISSUE-48).
+ *   setSeedOverlay - Optional. SurfaceShell slot setter; the panel feeds the
+ *                    confirmed seed + candidates to the map through it.
  */
 <template>
   <div class="d-flex flex-column gap-2">
     <!-- Chat: the research prompt section -->
     <div class="d-flex flex-column gap-1">
-      <label class="form-label small text-secondary mb-0">
-        Research prompt (interview with the research assistant)
-      </label>
       <div
         class="border rounded small p-2 d-flex flex-column gap-1"
         style="max-height: 240px; overflow-y: auto;"
       >
+        <!-- Onboarding greeting: display-only (rendered while the chat
+             is empty, never enters the transcript), so the KE's context
+             and the finalize extraction stay clean. -->
+        <div v-if="!chatMessages.length" class="d-flex">
+          <div
+            class="rounded px-2 py-1 bg-secondary-subtle"
+            style="max-width: 90%;"
+          >
+            Hello — I'm your doppelganger research assistant. Tell me
+            which place to find twins for. I'll pin it on the map for
+            you to confirm, then ask a couple of quick questions about
+            how matches should compare.
+          </div>
+        </div>
         <div
           v-for="(m, i) in chatMessages"
           :key="i"
@@ -45,12 +60,26 @@
         </div>
         <div v-if="isChatLoading" class="text-secondary">typing…</div>
       </div>
+      <!-- Copyable example ask: always visible above the input, the
+           sample-question row styling, so the invocation is one click
+           from the send button. -->
+      <div
+        class="d-flex align-items-center gap-2 border rounded p-1 px-2"
+        style="font-size: 0.72rem;"
+      >
+        <span class="flex-grow-1 text-truncate" :title="exampleQuestion">{{ exampleQuestion }}</span>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-primary text-nowrap py-0 px-2"
+          :class="{ 'btn-success': exampleCopied }"
+          @click="copyExample()"
+        >{{ exampleCopied ? 'Copied!' : 'Copy' }}</button>
+      </div>
       <form class="d-flex gap-2" @submit.prevent="sendMessage">
         <input
           v-model="draft"
           type="text"
           class="form-control form-control-sm"
-          placeholder="e.g. how well is Belize City served by public transit?"
           :disabled="isChatLoading"
         />
         <button
@@ -61,13 +90,72 @@
       </form>
     </div>
 
+    <!-- Live seed (the data-seed stream part, ISSUE-48): the resolved
+         candidate pins mid-interview; multi-hit resolves by the user
+         clicking the map or the list — never the model guessing. -->
+    <div
+      v-if="seed.asked"
+      class="border rounded small py-1 px-2"
+      :class="seed.hasSeed ? 'border-success-subtle' : 'border-danger-subtle'"
+    >
+      <div v-if="seed.hasSeed" class="d-flex align-items-center gap-2">
+        <span class="badge bg-success">Seed</span>
+        <span class="fw-semibold">{{ seed.confirmed.name }}</span>
+        <span class="text-secondary">{{ seedKindLabel(seed.confirmed) }}</span>
+        <a
+          v-if="seedWikidataUrl(seed.confirmed)"
+          :href="seedWikidataUrl(seed.confirmed)"
+          target="_blank"
+          rel="noopener"
+          class="ms-auto text-decoration-none"
+        >Wikidata ↗</a>
+      </div>
+      <div v-else class="text-danger">
+        '{{ seed.asked }}' not found in the dataset
+        <span v-if="seed.suggestions.length" class="d-block mt-1">
+          Did you mean:
+          <button
+            v-for="s in seed.suggestions"
+            :key="s.osm_type + ':' + s.osm_id"
+            type="button"
+            class="btn btn-sm btn-outline-primary py-0 px-1 me-1"
+            @click="restateSeed(s)"
+          >{{ s.name }}</button>
+        </span>
+      </div>
+      <div v-if="seedAlternatives.length" class="mt-1">
+        <div class="text-secondary">{{ seedMenuHeader }}</div>
+        <ol class="mb-0 ps-3 mt-1 d-flex flex-column gap-1">
+          <li
+            v-for="c in seedAlternatives"
+            :key="c.osm_type + ':' + c.osm_id"
+            class="d-flex align-items-center gap-2"
+          >
+            <!-- The rows OPEN/HIDE the entity's info box on the map;
+                 seeding happens only inside the info box (2026-10-19). -->
+            <button
+              type="button"
+              class="btn btn-sm py-0 px-1 text-start flex-grow-1 text-truncate"
+              :class="rowClass(c)"
+              :title="`Open ${c.name} on the map`"
+              @click="toggleEntityInfo(c)"
+              @mouseenter="seed.setHoveredKey(chipKey(c))"
+              @mouseleave="seed.clearHoveredKey(chipKey(c))"
+            >
+              {{ c.name }} <span class="text-secondary">{{ seedKindLabel(c) }}</span>
+            </button>
+          </li>
+        </ol>
+      </div>
+    </div>
+
     <!-- Extracted brief + run -->
     <div v-if="finalizing && !brief" class="small text-secondary">
       Building brief from the interview…
     </div>
     <div v-if="brief" class="alert alert-info small py-1 px-2 mb-0">
       <div class="text-secondary small mb-1">
-        Research brief
+        {{ isDoppelgangerRun ? 'Doppelganger brief' : 'Research brief' }}
         <span v-if="briefSource === 'fallback'" class="text-secondary">(from your first message)</span>
       </div>
       <div class="font-monospace">{{ brief }}</div>
@@ -79,7 +167,9 @@
       @click="runResearch"
     >
       <span v-if="isRunning" class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-      {{ isRunning ? 'Researching…' : 'Run research' }}
+      {{ isRunning
+        ? (isDoppelgangerRun ? 'Searching doppelgangers…' : 'Researching…')
+        : (isDoppelgangerRun ? 'Find doppelgangers' : 'Run research') }}
     </button>
 
     <div v-if="error" class="alert alert-danger small py-1 px-2 mb-0">
@@ -93,7 +183,7 @@
     <div v-if="questions.length" class="d-flex flex-column gap-1">
       <details ref="questionsDetails" class="research-details small text-secondary" open>
         <summary class="cursor-pointer">
-          Execution Trace - Research questions ({{ questions.length }}<template v-if="tools.length"> + {{ tools.length }} follow-up searches</template>)
+          Execution Trace - {{ isDoppelgangerRun ? 'Doppelganger search' : 'Research questions' }} ({{ questions.length }}<template v-if="tools.length"> + {{ tools.length }} follow-up searches</template>)
         </summary>
         <div class="research-questions-flow d-flex flex-column gap-1 mt-1">
           <div
@@ -146,6 +236,27 @@
       <div class="text-secondary small mb-1">Summary</div>
       <div style="white-space: pre-wrap;">{{ summary }}</div>
     </div>
+
+    <!-- ?debug — raw SSE event log (the persisted run trace, client-side) -->
+    <details
+      v-if="debugMode && eventLog.length"
+      class="research-details small text-secondary"
+      open
+    >
+      <summary class="cursor-pointer">
+        Event log ({{ eventLog.length }})
+      </summary>
+      <div
+        class="font-monospace border rounded p-2 mt-1 d-flex flex-column gap-1"
+        style="max-height: 240px; overflow-y: auto;"
+      >
+        <div v-for="(ev, i) in eventLog" :key="i" class="text-truncate">
+          <span class="text-secondary">{{ ev.at }}</span>
+          <span class="badge bg-secondary-subtle text-dark">{{ ev.event }}</span>
+          <span :title="JSON.stringify(ev.data)">{{ eventSummary(ev) }}</span>
+        </div>
+      </div>
+    </details>
   </div>
 </template>
 
@@ -153,6 +264,8 @@
 import axios from 'axios'
 import { DefaultChatTransport } from 'ai'
 import { useChat } from '@ai-sdk/vue'
+import { useSeedStore } from '../stores/seedStore'
+import { useEntityInfoStore } from '../stores/entityInfoStore'
 
 export default {
   name: 'ResearchPanel',
@@ -169,6 +282,24 @@ export default {
       type: String,
       default: '',
     },
+    recipe: {
+      type: String,
+      default: '',
+    },
+    countryIso: {
+      type: String,
+      default: '',
+    },
+    setSeedOverlay: {
+      type: Function,
+      default: null,
+    },
+    // ISSUE-50 Part A: the panel pushes a completed run's twins to the
+    // map through this setter (same pattern as setSeedOverlay).
+    setTwinsOverlay: {
+      type: Function,
+      default: null,
+    },
   },
   setup(props) {
     // Rule 1.3 hybrid: acquire the composable (and its transport) here,
@@ -181,10 +312,13 @@ export default {
           country_code: props.countryName,
           snapshot_date: props.snapshotDate,
           subdivision_qid: props.subdivisionQid || undefined,
+          recipe: props.recipe || undefined,
         }),
       }),
     })
-    return { chat }
+    const seed = useSeedStore()
+    const entityInfo = useEntityInfoStore()
+    return { chat, seed, entityInfo }
   },
   data() {
     return {
@@ -199,20 +333,107 @@ export default {
       finalizedBrief: '',
       briefSource: '',
       finalizing: false,
+      // The in-flight finalize request (shared so Run awaits the actual
+      // request instead of polling past it).
+      finalizeInFlight: null,
+      runRecipe: '',
+      // The copyable example ask row: transient "Copied!" confirmation.
+      exampleCopied: false,
+      exampleCopyTimer: null,
+      // ?debug — the SSE event stream rendered as a queryable log pane
+      // (the events are already the execution trace; this just shows it).
+      debugMode: new URLSearchParams(window.location.search).has('debug'),
+      eventLog: [],
+      // The first explicit seed pick has been announced to the KE
+      // (once per interview: switches stay silent - the finalize's
+      // confirmed seed is authoritative, and re-announcing made the KE
+      // restart its question every switch, the 2026-10-17 spam loop).
+      announcedSeed: false,
+      // Real entity examples for the greeting/placeholder (the
+      // seed-examples endpoint; single-consumer server data stays
+      // component-local). Empty -> generic copy.
+      seedExamples: [],
     }
   },
   computed: {
     chatMessages() {
-      // UIMessage shape: role + parts[{type:'text', text}].
+      // UIMessage shape: role + parts[{type:'text', text}]. The KE's
+      // [seed] question marker is protocol, not prose — stripped for
+      // display (the backend keeps it in the transcript so the
+      // slot gate can detect the answer turn).
       return (this.chat.messages.value || [])
         .map((m) => ({
           role: m.role,
           text: (m.parts || [])
             .filter((p) => p.type === 'text')
             .map((p) => p.text || '')
-            .join(''),
+            .join('')
+            .replace(/\[seed\]\s*/g, ''),
         }))
         .filter((m) => m.text)
+    },
+    lastSeedPart() {
+      // The most recent data-seed part across the transcript (the
+      // backend re-emits with the same id, so the latest wins).
+      const msgs = this.chat.messages.value || []
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const part = (msgs[i].parts || []).find(
+          (p) => p.type === 'data-seed',
+        )
+        if (part) return part
+      }
+      return null
+    },
+    /**
+     * The seed state that matters to the overlay + announcement,
+     * content-addressed. The deep store watch this replaces ALSO fired
+     * on hoveredKey mutations (every chip/info-box hover), and each
+     * fire pushed a fresh overlay object whose map re-fit panned the
+     * map under the cursor - the click-storm behind the 2026-10-17
+     * Jerk Center session (announcement/KE-re-ask loop).
+     */
+    seedSignature() {
+      const s = this.seed
+      return JSON.stringify({
+        asked: s.asked,
+        confirmed: s.confirmed
+          ? `${s.confirmed.osm_type}:${s.confirmed.osm_id}` : null,
+        candidates: (s.candidates || [])
+          .map((c) => `${c.osm_type}:${c.osm_id}`),
+      })
+    },
+    seedMenuHeader() {
+      // String building stays in JS (template logic rule): the header
+      // reflects the picked state once a seed is confirmed.
+      const s = this.seed
+      return s.confirmed
+        ? `Picked ${s.confirmed.name} - seed from the info box`
+        : 'Multiple matches - click a row to open it on the map'
+    },
+    /** Candidate rows excluding the confirmed seed: the switchable set.
+     *  Always rendered while non-empty, so a picked seed stays
+     *  changeable (2026-10-19: no re-interview needed to re-pick). */
+    seedAlternatives() {
+      const s = this.seed
+      const confirmedKey = s.confirmed
+        ? `${s.confirmed.osm_type}:${s.confirmed.osm_id}`
+        : null
+      return (s.candidates || []).filter(
+        (c) => `${c.osm_type}:${c.osm_id}` !== confirmedKey,
+      )
+    },
+    /** A real entity name from the country's dataset for the greeting
+     *  example; '' when none (generic copy takes over). */
+    seedExampleName() {
+      const first = this.seedExamples.find((e) => e && e.name)
+      return first ? first.name : ''
+    },
+    /** The always-visible copyable example ask above the input. */
+    exampleQuestion() {
+      const name = this.seedExampleName
+      return name
+        ? `help me find a doppelganger for ${name}`
+        : 'help me find a doppelganger for a place you know'
     },
     isChatLoading() {
       const status = this.chat.status.value
@@ -230,9 +451,17 @@ export default {
       }
       return ''
     },
-    lastChatMessageText() {
-      const msgs = this.chatMessages
-      return msgs.length ? msgs[msgs.length - 1].text : ''
+    isDoppelgangerRun() {
+      // The recipe hard-select decides it on the doppelganger surface
+      // (ISSUE-48); elsewhere the Seed: line is the routing marker (the
+      // finalize's verified seed) and the done payload's recipe key
+      // confirms it after the run. The doppelganger vocabulary stays
+      // user-facing wherever the run is one (owner direction, 2026-10-12).
+      return (
+        this.recipe === 'doppelganger_report'
+        || (this.brief || '').includes('Seed:')
+        || this.runRecipe === 'doppelganger_report'
+      )
     },
     chatStatus() {
       return this.chat.status.value
@@ -241,11 +470,24 @@ export default {
       return this.chat.error.value
     },
   },
-  // Diagnostic signals — helpful while testing the interview + run live;
-  // trim once the flows are stable (same convention as SemanticSearchPanel).
   watch: {
+    countryIso: {
+      immediate: true,
+      handler(iso) {
+        this.fetchSeedExamples(iso)
+      },
+    },
+    lastSeedPart(part) {
+      if (part) this.applySeedPart(part)
+    },
+    // Seed state that changes the overlay or needs announcing. Hover
+    // state (hoveredKey) is deliberately NOT watched: it must never
+    // push the overlay or re-fit the map.
+    seedSignature() {
+      this.pushSeedOverlay()
+      this.announceExplicitSeed()
+    },
     chatStatus(status) {
-      console.log('[Research] chat status:', status, '@', Date.now())
       // Rebuild the brief after each completed KE reply (structured
       // extraction; the KE never emits a brief itself).
       if (
@@ -260,80 +502,287 @@ export default {
     chatError(err) {
       if (err) console.error('[Research] chat error:', err, '@', Date.now())
     },
-    lastChatMessageText(text) {
-      console.log('[Research] chat message:', text.slice(0, 200), '@', Date.now())
-    },
-    brief(val) {
-      console.log(val
-        ? `[Research] brief ready (${val.length} chars, source: ${this.briefSource})`
-        : '[Research] brief cleared', '@', Date.now())
-    },
-  },
-  mounted() {
-    const base = axios.defaults.baseURL || ''
-    console.log('[Research] mounted, chat api:', `${base}/nca/research/chat/`, '@', Date.now())
   },
   methods: {
     sendMessage() {
       const text = this.draft.trim()
       if (!text || this.isChatLoading) return
-      console.log('[Research] send:', text.slice(0, 120), '@', Date.now())
       this.draft = ''
       this.chat.sendMessage({ text })
     },
-    async finalizeBrief() {
-      if (this.finalizing) return
-      const msgs = this.chatMessages.map((m) => ({ role: m.role, content: m.text }))
-      if (!msgs.length) return
-      this.finalizing = true
-      console.log('[Research] finalize start', '@', Date.now())
+    /** Real entity examples for the greeting/placeholder. Fail-soft:
+     *  an empty list renders the generic copy. */
+    async fetchSeedExamples(iso) {
+      if (!iso) {
+        this.seedExamples = []
+        return
+      }
       try {
-        const payload = { messages: msgs }
-        if (this.countryName) payload.country_code = this.countryName
-        if (this.snapshotDate) payload.snapshot_date = this.snapshotDate
-        if (this.subdivisionQid) payload.subdivision_qid = this.subdivisionQid
+        const { data } = await axios.get(
+          `${axios.defaults.baseURL || ''}/nca/research/seed-examples/`,
+          { params: { country_code: iso } },
+        )
+        this.seedExamples = data.examples || []
+      } catch (e) {
+        this.seedExamples = []
+      }
+    },
+    // ── Live seed (data-seed part → seedStore → map overlay) ──────────
+    applySeedPart(part) {
+      this.seed.applySeedPart(part.data || {})
+      this.pushSeedOverlay()
+    },
+    /**
+     * Seed rows → the map overlay through the SurfaceShell slot setter.
+     * The flat seed shape ({lat, lon}) adapts to the marker shape
+     * ({geom: {lat, lon}}) here, at the panel boundary; seed_kind
+     * discriminates confirmed-pin vs candidate-marker styling.
+     */
+    pushSeedOverlay() {
+      if (!this.setSeedOverlay) return
+      const s = this.seed
+      const toMarker = (row, kind) => ({
+        osm_id: row.osm_id,
+        osm_type: row.osm_type,
+        name: row.name,
+        tags: row.tags || {},
+        wkg_class: row.wkg_class || null,
+        geom: { lat: row.lat, lon: row.lon },
+        seed_kind: kind,
+      })
+      // All candidates stay clickable after a pick (2026-10-19: the
+      // user can change the seed by clicking again, no re-interview
+      // needed). The confirmed entity is excluded from the amber set.
+      const confirmedKey = s.confirmed
+        ? `${s.confirmed.osm_type}:${s.confirmed.osm_id}`
+        : null
+      const candidates = (s.candidates || [])
+        .filter((c) => c.lat != null
+          && `${c.osm_type}:${c.osm_id}` !== confirmedKey)
+        .map((c) => toMarker(c, 'candidate'))
+      const confirmed = s.hasSeed ? toMarker(s.confirmed, 'confirmed') : null
+      this.setSeedOverlay({ confirmed, candidates })
+    },
+    /**
+     * The completed run's twins -> the map overlay through the
+     * SurfaceShell slot setter (ISSUE-50 Part A). The authoritative
+     * source is the done event's result.tool_calls similarEntities
+     * output; rows adapt to the marker shape here, at the panel
+     * boundary, like pushSeedOverlay. No twins (or no setter) clears
+     * the overlay.
+     */
+    pushTwinOverlay(result) {
+      if (!this.setTwinsOverlay) return
+      const seen = new Set()
+      const twins = []
+      const addRows = (rows) => {
+        for (const r of (rows || [])) {
+          if (!r || r.lat == null || r.lon == null) continue
+          const key = `${r.osm_type || ''}:${r.osm_id || ''}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          twins.push({
+            osm_id: r.osm_id,
+            osm_type: r.osm_type,
+            name: r.name || (r.tags || {}).name || '',
+            tags: r.tags || {},
+            wkg_class: r.wkg_class || null,
+            similarity: r.similarity,
+            // The pre-plan twin rows carry the calibrated `score` field
+            // (EvidenceScoringService); accept it first, then the raw
+            // service fields.
+            twin_score: r.score != null ? r.score
+              : (r.twin_score != null ? r.twin_score : null),
+            geom: { lat: r.lat, lon: r.lon },
+          })
+        }
+      }
+      for (const tc of (result?.tool_calls || [])) {
+        if (tc.tool !== 'similarEntities') continue
+        const out = tc.output
+        // Actual shape: a flat list of scored twin rows. Dict shape
+        // ({results: [...]}) is the fallback for other tool paths.
+        if (Array.isArray(out)) addRows(out)
+        else addRows(out?.results)
+      }
+      const s = this.seed
+      const seed = (s.hasSeed && s.confirmed.lat != null)
+        ? { geom: { lat: s.confirmed.lat, lon: s.confirmed.lon } }
+        : null
+      if (!twins.length) {
+        this.setTwinsOverlay(null)
+        return
+      }
+      this.setTwinsOverlay({ seed, twins })
+    },
+    /** Copy the example ask to the clipboard with a brief confirmation
+     *  (same pattern as the sample-question rows). */
+    copyExample() {
+      const text = this.exampleQuestion
+      navigator.clipboard?.writeText(text).catch(() => {})
+      this.exampleCopied = true
+      clearTimeout(this.exampleCopyTimer)
+      this.exampleCopyTimer = setTimeout(() => {
+        this.exampleCopied = false
+      }, 1500)
+    },
+    /** The entity-kind word for the chip: first descriptive tag value. */
+    seedKindLabel(row) {
+      const tags = row.tags || {}
+      return tags.amenity || tags.shop || tags.tourism || tags.leisure
+        || tags.natural || ''
+    },
+    seedWikidataUrl(row) {
+      const qid = (row.tags || {}).wikidata
+      return qid ? `https://www.wikidata.org/wiki/${qid}` : ''
+    },
+    /** One-click restate: the suggestion chip fills the draft and sends,
+     * so the [seed] gate re-resolves against the corrected name. */
+    restateSeed(s) {
+      this.draft = s.name || ''
+      this.sendMessage()
+    },
+    chipKey(c) {
+      return `${c.osm_type}:${c.osm_id}`
+    },
+    /** The candidate rows OPEN/HIDE the entity's info box on the map
+     *  (2026-10-19): seeding happens only inside the info box. */
+    toggleEntityInfo(c) {
+      const key = this.chipKey(c)
+      const current = this.entityInfo.entity
+      const currentKey = current
+        ? `${current.osm_type}:${current.osm_id}`
+        : null
+      if (currentKey === key) {
+        this.entityInfo.clearEntity(key)
+        return
+      }
+      this.entityInfo.setEntity({
+        osm_id: c.osm_id,
+        osm_type: c.osm_type,
+        name: c.name,
+        tags: c.tags || {},
+        wkg_class: c.wkg_class || null,
+        lat: c.lat,
+        lon: c.lon,
+        geom: { lat: c.lat, lon: c.lon },
+      }, 'panel')
+    },
+    /** Row state: solid when this entity's info box is open on the map
+     *  or the info box hovers it (shared hoveredKey), outline otherwise. */
+    rowClass(c) {
+      const key = this.chipKey(c)
+      const current = this.entityInfo.entity
+      const open = current
+        && `${current.osm_type}:${current.osm_id}` === key
+      return (open || key === this.seed.hoveredKey)
+        ? 'btn-outline-primary'
+        : 'btn-outline-secondary'
+    },
+    /**
+     * The FIRST explicit pick (map marker, info-box button, list chip)
+     * is announced to the KE as a "Seed:" user message - the existing
+     * handshake format (ISSUE-48 follow-up). Once per interview:
+     * switches stay silent (the finalize's confirmed seed is
+     * authoritative; re-announcing made the KE restart its question on
+     * every switch - the 2026-10-17 spam loop). The resolution path
+     * never announces (the user's answer is already in the transcript).
+     */
+    announceExplicitSeed() {
+      const s = this.seed
+      if (this.announcedSeed) return
+      if (s.confirmedSource !== 'explicit' || !s.confirmed) return
+      if (this.isChatLoading) return
+      this.announcedSeed = true
+      const kind = this.seedKindLabel(s.confirmed)
+      this.chat.sendMessage({
+        text: `Seed: ${s.confirmed.name}` + (kind ? ` (${kind})` : ''),
+      })
+    },
+    async finalizeBrief() {
+      if (this.finalizing && this.finalizeInFlight) {
+        // A finalize is already in flight (the watch fired on the KE's
+        // last reply): pressing Run during it awaits THE REQUEST, not a
+        // fixed poll. The old 8s poll gave up while a 10-14s finalize
+        // was still going and Run showed "could not build the brief"
+        // on a request that then succeeded (the 2026-10-17 Jerk Center
+        // session; the race the deferred hardening ticket described).
+        return await this.finalizeInFlight
+      }
+      const msgs = this.chatMessages.map((m) => ({ role: m.role, content: m.text }))
+      if (!msgs.length) return ''
+      this.finalizing = true
+      this.finalizeInFlight = this.requestBrief(msgs)
+      try {
+        return await this.finalizeInFlight
+      } finally {
+        this.finalizing = false
+        this.finalizeInFlight = null
+      }
+    },
+    async requestBrief(msgs) {
+      const payload = { messages: msgs }
+      if (this.countryName) payload.country_code = this.countryName
+      if (this.snapshotDate) payload.snapshot_date = this.snapshotDate
+      if (this.subdivisionQid) payload.subdivision_qid = this.subdivisionQid
+      if (this.recipe) payload.recipe = this.recipe
+      // The live-confirmed seed is authoritative: finalize skips
+      // re-geocoding and renders the Seed line from it (ISSUE-48).
+      if (this.seed.hasSeed) payload.seed = this.seed.finalizePayload()
+      try {
         const { data } = await axios.post(
           `${axios.defaults.baseURL || ''}/nca/research/finalize/`,
           payload,
+          // Above the backend's realistic chat_json latency on a busy
+          // 4070: the 15s timeout aborted requests the server would
+          // have answered.
+          { timeout: 20000 },
         )
         this.finalizedBrief = data.brief || ''
         this.briefSource = data.source || ''
-        console.log('[Research] finalize:', data.source, (data.brief || '').slice(0, 120), '@', Date.now())
       } catch (e) {
         console.error('[Research] finalize error:', e.response?.data?.error || e.message, '@', Date.now())
-      } finally {
-        this.finalizing = false
       }
+      return this.finalizedBrief || ''
     },
     async runResearch() {
       if (this.isRunning) return
-      let prompt = this.brief
-      if (!prompt) {
-        await this.finalizeBrief()
-        prompt = this.brief
+      let prompt = this.brief || (await this.finalizeBrief())
+      // An interview's last user message is an ANSWER fragment ("all",
+      // "geosemantic data"), not a research prompt: running on it invents
+      // a generic census that ignores everything the interview
+      // established (the 2026-10-12 Redbones run: the brief was missing
+      // at Run time, this fallback fired, and the loop produced a
+      // FOOD_REPORT census with no subject). The lastUserPrompt fallback
+      // is valid only when there is no interview to lose: a single user
+      // message IS the prompt.
+      const userMessages = this.chatMessages.filter(
+        (m) => m.role === 'user',
+      )
+      if (!prompt && userMessages.length > 1) {
+        this.error = 'Could not build the research brief from the interview. Press Run again to retry; if it persists, rephrase the request.'
+        return
       }
       prompt = prompt || this.lastUserPrompt
       if (!prompt) return
       this.resetRunState()
       this.isRunning = true
       this.runStartAt = Date.now()
-      const source = this.brief ? 'brief' : 'lastUserPrompt'
-      console.log('[Research] run start, source:', source, 'prompt:', prompt.slice(0, 120), '@', Date.now())
 
       const params = new URLSearchParams({ prompt })
       if (this.countryName) params.set('country_code', this.countryName)
       if (this.snapshotDate) params.set('snapshot_date', this.snapshotDate)
       if (this.subdivisionQid) params.set('subdivision_qid', this.subdivisionQid)
+      if (this.recipe) params.set('recipe', this.recipe)
 
       const base = axios.defaults.baseURL || ''
       const url = `${base}/nca/research/stream/?${params}`
-      console.log('[Research] stream url:', url, '@', Date.now())
       const es = new EventSource(url)
       this.eventSource = es
 
       es.addEventListener('plan', (e) => {
         const d = JSON.parse(e.data)
-        console.log('[Research] plan:', (d.questions || []).length, 'questions', '@', Date.now())
+        this.recordEvent('plan', d)
         this.questions = (d.questions || []).map((q, index) => ({
           index,
           question: q.question,
@@ -348,8 +797,8 @@ export default {
 
       es.addEventListener('question', (e) => {
         const d = JSON.parse(e.data)
+        this.recordEvent('question', d)
         const i = d.index
-        console.log('[Research] question:', i, d.template, 'count:', d.result_count, d.error || '', 'round:', d.round || 1, '@', Date.now())
         if (this.questions[i]) {
           this.questions[i].template = d.template || null
           this.questions[i].answer = d.answer || ''
@@ -373,7 +822,7 @@ export default {
 
       es.addEventListener('follow_up', (e) => {
         const d = JSON.parse(e.data)
-        console.log('[Research] follow-up:', d.kind, d.question, 'count:', d.result_count, '@', Date.now())
+        this.recordEvent('follow_up', d)
         // Visible gap-repair re-ask: probe / class-swap / llm_replan rows
         // append to the trace so the user sees the follow-up questions.
         this.questions.push({
@@ -391,22 +840,31 @@ export default {
 
       es.addEventListener('tool', (e) => {
         const d = JSON.parse(e.data)
-        console.log('[Research] tool call:', d.tool, JSON.stringify(d.args || {}), '@', Date.now())
+        this.recordEvent('tool', d)
         this.tools.push({ tool: d.tool, args: d.args || {}, output: null })
       })
 
       es.addEventListener('tool_out', (e) => {
         const d = JSON.parse(e.data)
-        console.log('[Research] tool output:', d.tool, '@', Date.now())
+        this.recordEvent('tool_out', d)
         const t = this.tools[this.tools.length - 1]
         if (t && t.tool === d.tool) t.output = d.output
       })
 
+      es.addEventListener('replan', (e) => {
+        this.recordEvent('replan', JSON.parse(e.data))
+      })
+
+      es.addEventListener('round', (e) => {
+        this.recordEvent('round', JSON.parse(e.data))
+      })
+
       es.addEventListener('summary_delta', (e) => {
-        const delta = JSON.parse(e.data).delta
+        const d = JSON.parse(e.data)
+        this.recordEvent('summary_delta', d)
+        const delta = d.delta
         if (delta) {
           if (!this.summary) {
-            console.log('[Research] summary stream started', '@', Date.now())
             this.collapseQuestions()
           }
           this.summary += delta
@@ -417,9 +875,9 @@ export default {
         this.isRunning = false
         this.closeStream()
         const d = JSON.parse(e.data)
+        this.recordEvent('done', d)
         const result = d.result || {}
-        const elapsed = this.runStartAt ? ((Date.now() - this.runStartAt) / 1000).toFixed(1) + 's' : '?'
-        console.log('[Research] done, summary len:', (result.summary || this.summary || '').length, 'elapsed:', elapsed, 'errors:', (result.errors || []).length, '@', Date.now())
+        this.runRecipe = result.recipe || ''
         this.runStartAt = null
         if (result.summary && !this.summary) {
           // Summary arrived without a stream (edge case) — collapse too.
@@ -429,10 +887,11 @@ export default {
         if (result.errors && result.errors.length && !this.error) {
           this.error = `Errors: ${result.errors.map((x) => x.error || x.question).join('; ')}`
         }
+        this.pushTwinOverlay(result)
       })
 
       es.addEventListener('error', () => {
-        console.log('[Research] stream error, readyState:', es.readyState, 'running:', this.isRunning, '@', Date.now())
+        this.recordEvent('error', { readyState: es.readyState })
         if (es.readyState === EventSource.CLOSED && this.isRunning) {
           this.isRunning = false
           this.error = this.error || 'Research stream error'
@@ -444,7 +903,39 @@ export default {
       this.tools = []
       this.summary = ''
       this.error = ''
+      this.runRecipe = ''
+      this.eventLog = []
+      if (this.setTwinsOverlay) this.setTwinsOverlay(null)
       this.closeStream()
+    },
+    /**
+     * Append an SSE event to the ?debug event log. One compact row per
+     * event — the same records the backend persists on ResearchRun.
+     */
+    recordEvent(event, data) {
+      if (!this.debugMode) return
+      this.eventLog.push({
+        event,
+        at: new Date().toISOString().slice(11, 23),
+        data,
+      })
+    },
+    /** One-line summary of a logged event for the debug pane. */
+    eventSummary(entry) {
+      const d = entry.data || {}
+      switch (entry.event) {
+        case 'plan': return `${(d.questions || []).length} questions`
+        case 'question': return `***REMOVED***${d.index} ${d.template || ''} count=${d.result_count ?? '?'}`
+        case 'follow_up': return `${d.kind || ''} ${d.question || ''}`.trim()
+        case 'replan': return d.question || ''
+        case 'round': return `round ${d.round}`
+        case 'tool': return `${d.tool} ${JSON.stringify(d.args || {})}`
+        case 'tool_out': return `${d.tool} ${JSON.stringify(d.output || {}).slice(0, 120)}`
+        case 'summary_delta': return JSON.stringify(d.delta || '')
+        case 'done': return `result: ${Object.keys(d.result || {}).join(', ')}`
+        case 'error': return `readyState=${d.readyState}`
+        default: return JSON.stringify(d).slice(0, 160)
+      }
     },
     collapseQuestions() {
       const el = this.$refs.questionsDetails
@@ -543,15 +1034,17 @@ export default {
     },
     closeStream() {
       if (this.eventSource) {
-        console.log('[Research] closing stream', '@', Date.now())
         this.eventSource.close()
         this.eventSource = null
       }
     },
   },
   beforeUnmount() {
-    console.log('[Research] unmount', '@', Date.now())
+    clearTimeout(this.exampleCopyTimer)
     this.closeStream()
+    // The seed state is surface-scoped: leaving the panel clears it so
+    // the next interview starts clean (the store is Pinia-global).
+    this.seed.reset()
   },
 }
 </script>
