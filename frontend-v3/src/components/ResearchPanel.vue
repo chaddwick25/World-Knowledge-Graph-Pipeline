@@ -28,9 +28,6 @@
   <div class="d-flex flex-column gap-2">
     <!-- Chat: the research prompt section -->
     <div class="d-flex flex-column gap-1">
-      <label class="form-label small text-secondary mb-0">
-        Doppelganger interview — name the place to find twins for
-      </label>
       <div
         class="border rounded small p-2 d-flex flex-column gap-1"
         style="max-height: 240px; overflow-y: auto;"
@@ -44,10 +41,9 @@
             style="max-width: 90%;"
           >
             Hello — I'm your doppelganger research assistant. Tell me
-            which place to find twins for, e.g.
-            <em>help me find a doppelganger for {{ seedExampleName || 'a place you know' }}</em>.
-            I'll pin it on the map for you to confirm, then ask a couple
-            of quick questions about how matches should compare.
+            which place to find twins for. I'll pin it on the map for
+            you to confirm, then ask a couple of quick questions about
+            how matches should compare.
           </div>
         </div>
         <div
@@ -64,12 +60,26 @@
         </div>
         <div v-if="isChatLoading" class="text-secondary">typing…</div>
       </div>
+      <!-- Copyable example ask: always visible above the input, the
+           sample-question row styling, so the invocation is one click
+           from the send button. -->
+      <div
+        class="d-flex align-items-center gap-2 border rounded p-1 px-2"
+        style="font-size: 0.72rem;"
+      >
+        <span class="flex-grow-1 text-truncate" :title="exampleQuestion">{{ exampleQuestion }}</span>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-primary text-nowrap py-0 px-2"
+          :class="{ 'btn-success': exampleCopied }"
+          @click="copyExample()"
+        >{{ exampleCopied ? 'Copied!' : 'Copy' }}</button>
+      </div>
       <form class="d-flex gap-2" @submit.prevent="sendMessage">
         <input
           v-model="draft"
           type="text"
           class="form-control form-control-sm"
-          :placeholder="inputPlaceholder"
           :disabled="isChatLoading"
         />
         <button
@@ -113,22 +123,29 @@
           >{{ s.name }}</button>
         </span>
       </div>
-      <div v-if="seed.isMultiHit" class="mt-1">
+      <div v-if="seedAlternatives.length" class="mt-1">
         <div class="text-secondary">{{ seedMenuHeader }}</div>
-        <div class="d-flex flex-wrap gap-1 mt-1">
-          <button
-            v-for="c in seed.candidates"
+        <ol class="mb-0 ps-3 mt-1 d-flex flex-column gap-1">
+          <li
+            v-for="c in seedAlternatives"
             :key="c.osm_type + ':' + c.osm_id"
-            type="button"
-            class="btn btn-sm py-0 px-1"
-            :class="chipClass(c)"
-            @click="selectSeedCandidate(c)"
-            @mouseenter="seed.setHoveredKey(chipKey(c))"
-            @mouseleave="seed.clearHoveredKey(chipKey(c))"
+            class="d-flex align-items-center gap-2"
           >
-            {{ c.name }} <span class="text-secondary">{{ seedKindLabel(c) }}</span>
-          </button>
-        </div>
+            <!-- The rows OPEN/HIDE the entity's info box on the map;
+                 seeding happens only inside the info box (2026-10-19). -->
+            <button
+              type="button"
+              class="btn btn-sm py-0 px-1 text-start flex-grow-1 text-truncate"
+              :class="rowClass(c)"
+              :title="`Open ${c.name} on the map`"
+              @click="toggleEntityInfo(c)"
+              @mouseenter="seed.setHoveredKey(chipKey(c))"
+              @mouseleave="seed.clearHoveredKey(chipKey(c))"
+            >
+              {{ c.name }} <span class="text-secondary">{{ seedKindLabel(c) }}</span>
+            </button>
+          </li>
+        </ol>
       </div>
     </div>
 
@@ -248,6 +265,7 @@ import axios from 'axios'
 import { DefaultChatTransport } from 'ai'
 import { useChat } from '@ai-sdk/vue'
 import { useSeedStore } from '../stores/seedStore'
+import { useEntityInfoStore } from '../stores/entityInfoStore'
 
 export default {
   name: 'ResearchPanel',
@@ -299,7 +317,8 @@ export default {
       }),
     })
     const seed = useSeedStore()
-    return { chat, seed }
+    const entityInfo = useEntityInfoStore()
+    return { chat, seed, entityInfo }
   },
   data() {
     return {
@@ -318,6 +337,9 @@ export default {
       // request instead of polling past it).
       finalizeInFlight: null,
       runRecipe: '',
+      // The copyable example ask row: transient "Copied!" confirmation.
+      exampleCopied: false,
+      exampleCopyTimer: null,
       // ?debug — the SSE event stream rendered as a queryable log pane
       // (the events are already the execution trace; this just shows it).
       debugMode: new URLSearchParams(window.location.search).has('debug'),
@@ -385,8 +407,20 @@ export default {
       // reflects the picked state once a seed is confirmed.
       const s = this.seed
       return s.confirmed
-        ? `Picked ${s.confirmed.name} — click another to switch:`
-        : 'Multiple matches — click one on the map or pick here:'
+        ? `Picked ${s.confirmed.name} - seed from the info box`
+        : 'Multiple matches - click a row to open it on the map'
+    },
+    /** Candidate rows excluding the confirmed seed: the switchable set.
+     *  Always rendered while non-empty, so a picked seed stays
+     *  changeable (2026-10-19: no re-interview needed to re-pick). */
+    seedAlternatives() {
+      const s = this.seed
+      const confirmedKey = s.confirmed
+        ? `${s.confirmed.osm_type}:${s.confirmed.osm_id}`
+        : null
+      return (s.candidates || []).filter(
+        (c) => `${c.osm_type}:${c.osm_id}` !== confirmedKey,
+      )
     },
     /** A real entity name from the country's dataset for the greeting
      *  example; '' when none (generic copy takes over). */
@@ -394,11 +428,12 @@ export default {
       const first = this.seedExamples.find((e) => e && e.name)
       return first ? first.name : ''
     },
-    inputPlaceholder() {
+    /** The always-visible copyable example ask above the input. */
+    exampleQuestion() {
       const name = this.seedExampleName
       return name
-        ? `e.g. help me find a doppelganger for ${name}`
-        : 'e.g. help me find a doppelganger for a place you know'
+        ? `help me find a doppelganger for ${name}`
+        : 'help me find a doppelganger for a place you know'
     },
     isChatLoading() {
       const status = this.chat.status.value
@@ -515,10 +550,16 @@ export default {
         geom: { lat: row.lat, lon: row.lon },
         seed_kind: kind,
       })
-      const candidates = s.isMultiHit
-        ? s.candidates.filter((c) => c.lat != null)
-            .map((c) => toMarker(c, 'candidate'))
-        : []
+      // All candidates stay clickable after a pick (2026-10-19: the
+      // user can change the seed by clicking again, no re-interview
+      // needed). The confirmed entity is excluded from the amber set.
+      const confirmedKey = s.confirmed
+        ? `${s.confirmed.osm_type}:${s.confirmed.osm_id}`
+        : null
+      const candidates = (s.candidates || [])
+        .filter((c) => c.lat != null
+          && `${c.osm_type}:${c.osm_id}` !== confirmedKey)
+        .map((c) => toMarker(c, 'candidate'))
       const confirmed = s.hasSeed ? toMarker(s.confirmed, 'confirmed') : null
       this.setSeedOverlay({ confirmed, candidates })
     },
@@ -574,6 +615,17 @@ export default {
       }
       this.setTwinsOverlay({ seed, twins })
     },
+    /** Copy the example ask to the clipboard with a brief confirmation
+     *  (same pattern as the sample-question rows). */
+    copyExample() {
+      const text = this.exampleQuestion
+      navigator.clipboard?.writeText(text).catch(() => {})
+      this.exampleCopied = true
+      clearTimeout(this.exampleCopyTimer)
+      this.exampleCopyTimer = setTimeout(() => {
+        this.exampleCopied = false
+      }, 1500)
+    },
     /** The entity-kind word for the chip: first descriptive tag value. */
     seedKindLabel(row) {
       const tags = row.tags || {}
@@ -590,25 +642,42 @@ export default {
       this.draft = s.name || ''
       this.sendMessage()
     },
-    /** The map click / list click: the confirmation gesture. */
-    selectSeedCandidate(c) {
-      this.seed.selectCandidate(c)
-      this.pushSeedOverlay()
-    },
     chipKey(c) {
       return `${c.osm_type}:${c.osm_id}`
     },
-    /** Chip state: green when it IS the confirmed seed, solid when the
-     *  info box hovers it (shared hoveredKey), outline otherwise. */
-    chipClass(c) {
+    /** The candidate rows OPEN/HIDE the entity's info box on the map
+     *  (2026-10-19): seeding happens only inside the info box. */
+    toggleEntityInfo(c) {
       const key = this.chipKey(c)
-      const confirmed = this.seed.confirmed
-      if (confirmed
-        && key === `${confirmed.osm_type}:${confirmed.osm_id}`) {
-        return 'btn-success'
+      const current = this.entityInfo.entity
+      const currentKey = current
+        ? `${current.osm_type}:${current.osm_id}`
+        : null
+      if (currentKey === key) {
+        this.entityInfo.clearEntity(key)
+        return
       }
-      if (key === this.seed.hoveredKey) return 'btn-primary'
-      return 'btn-outline-secondary'
+      this.entityInfo.setEntity({
+        osm_id: c.osm_id,
+        osm_type: c.osm_type,
+        name: c.name,
+        tags: c.tags || {},
+        wkg_class: c.wkg_class || null,
+        lat: c.lat,
+        lon: c.lon,
+        geom: { lat: c.lat, lon: c.lon },
+      }, 'panel')
+    },
+    /** Row state: solid when this entity's info box is open on the map
+     *  or the info box hovers it (shared hoveredKey), outline otherwise. */
+    rowClass(c) {
+      const key = this.chipKey(c)
+      const current = this.entityInfo.entity
+      const open = current
+        && `${current.osm_type}:${current.osm_id}` === key
+      return (open || key === this.seed.hoveredKey)
+        ? 'btn-outline-primary'
+        : 'btn-outline-secondary'
     },
     /**
      * The FIRST explicit pick (map marker, info-box button, list chip)
@@ -971,6 +1040,7 @@ export default {
     },
   },
   beforeUnmount() {
+    clearTimeout(this.exampleCopyTimer)
     this.closeStream()
     // The seed state is surface-scoped: leaving the panel clears it so
     // the next interview starts clean (the store is Pinia-global).

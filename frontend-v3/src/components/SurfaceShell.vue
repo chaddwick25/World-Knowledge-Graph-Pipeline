@@ -73,12 +73,12 @@
           @pick-another="$router.push(leafBase)"
         />
         <template v-else>
-          <SnapshotCalendar
-            v-if="snapshotDates.length"
-            :snapshot-dates="snapshotDates"
-            :selected-date="selectedSnapshotDate"
-            @select-date="onSelectDate"
-          />
+          <!-- Snapshot date: static label (the picker was removed 2026-10-19;
+               the surface shows the active snapshot for the demo). -->
+          <div
+            v-if="selectedSnapshotDate"
+            class="form-label small text-secondary mb-0"
+          >Snapshot Date - {{ formattedSnapshotDate }}</div>
           <slot
             :country="country"
             :snapshot-date="selectedSnapshotDate"
@@ -99,12 +99,11 @@ import WorldKGMap from './WorldKGMap.vue'
 import CountryList from './CountryList.vue'
 import CountryRequestPanel from './CountryRequestPanel.vue'
 import PlanetInitPanel from './PlanetInitPanel.vue'
-import SnapshotCalendar from './SnapshotCalendar.vue'
 import { fetchSystemStatus, fetchCountries, countrySlug } from '../services/systemStatus'
 
 export default {
   name: 'SurfaceShell',
-  components: { WorldKGMap, CountryList, CountryRequestPanel, PlanetInitPanel, SnapshotCalendar },
+  components: { WorldKGMap, CountryList, CountryRequestPanel, PlanetInitPanel },
   props: {
     cc: { type: String, default: '' },
     title: { type: String, required: true },
@@ -151,6 +150,12 @@ export default {
     },
     surface() {
       return this.leafBase.startsWith('/tools') ? 'tools' : 'doppelganger'
+    },
+    /** '2025_12_31' -> '12/31/2025' for the static snapshot label. */
+    formattedSnapshotDate() {
+      const d = this.selectedSnapshotDate || ''
+      const [y, m, day] = d.split('_')
+      return y && m && day ? `${m}/${day}/${y}` : d
     },
   },
   watch: {
@@ -233,9 +238,6 @@ export default {
     onCountryToggled({ countryId }) {
       const country = this.allCountries.find((c) => c.id === countryId)
       if (country) this.onCountryPick(country)
-    },
-    onSelectDate(date) {
-      this.selectedSnapshotDate = date
     },
     // Map-overlay setters exposed to the panel slot.
     setSearchResults(results) { this.searchResults = results },

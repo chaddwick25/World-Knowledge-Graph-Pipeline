@@ -31,19 +31,29 @@
     </div>
 
     <!-- ── Two square cards ── -->
-    <section v-else-if="isSystemReady" class="home__cards">
-      <button
-        class="home-card"
-        @click="openPicker('/tools/geo-semantic')"
-      >
-        Tools
-      </button>
-      <button
-        class="home-card"
-        @click="openPicker('/agents/doppelganger')"
-      >
-        Doppelganger Agent
-      </button>
+    <section v-else-if="isSystemReady" class="home__cards-wrap">
+      <div class="home__cards">
+        <button
+          class="home-card"
+          @click="openPicker('/tools/geo-semantic')"
+          @mouseenter="hovered = 'tools'"
+          @mouseleave="hovered = null"
+        >
+          Tools
+        </button>
+        <button
+          class="home-card"
+          @click="openPicker('/agents/doppelganger')"
+          @mouseenter="hovered = 'agents'"
+          @mouseleave="hovered = null"
+        >
+          Doppelganger Agent
+        </button>
+        <!-- Hover hint, centered ABOVE the two tiles (2026-10-19). -->
+        <div v-if="hovered" class="home__card-hint" aria-live="polite">
+          {{ hovered === 'tools' ? toolsBlurb : agentsBlurb }}
+        </div>
+      </div>
     </section>
 
     <CountryPickModal
@@ -76,7 +86,17 @@ export default {
       pickerLeafBase: '',
       allCountries: [],
       countriesLoading: false,
+      // Which card is hovered; drives the centered hint.
+      hovered: null,
     }
+  },
+  computed: {
+    toolsBlurb() {
+      return 'Ask the map questions with a structured search and explore the places it finds'
+    },
+    agentsBlurb() {
+      return 'Tell the agent about a place you like and it finds similar places on the map'
+    },
   },
   mounted() {
     this.checkSystem()
@@ -123,7 +143,18 @@ export default {
 
 <style scoped>
 /* Two equal square blocks, collapsing to stacked on narrow viewports. */
+.home__cards-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
 .home__cards {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
@@ -138,6 +169,26 @@ export default {
   .home__cards {
     grid-template-columns: 1fr;
   }
+}
+
+/* The hover hint: centered above the two tiles, spanning the exact
+   width of both cards, with larger text (2026-10-19). `top` is the
+   vertical knob: more negative = higher above the cards. */
+.home__card-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4.5rem;
+  transform: none;
+  pointer-events: none;
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  padding: 0.6rem 1rem;
+  text-align: center;
+  font-size: 1.1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: 2;
 }
 
 .home-card {
