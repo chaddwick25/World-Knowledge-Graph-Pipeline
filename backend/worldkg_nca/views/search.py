@@ -346,6 +346,22 @@ def worldkg_semantic_triplet_search(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # Queryable-country allowlist (2026-10-21): the temporary demo gate,
+    # applied after all resolution paths (raw, subdivision-inferred,
+    # override, name-based) have had their chance. Resolve to ISO first:
+    # the raw display name ("Jamaica") never matches the ISO allowlist.
+    from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
+    from core.services.queryable_countries import is_country_queryable
+    try:
+        gate_iso = resolve_iso_code(country_code)
+    except Exception:
+        gate_iso = country_code
+    if not is_country_queryable(gate_iso):
+        return Response(
+            {"error": f"country not queryable: {country_code}"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     min_lon, min_lat, max_lon, max_lat = bbox
     polygon = Polygon.from_bbox((min_lon, min_lat, max_lon, max_lat))
 
@@ -1001,6 +1017,21 @@ def worldkg_semantic_query_plan(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # Queryable-country allowlist (2026-10-21): the temporary demo gate.
+    # Resolve to ISO first: the raw display name never matches the ISO
+    # allowlist (the "Jamaica" 403, 2026-10-21).
+    from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
+    from core.services.queryable_countries import is_country_queryable
+    try:
+        gate_iso = resolve_iso_code(country_code)
+    except Exception:
+        gate_iso = country_code
+    if not is_country_queryable(gate_iso):
+        return Response(
+            {"error": f"country not queryable: {country_code}"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     # ── MapQA parser (replaces class_keyword_map heuristic) ──
     parser = QueryParserService.get_instance()
     parsed = parser.parse(
@@ -1136,6 +1167,13 @@ def execute_query(request):
             country_code = resolve_iso_code(country_code)
         except Exception:
             pass  # use as-is if resolution fails
+        # Queryable-country allowlist (2026-10-21): the temporary demo gate.
+        from core.services.queryable_countries import is_country_queryable
+        if not is_country_queryable(country_code):
+            return Response(
+                {"error": f"country not queryable: {country_code}"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
     # Phase 1: parse (with class-verified OBJECT recovery — brand names
     # like "kfc" that the ML concept extractor misses)
@@ -1185,6 +1223,19 @@ def execute_query_stream(request):
 
     if not query_text:
         return JsonResponse({"error": "query required"}, status=400)
+
+    # Queryable-country allowlist (2026-10-21): the temporary demo gate.
+    if country_code:
+        try:
+            country_code = resolve_iso_code(country_code)
+        except Exception:
+            pass  # use as-is if resolution fails
+        from core.services.queryable_countries import is_country_queryable
+        if not is_country_queryable(country_code):
+            return JsonResponse(
+                {"error": f"country not queryable: {country_code}"},
+                status=403,
+            )
 
     # Traceability: one trace per run; the
     # caller can propagate a cross-app id via ?trace_id= (or X-Trace-Id).

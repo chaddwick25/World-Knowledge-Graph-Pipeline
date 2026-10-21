@@ -25,6 +25,11 @@ DEBUG = os.getenv('DJANGO_DEBUG', 'false').lower() in ('1', 'true', 'yes', 'on')
 _extra_hosts = [h.strip() for h in os.getenv('ALLOWED_EXTRA_HOSTS', '').split(',') if h.strip()]
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', *_extra_hosts]
 
+# Queryable-country allowlist (2026-10-21): a TEMPORARY demo gate - the
+# comma-separated ISO codes the query surfaces serve ("IE,JM,KR"); empty
+# = no gate. Removed after the fresh-DB e2e reinitializes the planet.
+QUERYABLE_COUNTRY_ALLOWLIST = os.getenv('QUERYABLE_COUNTRY_ALLOWLIST', '')
+
 # ============================================================================
 # FILE PATHS CONFIGURATIONS + Overrides
 # ============================================================================
@@ -234,20 +239,17 @@ CORS_ALLOW_HEADERS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+
+if os.getenv('CROSS_ORIGIN_COOKIES', '').lower() in ('1', 'true', 'yes', 'on'):
+    CSRF_COOKIE_SAMESITE = 'None'
+    SESSION_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+CSRF_TRUSTED_ORIGINS = list(_extra_origins)
+
 # TLS terminates at nginx upstream (Tailscale Funnel) — trust X-Forwarded-Proto
 # so request.is_secure() and Django's CSRF Origin check work on public requests.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
-# Same origin set as CORS (required for Django 4.0+).
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:8080',
-    'http://127.0.0.1:8080',
-    'http://localhost:8081',
-    'http://127.0.0.1:8081',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    *_extra_origins,
-]
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [],

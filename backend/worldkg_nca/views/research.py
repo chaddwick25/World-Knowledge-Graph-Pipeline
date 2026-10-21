@@ -60,6 +60,14 @@ def research_stream(request):
         except Exception:
             pass  # use as-is if resolution fails
 
+    # Queryable-country allowlist (2026-10-21): the temporary demo gate.
+    from core.services.queryable_countries import is_country_queryable
+    if country_code and not is_country_queryable(country_code):
+        return JsonResponse(
+            {"error": f"country not queryable: {country_code}"},
+            status=403,
+        )
+
     # Traceability: one trace per run; the
     # caller can propagate a cross-app id via ?trace_id= (or X-Trace-Id).
     trace_id = request.GET.get("trace_id") or uuid.uuid4().hex
@@ -224,6 +232,15 @@ def research_chat(request):
         except Exception:
             pass  # use as-is if resolution fails
 
+    # Queryable-country allowlist (2026-10-21): the interview is gated
+    # like the run.
+    from core.services.queryable_countries import is_country_queryable
+    if geocode_country and not is_country_queryable(geocode_country):
+        return JsonResponse(
+            {"error": f"country not queryable: {geocode_country}"},
+            status=403,
+        )
+
     from core.services.llm_service import LLMService
     from semantic_search.services.research_service import (
         ResearchOrchestratorService,
@@ -360,6 +377,13 @@ def research_finalize(request):
             country_code = resolve_iso_code(country_code)
         except Exception:
             pass  # use as-is if resolution fails (same as research_stream)
+        # Queryable-country allowlist (2026-10-21).
+        from core.services.queryable_countries import is_country_queryable
+        if not is_country_queryable(country_code):
+            return JsonResponse(
+                {"error": f"country not queryable: {country_code}"},
+                status=403,
+            )
     snapshot_date = body.get("snapshot_date") or None
     subdivision_qid = body.get("subdivision_qid") or None
     # Recipe hard-select + the live-confirmed seed (2026-10-17): the

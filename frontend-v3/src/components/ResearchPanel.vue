@@ -60,10 +60,13 @@
         </div>
         <div v-if="isChatLoading" class="text-secondary">typing…</div>
       </div>
-      <!-- Copyable example ask: always visible above the input, the
-           sample-question row styling, so the invocation is one click
-           from the send button. -->
+      <!-- Copyable example ask: the sample-question row styling, so the
+           invocation is one click from the send button. Shows only while
+           its job is undone: no candidates to disambiguate and no seed
+           set (2026-10-21 - it yielded to the candidate menu, which
+           made the stack awkward). -->
       <div
+        v-if="showExampleAsk"
         class="d-flex align-items-center gap-2 border rounded p-1 px-2"
         style="font-size: 0.72rem;"
       >
@@ -75,13 +78,15 @@
           @click="copyExample()"
         >{{ exampleCopied ? 'Copied!' : 'Copy' }}</button>
       </div>
-      <form class="d-flex gap-2" @submit.prevent="sendMessage">
-        <input
+      <form class="d-flex gap-2 align-items-end" @submit.prevent="sendMessage">
+        <textarea
           v-model="draft"
-          type="text"
+          rows="1"
           class="form-control form-control-sm"
+          style="resize: none; min-height: 2.2rem; max-height: 8rem;"
           :disabled="isChatLoading"
-        />
+          @keydown.enter.exact.prevent="sendMessage"
+        ></textarea>
         <button
           type="submit"
           class="btn btn-primary btn-sm text-nowrap"
@@ -123,7 +128,7 @@
           >{{ s.name }}</button>
         </span>
       </div>
-      <div v-if="seedAlternatives.length" class="mt-1">
+      <div v-if="seedAlternatives.length && seed.confirmedSource !== 'explicit'" class="mt-1">
         <div class="text-secondary">{{ seedMenuHeader }}</div>
         <ol class="mb-0 ps-3 mt-1 d-flex flex-column gap-1">
           <li
@@ -435,6 +440,12 @@ export default {
         ? `help me find a doppelganger for ${name}`
         : 'help me find a doppelganger for a place you know'
     },
+    /** The example ask shows only while its job is undone: nothing to
+     *  disambiguate and no seed set. Candidates or a confirmed seed
+     *  retire it (2026-10-21). */
+    showExampleAsk() {
+      return !this.seed.candidates.length && !this.seed.hasSeed
+    },
     isChatLoading() {
       const status = this.chat.status.value
       return status === 'streaming' || status === 'generating'
@@ -519,7 +530,7 @@ export default {
       }
       try {
         const { data } = await axios.get(
-          `${axios.defaults.baseURL || ''}/nca/research/seed-examples/`,
+          '/nca/research/seed-examples/',
           { params: { country_code: iso } },
         )
         this.seedExamples = data.examples || []
@@ -731,7 +742,7 @@ export default {
       if (this.seed.hasSeed) payload.seed = this.seed.finalizePayload()
       try {
         const { data } = await axios.post(
-          `${axios.defaults.baseURL || ''}/nca/research/finalize/`,
+          '/nca/research/finalize/',
           payload,
           // Above the backend's realistic chat_json latency on a busy
           // 4070: the 15s timeout aborted requests the server would

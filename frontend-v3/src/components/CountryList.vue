@@ -83,6 +83,11 @@ export default {
   },
   methods: {
     hasData(country) {
+      // Server-computed flag (2026-10-21): the backend matches the entry
+      // against the processed slug space with its own normalizer and
+      // applies the queryable allowlist. Fall back to the client-side
+      // slug check for older payloads.
+      if (country.is_queryable != null) return country.is_queryable
       return this.processedCountries.has(countrySlug(country.name))
     },
   },

@@ -20,6 +20,78 @@ from api.serializers import (
 )
 
 
+def _gate_supported(is_supported, country_name):
+    """The allowlist gate for the polygon-fallback map path: resolve the
+    country name to ISO and check; fail-closed under a gate."""
+    from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
+    from core.services.queryable_countries import (
+        allowlist_codes, is_country_queryable,
+    )
+    if allowlist_codes() is None:
+        return is_supported
+    try:
+        return is_supported and is_country_queryable(
+            resolve_iso_code(country_name)
+        )
+    except Exception:
+        return False
+
+
+def _entry_is_queryable(country_name, iso_code):
+    """Server-computed queryable flag for a map-data entry (2026-10-21).
+
+    Uses the EXISTING resolution patterns only: normalize_country_slug
+    (the same normalizer the GeoVectors support check uses) matches the
+    entry against the CountrySearchProcessing slug space, and
+    is_country_queryable applies the allowlist to the ISO. No gate =
+    the processed check alone."""
+    from core.models import CountrySearchProcessing
+    from core.services.snapshot.regional_path_service import (
+        normalize_country_slug,
+    )
+    from core.services.queryable_countries import (
+        allowlist_codes, is_country_queryable,
+    )
+    slug = normalize_country_slug(country_name)
+    processed = CountrySearchProcessing.objects.filter(
+        is_processed=True, country_name=slug,
+    ).exists()
+    if allowlist_codes() is None:
+        return processed
+    if not iso_code:
+        return False
+    return processed and is_country_queryable(iso_code)
+
+
+def _queryable_processed_countries():
+    """Search-ready country slugs, filtered by the queryable-country
+    allowlist (2026-10-21). Slugs resolve to ISO for the check; a slug
+    that fails resolution drops out under a gate (fail-closed) and
+    stays in without one."""
+    from core.models import CountrySearchProcessing
+    slugs = list(
+        CountrySearchProcessing.objects.filter(is_processed=True)
+        .values_list("country_name", flat=True)
+    )
+    from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
+    from core.services.queryable_countries import (
+        allowlist_codes, is_country_queryable,
+    )
+    if allowlist_codes() is None:
+        return slugs
+
+    def _slug_queryable(slug):
+        try:
+            return is_country_queryable(
+                resolve_iso_code(slug.replace("_", " ").title())
+            )
+        except Exception:
+            return False
+
+    return [s for s in slugs if _slug_queryable(s)]
+
+
+
 class InitialStatusView(APIView):
     """Provides the initial status for the data generation GUI."""
 
@@ -146,10 +218,9 @@ class SystemStatusView(APIView):
             "total_countries": total_countries,
             # Slug names of countries marked search-ready (Step 6) — the
             # home page renders a green "queryable" dot per list row.
-            "processed_countries": list(
-                CountrySearchProcessing.objects.filter(is_processed=True)
-                .values_list("country_name", flat=True)
-            ),
+            # Queryable-country allowlist (2026-10-21): the temporary
+            # demo gate filters the dots to the allowlisted ISO codes.
+            "processed_countries": _queryable_processed_countries(),
         }
         data.update(build_snapshot_dates_payload())
         return Response(data)
@@ -214,6 +285,9 @@ class RegionMapDataView(APIView):
         # Load relations for GeoVectors support check from OSMWikiDataHierarchy
         from core.services.planet_init.osm_wikidata_resolver import get_country_relations_dict
         relations = get_country_relations_dict()
+        # Queryable-country allowlist (2026-10-21): imported here so the
+        # boundary loop's gate reference resolves.
+        from core.services.queryable_countries import is_country_queryable
 
         for boundary in boundaries:
             # Deduplicate by name — keep the first occurrence
@@ -254,7 +328,20 @@ class RegionMapDataView(APIView):
                     'continent_id': str(continent.id),
                     'geometry': boundary.geometry,
                     'status': status_data,
-                    'is_geovectors_supported': is_supported
+                    # Queryable-country allowlist (2026-10-21): the
+                    # temporary demo gate - non-allowlisted countries are
+                    # not clickable on the map.
+                    'is_geovectors_supported': (
+                        is_supported
+                        and is_country_queryable(boundary.iso_code)
+                    ),
+                    # Server-computed queryable flag: the EXISTING slug
+                    # normalizer matches the entry against the
+                    # CountrySearchProcessing slug space, so the frontend
+                    # stops re-deriving slugs.
+                    'is_queryable': _entry_is_queryable(
+                        boundary.name, boundary.iso_code,
+                    ),
                 })
             except Exception as e:
                 logger.warning(f"Failed to process boundary {boundary.name}: {str(e)}")
@@ -326,7 +413,12 @@ class RegionMapDataView(APIView):
                     'continent_id': str(continent_id),
                     'geometry': geometry,
                     'status': status_data,
-                    'is_geovectors_supported': is_supported
+                    # Queryable-country allowlist (2026-10-21): the
+                    # fallback path has no iso_code; resolve the name,
+                    # fail-closed under a gate.
+                    'is_geovectors_supported': _gate_supported(
+                        is_supported, region.name,
+                    )
                 })
             
             # Recurse into children

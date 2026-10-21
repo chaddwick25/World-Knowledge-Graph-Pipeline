@@ -115,10 +115,21 @@ class QueryExecutorService(
                 }
 
                 def _covered(entity):
-                    e = entity.lower()
-                    return any(
-                        e == w or e.startswith(w) or w.startswith(e)
-                        for w in parser_words if len(w) >= 4
+                    # The fragment test (2026-10-21): EVERY word of the
+                    # extracted entity must prefix-match some word of the
+                    # parser's anchor. The old any-word test let a shared
+                    # first word ("county") cover DIFFERENT places
+                    # ("County Leitrim" vs the anchor "County Sligo"),
+                    # suppressing the multi-entity recovery and failing
+                    # every "How far is County X from County Y?" question.
+                    anchor_words = [w for w in parser_words if len(w) >= 4]
+                    return all(
+                        any(
+                            ew == w or ew.startswith(w) or w.startswith(ew)
+                            for w in anchor_words
+                        )
+                        for ew in entity.lower().split()
+                        if len(ew) >= 4
                     )
 
                 if not all(_covered(e) for e in clean_entities):

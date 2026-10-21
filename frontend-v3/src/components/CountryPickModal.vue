@@ -67,7 +67,12 @@ export default {
   },
   methods: {
     onSelect(country) {
-      if (!this.processedCountries.has(countrySlug(country.name))) {
+      // Server-computed queryable flag (2026-10-21); the client-side
+      // slug check is the fallback for older payloads.
+      const queryable = country.is_queryable != null
+        ? country.is_queryable
+        : this.processedCountries.has(countrySlug(country.name))
+      if (!queryable) {
         this.requestedCountry = country
         return
       }
