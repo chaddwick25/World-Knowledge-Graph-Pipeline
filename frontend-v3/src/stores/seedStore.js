@@ -50,15 +50,23 @@ export const useSeedStore = defineStore('seed', {
       this.suggestions = data.suggestions || []
       if (this.locked) return
       if (data.found) {
-        this.confirmed = {
-          osm_id: data.osm_id,
-          osm_type: data.osm_type,
-          name: data.name,
-          tags: data.tags || {},
-          lat: data.lat,
-          lon: data.lon,
+        // Selection rule (2026-10-21): multiple hits FORCE the user to
+        // pick (no auto-pin - the menu stays, the info box is the
+        // seeding surface); a single hit auto-pins.
+        if (this.candidates.length > 1) {
+          this.confirmed = null
+          this.confirmedSource = null
+        } else {
+          this.confirmed = {
+            osm_id: data.osm_id,
+            osm_type: data.osm_type,
+            name: data.name,
+            tags: data.tags || {},
+            lat: data.lat,
+            lon: data.lon,
+          }
+          this.confirmedSource = 'resolution'
         }
-        this.confirmedSource = 'resolution'
       } else {
         this.confirmed = null
         this.confirmedSource = null

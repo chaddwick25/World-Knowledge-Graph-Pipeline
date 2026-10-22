@@ -1702,10 +1702,11 @@ class TestRenderBrief:
         brief = ResearchOrchestratorService._render_brief({
             "area": "Belize City", "scope": "within 3km",
             "focus": "restaurants and shops",
+            "axis": "cuisine and amenity must be the same",
         })
         assert brief == (
             "Research Belize City (within 3km) focusing on restaurants "
-            "and shops"
+            "and shops matching on cuisine and amenity must be the same"
         )
 
     def test_minimal_fields(self):

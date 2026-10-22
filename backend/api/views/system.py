@@ -276,10 +276,16 @@ class RegionMapDataView(APIView):
         countries = []
         seen_names = set()
         
-        # Get all country-level OSM boundaries with polygon file links
+        # Get all country-level OSM boundaries with polygon file links.
+        # Hard country filter (2026-10-21): the boundary generation writes
+        # everything as admin_level=2 (the junk included), so the ISO
+        # 3166-1 two-letter code is the reliable country test - the
+        # subdivisions carry 3166-2 codes or nothing. 195 true countries
+        # vs 274 mislabeled regions in the current data.
         boundaries = OsmBoundary.objects.filter(
             admin_level=2,
-            polygon_file__isnull=False
+            polygon_file__isnull=False,
+            iso_code__regex=r'^[A-Z]{2}$',
         ).select_related('polygon_file__region_hierarchy__parent').order_by('name')
         
         # Load relations for GeoVectors support check from OSMWikiDataHierarchy

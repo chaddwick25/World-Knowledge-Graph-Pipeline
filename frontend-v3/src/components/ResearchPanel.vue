@@ -56,7 +56,7 @@
             class="rounded px-2 py-1"
             :class="m.role === 'user' ? 'bg-primary text-white' : 'bg-secondary-subtle'"
             style="max-width: 90%;"
-          >{{ m.text }}</div>
+          >{{ m.role === 'assistant' ? assistantDisplay(m.text) : m.text }}</div>
         </div>
         <div v-if="isChatLoading" class="text-secondary">typing…</div>
       </div>
@@ -81,17 +81,12 @@
       <form class="d-flex gap-2 align-items-end" @submit.prevent="sendMessage">
         <textarea
           v-model="draft"
-          rows="1"
+          rows="2"
           class="form-control form-control-sm"
-          style="resize: none; min-height: 2.2rem; max-height: 8rem;"
+          style="resize: none; min-height: 4.4rem; max-height: 12rem;"
           :disabled="isChatLoading"
           @keydown.enter.exact.prevent="sendMessage"
         ></textarea>
-        <button
-          type="submit"
-          class="btn btn-primary btn-sm text-nowrap"
-          :disabled="isChatLoading || !draft.trim()"
-        >Send</button>
       </form>
     </div>
 
@@ -115,7 +110,7 @@
           class="ms-auto text-decoration-none"
         >Wikidata ↗</a>
       </div>
-      <div v-else class="text-danger">
+      <div v-else-if="!seed.candidates.length" class="text-danger">
         '{{ seed.asked }}' not found in the dataset
         <span v-if="seed.suggestions.length" class="d-block mt-1">
           Did you mean:
@@ -636,6 +631,24 @@ export default {
       this.exampleCopyTimer = setTimeout(() => {
         this.exampleCopied = false
       }, 1500)
+    },
+    /** Display text for an assistant message: strip a leading seed-name
+     *  echo (2026-10-21: the KE opens replies with the subject's name -
+     *  "Ragamuffin Coffee Bar Where are you looking for..." - the prompt
+     *  fix did not hold, so the display strips it; the transcript keeps
+     *  the raw text for the KE's context). */
+    assistantDisplay(text) {
+      const names = [this.seed.asked, this.seed.confirmed?.name]
+        .filter(Boolean)
+      for (const name of names) {
+        const re = new RegExp(
+          `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[,;:.!?-]?\\s*`,
+          'i',
+        )
+        const stripped = (text || '').replace(re, '')
+        if (stripped !== text) return stripped
+      }
+      return text || ''
     },
     /** The entity-kind word for the chip: first descriptive tag value. */
     seedKindLabel(row) {

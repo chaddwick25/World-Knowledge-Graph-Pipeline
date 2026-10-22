@@ -312,13 +312,34 @@ def research_chat(request):
                     if seed_part is not None:
                         emit(_part(seed_part))
                     emit(_part({"type": "text-start", "id": "t1"}))
-                    for delta in llm.chat_stream(
-                        full_messages, temperature=0.4, max_tokens=400,
-                    ):
-                        if delta:
-                            emit(_part({
-                                "type": "text-delta", "id": "t1", "delta": delta,
-                            }))
+                    # The doppelganger interview is DETERMINISTIC
+                    # (2026-10-21): the questions are a fixed sequence
+                    # emitted by the state machine - the 8B KE kept
+                    # echoing the seed, skipping the area question, and
+                    # taking the Seed: pick as an answer, and three
+                    # prompt fixes did not hold. The KE's LLM stays for
+                    # non-doppelganger asks.
+                    reply_text = (
+                        ResearchOrchestratorService
+                        .doppelganger_interview_reply(
+                            messages, seed_part,
+                        )
+                        if recipe_key == "doppelganger_report" else None
+                    )
+                    if reply_text is not None:
+                        emit(_part({
+                            "type": "text-delta", "id": "t1",
+                            "delta": reply_text,
+                        }))
+                    else:
+                        for delta in llm.chat_stream(
+                            full_messages, temperature=0.4, max_tokens=400,
+                        ):
+                            if delta:
+                                emit(_part({
+                                    "type": "text-delta", "id": "t1",
+                                    "delta": delta,
+                                }))
                     emit(_part({"type": "text-end", "id": "t1"}))
             except Exception as exc:  # noqa: BLE001 — never leave the client hanging
                 logger.warning("Research chat stream failed: %s", exc)
