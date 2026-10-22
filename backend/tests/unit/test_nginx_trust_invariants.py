@@ -3,14 +3,17 @@ Regression tests for the nginx-layer trust invariants (deploy/nginx.conf).
 
 The Django middleware gates (test_public_surface_gates.py) trust the Host
 header for local hosts; nginx is the layer that must keep client-controlled
-Hosts from ever reaching that branch. The shared host allowlist used to
-include localhost/127.0.0.1 on the PUBLIC edge, so a spoofed
-"Host: localhost" flipped is_public_host() to "trusted" — the one real
-finding of the 2026-10-05 security-review model bake-off
-(docs/platform/security_review_models.md, fixed the
-same day by splitting the allowlist per surface). These tests parse the
-config file so the invariants survive future edits. No DB / network
-required.
+Hosts from ever reaching that branch: a spoofed "Host: localhost" on the
+public edge would flip is_public_host() to "trusted". The allowlists are
+therefore split per surface, and these tests parse the config file so the
+invariants survive future edits. No DB / network required.
+
+Surfaces (port-split): :80 is the PUBLIC edge. The public ingress
+tunnel terminates upstream and reaches nginx on host loopback; its
+hostname(s) deliberately live only in the local config. :8081 is the
+OPERATOR surface: host-loopback only, reached by local processes. The
+trust marker's wire value ('tailnet') is a historical token kept for
+middleware compatibility, not a dependency on any tunnel vendor.
 """
 
 import re
@@ -20,10 +23,11 @@ import pytest
 
 NGINX_CONF = Path(__file__).resolve().parents[3] / 'deploy' / 'nginx.conf'
 
-# The real funnel hostname and tailnet IP deliberately live only in the
-# local (gitignored) config; these tests derive them structurally: the
-# funnel host is the single public-map entry in the .ts.net form, and the
-# trusted-local set comes from the middleware's own TRUSTED_LOCAL_HOSTS.
+# The real ingress hostname(s) and trusted addresses deliberately live
+# only in the local (gitignored) config; these tests derive structure,
+# never literals: the public map must be non-empty and free of the
+# middleware's trusted-local set, and the operator map must keep the
+# loopback entries and cover TRUSTED_LOCAL_HOSTS.
 
 
 def _extract_block(text, header_pattern):
@@ -55,19 +59,6 @@ def _map_entries(map_block):
     }
 
 
-def _funnel_host(conf_text):
-    """The funnel hostname, derived from the config itself: the single
-    entry of the public allowlist map, asserted to have the Tailscale
-    funnel hostname form."""
-    entries = _map_entries(_extract_block(
-        conf_text, r'map \$host \$host_allowed_public'
-    ))
-    assert len(entries) == 1, sorted(entries)
-    (host,) = entries
-    assert host.endswith('.ts.net'), host
-    return host
-
-
 def _server_block(text, listen_port):
     for m in re.finditer(r'^server \{', text, re.MULTILINE):
         block = _extract_block(text[m.start():], r'server')
@@ -93,38 +84,36 @@ def conf_text():
 
 
 class TestHostAllowlists:
-    def test_public_map_allows_only_funnel_hostname(self, conf_text):
-        # Exactly one entry, and it is the funnel hostname (the .ts.net
-        # form): the public edge is funnel-hostname-only.
+    def test_public_map_is_nonempty(self, conf_text):
+        # At least one public ingress hostname; the hostname(s) live
+        # only in the local config, so the assertion stays structural.
         entries = _map_entries(_extract_block(
             conf_text, r'map \$host \$host_allowed_public'
         ))
-        assert len(entries) == 1, sorted(entries)
-        (host,) = entries
-        assert host.endswith('.ts.net'), host
+        assert entries, 'public allowlist map has no ingress hostnames'
 
     def test_public_map_has_no_loopback_entries(self, conf_text):
         # Loopback entries on :80 let any client spoof a trusted Host and
         # flip the middleware's is_public_host() — the removed hole. The
         # trusted set is the middleware's own (TRUSTED_LOCAL_HOSTS), so
-        # the tailnet IP needs no hardcoding here.
+        # trusted addresses need no hardcoding here.
         from backend.middleware import _LOCAL_HOSTS
         entries = _map_entries(_extract_block(
             conf_text, r'map \$host \$host_allowed_public'
         ))
         assert not entries & set(_LOCAL_HOSTS)
 
-    def test_tailnet_map_keeps_loopback_entries(self, conf_text):
+    def test_operator_map_keeps_loopback_entries(self, conf_text):
         entries = _map_entries(_extract_block(
             conf_text, r'map \$host \$host_allowed_tailnet'
         ))
         assert {'localhost', '127.0.0.1'} <= entries
-        # The funnel hostname is servable on the tailnet listener too.
-        assert _funnel_host(conf_text) in entries
 
-    def test_tailnet_map_covers_trusted_local_hosts(self, conf_text):
-        # "Keep the tailnet map in sync with TRUSTED_LOCAL_HOSTS" — every
-        # host Django trusts must be servable on the tailnet listener.
+    def test_operator_map_covers_trusted_local_hosts(self, conf_text):
+        # "Keep the operator map in sync with TRUSTED_LOCAL_HOSTS" — every
+        # host Django trusts must be servable on the operator listener.
+        # (The map variable keeps the historical 'tailnet' name; the
+        # surface is the loopback operator listener.)
         from backend.middleware import _LOCAL_HOSTS
         entries = _map_entries(_extract_block(
             conf_text, r'map \$host \$host_allowed_tailnet'
@@ -138,10 +127,10 @@ class TestServerGuards:
         assert 'if ($host_allowed_public = 0)' in public
         assert 'return 444' in public
 
-    def test_tailnet_server_444s_unknown_hosts(self, conf_text):
-        tailnet = _server_block(conf_text, 8081)
-        assert 'if ($host_allowed_tailnet = 0)' in tailnet
-        assert 'return 444' in tailnet
+    def test_operator_server_444s_unknown_hosts(self, conf_text):
+        operator = _server_block(conf_text, 8081)
+        assert 'if ($host_allowed_tailnet = 0)' in operator
+        assert 'return 444' in operator
 
 
 class TestTrustMarkerWiring:
@@ -151,8 +140,8 @@ class TestTrustMarkerWiring:
         assert values, 'public server sets no trust marker'
         assert all(v == '""' for v in values), values
 
-    def test_tailnet_locations_set_marker(self, conf_text):
-        tailnet = _server_block(conf_text, 8081)
-        values = _marker_headers(tailnet)
-        assert values, 'tailnet server sets no trust marker'
+    def test_operator_locations_set_marker(self, conf_text):
+        operator = _server_block(conf_text, 8081)
+        values = _marker_headers(operator)
+        assert values, 'operator server sets no trust marker'
         assert all(v == '"tailnet"' for v in values), values

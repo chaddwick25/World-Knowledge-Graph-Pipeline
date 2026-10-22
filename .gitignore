@@ -9,6 +9,11 @@ __pycache__
 
 deploy/
 
+# Local-only operational planning (issue artifacts, deploy plans, session
+# notes). Never commit: the contents carry posture detail. Committed
+# workflow artifacts go through the GitLab issue flow instead.
+plans/
+
 # IDE / Editor
 .vscode/
 
