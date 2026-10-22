@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "deny": [
+      "Exec(git push)",
+      "Exec(git commit)",
+      "Exec(git tag)",
+      "Exec(git merge)",
+      "Exec(git rebase)",
+      "Exec(git switch)",
+      "Exec(git checkout -b)",
+      "Write(.env*)"
+    ]
+  }
+}
