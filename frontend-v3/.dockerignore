@@ -1,0 +1,7 @@
+# Build-context hygiene: deps are restored by npm ci, dist is rebuilt
+# in the image, and env files never enter the build context (secrets
+# stay operator-side; build args supply Vite vars explicitly).
+node_modules/
+dist/
+.env*
+*.log

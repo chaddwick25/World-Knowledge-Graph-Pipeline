@@ -1,0 +1,13 @@
+# Build-context hygiene: the hot data dir (9.5G), venvs, and caches
+# never enter the image build.
+data/
+**/data/
+.venv/
+venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+.git/

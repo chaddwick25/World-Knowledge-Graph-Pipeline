@@ -10,6 +10,10 @@ ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
     TZ=UTC
 
+# Release stamp: CI passes the tag; local builds default to dev.
+ARG VERSION=dev
+ENV VERSION=${VERSION}
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
     curl \
@@ -42,8 +46,7 @@ RUN curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py | python3.8
 RUN ln -sf /usr/bin/python3.8 /usr/bin/python && \
     ln -sf /usr/bin/python3.8 /usr/bin/python3
 
-RUN python -m pip install --upgrade pip
-RUN python -m pip install --upgrade packaging setuptools wheel
+RUN python -m pip install --upgrade --no-cache-dir pip packaging setuptools wheel
 
 WORKDIR /app
 
@@ -55,10 +58,10 @@ COPY docker-entrypoint.sh ./
 # Keep a bootstrap copy under /opt so the ./backend:/app bind mount does not
 # hide it; the entrypoint seeds /app/.venv from this copy on first run.
 RUN python -m venv .venv && \
-    .venv/bin/pip install --upgrade "pip<24.1" setuptools wheel && \
-    .venv/bin/pip install -r requirements.txt && \
-    .venv/bin/pip install "nvidia-cuda-cupti-cu11==11.7.101" && \
-    .venv/bin/pip install \
+    .venv/bin/pip install --no-cache-dir --upgrade "pip<24.1" setuptools wheel && \
+    .venv/bin/pip install --no-cache-dir -r requirements.txt && \
+    .venv/bin/pip install --no-cache-dir "nvidia-cuda-cupti-cu11==11.7.101" && \
+    .venv/bin/pip install --no-cache-dir \
       pyg-lib torch-scatter torch-sparse torch-cluster \
       -f https://data.pyg.org/whl/torch-2.0.1+cu118.html && \
     cp -a .venv /opt/venv_bootstrap

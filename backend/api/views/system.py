@@ -1,4 +1,5 @@
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +210,9 @@ class SystemStatusView(APIView):
 
         data = {
             "ready": ready,
+            # Deployment stamp: which plane answered (dev plane default).
+            "environment": os.environ.get("DEPLOYMENT_ENV", "dev"),
+            "version": os.environ.get("VERSION", "dev"),
             "snapshot": snapshot,
             "suggested_planet_file_path": getattr(
                 settings, "PLANET_OSM_FILE_PATH", None

@@ -5,16 +5,16 @@ database extensions, migrations, planet initialization, name romanization,
 worker configuration, and fresh-database resets.
 
 For architecture and operational details, see:
-- `README.md` — overview and index of the app-organized folders
-- `platform/docker_entrypoint_init.md` — `init_planet` architecture
-- `../AGENTS.md` (repo root) — development rules, conventions, gotchas
+- `README.md`; overview and index of the app-organized folders
+- `platform/docker_entrypoint_init.md`; `init_planet` architecture
+- `../AGENTS.md` (repo root); development rules, conventions, gotchas
 
 ---
 
 ## Prerequisites
 
 - Docker and Docker Compose
-- NVIDIA GPU + NVIDIA Container Toolkit (for GV-NLE, IGEA, USLP — CPU fallback exists for some steps)
+- NVIDIA GPU + NVIDIA Container Toolkit (for GV-NLE, IGEA, USLP; CPU fallback exists for some steps)
 - ~70 GB free disk for the planet PBF and per-country extracts
 
 ---
@@ -52,7 +52,7 @@ npm run build      # Production build
 Both databases need their extensions enabled after the first `up`:
 
 ```bash
-# default DB (port 5432) — PostGIS + pgvector
+# default DB (port 5432); PostGIS + pgvector
 docker compose exec postgres-default bash -c '
   psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h localhost -p 5432 \
        -c "CREATE EXTENSION IF NOT EXISTS postgis;";
@@ -60,7 +60,7 @@ docker compose exec postgres-default bash -c '
        -c "CREATE EXTENSION IF NOT EXISTS vector;"
 '
 
-# vectors DB (port 5433) — pgvector + PostGIS
+# vectors DB (port 5433); pgvector + PostGIS
 docker compose exec postgres-vectors bash -c 'psql -U "$PGVECTOR_USER" -d "$PGVECTOR_DB" -c "CREATE EXTENSION IF NOT EXISTS vector;"'
 ```
 
@@ -91,7 +91,7 @@ lock) and initializes: planet/continent PBFs, OSM-Wikidata hierarchy,
 country paths, subgraph profiles, Wikidata IDs, embedding scans, WorldKG
 ontology, and OSM boundaries.
 ```bash
-# Run all 16 steps (idempotent — short-circuits if a COMPLETED row exists for today)
+# Run all 16 steps (idempotent; short-circuits if a COMPLETED row exists for today)
 docker compose exec backend python manage.py init_planet
 
 # Run a single step
@@ -102,7 +102,7 @@ docker compose exec backend python manage.py init_planet --no-lock
 ```
 
 The backend container runs `init_planet` automatically on startup when
-`RUN_INIT_PLANET=true` (default) — but only if planet init is not already
+`RUN_INIT_PLANET=true` (default); but only if planet init is not already
 complete: the entrypoint pre-checks `planet_snapshots` for a `COMPLETED`
 row (a cheap `SELECT 1 ... LIMIT 1`, mirroring the worker migration poll)
 and skips the command entirely when one exists. The worker has
@@ -114,7 +114,7 @@ For the 16-step list and architecture, see
 ## Path verification (boot-time)
 
 `verify_paths` validates the configured path table, DB connectivity, and
-(since 2026-09-11) every file referenced by `overrides.json` — the override
+(since 2026-09-11) every file referenced by `overrides.json`; the override
 file itself, each `embedding_splits` poly (resolved against
 `POLYGON_FILES_DIR/overrides/` then root), and split output parent dirs.
 Use `--strict` to exit 1 on missing required paths or polys:
@@ -163,11 +163,11 @@ against `POLYGON_FILES_DIR/overrides/` then root (the same order as
 `EmbeddingSpatialSplitService.resolve_poly_path`), so a broken overrides
 config is caught at boot, not mid-pipeline. Polys live in cold storage, not
 the repo, so a bare checkout will report them as missing until you
-provision the real `.poly` files — that is correct behavior.
+provision the real `.poly` files; that is correct behavior.
 
 Canonical field reference:
 `research_to_runtime/NON_SOVEREIGN_TERRITORIES_AND_OVERRIDES.md`
-sections 2.1–2.3. Loader:
+sections 2.1-2.3. Loader:
 `backend/core/services/snapshot/country_override_service.py:load_overrides()`
 (also accepts a flat legacy mapping like `{"IE": "ireland"}` at the top
 level, but the structured schema in the example is preferred).
@@ -179,7 +179,7 @@ level, but the structured schema in the example is preferred).
 The `romanizing_names` service converts non-Latin and diacritic-bearing OSM
 names to a Latin phonetic fingerprint for PostgreSQL trigram similarity
 search. It runs as a standalone management command, decoupled from country
-ingestion — idempotent and resumable.
+ingestion; idempotent and resumable.
 
 ```bash
 # Romanize all pending entities (processes where name_romanized IS NULL)
@@ -199,8 +199,8 @@ for the full architecture.
 
 ## Worker configuration
 
-- `--pool=prefork --concurrency=4` — 4 CPU workers for parallel upserts/IGEA/USLP
-- GPU tasks use per-GPU slot locks — all subgraphs go to `cuda:0` with
+- `--pool=prefork --concurrency=4`; 4 CPU workers for parallel upserts/IGEA/USLP
+- GPU tasks use per-GPU slot locks; all subgraphs go to `cuda:0` with
   concurrency=1 by default. Configure via `GV_NLE_GPU_DEVICES` and
   `GV_NLE_GPU_CONCURRENCY` env vars.
 - `RUN_MIGRATIONS` env var: backend runs migrations, worker waits for them
@@ -244,4 +244,10 @@ On a fresh vectors DB, `semantic_search_osmentity` starts as a monolith
 table. The first country pipeline run's Step 1 detects the empty monolith,
 converts it to a partitioned table (`PARTITION BY LIST (snapshot_id)` →
 `LIST (country_code)`), and creates the per-country leaf partition
-automatically — no manual cutover needed.
+automatically; no manual cutover needed.
+
+## Deployment
+
+Deployment is operator-local and deliberately not part of the repo: the
+tracked files carry the build (CI builds images from release tags), the
+operator environment carries the deploy. See the operator runbook.
