@@ -66,6 +66,8 @@ RUN python -m venv .venv && \
       -f https://data.pyg.org/whl/torch-2.0.1+cu118.html && \
     cp -a .venv /opt/venv_bootstrap
 
+COPY . .
+
 # Make entrypoint script executable
 RUN chmod +x docker-entrypoint.sh
 
