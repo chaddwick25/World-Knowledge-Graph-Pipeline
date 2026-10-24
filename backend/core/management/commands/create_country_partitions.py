@@ -401,7 +401,6 @@ class Command(BaseCommand):
                 tags JSONB NOT NULL,
                 gv_tags_embedding VECTOR(300),
                 gv_nle_embedding VECTOR(100),
-                static_embedding VECTOR(400),
                 wkg_class VARCHAR(200),
                 wkg_superclasses VARCHAR(200)[],
                 wikidata_uri VARCHAR(200),
@@ -595,7 +594,7 @@ class Command(BaseCommand):
             INSERT INTO {leaf_table} (
                 id, snapshot_id, country_code, subdivision,
                 osm_type, osm_id, tags,
-                gv_tags_embedding, gv_nle_embedding, static_embedding,
+                gv_tags_embedding, gv_nle_embedding,
                 wkg_class, wkg_superclasses, wikidata_uri, wkg_depth,
                 wkg_type_key, wkg_type_value, wkg_enriched_at,
                 geom, version, timestamp,
@@ -605,7 +604,7 @@ class Command(BaseCommand):
             SELECT
                 e.id, e.snapshot_id, e.country_code, NULL,
                 e.osm_type, e.osm_id, e.tags,
-                e.gv_tags_embedding, e.gv_nle_embedding, e.static_embedding,
+                e.gv_tags_embedding, e.gv_nle_embedding,
                 e.wkg_class, e.wkg_superclasses, e.wikidata_uri, e.wkg_depth,
                 e.wkg_type_key, e.wkg_type_value, e.wkg_enriched_at,
                 e.geom, e.version, e.timestamp,
@@ -618,7 +617,6 @@ class Command(BaseCommand):
                 tags = EXCLUDED.tags,
                 gv_tags_embedding = EXCLUDED.gv_tags_embedding,
                 gv_nle_embedding = EXCLUDED.gv_nle_embedding,
-                static_embedding = EXCLUDED.static_embedding,
                 geom = EXCLUDED.geom,
                 updated_at = NOW();
         """)
@@ -640,11 +638,8 @@ class Command(BaseCommand):
 
         The search endpoints (``semantic_search/views_pbf.py``,
         ``worldkg_nca/views.py``) query ``gv_tags_embedding <=>`` for ANN.
-        ``static_embedding`` is a separate 400D column used only by the
-        optional ``use_ann`` path (default off) — it's empty in the
-        monolith, so we index the column that actually has data.
 
-        If an old HNSW index on ``static_embedding`` exists (from a
+        If an old HNSW index on a different column exists (from a
         previous run), it's dropped first.
         """
         idx_name = f"idx_{leaf_table}_hnsw"

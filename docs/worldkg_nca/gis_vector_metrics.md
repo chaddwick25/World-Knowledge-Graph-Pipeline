@@ -105,19 +105,21 @@ Both use the GiST index for O(log N + k) lookups.
 
 ## 3. pgvector: Embedding Storage + ANN
 
-> **Status (2026-09-09): the HNSW-on-`static_embedding` index and the
-> query-time ANN flow in §3.2-3.3 are design, not live.** `static_embedding`
-> is NULL for all 46,030,536 rows, no index exists, `use_ann` is opt-in
-> `false`. Runtime search is exact (`+ 0`) + USLP re-rank (see
-> HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN).
+> **Status update (2026-10-24): §3.2-3.3 describe a retired design.**
+> The 400D `static_embedding` column and its commands were deleted.
+> The live path is per-leaf HNSW on `gv_tags_embedding` /
+> `gv_nle_embedding` serving indexable `<=>` ANN + post-scoring re-rank;
+> `exact=true` restores the `+ 0` exact scan for recall checks. Known
+> caveat and mitigations (duplicate-dense HNSW orphan clusters):
+> `geovectors_encoder/vector_storage_partitioning.md` §4.3.
 
-### 3.1 Three Vector Columns
+### 3.1 Vector Columns
 
 | Column | Dim | Source | Index |
 |---|---|---|---|
-| `gv_tags_embedding` | 300 | FastText (semantic) | (fused into static_embedding) |
-| `gv_nle_embedding` | 100 | DeepWalk (spatial) | (fused into static_embedding) |
-| `static_embedding` | 400 | concatenate(GV-Tags, GV-NLE) | HNSW planned, not built (2026-09-09) |
+| `gv_tags_embedding` | 300 | FastText (semantic) | per-leaf HNSW |
+| `gv_nle_embedding` | 100 | DeepWalk (spatial) | per-leaf HNSW |
+| ~~`static_embedding`~~ | ~~400~~ | ~~concatenate(GV-Tags, GV-NLE)~~ | deleted 2026-10-23 (never populated) |
 
 ### 3.2 HNSW Index
 

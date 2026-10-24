@@ -398,13 +398,35 @@ class QueryExecutorService(
         )
 
         snapshot_id = cls._get_snapshot_id(snapshot_date)
+
+        # Cheap G4 gates, broadest first: no spectral rows for the
+        # country at all, or no eigen-loadings row for this anchor —
+        # either makes the table path unanswerable, so skip the ~1.8s
+        # candidate-gathering preamble (exact-tag → ontology → trgm
+        # fuzzy tiers) and go straight to the fallback.
+        frs = FactorResolutionService()
+        cc = country_code or ""
+        reason = None
+        if not frs.has_factor_data(snapshot_id, cc):
+            reason = f"no factor rows for {cc or '?'}/{snapshot_id}"
+        elif not frs.has_eigen_row(anchor_osm_id, snapshot_id, cc):
+            reason = f"no factor row for anchor {anchor_osm_id}"
+        if reason:
+            if trace is not None:
+                trace.append({
+                    "step": "factor_join",
+                    "table": "factor_spectral_node_metric",
+                    "warning": f"{reason} — skipping table path",
+                })
+            return None
+
         candidates, match_type = cls._amenity_candidate_osm_ids(
             amenity_type, country_code, snapshot_id,
         )
         if not candidates:
             return None
 
-        ranked = FactorResolutionService().diffusion_rank(
+        ranked = frs.diffusion_rank(
             anchor_osm_id, t, snapshot_id, country_code,
             candidate_osm_ids=candidates, limit=top_k, trace=trace,
         )

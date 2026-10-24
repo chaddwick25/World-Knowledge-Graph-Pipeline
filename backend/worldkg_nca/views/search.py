@@ -134,6 +134,78 @@ def _cross_script_name_score(query_text: str, entity_name: str) -> float:
         return _char_ngram_jaccard(romanized, entity_name.lower(), n=2)
 
 
+def _distance_annotation_sql(exact):
+    """gv_tags cosine-distance SQL for the candidate window.
+
+    The planner only uses the per-leaf HNSW index when ORDER BY is the
+    bare ``col <=> q`` operator.  Wrapping the same distance in ``+ 0``
+    changes the expression shape, so the index no longer applies and
+    Postgres must seq-scan + compute the true distance to every row.
+    ``+ 0`` was the historical default (deliberate exact scan); it now
+    survives only as ``exact=True`` for recall checks and as an escape
+    hatch when ANN misses a cluster on duplicate-dense leaves.
+    """
+    sql = "gv_tags_embedding <=> %s::vector"
+    return f"({sql}) + 0" if exact else sql
+
+
+# ── Same-name/geo diversity dedupe ──────────────────────────────────────
+# Post-scoring dedupe for the same-name flooding problem (CU leaf: ~11%
+# of rows share a name with another row — "Carretera Central" x1157,
+# "Vaquería" x1099).  Groups results by (normalized name, geohash cell)
+# and keeps only the highest final_score per group, so the top_k cut
+# fills with diverse results instead of near-identical entries.
+# Entities with no name or no geom are never grouped.
+_DIVERSITY_GEOHASH_PRECISION = 5  # ~4.9 km cell edge
+
+
+def _normalize_result_name(name):
+    """Lowercase, punctuation/whitespace-collapsed name for grouping."""
+    if not name:
+        return ""
+    decomposed = unicodedata.normalize("NFKD", str(name))
+    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+    collapsed = re.sub(r"[^\w\s]+", "", stripped)
+    return " ".join(collapsed.lower().split())
+
+
+def _diversity_key(result):
+    """Grouping key (normalized name, geohash cell) or None if ungrouped."""
+    name = _normalize_result_name((result.get("tags") or {}).get("name"))
+    geom = result.get("geom") or {}
+    lat, lon = geom.get("lat"), geom.get("lon")
+    if not name or lat is None or lon is None:
+        return None
+    import geohash2
+    return (name, geohash2.encode(lat, lon, precision=_DIVERSITY_GEOHASH_PRECISION))
+
+
+def _diversity_dedupe(results):
+    """Keep the highest final_score result per (name, geohash) group.
+
+    Scores stay per-row — losers are dropped from the result list, not
+    merged.  Sort order is preserved.
+    """
+    keys = [_diversity_key(r) for r in results]
+    best = {}
+    for idx, key in enumerate(keys):
+        if key is None:
+            continue
+        cur = best.get(key)
+        if cur is None or (
+            results[idx]["scores"]["final_score"]
+            > results[cur]["scores"]["final_score"]
+        ):
+            best[key] = idx
+    if not best:
+        return results
+    keep = set(best.values())
+    return [
+        r for idx, r in enumerate(results)
+        if keys[idx] is None or idx in keep
+    ]
+
+
 @api_view(['POST'])
 def worldkg_semantic_triplet_search(request):
     """
@@ -149,7 +221,8 @@ def worldkg_semantic_triplet_search(request):
         "top_k": 20,                      # 1-100, default 20
         "exact_tag_match": false,         # Optional: require exact tag match (default false)
         "name_distance_threshold": 0.3,  # Optional: max cosine distance for semantic match (default 0.3)
-        "use_ann": false                  # Optional: use 400D static_embedding with HNSW (default false)
+        "exact": false,                   # Optional: exact k-NN scan instead of HNSW ANN (default false)
+        "diversity_dedupe": true          # Optional: collapse same-name/geo results (default true)
     }
 
     Scoring:
@@ -194,7 +267,8 @@ def worldkg_semantic_triplet_search(request):
     name_distance_threshold = request.data.get(
         "name_distance_threshold", _DEFAULT_NAME_DISTANCE_THRESHOLD,
     )
-    use_ann = request.data.get("use_ann", False)
+    exact = request.data.get("exact", False)
+    diversity_dedupe = request.data.get("diversity_dedupe", True)
     use_learned_weights = request.data.get("use_learned_weights", False)
     # snapshot_date filters OsmEntity by snapshot_id (CharField, e.g. "2025_12_31")
     snapshot_date = request.data.get("snapshot_date")
@@ -243,10 +317,6 @@ def worldkg_semantic_triplet_search(request):
                 query_tags = {osm_key: keyword}
                 break
     
-    # Adjust threshold for ANN mode (400D distances are different from 300D)
-    if use_ann:
-        name_distance_threshold = request.data.get("name_distance_threshold", 1.0)
-
     try:
         top_k = int(top_k)
     except (TypeError, ValueError):
@@ -439,183 +509,7 @@ def worldkg_semantic_triplet_search(request):
             # Fallback to default weights when none are available
             use_learned_weights = False
 
-    # ANN Search Path (400D static_embedding)
-    if use_ann:
-        # Check if static_embedding is available
-        qs = qs.filter(static_embedding__isnull=False)
-
-        # Generate 300D query embedding from tags
-        tag_counts = FastTextEmbeddingService.build_tag_counts_from_osm_tags(query_tags)
-        query_embedding_300d = FastTextEmbeddingService.calculate_embedding(tag_counts)
-        query_list_300d = query_embedding_300d.tolist()
-
-        # Pad to 400D (100D spatial component = zeros for now)
-        # TODO: Future enhancement: generate spatial component from lat/lon
-        query_list_400d = query_list_300d + [0.0] * 100
-
-        # Use HNSW index for fast ANN search
-        qs = qs.annotate(
-            ann_distance=RawSQL(
-                "static_embedding <=> %s::vector",
-                (query_list_400d,),
-                output_field=FloatField(),
-            )
-        )
-
-        # Add geo distance annotation if lat/lon provided
-        point = None
-        if lat is not None and lon is not None:
-            try:
-                lat_f = float(lat)
-                lon_f = float(lon)
-                point = Point(lon_f, lat_f, srid=4326)
-                qs = qs.annotate(geo_distance=Distance("geom", point))
-            except (TypeError, ValueError):
-                point = None
-
-        # Get top candidates via ANN (no re-ranking for speed)
-        initial_limit = max(top_k * 10, top_k)
-        candidates = list(qs.order_by("ann_distance")[:initial_limit])
-
-        # Prepare query name terms for substring matching (same as triple-space)
-        _ann_query_name_terms = []
-        if name_search_term:
-            _ann_query_name_terms = [
-                t for t in re.findall(r"[^\s,.;:!?()]+", name_search_term.lower())
-                if len(t) >= 3 and t not in FastTextEmbeddingService._STOP_WORDS
-            ]
-
-        # Direct scoring from ANN distance, with optional learned weights
-        results = []
-        for entity in candidates:
-            ann_distance = getattr(entity, "ann_distance", None)
-            try:
-                ann_distance = float(ann_distance) if ann_distance is not None else 1.0
-            except (TypeError, ValueError):
-                ann_distance = 1.0
-            # Guard against NaN (same as triple-space path)
-            if not math.isfinite(ann_distance):
-                ann_distance = 1.0
-
-            # Cross-script name score (Korean↔Latin fallback) — computed
-            # before the threshold check so cross-script matches can bypass
-            # the (meaningless for CJK) FastText distance filter.
-            xscript_score = 0.0
-            entity_name = (entity.tags or {}).get("name", "") or ""
-            if name_search_term and entity_name:
-                xscript_score = _cross_script_name_score(name_search_term, entity_name)
-
-            # Name substring match boost
-            name_boost_score = 0.0
-            if _ann_query_name_terms and entity_name:
-                name_lower = entity_name.lower()
-                for term in _ann_query_name_terms:
-                    if term in name_lower:
-                        name_boost_score += _NAME_SUBSTRING_BOOST
-
-            # Convert ANN distance to similarity score
-            name_score = 1.0 - ann_distance
-
-            # Apply semantic distance threshold, but allow cross-script or
-            # name-substring matches to bypass it (same logic as triple-space).
-            if ann_distance > name_distance_threshold:
-                if xscript_score <= 0.0 and name_boost_score <= 0.0:
-                    continue
-
-            # USLP geographic score (geohash P4 cluster centers, d_max=39km)
-            geo_score = 0.0
-            if point is not None:
-                geo_value = getattr(entity, "geo_distance", None)
-                if geo_value is not None:
-                    try:
-                        if hasattr(geo_value, "m"):
-                            dist_m = float(geo_value.m)
-                        else:
-                            dist_m = float(geo_value)
-                        import geohash2
-                        gh_h = geohash2.encode(point.y, point.x, precision=4)
-                        gh_t = geohash2.encode(entity.geom.y, entity.geom.x, precision=4)
-                        lat_h, lon_h = geohash2.decode(gh_h)
-                        lat_t, lon_t = geohash2.decode(gh_t)
-                        cluster_dist_km = math.sqrt(
-                            (float(lat_h) - float(lat_t))**2 +
-                            (float(lon_h) - float(lon_t))**2
-                        ) * 111.0
-                        d_max = 39.0
-                        geo_score = max(0.0, min(1.0, 1.0 - (cluster_dist_km / d_max)))
-                    except (TypeError, ValueError, Exception):
-                        geo_score = 0.0
-
-            # Class scoring
-            class_score = 0.0
-            if rdf_type:
-                if entity.wkg_class == rdf_type or (
-                    entity.wkg_superclasses and rdf_type in entity.wkg_superclasses
-                ):
-                    class_score = 1.0
-
-            # Tag match boost (same logic as triple-space path)
-            tag_match_score = 0.0
-            if query_tags:
-                for qk, qv in query_tags.items():
-                    if qv and entity.tags.get(qk) == qv:
-                        tag_match_score += 1.0
-
-            if use_learned_weights:
-                final_score = (
-                    (w_name * name_score)
-                    + (w_geo * geo_score)
-                    + (w_class * class_score)
-                    + tag_match_score
-                    + xscript_score
-                    + name_boost_score
-                )
-            else:
-                final_score = (
-                    name_score + geo_score + class_score + tag_match_score
-                    + xscript_score + name_boost_score
-                )
-
-            results.append(
-                {
-                    "osm_type": entity.osm_type,
-                    "osm_id": entity.osm_id,
-                    "tags": entity.tags,
-                    "wkg_class": entity.wkg_class,
-                    "wkg_superclasses": entity.wkg_superclasses,
-                    "geom": {
-                        "lat": entity.geom.y if entity.geom else None,
-                        "lon": entity.geom.x if entity.geom else None,
-                    }
-                    if entity.geom
-                    else None,
-                    "scores": {
-                        "name_score": _safe_float(name_score),
-                        "geo_score": _safe_float(geo_score),
-                        "class_score": _safe_float(class_score),
-                        "tag_match_score": _safe_float(tag_match_score),
-                        "xscript_score": _safe_float(xscript_score),
-                        "name_boost_score": _safe_float(name_boost_score),
-                        "final_score": _safe_float(final_score),
-                        "ann_distance": _safe_float(ann_distance),
-                    },
-                }
-            )
-
-        results.sort(key=lambda r: r["scores"]["final_score"], reverse=True)
-        results = results[:top_k]
-
-        return Response(
-            {
-                "country_code": country_code,
-                "top_k": top_k,
-                "count": len(results),
-                "results": results,
-                "search_mode": "ann",
-            }
-        )
-
-    # Triple-Space Search Path (current implementation)
+    # Triple-Space Search Path
     # Support both structured tag queries and natural language queries.
     # When query_tags were extracted from a natural query (lines 549-562), use
     # the clean tag-based embedding — the raw text embedding dilutes the signal
@@ -643,14 +537,13 @@ def worldkg_semantic_triplet_search(request):
             query_embedding = FastTextEmbeddingService.calculate_embedding({})
     query_list = query_embedding.tolist()
 
-    # Use exact cosine distance (not HNSW approximation).  The + 0 makes the
-    # expression non-indexable, preventing PostgreSQL from using the HNSW
-    # index on gv_tags_embedding — which returns approximate results that
-    # miss relevant entities (e.g. cafe query returns highway=service at
-    # dist=0.62 instead of actual cafes at dist=0.16).
+    # Cosine distance over gv_tags_embedding in indexable form so
+    # PostgreSQL can serve the window from the per-leaf HNSW index (ANN).
+    # exact=true restores the `+ 0` non-indexable form for exact-scan
+    # recall checks.
     qs = qs.annotate(
         name_distance=RawSQL(
-            "(gv_tags_embedding <=> %s::vector) + 0",
+            _distance_annotation_sql(exact),
             (query_list,),
             output_field=FloatField(),
         )
@@ -930,6 +823,10 @@ def worldkg_semantic_triplet_search(request):
             }
         )
 
+    # Retrieval pipeline: the window is filled by ANN (`col <=> q`) or an
+    # exact scan (`exact=True`); final_score orders it; _diversity_dedupe
+    # then collapses same-name twins.  Ordering and dedup are separate
+    # jobs - the re-rank ranks duplicates, it does not remove them.
     results.sort(key=lambda r: r["scores"]["final_score"], reverse=True)
 
     # When rdf_type is auto-inferred, boost class-matching entities in ranking
@@ -941,6 +838,11 @@ def worldkg_semantic_triplet_search(request):
                 r["scores"]["final_score"] += 2.0
             # Re-sort with boosted scores
             results.sort(key=lambda r: r["scores"]["final_score"], reverse=True)
+
+    # Diversity dedupe before the top_k cut so the cut fills with diverse
+    # results (same-name entities in one geohash P5 cell → best only).
+    if diversity_dedupe:
+        results = _diversity_dedupe(results)
 
     results = results[:top_k]
 
@@ -984,7 +886,6 @@ def worldkg_semantic_query_plan(request):
     query_text = request.data.get("query") or ""
     top_k = request.data.get("top_k", 20)
     use_learned_weights = bool(request.data.get("use_learned_weights", True))
-    use_ann = bool(request.data.get("use_ann", False))
 
     try:
         top_k = int(top_k)
@@ -1078,8 +979,6 @@ def worldkg_semantic_query_plan(request):
         "top_k": top_k,
         "use_learned_weights": use_learned_weights,
     }
-    if use_ann:
-        semantic_triplet_params["use_ann"] = True
     if primary_rdf_type:
         semantic_triplet_params["rdf_type"] = primary_rdf_type
 
@@ -1097,7 +996,6 @@ def worldkg_semantic_query_plan(request):
         "rdf_types": rdf_types,
         "primary_rdf_type": primary_rdf_type,
         "use_learned_weights": use_learned_weights,
-        "use_ann": use_ann,
         "region_hints": region_hints,
         "executor": "worldkg_semantic_triplet_search",
         "semantic_triplet_params": semantic_triplet_params,

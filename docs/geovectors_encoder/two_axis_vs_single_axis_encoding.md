@@ -2,12 +2,12 @@
 
 > **Status: SUPERSEDED (2026-09-10).** The two-axis Step-1 encoding path
 > (`DualEncodingWriter` + `_build_dual_writer` + `_run_parallel_dual` +
-> `_PARALLEL_DUAL_ENABLED`) was **removed** as dead code — see
-> TICKET_REMOVE_DUAL_ENCODER. It never ran in production
+> `_PARALLEL_DUAL_ENABLED`) was **removed** as dead code (see
+> TICKET_REMOVE_DUAL_ENCODER). It never ran in production
 > (zero country-level `wdw.pickle` on disk, verified 2026-08-31).
 >
 > What remains:
-> - **Step 1** is FastText-only (GV-Tags 300D) — `DBOnlyWriter`
+> - **Step 1** is FastText-only (GV-Tags 300D): `DBOnlyWriter`
 >   (single-threaded) or `BatchCollector` fan-out (parallel); both paths in
 >   `EmbeddingService.run()`.
 > - **Step 5** trains GV-NLE 100D (weighted DeepWalk on the k-NN graph) and
@@ -66,8 +66,8 @@ embedding models. The pipeline implements both, plus a fused 400D
 | Requires pickle | NO | YES (pre-trained NLE) |
 
 Fused: `static_embedding` (VECTOR 400) = concatenate(GV-Tags(300),
-GV-NLE(100)). HNSW index planned, **not built** (0 rows populated, verified
-2026-09-09, see §7).
+GV-NLE(100)). **Removed 2026-10-23** (0 rows populated, path diverged
+from the live triple-space path, see §7).
 
 **Source:** <ref_file file="backend/core/services/snapshot/embedding_service.py" />
 
@@ -77,7 +77,7 @@ GV-NLE(100)). HNSW index planned, **not built** (0 rows populated, verified
 
 `EmbeddingService.run()` was the single entry point for Step 1 encoding and
 branched on two envelope fields: `cfg.has_pretrained_nle` and
-`cfg.pickle_path`. **That branch no longer exists** — the two-axis path was
+`cfg.pickle_path`. **That branch no longer exists**: the two-axis path was
 removed 2026-09-10 (see the superseded banner above).
 
 Current Step 1 flow:
@@ -161,12 +161,12 @@ writer = DBOnlyWriter(ft_model, tags_storage)
 
 ---
 
-## 4. DualEncodingWriter: Dual Encoding (FastText + NLE) — REMOVED 2026-09-10
+## 4. DualEncodingWriter: Dual Encoding (FastText + NLE) (REMOVED 2026-09-10)
 
 > This class was deleted with the two-axis Step-1 path (see the superseded
 > banner above). Kept here for history.
 
-**Source:** <ref_file file="backend/geovectors_encoder/services/geovectors_service.py" /> (search for `class DBOnlyWriter` — `DualEncodingWriter` no longer exists)
+**Source:** <ref_file file="backend/geovectors_encoder/services/geovectors_service.py" /> (search for `class DBOnlyWriter`; `DualEncodingWriter` no longer exists)
 
 `DualEncodingWriter` held **two** encoders and **two** storage services.
 For each record, it encoded both axes and upserted both:
@@ -209,7 +209,7 @@ parallel dual path exists (see
 - See [Streaming Batched Encoding](streaming_batched_encoding.md) for the
   full `BatchCollector` architecture.
 
-### 5.2 `_run_parallel_dual`: FastText + NLE, Parallelized — REMOVED 2026-09-10
+### 5.2 `_run_parallel_dual`: FastText + NLE, Parallelized (REMOVED 2026-09-10)
 
 > Removed with the two-axis path. It had the same producer/consumer topology
 > as `_run_parallel`, shared one `NLEModel` across encoding threads, and the
@@ -267,6 +267,17 @@ index on `static_embedding`. Only rows with **both** GV-Tags + GV-NLE have
 > are on the per-snapshot materialized views (not read by runtime queries).
 > The 400D fusion is a *design*, not a live artifact; the HNSW-on-400D search
 > path serves nothing until it is built.
+>
+> **Removed 2026-10-23 (ISSUE-ann-gv-tags-flip):** the column never
+> materialized and the `use_ann` branch had diverged from the live
+> triple-space path (no name-candidate pull, no exact-tag merge, missing
+> threshold-bypass and auto-inferred boost components). The maintainer
+> chose removal over backfill or reroute. `static_embedding` is dropped
+> (worldkg_nca/0021), `compute_static_embeddings` and
+> `create_static_embedding_hnsw_index` are deleted, and the runtime
+> search path flipped to per-leaf HNSW ANN on `gv_tags_embedding`
+> (indexable `<=>`, `exact=true` restores the exact scan). This section
+> describes the retired design.
 
 ---
 
@@ -287,8 +298,8 @@ index on `static_embedding`. Only rows with **both** GV-Tags + GV-NLE have
 - Cosine distance range: [0, 2] with similarity = 1 - distance
 - GV-NLE coverage: entities should have both semantic and spatial embeddings
 - Same-type similarity: entities with same tags should have high similarity
-- `static_embedding` is only populated when both GV-Tags + GV-NLE are present
+- `static_embedding` was removed 2026-10-23 (see §7)
 - Step 1 is FastText-only: the `_PARALLEL_DUAL_ENABLED` gate and the parity
-  precondition are moot — the
+  precondition are moot; the
   gate, `DualEncodingWriter`, and `_run_parallel_dual` were removed
   2026-09-10.

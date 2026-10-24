@@ -201,12 +201,18 @@ wiring into the remaining trained templates is open.
   inner product (filtered at `min_score = 1e-6`); `name_score` and
   `geo_score` are clamped to [0,1]; `uslp_boost` is {0, +0.5}. The fusion
   adds them as-is.
-- **Role split.** The USLP pair "gathers broadly, orders precisely"
-  (relevance via exact search, ordering via proven criteria). The
-  diffusion term is the spectral ordering signal: it enters when the
-  factor tables built the pool, and it carries the graph-structure
-  evidence (Kuhn's Network concept) that embedding distance alone lacks.
-  The `name_score` term is the identity signal: it pins exact-name
+- **Role split.** Three separate jobs: retrieval fills the candidate
+  window (per-leaf HNSW ANN as of 2026-10-23; `exact=true` restores the
+  old `+ 0` exact scan), `combined_score` / `final_score` orders it
+  ("gathers broadly, orders precisely"), and dedupe collapses same-name
+  twins (`_diversity_dedupe` in `worldkg_nca/views/search.py`,
+  `_merge_pools` entity dedupe here). The re-rank does not remove
+  duplicates; twins survived it for years because geo_score spreads
+  same-name entities that sit in different cells. The diffusion term
+  is the spectral ordering signal: it enters when the factor tables
+  built the pool, and it carries the graph-structure evidence (Kuhn's
+  Network concept) that embedding distance alone lacks. The
+  `name_score` term is the identity signal: it pins exact-name
   entities to the top of proper-name queries regardless of distance.
 
 ## 7. Modes and PCA: not implemented
@@ -215,7 +221,7 @@ wiring into the remaining trained templates is open.
 backend. The only PCA described is the urban-morphology feature PCA
 (`OSM_TO_BUILT_FORM.md` "PCA basis Ψ"), which operates on measured building
 features, not on graph modes. The pattern library classifies PCA as the
-covariance-operator pattern (the pattern-library seed cards —
+covariance-operator pattern (the pattern-library seed cards:
 variance structure → axis-aligned, ranked), a sibling of the spectral
 pattern, not the same operator.
 

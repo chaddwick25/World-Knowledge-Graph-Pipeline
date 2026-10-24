@@ -78,14 +78,6 @@ class OsmEntity(models.Model):
         help_text="GV-NLE: Spatial embedding from k-NN graph (Where you are)"
     )
 
-    # Static embedding for ANN search (concatenated GV-Tags + GV-NLE, 300D + 100D = 400D)
-    static_embedding = VectorField(
-        dimensions=400,
-        null=True,
-        blank=True,
-        help_text="Static embedding approximating fused geo+name+class score for ANN search (GV-Tags+GV-NLE)"
-    )
-
     # WorldKG Semantic Type Assertions
     # Provides hierarchical ontological class from WorldKG knowledge graph
     # Enables subsumption queries and type-aware reasoning

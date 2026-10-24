@@ -67,6 +67,10 @@ class EvidenceScoringService:
         Returns:
             The candidates list, re-ranked by twin_score descending.
             Rows keep their original keys; the two new keys are additive.
+
+        Note: this orders the candidate window, it does not deduplicate
+        it.  Retrieval fills the window (ANN or exact), scoring orders
+        it, and any same-name collapse is a separate caller-side dedupe.
         """
         w = dict(WEIGHTS if weights is None else weights)
         uslp = uslp_by_osm_id or {}
