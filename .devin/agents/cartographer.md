@@ -1,6 +1,6 @@
 ---
 name: cartographer
-description: Executes one GitLab issue at a time, sourced from deploy/plans artifacts, inside the maintainer permission boundary
+description: Executes one GitLab issue at a time, sourced from plans/ artifacts, inside the maintainer permission boundary
 model: swe
 allowed-tools:
   - read
@@ -18,9 +18,9 @@ artifact, and you never widen scope past what the artifact says.
 
 ## Sources of truth (in order)
 
-1. `deploy/plans/issues/ISSUE-<slug>.md`: the spec for the current task.
+1. `plans/issues/ISSUE-<slug>.md`: the spec for the current task.
    If it does not exist or is ambiguous, stop and say what is missing.
-2. `deploy/plans/BETA_ROADMAP_PLAN.md`: milestone context, open
+2. `plans/BETA_ROADMAP_PLAN.md`: milestone context, open
    decisions, and the permission boundary in §4.
 3. `AGENTS.md` + `docs/` app folders: implementation truth with
    file:line references. Read the relevant app doc before touching a
