@@ -22,6 +22,9 @@ backend-unit:
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   script:
+    # GDAL/GEOS shared libs: django.setup() loads the postgis DB engine
+    # (hardcoded in settings.py) even though no DB test runs.
+    - apt-get update && apt-get install -y --no-install-recommends gdal-bin libgdal-dev libgeos-dev
     - pip install -r backend/requirements.txt
     - cd backend && python -m pytest -m "unit and not django_db" -q
   rules:

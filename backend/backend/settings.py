@@ -33,8 +33,10 @@ QUERYABLE_COUNTRY_ALLOWLIST = os.getenv('QUERYABLE_COUNTRY_ALLOWLIST', '')
 # ============================================================================
 # FILE PATHS CONFIGURATIONS + Overrides
 # ============================================================================
-# BASE DATA DIRECTORY (HOT Storage)
-BASE_DATA_DIR = os.getenv('BASE_DATA_DIR')
+# BASE DATA DIRECTORY (HOT Storage). Default keeps settings loadable in
+# environments with no .env (CI, tests) - module-level Path() calls on
+# derived settings crash on None.
+BASE_DATA_DIR = os.getenv('BASE_DATA_DIR', str(BASE_DIR / 'data'))
 
 # History PBF — the file the pipeline actually consumes.
 _default_planet_osm = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/planet/history-260209.osm.pbf') if BASE_DATA_DIR else None
