@@ -27,10 +27,12 @@ Working rules:
 Task workflow (branch + ticket first):
 - Every planned task, including trivial ones, starts with the maintainer
   creating two things before any code changes:
-  1. An issue artifact: `deploy/plans/issues/ISSUE-<slug>.md` in the
-     existing format (Milestone/Source/Intent header, Scope, Out of scope,
-     Touchpoints, Test plan, Handoff). For small tasks the artifact can be
-     short (one-line scope is fine) but it must exist.
+  1. An issue artifact: `plans/issues/ISSUE-<slug>.md`. Keep it short
+     and readable: a `Milestone / Source / Status` header line, then a
+     few free-form sections in plain prose - what is being done (or was
+     done), why, measured results, caveats, and follow-ups. No mandated
+     scaffold; fold anything critical into the body.
+     `plans/issues/ISSUE-ann-gv-tags-flip.md` is the exemplar.
   2. A branch named `<issue-number>-<slug>` matching the artifact.
 - If a session is asked to implement something and no issue artifact
   exists, ask the maintainer to write one (or draft the artifact for their
@@ -43,7 +45,7 @@ Task workflow (branch + ticket first):
 Label contract (`glab label list`):
 - `agent-ready`: applied automatically by the `post-commit` hook when a
   commit on an `<iid>-<slug>` branch adds the matching
-  `deploy/plans/issues/ISSUE-<slug>.md`. `glab issue list -l
+  `plans/issues/ISSUE-<slug>.md`. `glab issue list -l
   agent-ready` is the runnable queue. Manual fallback:
   `glab issue update <iid> -l agent-ready`.
 - `blocked`: the agent stopped on a blocker and reported it; its report
