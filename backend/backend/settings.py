@@ -36,7 +36,7 @@ QUERYABLE_COUNTRY_ALLOWLIST = os.getenv('QUERYABLE_COUNTRY_ALLOWLIST', '')
 # BASE DATA DIRECTORY (HOT Storage). Default keeps settings loadable in
 # environments with no .env (CI, tests) - module-level Path() calls on
 # derived settings crash on None.
-BASE_DATA_DIR = os.getenv('BASE_DATA_DIR', str(BASE_DIR / 'data'))
+BASE_DATA_DIR = os.getenv('BASE_DATA_DIR') or str(BASE_DIR / 'data')
 
 # History PBF — the file the pipeline actually consumes.
 _default_planet_osm = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/planet/history-260209.osm.pbf') if BASE_DATA_DIR else None
@@ -81,9 +81,9 @@ FASTTEXT_TUNED_DIR = _default_fasttext_tuned_dir
 
 # Redis configuration for Channels, Celery, and WorldKG services
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
-REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+REDIS_PORT = int(os.getenv('REDIS_PORT') or '6379')
 REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', '')
-WORLDKG_REDIS_DB = int(os.getenv('WORLDKG_REDIS_DB', '2'))
+WORLDKG_REDIS_DB = int(os.getenv('WORLDKG_REDIS_DB') or '2')
 
 # WebSocket host/port for pipeline progress URLs (returned to frontend)
 WS_HOST = os.getenv('WS_HOST', 'localhost')
@@ -118,7 +118,8 @@ GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', None)
 # ============================================================================
 # COLD STORAGE DATA DIRECTORY
 # ============================================================================
-COLD_STORAGE_BASE_DIR = os.getenv('COLD_STORAGE_BASE_DIR')
+COLD_STORAGE_BASE_DIR = os.getenv('COLD_STORAGE_BASE_DIR') or os.path.join(
+    BASE_DATA_DIR, 'cold_storage')
 
 # Repo-local corpus (backend/data/corpus) — derived, not env-overridable.
 _default_corpus_dir = os.path.join(BASE_DIR, 'data', 'corpus')
