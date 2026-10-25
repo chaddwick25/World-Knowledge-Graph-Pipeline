@@ -273,11 +273,11 @@ class SpatialSearchMixin:
             qs = qs.filter(country_code=country_code.upper())
         qs = qs.exclude(geom__isnull=True)
 
-        # Annotate with cosine distance (pgvector <=> operator)
-        # The + 0 prevents HNSW index usage (exact search, not approximate)
+        # Annotate with cosine distance (pgvector <=> operator).
+        # Indexable form: the per-leaf HNSW index serves the ANN top-k.
         qs = qs.annotate(
             embedding_distance=RawSQL(
-                "(gv_tags_embedding <=> %s::vector) + 0",
+                "gv_tags_embedding <=> %s::vector",
                 (query_list,),
                 output_field=FloatField(),
             )

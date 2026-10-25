@@ -18,7 +18,7 @@ pipeline embeds it, and how the frontend turns the batch artifacts into
 a queryable application. `SETUP.md` covers environment setup,
 Docker, migrations, and operational commands. The app directories are
 the architectural truth with file:line references to production
-source. `research_to_runtime/` is the per-paper translation record —
+source. `research_to_runtime/` is the per-paper translation record:
 how each paper became running code.
 
 ---
@@ -197,12 +197,13 @@ runtime `FactorResolutionService` resolves spectral, diffusion,
 community, and amenity queries against these tables. The legacy
 runtime graph path (GraphML → NetworkX → SciPy) is removed.
 
-Semantic search is exact (the `+ 0` form blocks the HNSW index); the
-executor re-ranks by `combined_score = diffusion_score + name_score +
-geo_score + uslp_boost`. Proper-name queries ("Island Grill within 150km
+Semantic search runs on per-leaf HNSW ANN over `gv_tags_embedding`
+(indexable `<=>`; `exact=true` restores the old `+ 0` exact scan for
+recall checks); the executor re-ranks by `combined_score =
+diffusion_score + name_score + geo_score + uslp_boost`. Proper-name queries ("Island Grill within 150km
 of X") get a name-first pool tier (trigram on `name_romanized`) merged
 into the FastText pool, and the parser recovers a missing OBJECT for
-brand names by geocoding the span and checking its WorldKG class — no
+brand names by geocoding the span and checking its WorldKG class, no
 retraining. See
 `research_to_runtime/DIFFUSION_SCORE_AND_QUERY_FUSION.md` for the
 fusion provenance and HNSW_RELEVANCE_AND_USLP_RERANK_DESIGN
@@ -312,7 +313,7 @@ dispatches to template-specific handlers. Each handler uses the
 factor-table path as authoritative, with PostGIS as the spatial
 fallback. Amenity resolution uses a 3-tier fallback: exact OSM tag
 (GIN-indexed JSONB containment) → WorldKG ontology class → FastText
-semantic (`gv_tags_embedding <=> query_vec`, exact cosine via `+ 0`).
+semantic (`gv_tags_embedding <=> query_vec`, per-leaf HNSW ANN).
 The 3-tier trace is shown to the user so every resolution step is
 visible.
 

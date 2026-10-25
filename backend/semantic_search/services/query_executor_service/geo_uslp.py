@@ -105,7 +105,11 @@ class GeoUslpMixin:
         if name_query:
             cls._apply_name_scores(results, name_query)
 
-        # Re-rank by combined score: diffusion + name + geo + uslp
+        # Re-rank by combined score: diffusion + name + geo + uslp.
+        # Ordering only - this does not deduplicate; same-name collapse
+        # is the caller's dedupe step (or worldkg_nca search's
+        # _diversity_dedupe).  Retrieval = window fill, this = ordering,
+        # dedupe = collapse: three separate jobs.
         for r in results:
             diff = r.get("diffusion_score", 0.0)
             name = r.get("name_score", 0.0)

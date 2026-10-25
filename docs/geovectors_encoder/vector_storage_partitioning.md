@@ -172,11 +172,16 @@ The routing key is the pair `(snapshot_id, country_code)`.
 
 ## 4. HNSW Index: The 400D ANN Index
 
-> **Status (2026-09-09): design, not built.** `static_embedding` is NULL for
-> all 46,030,536 rows, `osmentity_static_embedding_hnsw_idx` does not exist,
-> and `use_ann` is opt-in `false`. The only HNSW indexes in the DB are the
-> per-snapshot MV indexes (`idx_mv_embeddings_*_hnsw`), which no runtime query
-> reads. Sections 4.1-4.3 describe the intended build.
+> **Status (2026-10-23): removed.** The 400D `static_embedding` path was
+> deleted under ISSUE-ann-gv-tags-flip: the column was 0% populated on
+> every checked leaf, the `use_ann` API flag returned zero rows, and the
+> 400D branch had diverged from the live triple-space path. The column is
+> dropped (worldkg_nca/0021) and `compute_static_embeddings` +
+> `create_static_embedding_hnsw_index` are deleted. Runtime search now
+> uses per-leaf HNSW indexes on `gv_tags_embedding`: the two `+ 0`
+> exact-scan sites were flipped to indexable ANN the same day
+> (18 s → ~1 ms on the MX leaf). Sections 4.1-4.3 describe the retired
+> design.
 
 ### 4.1 What HNSW Stores
 
@@ -216,14 +221,46 @@ indexes. The HNSW index just points into the heap.
 - **Step 1**: calls `create_country_partitions --skip-data --skip-mv`,
   creates the leaf partition with **no HNSW index** (nothing to drop, nothing
   to rebuild during bulk load).
-- **After Step 5 (not yet run, 2026-09-09)**: `compute_static_embeddings`
-  populates the 400D `static_embedding` column (concatenates GV-Tags +
-  GV-NLE; current both-axes coverage: 2,160,420 of 46,030,536 rows, 4.7%).
-- **After Step 5 (not yet run)**: `create_static_embedding_hnsw_index` builds
-  the HNSW index on `static_embedding` with `m=16, ef_construction=128`.
+- **After Step 5**: the per-leaf HNSW indexes on `gv_tags_embedding` /
+  `gv_nle_embedding` are (re)built by `create_osmentity_vector_indexes`
+  and self-probed with `--verify` (the post-build gate: each sampled
+  anchor's embedding cluster must be reachable via ANN at ~0 distance).
+  **Known limitation (2026-10-24)**: `gv_tags_embedding` is heavily
+  duplicated (JM: 1.1M rows → 36K distinct vectors; identical tag sets
+  produce identical vectors). pgvector HNSW can orphan whole clusters
+  on duplicate-dense data: unreachable even at `ef_search=1000`, and
+  unaffected by REINDEX or higher `m`/`ef_construction`. Documented
+  upstream:
+
+  - [pgvector/pgvector#239](https://github.com/pgvector/pgvector/issues/239):
+    HNSW index scans can miss rows that exist in the table; elements
+    can lose all incoming connections during graph construction.
+  - [pgvector/pgvector#543](https://github.com/pgvector/pgvector/issues/543):
+    the maintainer's remedy ladder is raise `ef_construction`, then
+    `m`; he also asks whether duplicate embeddings could explain the
+    poor recall.
+  - [pgvector/pgvector#837](https://github.com/pgvector/pgvector/issues/837):
+    "the HNSW algorithm is not designed for a large percentage of
+    duplicate vectors."
+
+  Verified locally on the 2025_12_31 builds: a KR `m=32` /
+  `ef_construction=256` rebuild *lowered* reachability (80% vs 87%),
+  confirming the documented limitation rather than index corruption.
+  Tag-column reachability ran ~80-99% per leaf; misses degrade to the
+  nearest cluster (d ~0.01-0.5). Runtime mitigations: `--verify` probes
+  cluster reachability rather than anchor membership (meaningless
+  under distance-0 twins), `scripts/bench_ann.sh` reports exact-vs-ANN
+  distance parity instead of identity overlap, `_diversity_dedupe` in
+  `worldkg_nca/views/search.py` collapses same-name twins within one
+  geohash cell so a duplicate flood cannot fill `top_k`, and
+  `exact=true` remains the per-request escape hatch.
+  The retired 400D steps (`compute_static_embeddings`,
+  `create_static_embedding_hnsw_index`) were deleted 2026-10-23.
 - **Step 6**: calls `create_country_partitions --mv-only`, creates the
   materialized view + HNSW. **The MV is an artifact: no runtime query reads
-  it** (runtime search uses `+ 0` exact scans on the parent/leaf partitions).
+  it** (runtime search uses indexable `<=>` ANN on the leaf partitions; the
+  `+ 0` exact-scan form was removed 2026-10-23 and survives only as the
+  `exact=true` recall check).
 
 The `_drop_vector_indexes` method and `DROP_INDEXES_DURING_LOAD` env var
 have been **removed**. A fresh leaf partition has no HNSW during bulk load,

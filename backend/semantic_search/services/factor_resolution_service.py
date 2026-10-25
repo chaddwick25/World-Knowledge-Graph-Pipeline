@@ -76,6 +76,51 @@ class FactorResolutionService:
         )
         return {int(o): (o in present) for o in osm_ids}
 
+    def has_factor_data(self, snapshot_id: str, country_code: str) -> bool:
+        """Country-level G4 probe: does the country/snapshot have ANY
+        spectral factor rows?
+
+        One ``EXISTS`` against the (snapshot_id, country_code, ...) unique
+        index — index probe, ~1ms.  Used to skip the candidate-gathering
+        preamble in the heat-kernel path when a country has no Step 5c/5d
+        output at all (measured: ~1.8s wasted per PLACE-ATTRIBUTE-QUERY on
+        the unindexed-data path before falling back to PostGIS).
+        """
+        if not snapshot_id or not country_code:
+            return False
+        return (
+            SpectralNodeMetric.objects.using("vectors")
+            .filter(
+                snapshot_id=snapshot_id,
+                country_code=country_code.upper(),
+            )
+            .exists()
+        )
+
+    def has_eigen_row(
+        self, osm_id: int, snapshot_id: str, country_code: str,
+    ) -> bool:
+        """Anchor-level G4 probe: does this entity have an eigen-loadings
+        row (the row ``diffusion_rank`` needs to score from it)?
+
+        Point ``EXISTS`` against the (snapshot_id, country_code,
+        subgraph_slug, osm_id) unique index.  ``diffusion_rank`` returns
+        None anyway when the anchor has no row — checking first lets the
+        caller skip expensive candidate gathering it would discard.
+        """
+        if not snapshot_id or not country_code:
+            return False
+        return (
+            SpectralNodeMetric.objects.using("vectors")
+            .filter(
+                snapshot_id=snapshot_id,
+                country_code=country_code.upper(),
+                osm_id=osm_id,
+                eigen_loadings__isnull=False,
+            )
+            .exists()
+        )
+
     # ── Metric joins ─────────────────────────────────────────────────────
 
     def resolve_metrics(
