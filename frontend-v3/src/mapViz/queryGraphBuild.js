@@ -1,8 +1,6 @@
 // ── Anchor/entity query-graph builders (extracted from SemanticSearchPanel.vue,
-//    2026-10-02) ─────────────────────────────────────────────────────────────
 // Pure data transforms: backend results + executor trace → the graph payload
 // consumed by WorldKGMap. No component state — trace/parsedQuery arrive as args.
-
 /** Normalize backend result shapes (executor: top-level lat/lon; triplet: geom). */
 export function normalizeResult(r) {
   const lat = r.geom?.lat ?? r.lat

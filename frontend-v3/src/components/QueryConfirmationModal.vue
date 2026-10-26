@@ -4,28 +4,20 @@
       <div class="qcm-modal">
         <header class="qcm-modal__header">
           <h3 class="qcm-modal__title">Confirm Query</h3>
-          <button
-            class="qcm-modal__close"
-            @click="queryProposalStore.rejectQuery"
-          >
+          <button class="qcm-modal__close" @click="queryProposalStore.rejectQuery">
             &times;
           </button>
         </header>
-
         <section v-if="queryProposalStore.proposedQuery" class="qcm-modal__body">
           <!-- Template + confidence -->
           <div class="qcm-modal__template">
             <span class="qcm-modal__template-name">
               {{ queryProposalStore.proposedQuery.template }}
             </span>
-            <span
-              class="qcm-modal__confidence"
-              :class="confidenceClass"
-            >
+            <span :class="['qcm-modal__confidence', confidenceClass]">
               {{ (queryProposalStore.proposedQuery.confidence * 100).toFixed(0) }}% confident
             </span>
           </div>
-
           <!-- Editable concept slots -->
           <div class="qcm-modal__concepts">
             <div
@@ -34,44 +26,29 @@
               class="qcm-modal__concept"
             >
               <span class="qcm-modal__concept-type">{{ concept.type }}</span>
-              <span
-                v-if="concept.role"
-                class="qcm-modal__concept-role"
-              >
+              <span v-if="concept.role" class="qcm-modal__concept-role">
                 {{ concept.role }}
               </span>
               <input
-                v-model="editableConcepts[idx].text"
                 class="qcm-modal__concept-input"
                 :placeholder="concept.text || 'Not extracted'"
-              />
+                v-model="editableConcepts[idx].text">
             </div>
           </div>
-
           <!-- Natural language summary -->
           <div class="qcm-modal__summary">
             <strong>I understood:</strong>
             {{ summaryText }}
           </div>
         </section>
-
         <footer class="qcm-modal__footer">
-          <button
-            class="qcm-modal__btn qcm-modal__btn--reject"
-            @click="queryProposalStore.rejectQuery"
-          >
+          <button class="qcm-modal__btn qcm-modal__btn--reject" @click="queryProposalStore.rejectQuery">
             Reject
           </button>
-          <button
-            class="qcm-modal__btn qcm-modal__btn--edit"
-            @click="saveEdits"
-          >
+          <button class="qcm-modal__btn qcm-modal__btn--edit" @click="saveEdits">
             Save Edits &amp; Approve
           </button>
-          <button
-            class="qcm-modal__btn qcm-modal__btn--approve"
-            @click="queryProposalStore.approveQuery"
-          >
+          <button class="qcm-modal__btn qcm-modal__btn--approve" @click="queryProposalStore.approveQuery">
             Approve
           </button>
         </footer>
@@ -83,26 +60,17 @@
 <script>
 /**
  * QueryConfirmationModal — HITL confirmation for MapQA parsed queries.
- *
- * Shows the agent-proposed query as editable concept slots. The user can:
- *   - Approve: concepts are correct → proceed
- *   - Edit: fix extracted text (e.g. "Hollywood Blvd" → "Hollywood Boulevard")
- *   - Reject: parser got it wrong → user rephrases or gives up
- *
  * The modal is driven by the queryProposalStore Pinia store, which is
  * populated by the MCP `proposeQuery` tool (called by the agent).
  */
 import { computed, watch, ref } from 'vue'
 import { useQueryProposalStore } from '../stores/queryProposalStore'
-
 export default {
   name: 'QueryConfirmationModal',
   setup() {
     const queryProposalStore = useQueryProposalStore()
-
     // Local editable copy of concepts (initialized when a proposal arrives)
     const editableConcepts = ref([])
-
     // Watch for new proposals and initialize editable concepts
     watch(
       () => queryProposalStore.proposedQuery,
@@ -111,34 +79,33 @@ export default {
           // Merge concept + role info
           const roleMap = {}
           if (proposal.roles) {
-            for (const r of proposal.roles) {
-              roleMap[r.concept_type] = r.role
+            for (const roleSpec of proposal.roles) {
+              roleMap[roleSpec.concept_type] = roleSpec.role
             }
           }
-          editableConcepts.value = proposal.concepts.map((c) => ({
-            type: c.type,
-            text: c.text || '',
-            role: roleMap[c.type] || null,
+          editableConcepts.value = proposal.concepts.map((concept) => ({
+            type: concept.type,
+            text: concept.text || '',
+            role: roleMap[concept.type] || null,
           }))
         }
       },
       { immediate: true }
     )
-
     const confidenceClass = computed(() => {
-      const c = queryProposalStore.proposedQuery?.confidence || 0
-      if (c >= 0.8) return 'qcm-modal__confidence--high'
-      if (c >= 0.6) return 'qcm-modal__confidence--medium'
+      const confidence = queryProposalStore.proposedQuery?.confidence || 0
+      if (confidence >= 0.8) return 'qcm-modal__confidence--high'
+      if (confidence >= 0.6) return 'qcm-modal__confidence--medium'
       return 'qcm-modal__confidence--low'
     })
 
     const summaryText = computed(() => {
-      const p = queryProposalStore.proposedQuery
-      if (!p) return ''
+      const proposed = queryProposalStore.proposedQuery
+      if (!proposed) return ''
       const parts = []
-      for (const c of editableConcepts.value) {
-        if (c.text) {
-          parts.push(`${c.type.toLowerCase()}: "${c.text}"`)
+      for (const concept of editableConcepts.value) {
+        if (concept.text) {
+          parts.push(`${concept.type.toLowerCase()}: "${concept.text}"`)
         }
       }
       if (parts.length === 0) return 'No concepts extracted.'
@@ -147,9 +114,9 @@ export default {
 
     function saveEdits() {
       queryProposalStore.editQuery(
-        editableConcepts.value.map((c) => ({
-          type: c.type,
-          text: c.text,
+        editableConcepts.value.map((concept) => ({
+          type: concept.type,
+          text: concept.text,
         }))
       )
     }

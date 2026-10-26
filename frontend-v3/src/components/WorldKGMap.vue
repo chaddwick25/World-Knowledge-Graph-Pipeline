@@ -1,30 +1,23 @@
 <template>
   <div class="map-wrapper">
     <div ref="mapContainer" class="map-wrapper__map"></div>
-
     <div v-if="isLoading" class="map-wrapper__overlay">
       <div class="map-wrapper__spinner"></div>
       <p>Loading countries...</p>
     </div>
-
     <!-- Focused-entity info popover (marker click or results-table hover),
          anchored to the entity's map point. Seed actions only in agent
          mode (SurfaceShell passes seedActions). -->
     <EntityInfoPanel :position="infoPanelPos" :seed-actions="seedActions" />
-
     <!-- Relation legend (only when augmented links are visible) -->
     <div v-if="activeRelationLegend.length" class="map-legend">
       <div class="map-legend__title">Link Types</div>
       <div class="map-legend__items">
-        <div
+        <div 
           v-for="item in activeRelationLegend"
           :key="item.relation"
-          class="map-legend__item"
-        >
-          <span
-            class="map-legend__dot"
-            :style="{ background: item.color }"
-          ></span>
+          class="map-legend__item">
+          <span class="map-legend__dot" :style="{ background: item.color }"></span>
           <span class="map-legend__label">{{ item.relation }}</span>
         </div>
       </div>
@@ -815,10 +808,4 @@ export default {
   border-top: 2px dashed #6b7280;
   height: 0;
 }
-</style>
-
-<style>
-/* (Dead code removed 2026-09-28: the Leaflet country hover tooltip styles
-   were dropped when countries moved onto the pickable deck layer — the
-   deck getTooltip renders the country name/continent now.) */
 </style>

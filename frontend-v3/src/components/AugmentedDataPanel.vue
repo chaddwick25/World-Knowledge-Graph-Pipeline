@@ -5,15 +5,12 @@
       <div class="spinner"></div>
       <p class="augmented__hint">Loading augmented data…</p>
     </div>
-
     <!-- Error -->
     <p v-else-if="error" class="augmented__error">{{ error }}</p>
-
     <!-- No data -->
     <div v-else-if="!summary" class="augmented__center">
       <p class="augmented__hint">No augmented data available for {{ countryName }}.</p>
     </div>
-
     <!-- Summary content -->
     <div v-else class="augmented__content">
       <!-- Map visualization toggle buttons -->
@@ -47,10 +44,8 @@
         Loading link geometries…
       </p>
       <p v-else-if="showAcceptedLinks || showRejectedLinks" class="augmented__hint augmented__hint--small">
-        {{ showAcceptedLinks ? 'Accepted' : '' }}{{ showAcceptedLinks && showRejectedLinks ? ' & ' : '' }}{{ showRejectedLinks ? 'Rejected' : '' }}
-        links shown on map{{ (showAcceptedLinks && linkGeom?.returned_accepted < linkGeom?.total_accepted) || (showRejectedLinks && linkGeom?.returned_rejected < linkGeom?.total_rejected) ? ' (top 500 by score)' : '' }}
+        {{ linksShownLabel }}
       </p>
-
       <!-- ── Summary statistics (always visible) ── -->
       <div class="augmented__body">
         <!-- Top-level metrics -->
@@ -86,8 +81,7 @@
                 <small class="histogram__value">{{ count.toLocaleString() }}</small>
                 <div
                   class="histogram__bar"
-                  :style="{ height: scoreBarWidth(count) }"
-                />
+                  :style="{ height: scoreBarWidth(count) }"/>
                 <small class="histogram__label">{{ summary.score_distribution.buckets[idx] }}</small>
               </div>
             </div>
@@ -147,8 +141,7 @@
                   :style="{
                     width: `${(rel.accepted / rel.count) * 100}%`,
                     background: relationColor(rel.relation),
-                  }"
-                />
+                  }"/>
               </div>
             </div>
           </div>
@@ -278,16 +271,33 @@ export default {
     }
   },
   computed: {
+    // Status line under the map toggles: which link sets are on, plus the
+    // truncation note when only the top 500 by score render. Value
+    // composition lives here, not in the template.
+    linksShownLabel() {
+      const shown = [
+        { label: 'Accepted', on: this.showAcceptedLinks,
+          returned: this.linkGeom?.returned_accepted, total: this.linkGeom?.total_accepted },
+        { label: 'Rejected', on: this.showRejectedLinks,
+          returned: this.linkGeom?.returned_rejected, total: this.linkGeom?.total_rejected },
+      ].filter((set) => set.on)
+      const names = shown.map((set) => set.label).join(' & ')
+      const truncated = shown.some((set) => set.returned < set.total)
+      return `${names} links shown on map${truncated ? ' (top 500 by score)' : ''}`
+    },
     // Relations ordered by the RELATION_COLORS key sequence (the default
     // distribution order), not by count. Unknown relations go last.
     sortedRelations() {
       if (!this.summary?.relation_distribution?.length) return []
       const order = Object.keys(RELATION_COLORS)
-      return [...this.summary.relation_distribution].sort((a, b) => {
-        const ia = order.indexOf(a.relation)
-        const ib = order.indexOf(b.relation)
-        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
-      })
+      // indexOf is -1 for unknown relations; they sort past the keys.
+      const orderIndex = (row) => {
+        const position = order.indexOf(row.relation)
+        return position === -1 ? order.length : position
+      }
+      return [...this.summary.relation_distribution].sort(
+        (a, b) => orderIndex(a) - orderIndex(b),
+      )
     },
     maxRelationCount() {
       if (!this.sortedRelations.length) return 1

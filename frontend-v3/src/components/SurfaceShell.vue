@@ -1,8 +1,4 @@
 <template>
-  <!-- SurfaceShell (2026-10-15): shared chrome for the country-scoped
-       leaf routes (/tools/geo-semantic/:cc, /agents/doppelganger/:cc).
-       Owns the system-status gate, the map, snapshot-date selection, and
-       :cc → country resolution; the feature panel is a scoped slot. -->
   <div class="surface d-flex flex-column gap-2 p-3 h-100 overflow-hidden">
     <!-- ── Header ── -->
     <header class="d-flex align-items-center justify-content-between gap-2">
@@ -18,7 +14,6 @@
       <span v-else-if="isSystemReady" class="badge rounded-pill text-bg-success">System Ready</span>
       <span v-else class="badge rounded-pill text-bg-danger">System Offline</span>
     </header>
-
     <!-- Planet init gate (init flow is not a feature surface — kept). -->
     <div v-if="isSystemReady === false" class="flex-grow-1 d-flex align-items-center justify-content-center">
       <PlanetInitPanel
@@ -28,7 +23,6 @@
         @refresh="checkSystem"
       />
     </div>
-
     <section v-else-if="isSystemReady" class="surface__main">
       <!-- Left: shared WorldKGMap -->
       <div class="surface__map rounded overflow-hidden">
@@ -119,15 +113,12 @@ export default {
       systemError: '',
       suggestedPlanetFilePath: '',
       processedCountries: new Set(),
-
       allCountries: [],
       country: null,
       unsupported: false,
       selectedIds: [],
-
       snapshotDates: [],
       selectedSnapshotDate: null,
-
       // Map overlay state the panel slot feeds back via the setters.
       searchResults: [],
       queryGraph: null,
@@ -152,7 +143,6 @@ export default {
     surface() {
       return this.leafBase.startsWith('/tools') ? 'tools' : 'doppelganger'
     },
-    /** '2025_12_31' -> '12/31/2025' for the static snapshot label. */
     formattedSnapshotDate() {
       const d = this.selectedSnapshotDate || ''
       const [y, m, day] = d.split('_')

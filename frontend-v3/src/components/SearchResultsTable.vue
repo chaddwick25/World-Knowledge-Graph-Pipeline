@@ -1,12 +1,4 @@
 <template>
-  <!-- Ordered results list (2026-10-15, ISSUE-46): results render as a
-       plain ranked list — the score machinery (Show-scores toggle,
-       per-column scores, final_score column) is gone. Layer-3 leaf:
-       props in, events out; showNameless stays in the parent (it drives
-       the displayResults filter), toggled via v-model:show-nameless.
-       Rows are one line (number · name · class); OSM tag strings were
-       dropped from the list 2026-10-16. -->
-
   <div v-if="rows.length > 0" class="d-flex flex-column gap-1">
     <div class="d-flex align-items-center gap-1">
       <h6 class="small fw-semibold mb-0">

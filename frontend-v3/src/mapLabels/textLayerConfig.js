@@ -1,9 +1,6 @@
 /**
  * textLayerConfig — factory functions for the two deck.gl TextLayers.
  *
- * DECKGL_VISUALIZATION_INTEGRATION_PLAN_V2.md §3.2.3. Factory functions only
- * (rule 01-frontend-patterns.md — no config objects with handler functions).
- *
  * Data contract (driven by the backend endpoints, Phase 1b):
  *   classLabels  [{ label, centroid: [lon, lat], count }]   — class-centroids/
  *   entityLabels [{ name, position: [lon, lat], score }]    — entities/
@@ -15,12 +12,12 @@
  *                sizeUnits meters/pixels the clamps would otherwise
  *                dominate and swallow the slider).
  *
- * Zoom hierarchy (Phase 1c, implemented): the layerFilter in
- * WorldKGMap.vue keeps one layer visible per zoom level, and
- * CollisionFilterExtension on both layers hides labels that would
- * overlap — the collision winner is whichever has the higher
- * getCollisionPriority (same basis as the text size).
+ * Zoom hierarchy the layerFilter in WorldKGMap.vue keeps one layer
+ * visible per zoom level, and CollisionFilterExtension on both layers 
+ * hides labels that would overlap — the collision winner is whichever 
+ * has the higher getCollisionPriority (same basis as the text size).
  */
+
 
 import { TextLayer } from '@deck.gl/layers'
 import { CollisionFilterExtension } from '@deck.gl/extensions'

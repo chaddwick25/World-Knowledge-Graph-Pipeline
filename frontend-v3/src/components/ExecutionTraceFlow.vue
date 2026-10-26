@@ -25,10 +25,7 @@
               class="trace-link fw-semibold"
             >WK Template</a>
             <span class="text-secondary">: {{ parsedQuery.template }}</span>
-            <span
-              class="badge rounded-pill"
-              :class="confidenceBadgeClass"
-            >
+            <span class="badge rounded-pill" :class="confidenceBadgeClass">
               {{ (parsedQuery.confidence * 100).toFixed(0) }}% confident
             </span>
           </div>
@@ -39,9 +36,7 @@
           :class="['trace-node', node.status ? `trace-node--${node.status}` : '']"
         >
           <div class="d-flex align-items-baseline gap-2">
-            <span
-              :class="['trace-icon', node.iconBg, node.live ? 'trace-icon--live' : '']"
-              aria-hidden="true"
+            <span :class="traceIconClass(node)" aria-hidden="true"
             >
               <i :class="['bi', node.icon, node.iconColor]"></i>
             </span>
@@ -99,6 +94,12 @@ export default {
     parsedQuery: { type: Object, default: null },
     /** Bootstrap badge class for the confidence pill. */
     confidenceBadgeClass: { type: String, default: 'text-bg-secondary' },
+  },
+  methods: {
+    /** Icon wrapper classes: base + node's bg + live pulse flag. */
+    traceIconClass(node) {
+      return ['trace-icon', node.iconBg, node.live ? 'trace-icon--live' : '']
+    },
   },
 }
 </script>

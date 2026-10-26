@@ -1,9 +1,5 @@
 <template>
-  <!-- CountryPickModal (2026-10-16): the home cards open this picker;
-       CountryList already carries the queryable-only filter (on by
-       default). Selecting a country navigates to leafBase/<cc> —
-       SurfaceShell decides tools vs. request view from there, so deep
-       links and modal picks behave identically. -->
+  <
   <Teleport to="body">
     <div v-if="open" class="pick-backdrop" @click.self="$emit('close')">
       <div class="pick-modal">
@@ -83,7 +79,6 @@ export default {
   },
 }
 </script>
-
 <style scoped>
 .pick-backdrop {
   position: fixed;
@@ -94,7 +89,6 @@ export default {
   justify-content: center;
   z-index: 1080;
 }
-
 .pick-modal {
   width: min(420px, calc(100vw - 2rem));
   max-height: 80vh;

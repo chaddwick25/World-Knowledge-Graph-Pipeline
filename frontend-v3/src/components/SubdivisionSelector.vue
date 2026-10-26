@@ -35,7 +35,6 @@
  */
 
 import axios from 'axios'
-
 export default {
   name: 'SubdivisionSelector',
   props: {
@@ -100,35 +99,31 @@ export default {
   },
 }
 </script>
-
 <style scoped>
-.subdivision-selector {
-  margin-bottom: 0.5rem;
-}
-
-.subdivision-selector__label {
-  /* Micro-header: 11px uppercase with tracking. */
-  display: block;
-  font-size: 0.68rem;
-  color: var(--bs-meta-color);
-  margin-bottom: 0.2rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.subdivision-selector__select {
-  width: 100%;
-  padding: 0.35rem 0.5rem;
-  background: var(--bs-tertiary-bg);
-  border: 1px solid var(--bs-border-color);
-  border-radius: 0.25rem;
-  color: var(--bs-body-color);
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-
-.subdivision-selector__select:focus {
-  outline: none;
-  border-color: var(--bs-primary);
-}
+  .subdivision-selector {
+    margin-bottom: 0.5rem;
+  }
+  .subdivision-selector__label {
+    /* Micro-header: 11px uppercase with tracking. */
+    display: block;
+    font-size: 0.68rem;
+    color: var(--bs-meta-color);
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .subdivision-selector__select {
+    width: 100%;
+    padding: 0.35rem 0.5rem;
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.25rem;
+    color: var(--bs-body-color);
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .subdivision-selector__select:focus {
+    outline: none;
+    border-color: var(--bs-primary);
+  }
 </style>

@@ -93,11 +93,9 @@
     </div>
   </div>
 </template>
-
 <script>
 import { useEntityInfoStore } from '../stores/entityInfoStore'
 import { useSeedStore } from '../stores/seedStore'
-
 const TAG_LIMIT = 8
 
 export default {
