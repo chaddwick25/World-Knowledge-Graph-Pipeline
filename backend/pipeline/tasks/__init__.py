@@ -45,3 +45,11 @@ from pipeline.tasks.country_pipeline_steps.step_5_8_sample_questions import (  #
 from pipeline.tasks.country_pipeline_steps.step_6_ready import (  # noqa: F401
     step_6_mark_search_ready,
 )
+
+# ══════════════════════════════════════════════════════════════════════════
+# Snapshot backfill - sequential monthly
+# chain: time-filter → upsert-only → 5c spectral → 5d drift. Fail-hard.
+# ══════════════════════════════════════════════════════════════════════════
+from pipeline.backfill import (
+    backfill_month_task,
+)

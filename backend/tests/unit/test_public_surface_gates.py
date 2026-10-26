@@ -81,12 +81,8 @@ class TestWriteEndpointGate:
         '/api/nca/enrich/entity/',
         '/api/igea/align/',
         '/api/geovectors/encode/',
-        # Prefix-gated surfaces (operator CRUD registry + IGEA inference)
-        '/api/geodata/datasets/',
-        '/api/geodata/datasets/sync_metadata/',
-        '/api/geodata/records/',
-        '/api/geodata/sources/',
-        '/api/geodata/quality/',
+        # Prefix-gated surfaces (IGEA model-inference endpoints; the
+        # geodata DRF surface was retired — its CRUD lives in admin only)
         '/api/igea/triplets/predict/',
         '/api/igea/triplets/score/',
         '/api/igea/triplets/validate/',

@@ -43,11 +43,9 @@ _WRITE_PATHS = frozenset({
 })
 
 # Prefix-gated surfaces: not part of the public product surface (the SPA
-# never calls them). Geodata is an operator CRUD registry (datasets /
-# records / sources / quality + sync_metadata trigger); IGEA triplets are
-# POST model-inference endpoints (predict / score / validate).
+# never calls them). IGEA triplets are POST model-inference endpoints
+# (predict / score / validate). The operator CRUD lives in Django admin only.
 _WRITE_PREFIXES = frozenset({
-    '/api/geodata/',
     '/api/igea/triplets/',
 })
 

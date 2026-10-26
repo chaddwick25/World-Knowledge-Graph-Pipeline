@@ -93,6 +93,17 @@ class SnapshotJob(models.Model):
     total_aligned = models.BigIntegerField(default=0)
     total_spatial_links = models.BigIntegerField(default=0)
     error_message = models.TextField(null=True, blank=True)
+    # drift-source snapshots (no embeddings, not searchable). The frontend
+    # calendar queries SnapshotJob rows, so the tier flag lives here —
+    # queryable = COMPLETED and is_drift_source=False.
+    is_drift_source = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=(
+            "True for backfill jobs: the snapshot is a drift-source only "
+            "(no embeddings) and must never be offered as queryable."
+        ),
+    )
 
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)

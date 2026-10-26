@@ -52,7 +52,8 @@ class EmbeddingService:
 
     def run(self, cfg: "CountryEnvelope",
             pbf_path_override: str = None,
-            skip_post_process: bool = False) -> Dict:
+            skip_post_process: bool = False,
+            upsert_only: bool = False) -> Dict:
         """Run the embedding pipeline for a country.
 
         Args:
@@ -63,6 +64,14 @@ class EmbeddingService:
                 tasks to read per-subgraph PBFs.
             skip_post_process: If True, skip WorldKG enrichment + entropy
                 computation (done by the caller after all subgraphs complete).
+            upsert_only: If True, write ``OsmEntity`` rows (with
+                ``snapshot_id`` + ``source_snapshot_id``) WITHOUT the FastText
+                encode — NULL embeddings. Snapshot-backfill mode (ISSUE
+                -admin-job-control-plane): backfill snapshots are
+                drift-source, not queryable, and the Step-5c k-NN graph is
+                geometry-only, so the encode buys nothing. WorldKG class
+                enrichment still runs (SQL-side, feeds the 5c class signal);
+                entropy is skipped (meaningless without embeddings).
 
         Returns:
             ``{"entropy": float, "has_nle": bool, "entity_count": int}``.
@@ -71,7 +80,6 @@ class EmbeddingService:
         from geovectors_encoder.services.vector_storage_service import (
             VectorStorageService,
         )
-        from geovectors_encoder.core.models.fasttext import FastTextModel
         from geovectors_encoder.core.util import read_from_snapshot
 
         pbf_path = pbf_path_override or cfg.snapshot_pbf_path
@@ -79,6 +87,44 @@ class EmbeddingService:
         # Resolve the Snapshot UUID for this (country_code, snapshot_date).
         # This is stored on OsmEntity.source_snapshot_id for cross-DB provenance.
         source_snapshot_id = self._resolve_snapshot_uuid(cfg.iso, cfg.snapshot_date)
+
+        if upsert_only:
+            # === upsert-only path (no FastText model load, no encode) ===
+            from geovectors_encoder.services.snapshot_processors import (
+                UpsertOnlyWriter,
+            )
+            tags_storage = VectorStorageService(
+                model_type="tags", version=cfg.snapshot_date,
+                snapshot_id=cfg.snapshot_date, country_code=cfg.iso,
+                source_snapshot_id=source_snapshot_id,
+            )
+            writer = UpsertOnlyWriter(tags_storage)
+            n_data, w_data, r_data = read_from_snapshot(
+                pbf_path, writer=writer, max_runs=2,
+                chunk_size=_parallel_upsert_chunk_size(),
+            )
+            for record in itertools.chain(w_data, r_data):
+                writer.add_line(record)
+            tags_storage.flush()
+            entity_count = len(n_data) + len(w_data) + len(r_data)
+
+            if skip_post_process:
+                return {
+                    "entropy": 0.0,
+                    "has_nle": False,
+                    "entity_count": entity_count,
+                }
+
+            # WorldKG class enrichment still runs — SQL-side tag→ontology
+            # matching, no embeddings; feeds the Step-5c class signal.
+            from pipeline.tasks.helper import enrich_worldkg_classes
+            enrich_worldkg_classes(cfg, logger=logger)
+            return {
+                "entropy": 0.0,
+                "has_nle": False,
+                "entity_count": entity_count,
+            }
+        # === end upsert-only path ===
 
         # Parallel upsert configuration (Approach B).  Default workers=8
         # enables the parallel encode + upsert path; set to 1 for the
@@ -105,6 +151,7 @@ class EmbeddingService:
         # see TICKET_REMOVE_DUAL_ENCODER.  GV-NLE comes from
         # Step 5 training + the inductive query-time path, so the parallel
         # path needs no NLE gating.
+        from geovectors_encoder.core.models.fasttext import FastTextModel
         if workers > 1:
             entity_count = self._run_parallel(
                 cfg, pbf_path, workers, queue_depth, source_snapshot_id,

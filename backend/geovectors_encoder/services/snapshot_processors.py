@@ -50,6 +50,33 @@ class DBOnlyWriter:
             self.storage.add(record, vector)
 
 
+class UpsertOnlyWriter:
+    """
+    A writer that upserts entities into VectorStorageService WITHOUT the
+    FastText encode (vector=None → NULL embedding column).
+
+    Used by the snapshot-backfill month task (ISSUE-admin-job-control-plane):
+    backfill snapshots are drift-source, not queryable — embedding ~60
+    historical months is most of the backfill cost and buys nothing for
+    drift. The Step-5c k-NN graph is geometry-only, so the spectral solve
+    is unaffected by the missing embeddings.
+    """
+
+    def __init__(self, storage_service, boundary=None):
+        self.storage = storage_service
+        self.boundary = boundary  # shapely Polygon for spatial filtering
+
+    def add_line(self, record):
+        # record: (id, type, tags, lat, lon)
+        from shapely.geometry import Point
+        if self.boundary and record[3] is not None and record[4] is not None:
+            point = Point(record[4], record[3])  # lon, lat
+            if not self.boundary.contains(point):
+                return  # Skip entity outside boundary
+
+        self.storage.add(record, None)
+
+
 def process_single_snapshot_combined(country_name, continent, snap_date, snap_path, session_id, force=False):
     from django.db import connections
     for conn in connections.all():

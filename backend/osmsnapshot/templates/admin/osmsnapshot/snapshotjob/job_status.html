@@ -1,0 +1,51 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Job status</h1>
+<form method="get">
+  <select name="country">
+    <option value="">— select country —</option>
+    {% for iso, name in countries %}
+    <option value="{{ iso }}" {% if iso == selected_iso %}selected{% endif %}>{{ name }} ({{ iso }})</option>
+    {% endfor %}
+  </select>
+  <input type="submit" value="Show">
+</form>
+
+{% if selected_iso %}
+<h2>
+  {{ selected_iso }}
+  {% if country_complete %}
+  <b style="color: #16a34a;">Country complete</b>
+  {% else %}
+  <b style="color: #6b7280;">Incomplete</b>
+  {% endif %}
+</h2>
+<p>Derived state (never stored): latest queryable snapshot exists
+(<b>{{ has_latest_queryable }}</b>) AND drift-source series length
+({{ drift_series_len }}) &ge; threshold ({{ threshold }}).</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Snapshot date</th><th>Status</th><th>Tier</th>
+      <th>Entities</th><th>Started</th><th>Completed</th><th>Error</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for job in jobs %}
+    <tr>
+      <td>{{ job.snapshot_date }}</td>
+      <td>{{ job.status }}</td>
+      <td>{% if job.is_drift_source %}drift-source{% else %}queryable{% endif %}</td>
+      <td>{{ job.total_entities }}</td>
+      <td>{{ job.started_at|date:"Y-m-d H:i" }}</td>
+      <td>{{ job.completed_at|date:"Y-m-d H:i" }}</td>
+      <td>{{ job.error_message|truncatechars:80 }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7">No snapshot jobs for this country.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

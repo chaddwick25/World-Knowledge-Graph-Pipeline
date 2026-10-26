@@ -347,6 +347,14 @@ WORLDKG_SNAPSHOT_END_YEAR = 2025
 SNAPSHOT_START_YEAR = WORLDKG_SNAPSHOT_START_YEAR
 SNAPSHOT_END_YEAR = WORLDKG_SNAPSHOT_END_YEAR
 
+SNAPSHOT_DATE_FLOOR = os.getenv('SNAPSHOT_DATE_FLOOR', '2020_09')
+
+# Minimum drift-source snapshot series length for the derived "country
+# complete" state in the admin job-status view (never stored — computed).
+DRIFT_SERIES_COMPLETE_THRESHOLD = int(
+    os.getenv('DRIFT_SERIES_COMPLETE_THRESHOLD', '3')
+)
+
 DATABASES = {
     'default': dj_database_url.config(
         default=(

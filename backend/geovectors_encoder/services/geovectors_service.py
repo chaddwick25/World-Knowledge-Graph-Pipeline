@@ -20,6 +20,7 @@ from core.services.planet_init.osm_wikidata_resolver import get_country_by_name,
 # embedding_service and step_1_embed import it from this module.
 from geovectors_encoder.services.snapshot_processors import (
     DBOnlyWriter,
+    UpsertOnlyWriter,
     process_single_snapshot,
     process_single_snapshot_combined,
     process_subgraph_snapshot,

@@ -17,9 +17,8 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
-urlpatterns = [ 
+urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/geodata/', include('geodata.urls')),
     path('api/nca/', include('worldkg_nca.urls')),
     path('api/igea/', include('igea.urls')),
     path('api/geovectors/', include('geovectors_encoder.urls')),

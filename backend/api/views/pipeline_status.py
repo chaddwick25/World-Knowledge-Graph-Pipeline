@@ -140,6 +140,9 @@ def build_snapshot_dates_payload() -> dict:
             set(
                 SnapshotJob.objects.filter(
                     status=SnapshotJob.Status.COMPLETED,
+                    # Drift-source backfill snapshots have no embeddings —
+                    # never offer them as queryable dates
+                    is_drift_source=False,
                 ).values_list('snapshot_date', flat=True).distinct()
             ),
             reverse=True,
@@ -209,6 +212,7 @@ class SnapshotJobStatusView(APIView):
                 'country_code': j.country_code,
                 'country_name': j.country_name,
                 'status': j.status,
+                'is_drift_source': j.is_drift_source,
                 'total_entities': j.total_entities,
                 'total_aligned': j.total_aligned,
                 'total_spatial_links': j.total_spatial_links,

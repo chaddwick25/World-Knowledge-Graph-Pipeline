@@ -1,0 +1,13 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Backfill snapshots</h1>
+<p>Enqueues a sequential monthly chain (osmium time-filter → upsert-only →
+Step 5c spectral → Step 5d drift). Backfill months are drift-source only —
+they are never offered as queryable dates. A failed month halts the chain;
+resubmitting the range resumes from the failed month.</p>
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <input type="submit" value="Start backfill" class="default">
+</form>
+{% endblock %}

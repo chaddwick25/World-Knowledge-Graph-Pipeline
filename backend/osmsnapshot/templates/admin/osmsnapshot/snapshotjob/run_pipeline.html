@@ -1,0 +1,11 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Run country pipeline</h1>
+<p>Dispatches the full WorldKG pipeline (Steps 1–6) for one country via
+the shared dispatch service. Progress: <a href="job-status/">Job status</a>.</p>
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <input type="submit" value="Run pipeline" class="default">
+</form>
+{% endblock %}
