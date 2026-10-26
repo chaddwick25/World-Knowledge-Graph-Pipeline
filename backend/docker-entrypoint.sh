@@ -136,5 +136,10 @@ echo "Entrypoint setup complete!"
 # disabled or Ollama is not up yet.
 python manage.py warm_llm 2>/dev/null || echo "LLM warm-up skipped/failed."
 
+# Warm the execute-query data path (Postgres buffers + OS page cache on
+# OsmEntity / USLP / factor tables) so the first enrichment query does
+# not read cold (~25s observed → ~3.5s warm). Fail-soft like warm_llm.
+python manage.py warm_query_path 2>/dev/null || echo "Query-path warm-up skipped/failed."
+
 # Execute the main command
 exec "$@"
