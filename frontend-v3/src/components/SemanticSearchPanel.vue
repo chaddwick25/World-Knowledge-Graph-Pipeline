@@ -1,8 +1,5 @@
 <template>
   <div class="d-flex flex-column gap-2">
-    <!-- Query mode radio group — the search primitives only; the
-         Researcher loop moved to the Doppelganger agent surface
-         (2026-10-16). -->
     <div class="d-flex flex-column gap-1">
       <div class="btn-group btn-group-sm" role="group" aria-label="Query mode">
         <input
@@ -12,10 +9,8 @@
           id="query-mode-template"
           autocomplete="off"
           value="template"
-          v-model="queryMode"
-        >
+          v-model="queryMode">
         <label class="btn btn-outline-secondary" for="query-mode-template">Structured Search</label>
-
         <input
           type="radio"
           class="btn-check"
@@ -23,29 +18,19 @@
           id="query-mode-tags"
           autocomplete="off"
           value="tags"
-          v-model="queryMode"
-        >
+          v-model="queryMode">
         <label class="btn btn-outline-secondary" for="query-mode-tags">OSM Tag Query</label>
       </div>
     </div>
-
-    <!-- Subdivision selector — always visible (2026-10-01): scopes the
-         sample questions and the structured/template searches. -->
     <SubdivisionSelector
       :country-name="countryName"
-      @subdivision-selected="onSubdivisionSelected"
-    />
-
-    <!-- The Researcher loop lives on the Doppelganger agent surface
-         (2026-10-16) — the tools surface exposes only the search
-         primitives. -->
+      @subdivision-selected="onSubdivisionSelected"/>
     <form class="d-flex flex-column gap-2" @submit.prevent="performSearch">
-
       <!-- Tag key/value (OSM Tag Query mode) -->
       <div v-if="isTagsMode" class="row g-2">
         <div class="col-6">
           <label class="form-label small text-secondary mb-0">Tag key</label>
-          <select v-model="tagKey" class="form-select form-select-sm">
+          <select class="form-select form-select-sm" v-model="tagKey">
             <option v-for="opt in tagKeyOptions" :key="opt.value" :value="opt.value">
               {{ opt.text }}
             </option>
@@ -54,38 +39,44 @@
         <div class="col-6">
           <label class="form-label small text-secondary mb-0">Tag value</label>
           <input
-            v-model="tagValue"
             type="text"
             class="form-control form-control-sm"
             placeholder="e.g. cafe (empty = has key)"
-          />
+            v-model="tagValue">
         </div>
       </div>
-
       <!-- Natural language template input (MapQA parser) -->
       <div v-if="isTemplateMode" class="d-flex flex-column gap-1">
         <label class="form-label small text-secondary mb-0">Geospatial question</label>
         <textarea
-          v-model="templateQuery"
           class="form-control form-control-sm font-monospace"
           rows="2"
           placeholder="Which bars are within 50m of Hollywood Blvd?"
-        ></textarea>
+          v-model="templateQuery"></textarea>
       </div>
-
       <!-- Filters (hidden in NL Template mode) -->
       <div v-if="!isTemplateMode" class="row g-2">
         <div class="col-4">
           <label class="form-label small text-secondary mb-0">Lat</label>
-          <input v-model="lat" type="number" step="any" class="form-control form-control-sm" placeholder="Optional" />
+          <input
+            type="number"
+            step="any"
+            class="form-control form-control-sm"
+            placeholder="Optional"
+            v-model="lat">
         </div>
         <div class="col-4">
           <label class="form-label small text-secondary mb-0">Lon</label>
-          <input v-model="lon" type="number" step="any" class="form-control form-control-sm" placeholder="Optional" />
+          <input
+            type="number"
+            step="any"
+            class="form-control form-control-sm"
+            placeholder="Optional"
+            v-model="lon">
         </div>
         <div class="col-4">
           <label class="form-label small text-secondary mb-0">Class</label>
-          <select v-model="rdfType" class="form-select form-select-sm">
+          <select class="form-select form-select-sm" v-model="rdfType">
             <option :value="null">Any class</option>
             <option v-for="opt in classOptions" :key="opt.value" :value="opt.value">
               {{ opt.text }}
@@ -98,13 +89,12 @@
       <div class="d-flex align-items-center gap-2">
         <label class="form-label small text-secondary mb-0 text-nowrap">Top K</label>
         <input
-          v-model.number="topK"
           type="number"
           min="1"
           max="100"
           class="form-control form-control-sm"
           style="max-width: 90px;"
-        />
+          v-model.number="topK">
         <button
           type="submit"
           class="btn btn-primary btn-sm flex-grow-1"
@@ -115,21 +105,14 @@
         </button>
       </div>
     </form>
-
-    <!-- Sample questions (OSM RAG mode learning aid — leaf component;
-         shown right below the search form so they're handy before
-         searching; the chevron collapses the list) -->
     <SampleQuestions
       v-if="isTemplateMode && filteredSampleQuestions.length"
       :questions="filteredSampleQuestions"
-      :scope="subdivisionName || countryName"
-    />
-
+      :scope="subdivisionName || countryName"/>
     <!-- Error -->
     <div v-if="displayError" class="alert alert-danger small py-1 px-2 mb-0">
       {{ displayError }}
     </div>
-
     <!-- Data answer (deterministic factor-join — arrives first, stays pinned) -->
     <div v-if="executeAnswer" class="alert alert-info small py-1 px-2 mb-1">
       <div class="text-secondary small mb-1">
@@ -137,9 +120,6 @@
       </div>
       <strong>Deterministic:  </strong> {{ executeAnswer }}
     </div>
-
-    <!-- AI answer (enrichment stream — completes when ready, held back
-         until the data answer has had its solo moment) -->
     <div v-if="enrichingContext && !aiAnswerAt" class="small text-secondary">
       Enriching with AI…
     </div>
@@ -149,25 +129,17 @@
       </div>
       <strong>AI Summary: </strong> {{ enrichedAnswer }}
     </div>
-
-    <!-- Execution trace — decision flow (each step shows what it decided).
-         Rendered by the ExecutionTraceFlow leaf component (monolith split). -->
     <ExecutionTraceFlow
       :nodes="traceFlow"
       :parsed-query="displayParsedQuery"
-      :confidence-badge-class="confidenceBadgeClass"
-    />
-
-    <!-- Results table — leaf component (props in, events out). -->
+      :confidence-badge-class="confidenceBadgeClass"/>
     <SearchResultsTable
       v-model:show-nameless="showNameless"
       :rows="displayResults"
       :total="cappedResults.length"
       :has-nameless="hasNameless"
       @name-hover="onResultNameHover"
-      @name-leave="onResultNameLeave"
-    />
-
+      @name-leave="onResultNameLeave"/>
     <div v-if="!displayResults.length && searched" class="small text-secondary">
       No results found for this query.
     </div>

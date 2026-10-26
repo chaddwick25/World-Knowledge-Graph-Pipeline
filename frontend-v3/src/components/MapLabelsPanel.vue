@@ -22,7 +22,6 @@
       </template>
       <template v-else>No country selected</template>
     </div>
-
     <!-- Status -->
     <div class="d-flex align-items-center gap-2 small">
       <span

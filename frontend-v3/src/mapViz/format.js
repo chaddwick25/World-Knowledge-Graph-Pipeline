@@ -1,4 +1,4 @@
-// ── Shared map-side formatting helpers (2026-10-02) ────────────────────────
+// ── Shared map-side formatting helpers ────────────────────────
 // fmtM was triplicated: traceNodeDecorators (trace lines), WorldKGMap
 // tooltips (inline ternary), templateDeckLayers (label text). One home here.
 

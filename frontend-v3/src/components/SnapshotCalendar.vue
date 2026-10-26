@@ -1,36 +1,32 @@
 <template>
   <div class="d-flex flex-column gap-1">
     <!-- Date picker -->
+    <!-- TODO(georecord-control-plane): remove the date-picker - job triggering moves to GeoRecord wrapped around the django admin -->
     <div class="d-flex align-items-center justify-content-between">
       <label class="form-label small text-secondary mb-0">Snapshot Date</label>
       <button
         v-if="canReset"
         class="btn btn-link btn-sm text-danger p-0"
         :disabled="disabled"
-        @click="$emit('reset')"
-      >
+        @click="$emit('reset')">
         Reset
       </button>
     </div>
-
     <!-- Loading state -->
     <div v-if="loading" class="small text-secondary">
       <span class="placeholder-glow">
         <span class="placeholder col-7"></span>
       </span>
     </div>
-
     <!-- Error state -->
     <div v-else-if="error" class="alert alert-danger small py-1 px-2 mb-0">
       {{ error }}
       <button class="btn btn-link btn-sm p-0 ms-1" @click="$emit('retry')">Retry</button>
     </div>
-
     <!-- Empty state -->
     <div v-else-if="!hasJobs" class="small text-secondary">
       No processed jobs yet. Run the pipeline to see results here.
     </div>
-
     <!-- Date picker + job buttons -->
     <template v-else>
       <input
@@ -42,7 +38,6 @@
         :disabled="disabled"
         @input="onDateInput($event)"
       />
-
       <!-- Pipeline run button (only for new dates) -->
       <button
         v-if="showRunBtn"
@@ -53,7 +48,6 @@
         <span v-if="runBtnLoading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
         <span>{{ runBtnLabel }}</span>
       </button>
-
       <!-- Processed-jobs collapsible list -->
       <details v-if="jobButtons.length > 0" class="processed-jobs">
         <summary class="processed-jobs__summary small text-secondary fw-semibold d-flex align-items-center gap-1">
@@ -120,7 +114,6 @@
  *   rerun            - User clicked re-run on a completed/failed job (date: "YYYY_MM_DD").
  *   run              - User clicked the Run button.
  */
-
 export default {
   name: 'SnapshotCalendar',
   components: {},

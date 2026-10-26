@@ -73,7 +73,8 @@ Mechanics (all from the vendored vue-mcp-server, reused unchanged):
 | Only HTTP calls (pure data) | **Node** | No browser round-trip; works headless (`goose run -t`) |
 
 Node-side data tools call Django via `fetch` with the base URL from
-`WORLDKG_BACKEND_URL` (default `http://localhost:8000/api`). The human UI
+`WORLDKG_BACKEND_URL` (required; compose sets it to the backend service).
+The human UI
 path and the agent path are independent HTTP clients of the same endpoints.
 No shared implementation to drift.
 

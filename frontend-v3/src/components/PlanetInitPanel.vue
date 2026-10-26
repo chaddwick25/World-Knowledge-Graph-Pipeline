@@ -21,21 +21,17 @@
           :class="checking ? 'text-bg-info' : 'text-bg-secondary'"
         >{{ checking ? 'Checking…' : 'Not Initialized' }}</span>
       </div>
-
       <p class="small text-secondary mb-0">
         Planet init runs automatically as a Docker startup step. Restart the backend
         container, or run <code class="text-body">python manage.py init_planet</code>
         to initialize.
       </p>
-
       <p v-if="suggestedPlanetFilePath" class="small text-secondary mb-0 text-break">
         Planet PBF: <code class="text-body">{{ suggestedPlanetFilePath }}</code>
       </p>
-
       <div v-if="systemError" class="alert alert-danger small py-1 px-2 mb-0">
         {{ systemError }}
       </div>
-
       <button
         type="button"
         class="btn btn-sm btn-outline-primary align-self-start"

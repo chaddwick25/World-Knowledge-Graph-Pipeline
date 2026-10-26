@@ -2,8 +2,7 @@
  * labelManager — module-level singleton owning the deck.gl DeckOverlay
  * for the Map Labels feature.
  *
- * DECKGL_VISUALIZATION_INTEGRATION_PLAN_V2.md §3.2.2. The DeckOverlay is an
- * L.Layer added to the Leaflet map (camera-synced by the bridge; Leaflet
+ * The DeckOverlay is an L.Layer added to the Leaflet map (camera-synced by the bridge; Leaflet
  * keeps controller:false so it owns pan/zoom). Vue never touches deck
  * internals — WorldKGMap.vue calls attach/detach around the map lifecycle,
  * and the map labels store drives setLayers.

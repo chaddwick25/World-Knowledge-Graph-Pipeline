@@ -10,15 +10,10 @@
  */
 
 import crypto from "node:crypto";
-
-const DEFAULT_BACKEND_URL = "http://localhost:8000/api";
-
-function backendBase(): string {
-  return process.env.WORLDKG_BACKEND_URL || DEFAULT_BACKEND_URL;
-}
+const BACKEND_URL = process.env.WORLDKG_BACKEND_URL;
 
 async function postJson(path: string, body: Record<string, unknown>): Promise<any> {
-  const res = await fetch(`${backendBase()}${path}`, {
+  const res = await fetch(`${BACKEND_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -112,9 +107,9 @@ export const serverTools = {
     countryCode: string;
     snapshotDate?: string;
   }): Promise<any> {
-    const q = new URLSearchParams({ country_code: params.countryCode });
-    if (params.snapshotDate) q.set("snapshot_date", params.snapshotDate);
-    const res = await fetch(`${backendBase()}/nca/factor-availability/?${q.toString()}`);
+    const searchParams = new URLSearchParams({ country_code: params.countryCode });
+    if (params.snapshotDate) searchParams.set("snapshot_date", params.snapshotDate);
+    const res = await fetch(`${BACKEND_URL}/nca/factor-availability/?${searchParams.toString()}`);
     if (!res.ok) {
       let detail = `HTTP ${res.status}`;
       try {
@@ -152,11 +147,10 @@ export const serverTools = {
         return { job_id: id, status: "running", deduped: true };
       }
     }
-
-    const q = new URLSearchParams({ prompt: params.brief });
-    if (params.countryCode) q.set("country_code", params.countryCode);
-    if (params.snapshotDate) q.set("snapshot_date", params.snapshotDate);
-    if (params.subdivisionQid) q.set("subdivision_qid", params.subdivisionQid);
+    const searchParams = new URLSearchParams({ prompt: params.brief });
+    if (params.countryCode) searchParams.set("country_code", params.countryCode);
+    if (params.snapshotDate) searchParams.set("snapshot_date", params.snapshotDate);
+    if (params.subdivisionQid) searchParams.set("subdivision_qid", params.subdivisionQid);
 
     const jobId = crypto.randomUUID();
     researchJobs.set(jobId, {
@@ -168,7 +162,7 @@ export const serverTools = {
     });
     // Fire-and-forget: consume the SSE stream into the job record.
     void consumeResearchStream(
-      jobId, `${backendBase()}/nca/research/stream/?${q.toString()}`,
+      jobId, `${BACKEND_URL}/nca/research/stream/?${searchParams.toString()}`,
     );
     return { job_id: jobId, status: "running" };
   },
@@ -185,7 +179,6 @@ export const serverTools = {
       error: job.error ?? null,
     };
   },
-
   /** Fetch the final result once status is "done". */
   async getDoppelgangerResult(params: { jobId: string }): Promise<any> {
     const job = researchJobs.get(params.jobId);

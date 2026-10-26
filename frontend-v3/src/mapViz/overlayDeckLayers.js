@@ -16,12 +16,10 @@
 
 import { GeoJsonLayer, LineLayer, PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
 import { PathStyleExtension } from '@deck.gl/extensions'
-
 import { buildCirclePolygon } from './templateDeckLayers'
 
 // ── Countries (the base interaction layer — deck owns all picking) ──────
-
-/** Uniform country layer (2026-09-28): pickable so deck's native picking
+/** Uniform country layer: pickable so deck's native picking
  *  handles country selection; no selection fill (status lives in the
  *  sidebar); unsupported countries render transparent and are skipped in
  *  the click/tooltip guards. */
@@ -134,7 +132,6 @@ function normalizeOverlayEntity(e) {
 }
 
 // ── Search results ──────────────────────────────────────────────────────
-
 export function buildSearchResultLayer(results) {
   const rows = (results || [])
     .filter((r) => r.geom && r.geom.lat != null && r.geom.lon != null)

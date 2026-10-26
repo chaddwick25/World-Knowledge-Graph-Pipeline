@@ -40,8 +40,6 @@
 </template>
 
 <script>
-// Layman descriptions per trained template — the stored `template` field
-// ('FILTER-AGGREGATE-MEASURE (#1)') maps to the question type it teaches.
 const TEMPLATE_INFO = {
   'FILTER-AGGREGATE-MEASURE (#1)': 'What is near a place',
   'OBJECT-FIELD-MEASURE (#2)': 'How far apart two places are',
@@ -67,8 +65,6 @@ export default {
     clearTimeout(this.copyTimer)
   },
   methods: {
-    /** Layman one-liner for the question's template type; null for
-     *  unknown/empty templates (curated rows predate the field). */
     templateInfo(template) {
       return TEMPLATE_INFO[template] || null
     },

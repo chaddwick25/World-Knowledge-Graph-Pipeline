@@ -32,5 +32,4 @@ export function createMcpHandlers(callClient: CallClient<ClientFunctions>) {
     },
   };
 }
-
 export type McpHandlers = ReturnType<typeof createMcpHandlers>;

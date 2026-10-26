@@ -47,24 +47,19 @@
           </div>
         </div>
         <div
-          v-for="(m, i) in chatMessages"
+          v-for="(msg, i) in chatMessages"
           :key="i"
           class="d-flex"
-          :class="m.role === 'user' ? 'justify-content-end' : ''"
+          :class="msg.role === 'user' ? 'justify-content-end' : ''"
         >
           <div
             class="rounded px-2 py-1"
-            :class="m.role === 'user' ? 'bg-primary text-white' : 'bg-secondary-subtle'"
+            :class="msg.role === 'user' ? 'bg-primary text-white' : 'bg-secondary-subtle'"
             style="max-width: 90%;"
-          >{{ m.role === 'assistant' ? assistantDisplay(m.text) : m.text }}</div>
+          >{{ msg.role === 'assistant' ? assistantDisplay(msg.text) : msg.text }}</div>
         </div>
         <div v-if="isChatLoading" class="text-secondary">typing…</div>
       </div>
-      <!-- Copyable example ask: the sample-question row styling, so the
-           invocation is one click from the send button. Shows only while
-           its job is undone: no candidates to disambiguate and no seed
-           set (2026-10-21 - it yielded to the candidate menu, which
-           made the stack awkward). -->
       <div
         v-if="showExampleAsk"
         class="d-flex align-items-center gap-2 border rounded p-1 px-2"
@@ -89,10 +84,6 @@
         ></textarea>
       </form>
     </div>
-
-    <!-- Live seed (the data-seed stream part, ISSUE-48): the resolved
-         candidate pins mid-interview; multi-hit resolves by the user
-         clicking the map or the list — never the model guessing. -->
     <div
       v-if="seed.asked"
       class="border rounded small py-1 px-2"
@@ -115,41 +106,37 @@
         <span v-if="seed.suggestions.length" class="d-block mt-1">
           Did you mean:
           <button
-            v-for="s in seed.suggestions"
-            :key="s.osm_type + ':' + s.osm_id"
+            v-for="suggestion in seed.suggestions"
+            :key="suggestion.osm_type + ':' + suggestion.osm_id"
             type="button"
             class="btn btn-sm btn-outline-primary py-0 px-1 me-1"
-            @click="restateSeed(s)"
-          >{{ s.name }}</button>
+            @click="restateSeed(suggestion)"
+          >{{ suggestion.name }}</button>
         </span>
       </div>
       <div v-if="seedAlternatives.length && seed.confirmedSource !== 'explicit'" class="mt-1">
         <div class="text-secondary">{{ seedMenuHeader }}</div>
         <ol class="mb-0 ps-3 mt-1 d-flex flex-column gap-1">
           <li
-            v-for="c in seedAlternatives"
-            :key="c.osm_type + ':' + c.osm_id"
+            v-for="candidate in seedAlternatives"
+            :key="candidate.osm_type + ':' + candidate.osm_id"
             class="d-flex align-items-center gap-2"
           >
-            <!-- The rows OPEN/HIDE the entity's info box on the map;
-                 seeding happens only inside the info box (2026-10-19). -->
             <button
               type="button"
               class="btn btn-sm py-0 px-1 text-start flex-grow-1 text-truncate"
-              :class="rowClass(c)"
-              :title="`Open ${c.name} on the map`"
-              @click="toggleEntityInfo(c)"
-              @mouseenter="seed.setHoveredKey(chipKey(c))"
-              @mouseleave="seed.clearHoveredKey(chipKey(c))"
+              :class="rowClass(candidate)"
+              :title="`Open ${candidate.name} on the map`"
+              @click="toggleEntityInfo(candidate)"
+              @mouseenter="seed.setHoveredKey(chipKey(candidate))"
+              @mouseleave="seed.clearHoveredKey(chipKey(candidate))"
             >
-              {{ c.name }} <span class="text-secondary">{{ seedKindLabel(c) }}</span>
+              {{ candidate.name }} <span class="text-secondary">{{ seedKindLabel(candidate) }}</span>
             </button>
           </li>
         </ol>
       </div>
     </div>
-
-    <!-- Extracted brief + run -->
     <div v-if="finalizing && !brief" class="small text-secondary">
       Building brief from the interview…
     </div>
@@ -187,30 +174,30 @@
         </summary>
         <div class="research-questions-flow d-flex flex-column gap-1 mt-1">
           <div
-            v-for="q in questions"
-            :key="q.index"
+            v-for="question in questions"
+            :key="question.index"
             class="border rounded small p-2"
-            :class="q.error ? 'border-danger' : 'border-secondary-subtle'"
+            :class="question.error ? 'border-danger' : 'border-secondary-subtle'"
           >
             <div class="d-flex align-items-center gap-1">
-              <span class="badge bg-secondary">{{ q.follow_up ? '→' : q.index + 1 }}</span>
-              <span v-if="q.follow_up" class="badge bg-success">follow-up</span>
-              <span v-else-if="q.round > 1" class="badge bg-warning text-dark">round {{ q.round }}</span>
-              <span class="flex-grow-1">{{ q.question }}</span>
-              <span v-if="q.error" class="badge bg-danger">error</span>
-              <span v-else-if="q.template" class="badge bg-info text-dark">{{ q.template }}</span>
+              <span class="badge bg-secondary">{{ question.follow_up ? '→' : question.index + 1 }}</span>
+              <span v-if="question.follow_up" class="badge bg-success">follow-up</span>
+              <span v-else-if="question.round > 1" class="badge bg-warning text-dark">round {{ question.round }}</span>
+              <span class="flex-grow-1">{{ question.question }}</span>
+              <span v-if="question.error" class="badge bg-danger">error</span>
+              <span v-else-if="question.template" class="badge bg-info text-dark">{{ question.template }}</span>
             </div>
-            <div v-if="q.error" class="text-danger mt-1">{{ q.error }}</div>
-            <div v-else-if="isEmptyResult(q)" class="text-secondary">
+            <div v-if="question.error" class="text-danger mt-1">{{ question.error }}</div>
+            <div v-else-if="isEmptyResult(question)" class="text-secondary">
               (0 results)
             </div>
-            <div v-else-if="q.answer" class="mt-1">
+            <div v-else-if="question.answer" class="mt-1">
               <!-- White plain text, dark blue values (entity names from the
                    result digest + distance/amount tokens). -->
-              <template v-for="(seg, si) in answerSegments(q)" :key="si">
+              <template v-for="(seg, si) in answerSegments(question)" :key="si">
                 <span :class="seg.value ? 'answer-value' : ''">{{ seg.text }}</span>
               </template>
-              <span v-if="q.result_count != null" class="text-secondary"> ({{ q.result_count }} results)</span>
+              <span v-if="question.result_count != null" class="text-secondary"> ({{ question.result_count }} results)</span>
             </div>
             <div v-else-if="isRunning" class="text-secondary mt-1">parsing…</div>
           </div>
@@ -219,12 +206,12 @@
                visible in one place (2026-10-01). -->
           <div v-if="tools.length" class="d-flex flex-column gap-1 border-top pt-1">
             <div class="small text-secondary fw-semibold">Follow-up searches</div>
-            <div v-for="(t, i) in tools" :key="i" class="border rounded small p-2 border-secondary-subtle">
+            <div v-for="(tool, i) in tools" :key="i" class="border rounded small p-2 border-secondary-subtle">
               <div class="d-flex align-items-center gap-1">
-                <span class="badge bg-success">{{ t.tool }}</span>
-                <code class="flex-grow-1 text-truncate" :title="JSON.stringify(t.args)">{{ JSON.stringify(t.args) }}</code>
+                <span class="badge bg-success">{{ tool.tool }}</span>
+                <code class="flex-grow-1 text-truncate" :title="JSON.stringify(tool.args)">{{ JSON.stringify(tool.args) }}</code>
               </div>
-              <div v-if="toolOutputSummary(t)" class="text-secondary mt-1">{{ toolOutputSummary(t) }}</div>
+              <div v-if="toolOutputSummary(tool)" class="text-secondary mt-1">{{ toolOutputSummary(tool) }}</div>
             </div>
           </div>
         </div>
@@ -250,10 +237,10 @@
         class="font-monospace border rounded p-2 mt-1 d-flex flex-column gap-1"
         style="max-height: 240px; overflow-y: auto;"
       >
-        <div v-for="(ev, i) in eventLog" :key="i" class="text-truncate">
-          <span class="text-secondary">{{ ev.at }}</span>
-          <span class="badge bg-secondary-subtle text-dark">{{ ev.event }}</span>
-          <span :title="JSON.stringify(ev.data)">{{ eventSummary(ev) }}</span>
+        <div v-for="(entry, i) in eventLog" :key="i" class="text-truncate">
+          <span class="text-secondary">{{ entry.at }}</span>
+          <span class="badge bg-secondary-subtle text-dark">{{ entry.event }}</span>
+          <span :title="JSON.stringify(entry.data)">{{ eventSummary(entry) }}</span>
         </div>
       </div>
     </details>
@@ -265,6 +252,15 @@ import axios from 'axios'
 import { DefaultChatTransport } from 'ai'
 import { useChat } from '@ai-sdk/vue'
 import { useSeedStore } from '../stores/seedStore'
+import {
+  NCA_RESEARCH_CHAT,
+  NCA_RESEARCH_FINALIZE,
+  NCA_RESEARCH_SEED_EXAMPLES,
+} from '../services/apiPaths'
+import {
+  buildResearchParams,
+  openResearchStream,
+} from '../services/researchStream'
 import { useEntityInfoStore } from '../stores/entityInfoStore'
 
 export default {
@@ -307,7 +303,7 @@ export default {
     const base = axios.defaults.baseURL || ''
     const chat = useChat({
       transport: new DefaultChatTransport({
-        api: `${base}/nca/research/chat/`,
+        api: `${base}${NCA_RESEARCH_CHAT}`,
         body: () => ({
           country_code: props.countryName,
           snapshot_date: props.snapshotDate,
@@ -362,15 +358,15 @@ export default {
       // display (the backend keeps it in the transcript so the
       // slot gate can detect the answer turn).
       return (this.chat.messages.value || [])
-        .map((m) => ({
-          role: m.role,
-          text: (m.parts || [])
-            .filter((p) => p.type === 'text')
-            .map((p) => p.text || '')
+        .map((msg) => ({
+          role: msg.role,
+          text: (msg.parts || [])
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text || '')
             .join('')
             .replace(/\[seed\]\s*/g, ''),
         }))
-        .filter((m) => m.text)
+        .filter((msg) => msg.text)
     },
     lastSeedPart() {
       // The most recent data-seed part across the transcript (the
@@ -378,7 +374,7 @@ export default {
       const msgs = this.chat.messages.value || []
       for (let i = msgs.length - 1; i >= 0; i--) {
         const part = (msgs[i].parts || []).find(
-          (p) => p.type === 'data-seed',
+          (messagePart) => messagePart.type === 'data-seed',
         )
         if (part) return part
       }
@@ -393,39 +389,39 @@ export default {
      * Jerk Center session (announcement/KE-re-ask loop).
      */
     seedSignature() {
-      const s = this.seed
+      const seed = this.seed
       return JSON.stringify({
-        asked: s.asked,
-        confirmed: s.confirmed
-          ? `${s.confirmed.osm_type}:${s.confirmed.osm_id}` : null,
-        candidates: (s.candidates || [])
-          .map((c) => `${c.osm_type}:${c.osm_id}`),
+        asked: seed.asked,
+        confirmed: seed.confirmed
+          ? `${seed.confirmed.osm_type}:${seed.confirmed.osm_id}` : null,
+        candidates: (seed.candidates || [])
+          .map((candidate) => `${candidate.osm_type}:${candidate.osm_id}`),
       })
     },
     seedMenuHeader() {
       // String building stays in JS (template logic rule): the header
       // reflects the picked state once a seed is confirmed.
-      const s = this.seed
-      return s.confirmed
-        ? `Picked ${s.confirmed.name} - seed from the info box`
+      const seed = this.seed
+      return seed.confirmed
+        ? `Picked ${seed.confirmed.name} - seed from the info box`
         : 'Multiple matches - click a row to open it on the map'
     },
     /** Candidate rows excluding the confirmed seed: the switchable set.
      *  Always rendered while non-empty, so a picked seed stays
      *  changeable (2026-10-19: no re-interview needed to re-pick). */
     seedAlternatives() {
-      const s = this.seed
-      const confirmedKey = s.confirmed
-        ? `${s.confirmed.osm_type}:${s.confirmed.osm_id}`
+      const seed = this.seed
+      const confirmedKey = seed.confirmed
+        ? `${seed.confirmed.osm_type}:${seed.confirmed.osm_id}`
         : null
-      return (s.candidates || []).filter(
-        (c) => `${c.osm_type}:${c.osm_id}` !== confirmedKey,
+      return (seed.candidates || []).filter(
+        (candidate) => `${candidate.osm_type}:${candidate.osm_id}` !== confirmedKey,
       )
     },
     /** A real entity name from the country's dataset for the greeting
      *  example; '' when none (generic copy takes over). */
     seedExampleName() {
-      const first = this.seedExamples.find((e) => e && e.name)
+      const first = this.seedExamples.find((example) => example && example.name)
       return first ? first.name : ''
     },
     /** The always-visible copyable example ask above the input. */
@@ -480,7 +476,11 @@ export default {
     countryIso: {
       immediate: true,
       handler(iso) {
-        this.fetchSeedExamples(iso)
+        if (iso) {
+          this.fetchSeedExamples(iso)
+        } else {
+          this.seedExamples = []
+        }
       },
     },
     lastSeedPart(part) {
@@ -498,7 +498,7 @@ export default {
       // extraction; the KE never emits a brief itself).
       if (
         status === 'ready'
-        && this.chatMessages.some((m) => m.role === 'assistant')
+        && this.chatMessages.some((msg) => msg.role === 'assistant')
         && !this.finalizing
         && !this.isRunning
       ) {
@@ -519,13 +519,10 @@ export default {
     /** Real entity examples for the greeting/placeholder. Fail-soft:
      *  an empty list renders the generic copy. */
     async fetchSeedExamples(iso) {
-      if (!iso) {
-        this.seedExamples = []
-        return
-      }
+      if (!iso) return // invariant: callers check before calling
       try {
         const { data } = await axios.get(
-          '/nca/research/seed-examples/',
+          NCA_RESEARCH_SEED_EXAMPLES,
           { params: { country_code: iso } },
         )
         this.seedExamples = data.examples || []
@@ -546,7 +543,7 @@ export default {
      */
     pushSeedOverlay() {
       if (!this.setSeedOverlay) return
-      const s = this.seed
+      const seed = this.seed
       const toMarker = (row, kind) => ({
         osm_id: row.osm_id,
         osm_type: row.osm_type,
@@ -559,14 +556,14 @@ export default {
       // All candidates stay clickable after a pick (2026-10-19: the
       // user can change the seed by clicking again, no re-interview
       // needed). The confirmed entity is excluded from the amber set.
-      const confirmedKey = s.confirmed
-        ? `${s.confirmed.osm_type}:${s.confirmed.osm_id}`
+      const confirmedKey = seed.confirmed
+        ? `${seed.confirmed.osm_type}:${seed.confirmed.osm_id}`
         : null
-      const candidates = (s.candidates || [])
-        .filter((c) => c.lat != null
-          && `${c.osm_type}:${c.osm_id}` !== confirmedKey)
-        .map((c) => toMarker(c, 'candidate'))
-      const confirmed = s.hasSeed ? toMarker(s.confirmed, 'confirmed') : null
+      const candidates = (seed.candidates || [])
+        .filter((candidate) => candidate.lat != null
+          && `${candidate.osm_type}:${candidate.osm_id}` !== confirmedKey)
+        .map((candidate) => toMarker(candidate, 'candidate'))
+      const confirmed = seed.hasSeed ? toMarker(seed.confirmed, 'confirmed') : null
       this.setSeedOverlay({ confirmed, candidates })
     },
     /**
@@ -582,38 +579,38 @@ export default {
       const seen = new Set()
       const twins = []
       const addRows = (rows) => {
-        for (const r of (rows || [])) {
-          if (!r || r.lat == null || r.lon == null) continue
-          const key = `${r.osm_type || ''}:${r.osm_id || ''}`
+        for (const row of (rows || [])) {
+          if (!row || row.lat == null || row.lon == null) continue
+          const key = `${row.osm_type || ''}:${row.osm_id || ''}`
           if (seen.has(key)) continue
           seen.add(key)
           twins.push({
-            osm_id: r.osm_id,
-            osm_type: r.osm_type,
-            name: r.name || (r.tags || {}).name || '',
-            tags: r.tags || {},
-            wkg_class: r.wkg_class || null,
-            similarity: r.similarity,
+            osm_id: row.osm_id,
+            osm_type: row.osm_type,
+            name: row.name || (row.tags || {}).name || '',
+            tags: row.tags || {},
+            wkg_class: row.wkg_class || null,
+            similarity: row.similarity,
             // The pre-plan twin rows carry the calibrated `score` field
             // (EvidenceScoringService); accept it first, then the raw
             // service fields.
-            twin_score: r.score != null ? r.score
-              : (r.twin_score != null ? r.twin_score : null),
-            geom: { lat: r.lat, lon: r.lon },
+            twin_score: row.score != null ? row.score
+              : (row.twin_score != null ? row.twin_score : null),
+            geom: { lat: row.lat, lon: row.lon },
           })
         }
       }
-      for (const tc of (result?.tool_calls || [])) {
-        if (tc.tool !== 'similarEntities') continue
-        const out = tc.output
+      for (const toolCall of (result?.tool_calls || [])) {
+        if (toolCall.tool !== 'similarEntities') continue
+        const out = toolCall.output
         // Actual shape: a flat list of scored twin rows. Dict shape
         // ({results: [...]}) is the fallback for other tool paths.
         if (Array.isArray(out)) addRows(out)
         else addRows(out?.results)
       }
-      const s = this.seed
-      const seed = (s.hasSeed && s.confirmed.lat != null)
-        ? { geom: { lat: s.confirmed.lat, lon: s.confirmed.lon } }
+      const seedStore = this.seed
+      const seed = (seedStore.hasSeed && seedStore.confirmed.lat != null)
+        ? { geom: { lat: seedStore.confirmed.lat, lon: seedStore.confirmed.lon } }
         : null
       if (!twins.length) {
         this.setTwinsOverlay(null)
@@ -632,11 +629,6 @@ export default {
         this.exampleCopied = false
       }, 1500)
     },
-    /** Display text for an assistant message: strip a leading seed-name
-     *  echo (2026-10-21: the KE opens replies with the subject's name -
-     *  "Ragamuffin Coffee Bar Where are you looking for..." - the prompt
-     *  fix did not hold, so the display strips it; the transcript keeps
-     *  the raw text for the KE's context). */
     assistantDisplay(text) {
       const names = [this.seed.asked, this.seed.confirmed?.name]
         .filter(Boolean)
@@ -662,17 +654,17 @@ export default {
     },
     /** One-click restate: the suggestion chip fills the draft and sends,
      * so the [seed] gate re-resolves against the corrected name. */
-    restateSeed(s) {
-      this.draft = s.name || ''
+    restateSeed(suggestion) {
+      this.draft = suggestion.name || ''
       this.sendMessage()
     },
-    chipKey(c) {
-      return `${c.osm_type}:${c.osm_id}`
+    chipKey(candidate) {
+      return `${candidate.osm_type}:${candidate.osm_id}`
     },
     /** The candidate rows OPEN/HIDE the entity's info box on the map
      *  (2026-10-19): seeding happens only inside the info box. */
-    toggleEntityInfo(c) {
-      const key = this.chipKey(c)
+    toggleEntityInfo(candidate) {
+      const key = this.chipKey(candidate)
       const current = this.entityInfo.entity
       const currentKey = current
         ? `${current.osm_type}:${current.osm_id}`
@@ -682,20 +674,20 @@ export default {
         return
       }
       this.entityInfo.setEntity({
-        osm_id: c.osm_id,
-        osm_type: c.osm_type,
-        name: c.name,
-        tags: c.tags || {},
-        wkg_class: c.wkg_class || null,
-        lat: c.lat,
-        lon: c.lon,
-        geom: { lat: c.lat, lon: c.lon },
+        osm_id: candidate.osm_id,
+        osm_type: candidate.osm_type,
+        name: candidate.name,
+        tags: candidate.tags || {},
+        wkg_class: candidate.wkg_class || null,
+        lat: candidate.lat,
+        lon: candidate.lon,
+        geom: { lat: candidate.lat, lon: candidate.lon },
       }, 'panel')
     },
     /** Row state: solid when this entity's info box is open on the map
      *  or the info box hovers it (shared hoveredKey), outline otherwise. */
-    rowClass(c) {
-      const key = this.chipKey(c)
+    rowClass(candidate) {
+      const key = this.chipKey(candidate)
       const current = this.entityInfo.entity
       const open = current
         && `${current.osm_type}:${current.osm_id}` === key
@@ -713,14 +705,14 @@ export default {
      * never announces (the user's answer is already in the transcript).
      */
     announceExplicitSeed() {
-      const s = this.seed
+      const seed = this.seed
       if (this.announcedSeed) return
-      if (s.confirmedSource !== 'explicit' || !s.confirmed) return
+      if (seed.confirmedSource !== 'explicit' || !seed.confirmed) return
       if (this.isChatLoading) return
       this.announcedSeed = true
-      const kind = this.seedKindLabel(s.confirmed)
+      const kind = this.seedKindLabel(seed.confirmed)
       this.chat.sendMessage({
-        text: `Seed: ${s.confirmed.name}` + (kind ? ` (${kind})` : ''),
+        text: `Seed: ${seed.confirmed.name}` + (kind ? ` (${kind})` : ''),
       })
     },
     async finalizeBrief() {
@@ -733,7 +725,7 @@ export default {
         // session; the race the deferred hardening ticket described).
         return await this.finalizeInFlight
       }
-      const msgs = this.chatMessages.map((m) => ({ role: m.role, content: m.text }))
+      const msgs = this.chatMessages.map((msg) => ({ role: msg.role, content: msg.text }))
       if (!msgs.length) return ''
       this.finalizing = true
       this.finalizeInFlight = this.requestBrief(msgs)
@@ -755,7 +747,7 @@ export default {
       if (this.seed.hasSeed) payload.seed = this.seed.finalizePayload()
       try {
         const { data } = await axios.post(
-          '/nca/research/finalize/',
+          NCA_RESEARCH_FINALIZE,
           payload,
           // Above the backend's realistic chat_json latency on a busy
           // 4070: the 15s timeout aborted requests the server would
@@ -781,7 +773,7 @@ export default {
       // is valid only when there is no interview to lose: a single user
       // message IS the prompt.
       const userMessages = this.chatMessages.filter(
-        (m) => m.role === 'user',
+        (msg) => msg.role === 'user',
       )
       if (!prompt && userMessages.length > 1) {
         this.error = 'Could not build the research brief from the interview. Press Run again to retry; if it persists, rephrase the request.'
@@ -793,134 +785,13 @@ export default {
       this.isRunning = true
       this.runStartAt = Date.now()
 
-      const params = new URLSearchParams({ prompt })
-      if (this.countryName) params.set('country_code', this.countryName)
-      if (this.snapshotDate) params.set('snapshot_date', this.snapshotDate)
-      if (this.subdivisionQid) params.set('subdivision_qid', this.subdivisionQid)
-      if (this.recipe) params.set('recipe', this.recipe)
-
-      const base = axios.defaults.baseURL || ''
-      const url = `${base}/nca/research/stream/?${params}`
-      const es = new EventSource(url)
-      this.eventSource = es
-
-      es.addEventListener('plan', (e) => {
-        const d = JSON.parse(e.data)
-        this.recordEvent('plan', d)
-        this.questions = (d.questions || []).map((q, index) => ({
-          index,
-          question: q.question,
-          why: q.why || '',
-          template: null,
-          answer: '',
-          digest: '',
-          result_count: null,
-          error: '',
-        }))
-      })
-
-      es.addEventListener('question', (e) => {
-        const d = JSON.parse(e.data)
-        this.recordEvent('question', d)
-        const i = d.index
-        if (this.questions[i]) {
-          this.questions[i].template = d.template || null
-          this.questions[i].answer = d.answer || ''
-          this.questions[i].digest = d.digest || ''
-          this.questions[i].result_count = d.result_count != null ? d.result_count : null
-          this.questions[i].error = d.error || ''
-        } else {
-          // Round-2 continuation rows (indexes continue past round 1).
-          this.questions.push({
-            index: i,
-            question: d.question || '',
-            template: d.template || null,
-            answer: d.answer || '',
-            digest: d.digest || '',
-            result_count: d.result_count != null ? d.result_count : null,
-            error: d.error || '',
-            round: d.round || 1,
-          })
-        }
-      })
-
-      es.addEventListener('follow_up', (e) => {
-        const d = JSON.parse(e.data)
-        this.recordEvent('follow_up', d)
-        // Visible gap-repair re-ask: probe / class-swap / llm_replan rows
-        // append to the trace so the user sees the follow-up questions.
-        this.questions.push({
-          index: this.questions.length,
-          question: d.question || '',
-          template: d.template || null,
-          answer: d.answer || '',
-          digest: '',
-          result_count: d.result_count != null ? d.result_count : null,
-          error: d.error || '',
-          follow_up: true,
-          repair_of: d.repair_of,
-        })
-      })
-
-      es.addEventListener('tool', (e) => {
-        const d = JSON.parse(e.data)
-        this.recordEvent('tool', d)
-        this.tools.push({ tool: d.tool, args: d.args || {}, output: null })
-      })
-
-      es.addEventListener('tool_out', (e) => {
-        const d = JSON.parse(e.data)
-        this.recordEvent('tool_out', d)
-        const t = this.tools[this.tools.length - 1]
-        if (t && t.tool === d.tool) t.output = d.output
-      })
-
-      es.addEventListener('replan', (e) => {
-        this.recordEvent('replan', JSON.parse(e.data))
-      })
-
-      es.addEventListener('round', (e) => {
-        this.recordEvent('round', JSON.parse(e.data))
-      })
-
-      es.addEventListener('summary_delta', (e) => {
-        const d = JSON.parse(e.data)
-        this.recordEvent('summary_delta', d)
-        const delta = d.delta
-        if (delta) {
-          if (!this.summary) {
-            this.collapseQuestions()
-          }
-          this.summary += delta
-        }
-      })
-
-      es.addEventListener('done', (e) => {
-        this.isRunning = false
-        this.closeStream()
-        const d = JSON.parse(e.data)
-        this.recordEvent('done', d)
-        const result = d.result || {}
-        this.runRecipe = result.recipe || ''
-        this.runStartAt = null
-        if (result.summary && !this.summary) {
-          // Summary arrived without a stream (edge case) — collapse too.
-          this.summary = result.summary
-          this.collapseQuestions()
-        }
-        if (result.errors && result.errors.length && !this.error) {
-          this.error = `Errors: ${result.errors.map((x) => x.error || x.question).join('; ')}`
-        }
-        this.pushTwinOverlay(result)
-      })
-
-      es.addEventListener('error', () => {
-        this.recordEvent('error', { readyState: es.readyState })
-        if (es.readyState === EventSource.CLOSED && this.isRunning) {
-          this.isRunning = false
-          this.error = this.error || 'Research stream error'
-        }
-      })
+      openResearchStream(this, buildResearchParams({
+        prompt,
+        countryName: this.countryName,
+        snapshotDate: this.snapshotDate,
+        subdivisionQid: this.subdivisionQid,
+        recipe: this.recipe,
+      }))
     },
     resetRunState() {
       this.questions = []
@@ -946,19 +817,19 @@ export default {
     },
     /** One-line summary of a logged event for the debug pane. */
     eventSummary(entry) {
-      const d = entry.data || {}
+      const data = entry.data || {}
       switch (entry.event) {
-        case 'plan': return `${(d.questions || []).length} questions`
-        case 'question': return `#${d.index} ${d.template || ''} count=${d.result_count ?? '?'}`
-        case 'follow_up': return `${d.kind || ''} ${d.question || ''}`.trim()
-        case 'replan': return d.question || ''
-        case 'round': return `round ${d.round}`
-        case 'tool': return `${d.tool} ${JSON.stringify(d.args || {})}`
-        case 'tool_out': return `${d.tool} ${JSON.stringify(d.output || {}).slice(0, 120)}`
-        case 'summary_delta': return JSON.stringify(d.delta || '')
-        case 'done': return `result: ${Object.keys(d.result || {}).join(', ')}`
-        case 'error': return `readyState=${d.readyState}`
-        default: return JSON.stringify(d).slice(0, 160)
+        case 'plan': return `${(data.questions || []).length} questions`
+        case 'question': return `#${data.index} ${data.template || ''} count=${data.result_count ?? '?'}`
+        case 'follow_up': return `${data.kind || ''} ${data.question || ''}`.trim()
+        case 'replan': return data.question || ''
+        case 'round': return `round ${data.round}`
+        case 'tool': return `${data.tool} ${JSON.stringify(data.args || {})}`
+        case 'tool_out': return `${data.tool} ${JSON.stringify(data.output || {}).slice(0, 120)}`
+        case 'summary_delta': return JSON.stringify(data.delta || '')
+        case 'done': return `result: ${Object.keys(data.result || {}).join(', ')}`
+        case 'error': return `readyState=${data.readyState}`
+        default: return JSON.stringify(data).slice(0, 160)
       }
     },
     collapseQuestions() {
@@ -970,12 +841,12 @@ export default {
      * (the OSM tag query) "N results — top names…"; otherwise the raw
      * output truncated. Empty string when there is no output yet.
      */
-    toolOutputSummary(t) {
-      const out = t.output
+    toolOutputSummary(tool) {
+      const out = tool.output
       if (!out) return ''
       if (typeof out === 'object' && out.count != null) {
         const names = (out.results || [])
-          .map((r) => r.tags?.name || r.name)
+          .map((result) => result.tags?.name || result.name)
           .filter(Boolean)
           .slice(0, 3)
         const total = out.results?.length || out.count
@@ -990,9 +861,9 @@ export default {
      * True when the executor found nothing ("No results found." with a
      * zero count) — rendered as just "(0 results)", no redundant text.
      */
-    isEmptyResult(q) {
-      return q.result_count === 0
-        && /^no results found\.?/i.test((q.answer || '').trim())
+    isEmptyResult(question) {
+      return question.result_count === 0
+        && /^no results found\.?/i.test((question.answer || '').trim())
     },
     /**
      * Split an answer into plain/white and value/dark-blue segments.
@@ -1000,35 +871,35 @@ export default {
      * lines) plus distance/amount tokens ("53.02 km", "(851 m)"). Pure —
      * safe to call from the template.
      */
-    answerSegments(q) {
-      const answer = q.answer || ''
+    answerSegments(question) {
+      const answer = question.answer || ''
       if (!answer) return []
       const matches = []
 
       // Entity names from the digest, longest first so "San Pedro" wins
       // over a shorter overlapping token.
-      const names = (q.digest || '')
+      const names = (question.digest || '')
         .split('\n')
         .map((line) => line.match(/^-\s+(.+?)\s+\(\d/))
         .filter(Boolean)
-        .map((m) => m[1].trim())
+        .map((match) => match[1].trim())
         .filter(Boolean)
         .sort((a, b) => b.length - a.length)
       for (const name of names) {
         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         const re = new RegExp(`\\b${escaped}\\b`, 'gi')
-        let m
-        while ((m = re.exec(answer)) !== null) {
-          matches.push({ start: m.index, end: m.index + m[0].length })
-          if (m.index === re.lastIndex) re.lastIndex++ // guard zero-width
+        let hit
+        while ((hit = re.exec(answer)) !== null) {
+          matches.push({ start: hit.index, end: hit.index + hit[0].length })
+          if (hit.index === re.lastIndex) re.lastIndex++ // guard zero-width
         }
       }
 
       // Distance/amount tokens: "53.02 km", "0.85 km", "(851 m)".
       const unitRe = /\b\d+(?:\.\d+)?\s*(?:km|m|meters?|kilometers?)\b/gi
-      let m
-      while ((m = unitRe.exec(answer)) !== null) {
-        matches.push({ start: m.index, end: m.index + m[0].length })
+      let unitHit
+      while ((unitHit = unitRe.exec(answer)) !== null) {
+        matches.push({ start: unitHit.index, end: unitHit.index + unitHit[0].length })
       }
 
       // Merge overlaps, sort by position, then emit alternating segments.
@@ -1074,13 +945,6 @@ export default {
 </script>
 
 <style scoped>
-/* Minimal residual CSS — Bootstrap utilities cover the rest.
-   cursor-pointer for <summary> (Bootstrap provides no utility),
-   plus the questions caret: red while closed (attention), gray when
-   open — mirrors SemanticSearchPanel's Execution trace pattern.
-   The questions keep the trace's left spine, but in the panel's own
-   palette (info, not the trace's success green) and around the question
-   cards, not trace nodes. */
 .cursor-pointer {
   cursor: pointer;
 }

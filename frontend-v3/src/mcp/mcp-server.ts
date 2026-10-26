@@ -48,7 +48,6 @@ export function createMcpServer(mcpHandlers: McpHandlers): McpServer {
   );
 
   // ──────────────── MapQA HITL Tools (domain-specific) ────────────────
-
   server.registerTool(
     "proposeQuery",
     {
@@ -87,7 +86,6 @@ export function createMcpServer(mcpHandlers: McpHandlers): McpServer {
       };
     },
   );
-
   server.registerTool(
     "getApprovalState",
     {
@@ -102,7 +100,6 @@ export function createMcpServer(mcpHandlers: McpHandlers): McpServer {
       };
     },
   );
-
   server.registerTool(
     "getQueryProposal",
     {

@@ -18,14 +18,12 @@ export interface VueMcpOptions {
 }
 
 const _dirname = path.dirname(fileURLToPath(import.meta.url));
-
 export default function VueMcpPlugin(options: VueMcpOptions = {}): Plugin {
   const appendTo = options.appendTo
     ? typeof options.appendTo === "string"
       ? new RegExp(options.appendTo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
       : options.appendTo
     : /\/src\/main\.\w+$/;
-
   return {
     name: "vite-plugin-vue-mcp",
     apply: "serve",
@@ -46,12 +44,13 @@ export default function VueMcpPlugin(options: VueMcpOptions = {}): Plugin {
     configureServer(server) {
       const callClient = createChannel<ClientFunctions>(server.ws, "vue-mcp");
       const mcpHandlers = createMcpHandlers(callClient);
-
       const middleware = createMcpMiddleware(() =>
         createMcpServer(mcpHandlers),
       );
       server.middlewares.use(middleware);
-      console.log("[MCP] Streamable HTTP endpoint mounted at /__mcp");
+      server.config.logger.info(
+        "[MCP] Streamable HTTP endpoint mounted at /__mcp",
+      );
     },
   };
 }
