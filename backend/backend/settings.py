@@ -517,3 +517,15 @@ ENABLE_PRECOMPUTED_LINK_CANDIDATES = True
 # Google Places enrichment key (secret — env-only).
 GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY', None)
 # DeepWalk — see the deepwalk section of pipeline/hyperparams.yaml.
+
+# Route unhandled django.request errors (500s) to the console. Off by
+# default — enable locally via .env (DJANGO_CONSOLE_ERRORS=true). Without
+# this, DEBUG=false + no email backend means Django drops 500 tracebacks
+# silently (they go to mail_admins, which has nowhere to deliver).
+if os.getenv('DJANGO_CONSOLE_ERRORS', '').lower() in ('1', 'true', 'yes', 'on'):
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'handlers': {'console': {'class': 'logging.StreamHandler'}},
+        'loggers': {'django.request': {'handlers': ['console'], 'level': 'ERROR'}},
+    }

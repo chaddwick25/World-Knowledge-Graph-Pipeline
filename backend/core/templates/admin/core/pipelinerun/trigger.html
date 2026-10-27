@@ -2,7 +2,9 @@
 {% block content %}
 <h1>Run country pipeline</h1>
 <p>Dispatches the full WorldKG pipeline (Steps 1–6) for one country via
-the shared dispatch service. Progress: <a href="job-status/">Job status</a>.</p>
+the shared dispatch service. Run progress appears in the
+<a href="../">pipeline runs</a> list; per-snapshot status in
+<a href="../../osmsnapshot/snapshotjob/job-status/">job status</a>.</p>
 <form method="post">
   {% csrf_token %}
   {{ form.as_p }}

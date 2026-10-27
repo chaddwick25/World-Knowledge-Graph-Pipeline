@@ -28,24 +28,6 @@ def _country_choices():
     ]
 
 
-class PipelineRunForm(forms.Form):
-    """Control 1: run the full country pipeline (Steps 1-6)."""
-    country = forms.ChoiceField(label="Country")
-    snapshot_date = forms.CharField(
-        label="Snapshot date (optional)",
-        required=False,
-        help_text="YYYY_MM_DD — empty uses the deployment default",
-    )
-    force = forms.BooleanField(
-        required=False,
-        help_text="Re-run even if this (country, date) is already RUNNING",
-    )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["country"].choices = _country_choices()
-
-
 class BackfillForm(forms.Form):
     """Control 2: backfill drift-source snapshots, one task per month."""
     country = forms.ChoiceField(label="Country")
@@ -102,11 +84,6 @@ class SnapshotJobAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom = [
             path(
-                "run-pipeline/",
-                self.admin_site.admin_view(self.run_pipeline_view),
-                name="osmsnapshot_snapshotjob_run_pipeline",
-            ),
-            path(
                 "backfill/",
                 self.admin_site.admin_view(self.backfill_view),
                 name="osmsnapshot_snapshotjob_backfill",
@@ -124,38 +101,6 @@ class SnapshotJobAdmin(admin.ModelAdmin):
         ctx = self.admin_site.each_context(request)
         ctx.update(context)
         return render(request, template, ctx)
-
-    def run_pipeline_view(self, request):
-        from core.services.pipeline.run_dispatch_service import (
-            PipelineDispatchError,
-            dispatch_country_pipeline,
-        )
-        if request.method == "POST":
-            form = PipelineRunForm(request.POST)
-            if form.is_valid():
-                try:
-                    result = dispatch_country_pipeline(
-                        country_name=form.cleaned_data["country"],
-                        snapshot_date=form.cleaned_data["snapshot_date"] or None,
-                        force=form.cleaned_data["force"],
-                    )
-                    messages.success(
-                        request,
-                        f"Pipeline dispatched for {result['country_name']} "
-                        f"@ {result['snapshot_date']} "
-                        f"(run {result['pipeline_run_id']}).",
-                    )
-                    return HttpResponseRedirect(
-                        "../../snapshotjob/?status__exact=RUNNING"
-                    )
-                except PipelineDispatchError as exc:
-                    form.add_error(None, str(exc))
-        else:
-            form = PipelineRunForm()
-        return self._render(
-            request, "admin/osmsnapshot/snapshotjob/run_pipeline.html",
-            {"form": form, "title": "Run country pipeline"},
-        )
 
     def backfill_view(self, request):
         from pipeline.backfill import BackfillError, run_snapshot_backfill
