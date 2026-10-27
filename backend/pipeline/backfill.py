@@ -138,8 +138,13 @@ def run_snapshot_backfill(
         )
 
     # ── Inter-run GPU exclusion ──
+    from datetime import timedelta
+    from django.utils import timezone
+
+    zombie_cutoff = timezone.now() - timedelta(hours=24)
     running = PipelineRun.objects.filter(
         status=PipelineRun.PipelineStatus.RUNNING,
+        updated_at__gte=zombie_cutoff,
     ).exists()
     if running:
         raise BackfillError(
@@ -156,7 +161,12 @@ def run_snapshot_backfill(
             snapshot_date=snapshot_date, country_code__iexact=iso,
         ).first()
         if existing:
-            if existing.status == SnapshotJob.Status.RUNNING:
+            # SnapshotJob has no updated_at — started_at (set when the
+            # month task begins) is the freshness proxy; fall back to
+            # created_at for a job that never started.
+            job_fresh_at = existing.started_at or existing.created_at
+            if (existing.status == SnapshotJob.Status.RUNNING
+                    and job_fresh_at and job_fresh_at >= zombie_cutoff):
                 raise BackfillError(
                     f"Month {month} is currently RUNNING for {country_name} "
                     f"(snapshot_job_id={existing.id})"
@@ -164,7 +174,7 @@ def run_snapshot_backfill(
             if existing.status == SnapshotJob.Status.COMPLETED:
                 skipped.append(month)
                 continue
-            # FAILED / stale PENDING → delete + recreate
+            # FAILED / stale PENDING / stale RUNNING → delete + recreate
             existing.delete()
         job = SnapshotJob.objects.create(
             snapshot_date=snapshot_date,
@@ -327,6 +337,22 @@ def _backfill_month(
         # 1. osmium extract + time-filter → snapshot PBF + Snapshot row
         #    (short-circuits when the PBF already exists)
         env = preprocess_snapshot(env, logger)
+
+        # 1b. Ensure the leaf partition exists for this (snapshot, country)
+        #     — the vectors root is partitioned BY LIST (snapshot_id), so
+        #     a brand-new snapshot date has no leaf and the upsert would
+        #     fail with "no partition of relation found" (the 2026-10-26
+        #     JM shakedown failure). Same call Step 1 makes; drift-source
+        #     leaves skip data migration / MV / HNSW (no embeddings).
+        from django.core.management import call_command
+        call_command(
+            "create_country_partitions",
+            country=iso,
+            snapshot=snapshot_date,
+            skip_data=True,
+            skip_mv=True,
+            skip_hnsw=True,
+        )
 
         # 2. Upsert-only OsmEntity write (no FastText encode; enrichment
         #    runs SQL-side for the 5c class signal)

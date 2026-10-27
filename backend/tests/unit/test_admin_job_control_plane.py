@@ -228,6 +228,7 @@ class TestRunSnapshotBackfill:
         job_manager.objects.create.side_effect = created_jobs
 
         run_manager = MagicMock()
+        run_manager.PipelineStatus = MagicMock(RUNNING="RUNNING")
         run = MagicMock(id="backfill-run-1",
                         status=MagicMock(__eq__=lambda self, o: False))
         run_manager.objects.create.return_value = run
@@ -298,6 +299,11 @@ class TestRunSnapshotBackfill:
             with pytest.raises(BackfillError) as exc:
                 run_snapshot_backfill("Jamaica", "2024_01", "2024_03")
         assert "GPU" in str(exc.value)
+        # The freshness window is part of the guard — zombie runs
+        # (RUNNING but untouched >24h) must not block.
+        _, filter_kwargs = run_manager.objects.filter.call_args
+        assert filter_kwargs.get("status") == "RUNNING"
+        assert "updated_at__gte" in filter_kwargs
 
     def test_completed_months_skipped_and_chain_dispatched(self):
         snapshot_manager, job_manager, run_manager, run = self._patch_world()
@@ -332,6 +338,9 @@ class TestRunSnapshotBackfill:
     def test_running_month_aborts_submit(self):
         snapshot_manager, job_manager, run_manager, _ = self._patch_world()
         running_job = MagicMock(status="running")
+        running_job.started_at = None
+        from django.utils import timezone as dj_tz
+        running_job.created_at = dj_tz.now()  # fresh → blocks the submit
         job_manager.objects.filter.return_value.first.return_value = \
             running_job
         with patch(
