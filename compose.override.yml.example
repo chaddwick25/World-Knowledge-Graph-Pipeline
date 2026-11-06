@@ -6,8 +6,11 @@ services:
     environment:
       TZ: ${TZ:-America/Toronto}
       # Uncomment and adjust if your planet file name differs from the
-      # settings.py default (history-260209.osm.pbf):
+      # settings.py default (history-260209.osm.pbf). Both variables are read
+      # from the environment; leaving them unset falls back to the derived
+      # defaults under BASE_DATA_DIR.
       # PLANET_OSM_FILE_PATH: /app/data/OSM-PBF-FILES/planet/latest.osm.pbf
+      # POLYGON_FILES_DIR: /app/data/osm_polygon_files
     # The most common override: bind your host data disks into the app.
     # volumes:
     #   - /path/to/OSM-PBF-FILES:/app/data/OSM-PBF-FILES
@@ -16,6 +19,11 @@ services:
   worker:
     environment:
       TZ: ${TZ:-America/Toronto}
+      # Must match the backend: if you set POLYGON_FILES_DIR above, set it here
+      # too, and point the volume at the *populated* host directory. A typo
+      # here yields an empty mount and silently clips nothing — a real bug that
+      # lived in this repo as `osm_polygon_file` (missing the "s").
+      # POLYGON_FILES_DIR: /app/data/osm_polygon_files
       # The base compose pins the worker to GPU 1 (the pipeline compute
       # card, see docker-compose.yml comments). Override only to move it
       # to another card, e.g. the idle RTX 2070:
