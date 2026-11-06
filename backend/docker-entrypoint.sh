@@ -2,26 +2,26 @@
 set -e
 
 echo "Waiting for postgres-default to be ready..."
-until pg_isready -h "$POSTGRES_HOST" -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do
+until pg_isready -h "$POSTGRES_HOST" -p "${POSTGRES_PORT:-5432}" -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do
   echo "postgres-default is unavailable - sleeping"
   sleep 2
 done
 echo "postgres-default is ready"
 
 echo "Waiting for postgres-vectors to be ready..."
-until pg_isready -h "$PGVECTOR_HOST" -p 5432 -U "$PGVECTOR_USER" -d "$PGVECTOR_DB"; do
+until pg_isready -h "$PGVECTOR_HOST" -p "${PGVECTOR_PORT:-5432}" -U "$PGVECTOR_USER" -d "$PGVECTOR_DB"; do
   echo "postgres-vectors is unavailable - sleeping"
   sleep 2
 done
 echo "postgres-vectors is ready"
 
 echo "Creating extensions in postgres-default..."
-PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "${POSTGRES_PORT:-5432}" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
   -c "CREATE EXTENSION IF NOT EXISTS postgis;" \
   -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
 echo "Creating extensions in postgres-vectors..."
-PGPASSWORD="$PGVECTOR_PASSWORD" psql -h "$PGVECTOR_HOST" -p 5432 -U "$PGVECTOR_USER" -d "$PGVECTOR_DB" \
+PGPASSWORD="$PGVECTOR_PASSWORD" psql -h "$PGVECTOR_HOST" -p "${PGVECTOR_PORT:-5432}" -U "$PGVECTOR_USER" -d "$PGVECTOR_DB" \
   -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
 # Clean up orphaned pg_type entries from crashed migrations.
@@ -29,9 +29,9 @@ PGPASSWORD="$PGVECTOR_PASSWORD" psql -h "$PGVECTOR_HOST" -p 5432 -U "$PGVECTOR_U
 # without a matching pg_class entry, causing UniqueViolation on
 # pg_type_typname_nsp_index when Django retries CREATE TABLE.
 echo "Cleaning orphaned pg_type entries..."
-for db_host in "$POSTGRES_HOST:$POSTGRES_DB:$POSTGRES_USER:$POSTGRES_PASSWORD" "$PGVECTOR_HOST:$PGVECTOR_DB:$PGVECTOR_USER:$PGVECTOR_PASSWORD"; do
-  IFS=':' read -r host db user pass <<< "$db_host"
-  PGPASSWORD="$pass" psql -h "$host" -p 5432 -U "$user" -d "$db" -c "
+for db_host in "$POSTGRES_HOST:${POSTGRES_PORT:-5432}:$POSTGRES_DB:$POSTGRES_USER:$POSTGRES_PASSWORD" "$PGVECTOR_HOST:${PGVECTOR_PORT:-5432}:$PGVECTOR_DB:$PGVECTOR_USER:$PGVECTOR_PASSWORD"; do
+  IFS=':' read -r host port db user pass <<< "$db_host"
+  PGPASSWORD="$pass" psql -h "$host" -p "$port" -U "$user" -d "$db" -c "
     DO \$\$
     DECLARE r RECORD;
     BEGIN
@@ -68,7 +68,7 @@ if [ "$RUN_MIGRATIONS" = "false" ]; then
   MAX_WAIT=300
   WAITED=0
   while [ $WAITED -lt $MAX_WAIT ]; do
-    APPLIED=$(PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "
+    APPLIED=$(PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "${POSTGRES_PORT:-5432}" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "
       SELECT count(*) FROM django_migrations WHERE app = 'core' AND name = '0001_initial';
     " 2>/dev/null || echo "0")
     if [ "$APPLIED" -ge "1" ]; then
@@ -115,7 +115,7 @@ else
     # migration-poll style above; best-effort — if the DB is unreachable we
     # fall through and run init_planet as before. Table is planet_snapshots
     # (see core/models/infrastructure.py PlanetSnapshot).
-    PLANET_COMPLETE=$(PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "
+    PLANET_COMPLETE=$(PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "${POSTGRES_PORT:-5432}" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "
       SELECT 1 FROM planet_snapshots WHERE status = 'COMPLETED' LIMIT 1;
     " 2>/dev/null || echo "")
     if [ -n "$PLANET_COMPLETE" ]; then

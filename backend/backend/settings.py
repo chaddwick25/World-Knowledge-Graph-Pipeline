@@ -40,7 +40,7 @@ BASE_DATA_DIR = os.getenv('BASE_DATA_DIR') or str(BASE_DIR / 'data')
 
 # History PBF — the file the pipeline actually consumes.
 _default_planet_osm = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/planet/history-260209.osm.pbf') if BASE_DATA_DIR else None
-PLANET_OSM_FILE_PATH = _default_planet_osm
+PLANET_OSM_FILE_PATH = os.getenv('PLANET_OSM_FILE_PATH') or _default_planet_osm
 
 _default_polygon_files_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/osm_polygon_files') if BASE_DATA_DIR else None
 POLYGON_FILES_DIR = _default_polygon_files_dir
@@ -359,7 +359,7 @@ DATABASES = {
     'default': dj_database_url.config(
         default=(
             f"postgres://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@"
-            f"{os.getenv('POSTGRES_HOST', 'localhost')}:5432/{os.getenv('POSTGRES_DB')}"
+            f"{os.getenv('POSTGRES_HOST', 'localhost')}:{os.getenv('POSTGRES_PORT', '5432')}/{os.getenv('POSTGRES_DB')}"
         ),
         conn_max_age=600,
         engine='django.contrib.gis.db.backends.postgis',
@@ -370,7 +370,7 @@ DATABASES = {
         'USER': os.getenv('PGVECTOR_USER'),
         'PASSWORD': os.getenv('PGVECTOR_PASSWORD'),
         'HOST': os.getenv('PGVECTOR_HOST', 'localhost'),
-        'PORT': '5432',
+        'PORT': os.getenv('PGVECTOR_PORT', '5432'),
         'CONN_MAX_AGE': 600,
         'OPTIONS': {
             'connect_timeout': 30,
