@@ -229,28 +229,6 @@ def _get_subgraph_embed_tasks(cfg) -> list:
     ]
 
 
-def _get_subgraph_nle_tasks(cfg) -> list:
-    """Build the header for the Step 5 subgraph NLE training chord.
-
-    Returns a list of Celery task signatures (one per subgraph).
-    The chord's callback (``step_5b_finalize_subgraph_nle``) aggregates
-    results and passes the config dict downstream so Step 6 can proceed.
-
-    For countries without subgraphs, returns an empty list — canvas.py
-    skips the chord and chains step_5 directly to step_6.
-    """
-    from pipeline.tasks import _train_subgraph_gv_nle
-
-    if not (cfg.has_subgraphs and cfg.subgraphs):
-        return []
-
-    config_dict = _lightweight_config_dict(cfg)
-    return [
-        _train_subgraph_gv_nle.si(sg.to_dict(), config_dict)
-        for sg in cfg.subgraphs
-    ]
-
-
 def _get_subgraph_uslp_tasks(cfg) -> list:
     """Build the header for a parallel subgraph USLP chord.
 
@@ -671,6 +649,22 @@ def run_worldkg_pipeline(
     # ── 1. Build centralized config ─────────────────────────────────────
     from pipeline.envelopes import CountryEnvelope
     cfg = CountryEnvelope.from_db(iso, snapshot_date=snapshot_date)
+
+    # ── 1a. Eager mode cannot run a chord canvas ────────────────────────
+    # Chord completion is detected by the chord_unlock polling task from
+    # PatchedDatabaseBackend (pipeline/celery_results_backend.py).  Under
+    # task_always_eager there is no worker to run it, so the callback never
+    # fires and the chord's steps silently no-op (observed: Step 5 produced 0
+    # gv_nle embeddings with a green log).  Refuse instead of lying.
+    from pipeline.celery_app import celery_app
+    if celery_app.conf.task_always_eager and cfg.has_subgraphs and cfg.subgraphs:
+        raise RuntimeError(
+            f"Eager mode (--wait) cannot run a chord canvas for {iso}: it has "
+            f"{len(cfg.subgraphs)} subgraphs, and chord completion needs the "
+            "chord_unlock polling task, which requires a worker. Dispatch "
+            "without --wait against a worker, or use --stage for chord-free "
+            "stages (1, 2, 3, 4, 5.7)."
+        )
     if skip_entropy_gate:
         # Override frozen hyperparams to disable the entropy gate
         new_hp = dataclasses.replace(cfg.hyperparams, min_entropy=0.0)
@@ -742,6 +736,16 @@ def run_pipeline_stage(
     """
     from pipeline.envelopes import CountryEnvelope
     from core.models import PipelineRun
+
+    # Chord callbacks cannot run standalone: they take ``aggregated_results``
+    # from the chord header, which single-stage mode never builds.  Fail with
+    # a clear message instead of a TypeError from the task signature.
+    if stage in (4.5, 5.5):
+        raise RuntimeError(
+            f"--stage {stage} is a chord callback (step_4b/step_5b): it needs "
+            "aggregated_results from a chord header, which single-stage mode "
+            "does not build. Run the full canvas instead."
+        )
 
     cfg = CountryEnvelope.from_db(iso, snapshot_date=snapshot_date)
     steps = _get_step_tasks()

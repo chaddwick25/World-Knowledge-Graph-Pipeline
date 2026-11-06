@@ -228,58 +228,50 @@ def step_5_train_gv_nle(self, env: CountryEnvelope) -> CountryEnvelope:
     )
 
     if env.has_subgraphs and env.subgraphs:
-        if rehydrated:
-            # Subgraphs were rehydrated — the canvas chord was built with
-            # has_subgraphs=False, so there IS no Step 5b chord.  Self-dispatch
-            # per-subgraph training inline so NLE is not skipped.
+        # The canvas builds NO Step 5 chord (canvas.py: "Step 5 does NOT use a
+        # chord") — step_5 self-dispatches per-subgraph training inline, and
+        # GpuSlotLock serializes the GPU anyway.  There is therefore no chord
+        # to defer to: the previous "fan-out via chord" branch silently skipped
+        # every subgraph whenever the envelope already carried them (single-
+        # stage replay, or a DB that had them at dispatch time).
+        _log(
+            logger,
+            "info",
+            "Step 5: Self-dispatching per-subgraph NLE training",
+            subgraph_count=len(env.subgraphs),
+            rehydrated=rehydrated,
+            country=env.iso,
+            pipeline_run_id=env.pipeline_run_id,
+        )
+        for sg in env.subgraphs:
+            gpu_device = _assign_gpu(sg)
+            concurrency = _gpu_concurrency_for(gpu_device)
+            slot_lock = GpuSlotLock(gpu_device, concurrency)
             _log(
                 logger,
                 "info",
-                "Step 5: Self-dispatching per-subgraph NLE training (no canvas chord)",
-                subgraph_count=len(env.subgraphs),
+                "Training GV-NLE for subgraph",
+                subgraph=sg.name,
                 country=env.iso,
+                gpu_device=gpu_device,
+                gpu_concurrency=concurrency,
                 pipeline_run_id=env.pipeline_run_id,
             )
-            for sg in env.subgraphs:
-                gpu_device = _assign_gpu(sg)
-                concurrency = _gpu_concurrency_for(gpu_device)
-                slot_lock = GpuSlotLock(gpu_device, concurrency)
-                _log(
-                    logger,
-                    "info",
-                    "Training GV-NLE for subgraph",
-                    subgraph=sg.name,
-                    country=env.iso,
-                    gpu_device=gpu_device,
-                    gpu_concurrency=concurrency,
-                    pipeline_run_id=env.pipeline_run_id,
+            slot_lock.acquire()
+            try:
+                sg_env = dataclasses.replace(
+                    env,
+                    hyperparams=dataclasses.replace(
+                        env.hyperparams,
+                        deepwalk_gpu_device=gpu_device,
+                    ),
                 )
-                slot_lock.acquire()
-                try:
-                    sg_env = dataclasses.replace(
-                        env,
-                        hyperparams=dataclasses.replace(
-                            env.hyperparams,
-                            deepwalk_gpu_device=gpu_device,
-                        ),
-                    )
-                    from geovectors_encoder.services.gv_nle_training_service import (
-                        GvNleTrainingService,
-                    )
-                    GvNleTrainingService().run_subgraph(sg, sg_env)
-                finally:
-                    slot_lock.release()
-        else:
-            # Subgraphs were already present at canvas build time — the
-            # canvas chord (Step 5b) handles per-subgraph training.
-            _log(
-                logger,
-                "info",
-                "Step 5: country-level training complete, subgraph fan-out via chord",
-                subgraph_count=len(env.subgraphs),
-                country=env.iso,
-                pipeline_run_id=env.pipeline_run_id,
-            )
+                from geovectors_encoder.services.gv_nle_training_service import (
+                    GvNleTrainingService,
+                )
+                GvNleTrainingService().run_subgraph(sg, sg_env)
+            finally:
+                slot_lock.release()
     else:
         _log(
             logger,

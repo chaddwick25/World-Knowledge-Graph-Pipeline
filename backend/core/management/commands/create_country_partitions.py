@@ -348,6 +348,79 @@ class Command(BaseCommand):
 
     # ── Root table ───────────────────────────────────────────────────────
 
+    @staticmethod
+    def _model_column_defs(connection) -> List[str]:
+        """Column definitions for ROOT_TABLE, derived from the OsmEntity model.
+
+        The model is the single source of truth for the schema.  Types come
+        from ``field.db_type()``, which already covers the custom columns:
+        ``VectorField(300)`` → ``vector(300)``, ``ArrayField`` →
+        ``varchar(200)[]``, ``PointField`` → ``geometry(Point,4326)``.
+
+        Callable defaults and ``auto_now*`` become ``NOW()``; only literal
+        defaults are emitted, because those are the only ones that can be
+        expressed in DDL without evaluating application code.
+        """
+        from worldkg_nca.models import OsmEntity
+
+        defs: List[str] = []
+        for field in OsmEntity._meta.local_fields:
+            parts = [field.column, field.db_type(connection)]
+            if not field.null:
+                parts.append("NOT NULL")
+            if getattr(field, "auto_now", False) or getattr(field, "auto_now_add", False):
+                parts.append("DEFAULT NOW()")
+            elif field.has_default() and not callable(field.default):
+                default = field.default
+                if isinstance(default, bool):
+                    parts.append(f"DEFAULT {str(default).upper()}")
+                elif isinstance(default, (int, float)):
+                    parts.append(f"DEFAULT {default}")
+                elif isinstance(default, str):
+                    escaped = default.replace("'", "''")
+                    parts.append(f"DEFAULT '{escaped}'")
+            defs.append(" ".join(parts))
+        return defs
+
+    def _reconcile_root_columns(self, cursor) -> List[str]:
+        """Add model columns that the partitioned root is missing.
+
+        ``ALTER TABLE ... ADD COLUMN`` on a partitioned parent propagates to
+        every existing partition (PG 11+), so this heals databases whose root
+        was created from an older DDL without a rebuild.  Returns the list of
+        columns added, for logging and tests.
+        """
+        from worldkg_nca.models import OsmEntity
+
+        # Resolve the table through search_path to an OID first: matching on
+        # table_name alone would also pick up a same-named table in another
+        # schema and mask missing columns.
+        cursor.execute(
+            """
+            SELECT a.attname FROM pg_attribute a
+            WHERE a.attrelid = to_regclass(%s)
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            """,
+            [ROOT_TABLE],
+        )
+        present = {row[0] for row in cursor.fetchall()}
+
+        added: List[str] = []
+        for field in OsmEntity._meta.local_fields:
+            if field.column in present:
+                continue
+            cursor.execute(
+                f"ALTER TABLE {ROOT_TABLE} ADD COLUMN IF NOT EXISTS "
+                f"{field.column} {field.db_type(cursor.db)}"
+            )
+            added.append(field.column)
+        if added:
+            self.stdout.write(
+                f"  [root] reconciled missing columns: {', '.join(added)}"
+            )
+        return added
+
     def _ensure_root_table(self, cursor):
         """Ensure the root partitioned table exists.
 
@@ -369,7 +442,10 @@ class Command(BaseCommand):
         row = cursor.fetchone()
 
         if row and row[1]:
-            # Already partitioned — nothing to do
+            # Already partitioned — nothing to create, but reconcile columns so
+            # a root built from an older DDL heals itself (see
+            # _reconcile_root_columns).
+            self._reconcile_root_columns(cursor)
             return
 
         if row and not row[1]:
@@ -389,37 +465,25 @@ class Command(BaseCommand):
             )
             cursor.execute(f"DROP TABLE {ROOT_TABLE} CASCADE;")
 
-        # Create the root partitioned table
+        # Create the root partitioned table.  Column definitions come from the
+        # OsmEntity model, not a hand-maintained list: the previous hardcoded
+        # DDL drifted when migration 0017 added ``name_romanized``, so every
+        # partition created afterwards lacked a column the ORM selects.  The
+        # resulting UndefinedColumn aborts the transaction, which destroys the
+        # open server-side cursor and surfaces as InvalidCursorError instead of
+        # the real error.  The partition clause, composite PK and the explicit
+        # id sequence stay hand-written — those are partitioning concerns.
+        column_defs = ",\n                ".join(
+            self._model_column_defs(cursor.db)
+        )
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {ROOT_TABLE} (
-                id BIGINT NOT NULL,
-                snapshot_id VARCHAR(20) NOT NULL,
-                country_code VARCHAR(3) NOT NULL,
-                subdivision VARCHAR(255),
-                osm_type VARCHAR(10) NOT NULL,
-                osm_id BIGINT NOT NULL,
-                tags JSONB NOT NULL,
-                gv_tags_embedding VECTOR(300),
-                gv_nle_embedding VECTOR(100),
-                wkg_class VARCHAR(200),
-                wkg_superclasses VARCHAR(200)[],
-                wikidata_uri VARCHAR(200),
-                wkg_depth INT,
-                wkg_type_key VARCHAR(100),
-                wkg_type_value VARCHAR(100),
-                wkg_enriched_at TIMESTAMPTZ,
-                geom GEOMETRY(Point, 4326),
-                version INT,
-                timestamp TIMESTAMPTZ,
-                gv_tags_version VARCHAR(50) NOT NULL DEFAULT '1.0',
-                gv_nle_version VARCHAR(50),
-                gv_nle_trained BOOLEAN NOT NULL DEFAULT FALSE,
-                source_snapshot_id UUID,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                {column_defs},
                 PRIMARY KEY (id, snapshot_id, country_code)
             ) PARTITION BY LIST (snapshot_id);
         """)
+        # Heal a root that already existed from an older DDL.
+        self._reconcile_root_columns(cursor)
         # Create a sequence for the id column (BigAutoField replacement).
         # Partitioned tables can't use SERIAL directly, so we create an
         # explicit sequence and set it as the default.
