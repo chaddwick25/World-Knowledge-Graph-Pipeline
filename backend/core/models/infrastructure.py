@@ -284,6 +284,21 @@ class PlanetSnapshot(models.Model):
         default=SnapshotStatus.PENDING,
         db_index=True,
     )
+    # Per-step outcome for the current run, e.g. {"register_planet": "ok",
+    # "extract_continents": "failed"}.  Run-level state only: a re-run skips
+    # the steps marked ok and retries the rest, so a mid-chain failure does not
+    # pay for the whole chain again (the lock used to be run-level only).
+    step_states = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Per-step outcome for this run: {step_name: ok|failed}",
+    )
+    failed_steps = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Step names that failed in this run; non-empty means the "
+                  "chain did not complete",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 

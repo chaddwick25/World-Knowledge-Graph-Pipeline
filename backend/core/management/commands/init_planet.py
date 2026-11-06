@@ -252,27 +252,50 @@ class Command(BaseCommand):
         call_command("compute_amenity_embeddings")
 
     def _finalize(self) -> None:
-        """Mark the PlanetSnapshot row as COMPLETED.
+        """Seal the run: COMPLETED only when no step failed.
 
-        Optional — the planet init is best-effort. Failed steps log warnings
-        but don't block the rest of the chain (matches the old Celery chain
-        semantics where each step had max_retries=1).
+        The previous version stamped COMPLETED unconditionally, so a chain that
+        failed at, say, ``train_mapqa_parser`` looked finished forever — and
+        the entrypoint's "COMPLETED ever" pre-check then skipped init on every
+        later boot.  A failure now produces FAILED with the step names, and
+        because the lock only short-circuits on COMPLETED, the next boot
+        re-runs (skipping whatever already succeeded, via ``step_states``).
         """
         from core.models import PlanetSnapshot
 
-        today = datetime.now(timezone.utc).strftime("%Y_%m_%d")
-        snapshot, _ = PlanetSnapshot.objects.update_or_create(
-            snapshot_date_str=today,
-            defaults={
-                "snapshot_date": datetime.now(timezone.utc).date(),
-                "planet_osm_path": self._planet_pbf or settings.PLANET_OSM_FILE_PATH,
-                "status": PlanetSnapshot.SnapshotStatus.COMPLETED,
-                "completed_at": datetime.now(timezone.utc),
-            },
-        )
+        now = datetime.now(timezone.utc)
+        run = self._run
+        if run is None:
+            # ``--step finalize``: attach to today's row from an earlier run.
+            run = PlanetSnapshot.objects.filter(
+                snapshot_date_str=now.strftime("%Y_%m_%d"),
+                planet_osm_path=str(
+                    self._planet_pbf or settings.PLANET_OSM_FILE_PATH
+                ),
+            ).first()
+        if run is None:
+            raise RuntimeError(
+                "No PlanetSnapshot for today — run the chain (or "
+                "--step register_planet) before finalize."
+            )
+
+        if self._failed_steps:
+            run.status = PlanetSnapshot.SnapshotStatus.FAILED
+            run.failed_steps = list(self._failed_steps)
+            run.completed_at = None
+            run.save(update_fields=["status", "failed_steps", "completed_at"])
+            raise RuntimeError(
+                f"{len(self._failed_steps)} step(s) failed "
+                f"({', '.join(self._failed_steps)}) — NOT marking COMPLETED"
+            )
+
+        run.status = PlanetSnapshot.SnapshotStatus.COMPLETED
+        run.completed_at = now
+        run.failed_steps = []
+        run.save(update_fields=["status", "completed_at", "failed_steps"])
         self.stdout.write(
             self.style.SUCCESS(
-                f"PlanetSnapshot {snapshot.snapshot_date_str} marked COMPLETED"
+                f"PlanetSnapshot {run.snapshot_date_str} marked COMPLETED"
             )
         )
 
@@ -355,6 +378,12 @@ class Command(BaseCommand):
         if not self._acquire_lock():
             return
 
+        self._failed_steps: list[str] = []
+        self._run = None if self._only_step else self._start_run()
+        done: dict = {} if (self._no_lock or self._only_step) else dict(
+            getattr(self._run, "step_states", None) or {}
+        )
+
         steps = list(self._all_steps())
         self.stdout.write(
             "init_planet: running {} step(s){}".format(
@@ -362,28 +391,81 @@ class Command(BaseCommand):
                 f" (only: {self._only_step})" if self._only_step else "",
             )
         )
+        if done:
+            self.stdout.write(
+                f"  resuming: {sum(1 for v in done.values() if v == 'ok')} step(s) "
+                f"already ok, {sum(1 for v in done.values() if v != 'ok')} to retry"
+            )
 
-        failed: list[str] = []
         for name, fn in steps:
             if not self._step_filter(name):
                 self.stdout.write(f"  [skip] {name}")
                 continue
+            if not self._only_step and done.get(name) == "ok":
+                self.stdout.write(
+                    self.style.NOTICE(f"  [ok*]  {name} (already ok this run)")
+                )
+                continue
             self.stdout.write(self.style.NOTICE(f"  [run]  {name}"))
             try:
                 fn()
+                done[name] = "ok"
                 self.stdout.write(self.style.SUCCESS(f"  [ok]   {name}"))
             except Exception as exc:  # noqa: BLE001 — best-effort init chain
-                failed.append(name)
+                done[name] = "failed"
+                self._failed_steps.append(name)
                 self.stderr.write(
                     self.style.ERROR(f"  [fail] {name}: {exc!r}")
                 )
                 logger.exception("init_planet step %s failed", name)
+            finally:
+                self._persist_run_state(done)
 
-        if failed:
+        if self._failed_steps:
             self.stderr.write(
                 self.style.WARNING(
-                    f"init_planet: {len(failed)} step(s) failed: {', '.join(failed)}"
+                    f"init_planet: {len(self._failed_steps)} step(s) failed: "
+                    f"{', '.join(self._failed_steps)}"
                 )
             )
         else:
             self.stdout.write(self.style.SUCCESS("init_planet: all steps complete"))
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Run state (step-level resume)
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _start_run(self):
+        """Get or create today's PlanetSnapshot and mark it RUNNING.
+
+        The row doubles as the run lock and as the per-step state store.  A
+        previous run that ended FAILED is reused, so its ``step_states`` drive
+        the skip/retry decisions instead of re-running the whole chain.
+        """
+        from core.models import PlanetSnapshot
+
+        now = datetime.now(timezone.utc)
+        planet_path = self._planet_pbf or settings.PLANET_OSM_FILE_PATH
+        run, _created = PlanetSnapshot.objects.get_or_create(
+            snapshot_date_str=now.strftime("%Y_%m_%d"),
+            planet_osm_path=str(planet_path),
+            defaults={
+                "snapshot_date": now.date(),
+                "status": PlanetSnapshot.SnapshotStatus.RUNNING,
+            },
+        )
+        if run.status != PlanetSnapshot.SnapshotStatus.RUNNING:
+            run.status = PlanetSnapshot.SnapshotStatus.RUNNING
+            run.completed_at = None
+            run.save(update_fields=["status", "completed_at"])
+        return run
+
+    def _persist_run_state(self, done: dict) -> None:
+        """Write step outcomes so a crashed run can resume from where it stopped."""
+        if self._run is None:
+            return
+        from core.models import PlanetSnapshot
+
+        self._run.step_states = dict(done)
+        self._run.failed_steps = list(self._failed_steps)
+        self._run.save(update_fields=["step_states", "failed_steps"])

@@ -705,10 +705,26 @@ class PlanetInitializationService:
                     self.logger.warning(f"Poly file not found at {poly_path}, skipping {continent.name}")
                     continue
                 
-                # Extract continent PBF
-                output_pbf_path = output_dir / f"{continent.name}.pbf"
+                # Extract continent PBF.  The ``.osh.pbf`` name makes osmium
+                # write the history flag into the output header; a plain
+                # ``.pbf`` name produces a file whose *content* is a full
+                # history extract but whose header reports with_history=no
+                # (verified: every object version present, time-filter
+                # reconstructs past states correctly).
+                output_pbf_path = output_dir / f"{continent.name}.osh.pbf"
+                legacy_pbf_path = output_dir / f"{continent.name}.pbf"
                 self.logger.info(f"Output PBF path: {output_pbf_path}")
-                
+
+                # Trees built before this naming fix hold the legacy name.
+                # Their content is already a history extract, so treat them as
+                # present instead of re-extracting tens of GB per continent.
+                if not output_pbf_path.exists() and legacy_pbf_path.exists():
+                    self.logger.info(
+                        "Using legacy continent PBF name (content is already a "
+                        "history extract): %s", legacy_pbf_path,
+                    )
+                    output_pbf_path = legacy_pbf_path
+
                 if output_pbf_path.exists():
                     self.logger.info(f"Continent PBF already exists: {output_pbf_path}")
                     # Create or update PbfFile entry
