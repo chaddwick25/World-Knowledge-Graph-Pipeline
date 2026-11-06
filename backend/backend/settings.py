@@ -43,7 +43,12 @@ _default_planet_osm = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/planet/history-
 PLANET_OSM_FILE_PATH = os.getenv('PLANET_OSM_FILE_PATH') or _default_planet_osm
 
 _default_polygon_files_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/osm_polygon_files') if BASE_DATA_DIR else None
-POLYGON_FILES_DIR = _default_polygon_files_dir
+# Env-overridable. compose.override.yml has always set POLYGON_FILES_DIR and it
+# was silently ignored, exactly like PLANET_OSM_FILE_PATH was.  Note the paired
+# trap: the worker's polygon mount in compose.override.yml had a typo
+# (osm_polygon_file, no "s"), so honouring this env var without fixing the
+# mount would point the worker at an empty directory.  They land together.
+POLYGON_FILES_DIR = os.getenv('POLYGON_FILES_DIR') or _default_polygon_files_dir
 
 # Legacy tree with subgraphs (pre-existing layout)
 _default_legacy_polygon_files_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/osm_polygon_files_old') if BASE_DATA_DIR else None
@@ -155,8 +160,11 @@ CONTINENTS_ROOT = _default_continents_root
 _default_logs_dir = os.path.join(BASE_DATA_DIR, 'logs') if BASE_DATA_DIR else None
 LOGS_DIR = _default_logs_dir
 
-# Wikidata candidate cache (JSON caches per country)
-_default_wikidata_cache_dir = os.path.join(BASE_DATA_DIR, 'data/wikidata_cache') if BASE_DATA_DIR else None
+# Wikidata candidate cache (JSON caches per country).
+# Was BASE_DATA_DIR/'data/wikidata_cache', which produced '/app/data/data/...'
+# — the doubled segment showed up in the init log.  The cache is regenerable,
+# so moving it orphans nothing of value.
+_default_wikidata_cache_dir = os.path.join(BASE_DATA_DIR, 'wikidata_cache') if BASE_DATA_DIR else None
 WIKIDATA_CACHE_DIR = _default_wikidata_cache_dir
 
 # MapQA parser data — training data + model artifacts.

@@ -8,6 +8,7 @@ concurrent access, and intelligent cleanup strategies.
 
 import os
 import json
+import sys
 import time
 import mmap
 import threading
@@ -90,6 +91,12 @@ class PBFCacheManager:
             with open(metadata_file, 'w') as f:
                 json.dump(metadata, f, indent=2)
         except Exception as e:
+            # During interpreter shutdown the module globals are cleared, so
+            # builtins like ``open`` no longer resolve and the real error is
+            # "name 'open' is not defined".  A cache manifest is not worth an
+            # error line on the way out.
+            if sys.is_finalizing():
+                return
             logger.error(f"Failed to save cache metadata: {e}")
     
     def get_cache_key(self, pbf_path: str, job_id: str = None) -> str:
