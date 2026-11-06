@@ -84,16 +84,20 @@ class Command(BaseCommand):
         )
 
     def _check_continent_profiles(self, expect_continents):
-        """The order/poly check: prebuild scans the continent directory."""
+        """Continent rows for *this* run, built by scanning the continents dir."""
         from core.models import ContinentProfile
 
-        actual = ContinentProfile.objects.count()
+        snap = self._latest_run()
+        scoped = ContinentProfile.objects.filter(planet_snapshot=snap) \
+            if snap is not None else ContinentProfile.objects.none()
+        actual = scoped.count()
         ok = actual == expect_continents
         detail = f"expected {expect_continents}, actual {actual}"
         if not ok:
             detail += (
-                " — 0 usually means sync_hierarchy ran before the continents "
-                "existed (or the poly directory was empty)"
+                " — prebuild_worldkg_structure globs the continents directory "
+                "for *.pbf; 0 means it found none there (wrong tree, or the "
+                "step ran before extraction)"
             )
         return Check("continent_profiles", ok, detail)
 
@@ -123,8 +127,27 @@ class Command(BaseCommand):
             f"expected ≥{EXPECTED_AMENITY_ROWS}, actual {actual}",
         )
 
+    def _latest_run(self):
+        """The most recent *real* run.
+
+        Rows with a NULL or blank ``snapshot_date_str`` are not runs — they are
+        the debris of older code paths that keyed ``PlanetSnapshot``
+        differently (``prebuild_worldkg_structure`` used to create one per
+        chain).  The API's readiness rule ignores them for the same reason.
+
+        ``exclude(field="")`` alone is not enough: in SQL, ``NOT (NULL = '')``
+        is NULL, so NULL rows survive the exclusion and can win the ordering.
+        """
+        return (
+            PlanetSnapshot.objects
+            .exclude(snapshot_date_str__isnull=True)
+            .exclude(snapshot_date_str="")
+            .order_by("-snapshot_date_str", "-created_at")
+            .first()
+        )
+
     def _check_planet_snapshot(self):
-        snap = PlanetSnapshot.objects.order_by("-created_at").first()
+        snap = self._latest_run()
         if snap is None:
             return Check("planet_snapshot", False, "no PlanetSnapshot rows")
         completed = snap.status == PlanetSnapshot.SnapshotStatus.COMPLETED
@@ -143,16 +166,19 @@ class Command(BaseCommand):
         """
         from core.models import ContinentProfile
 
-        snap = PlanetSnapshot.objects.order_by("-created_at").first()
+        snap = self._latest_run()
         if snap is None or not snap.step_states:
             return Check("step_states_consistency", True,
                          "no step state recorded (pre-2026-11 build)", warn=True)
         states = snap.step_states or {}
+        scoped_continents = ContinentProfile.objects.filter(
+            planet_snapshot=snap
+        ).count()
         problems = []
         if states.get("extract_continents") == "ok" and \
-                ContinentProfile.objects.count() != expect_continents:
+                scoped_continents != expect_continents:
             problems.append("extract_continents ok but continent_profiles "
-                            f"= {ContinentProfile.objects.count()}")
+                            f"= {scoped_continents}")
         if states.get("sync_hierarchy") == "ok" and \
                 RegionHierarchy.objects.count() < MIN_REGION_HIERARCHY:
             problems.append("sync_hierarchy ok but region_hierarchy is short")

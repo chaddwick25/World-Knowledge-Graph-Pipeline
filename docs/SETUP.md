@@ -145,9 +145,13 @@ register_planet → extract_continents → sync_hierarchy → prebuild_country_p
 ```
 
 `extract_continents` self-heals when the hierarchy is empty (it calls
-`sync_poly_regions`), but only if the poly directory has files. If you get the
-order wrong, the tell is `continent_profiles = 0` - `prebuild_worldkg_structure`
-scans the continent directory and finds nothing. In a correct build it is 9.
+`sync_poly_regions`), but only if the poly directory has files.
+
+`continent_profiles` should be 9 after `sync_hierarchy`. It used to be 0 in
+every database ever built, and the cause was a bug rather than the order:
+`prebuild_worldkg_structure` globbed the continent directory for `*.osm.pbf`
+while the files are `{continent}.pbf` (or `.osh.pbf`), so it matched nothing.
+Fixed 2026-11-06. A 0 now means the scan genuinely found no continent files.
 
 Continent extracts are written as `{continent}.osh.pbf` so the file header
 reports `with_history=true`. Trees built before that change hold `.pbf` and are
