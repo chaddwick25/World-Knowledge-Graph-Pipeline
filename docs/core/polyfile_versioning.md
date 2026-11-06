@@ -55,6 +55,27 @@ relations) **as it was at that timestamp**. This is correct.
 
 **The problem is what happens next with polyfiles.**
 
+### Note: the continent input must carry history (2026-11-05)
+
+Step 1 above reads the **continent PBF**, so it has to be a history extract.
+`osmium extract --with-history` guarantees the *content* is one, but osmium
+picks the output **format variant** from the filename:
+
+| Output name | `with_history` in the header | Content |
+|---|---|---|
+| `{continent}.pbf` | `no` | full history (every object version) |
+| `{continent}.osh.pbf` | `yes` | full history |
+
+Both work - `time-filter` reconstructs past states correctly from either
+(verified against a controlled two-version file). Only the header flag
+differs, and anything that trusts it (our `has_history` column, the hierarchy
+resolver) will treat a `.pbf`-named continent as a non-history source.
+
+Continent extraction now writes `.osh.pbf`. Trees built before that change
+hold `.pbf` and are accepted as-is: their content is already a history
+extract, so renaming them would not change the header (the flag is written at
+extraction time) and re-extracting them would produce identical data.
+
 ---
 
 ## 3. Subgraph Polyfiles: Versioned AND Date-Accurate ✓

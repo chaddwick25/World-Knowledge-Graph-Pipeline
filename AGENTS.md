@@ -72,7 +72,9 @@ startup command that replaces the planet init Celery canvas).
 
 **Planet init** (`init_planet` command):
 - Runs as a Docker entrypoint step on the backend container after `migrate`
-  (gated by `RUN_INIT_PLANET=true`; worker has `RUN_INIT_PLANET=false`).
+  and `db_preflight` (gated by `RUN_INIT_PLANET=true`; worker has
+  `RUN_INIT_PLANET=false`). The entrypoint no longer pre-checks
+  `planet_snapshots` - the command owns the lock and the run state.
 - Idempotent - uses `PlanetSnapshot` as a soft lock; short-circuits if a
   COMPLETED row exists for today (pass `--no-lock` to force re-run).
 - 16 steps: `register_planet`, `extract_continents`, `sync_hierarchy`,
@@ -81,8 +83,24 @@ startup command that replaces the planet init Celery canvas).
   `rescan_embeddings`, `enrich_worldkg_classes`, `generate_osm_boundaries`,
   `train_mapqa_parser`, `compute_amenity_embeddings`,
   `finalize`. Run `python manage.py init_planet --step <name>` for a single step.
-- Best-effort - failed steps log warnings but don't abort the chain (matches
-  the old Celery chain's `max_retries=1` semantics).
+- **Failure is recorded.** Best-effort execution (a failed step does not abort
+  the chain), but `finalize` marks the snapshot `FAILED` with `failed_steps`
+  instead of COMPLETED. The lock only short-circuits on COMPLETED, so the next
+  boot re-runs.
+- **Resume is per step.** `PlanetSnapshot.step_states` ({step: ok|failed}) is
+  written after every step; a re-run prints `[ok*]` for completed steps and
+  retries the rest. `--no-lock` clears the resume state.
+- **Fresh-tree precondition: poly files.** Copy
+  `osm_polygon_files/` into the new tree before `extract_continents`; it
+  self-heals the hierarchy via `sync_poly_regions` only if polys are present.
+  Getting it wrong shows up as `continent_profiles = 0` (should be 9).
+- Continent extracts are `{continent}.osh.pbf` (history flag in the header).
+  Legacy `.pbf` names are still accepted by `_extract_continents_simple`; their
+  content is already a full history extract, only the header flag differs.
+- `db_preflight` (management command) creates `postgis`/`vector` and sweeps
+  orphaned `pg_type` rows on both databases; the worker waits
+  `MIGRATION_WAIT_SECONDS` (default 300) for the schema and **exits 1** rather
+  than proceeding without it.
 - API: `GET /api/system/status/` reports readiness (derived from the latest
   *finalized* `PlanetSnapshot` - `snapshot_date_str` populated + COMPLETED)
   plus home-page hydration data (suggested planet path, extraction/embedding

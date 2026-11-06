@@ -47,12 +47,24 @@ npm run build      # Production build
 
 ---
 
-## Database extensions (one-time)
+## Database extensions
 
-Both databases need their extensions enabled after the first `up`:
+Extensions are created automatically on every boot by `db_preflight`, which the
+container entrypoint runs after the database wait:
 
 ```bash
-# default DB (port 5432); PostGIS + pgvector
+docker compose exec backend python manage.py db_preflight
+# db_preflight: default (django_db)   extension ok: postgis, vector
+# db_preflight: vectors (vector_db)   extension ok: vector
+```
+
+It also sweeps orphaned `pg_type` entries left by crashed migrations (a
+composite type in `pg_type` without a matching `pg_class` row causes a
+`UniqueViolation` when Django retries `CREATE TABLE`).
+
+The manual equivalent, if you ever need it outside the container flow:
+
+```bash
 docker compose exec postgres-default bash -c '
   psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h localhost -p 5432 \
        -c "CREATE EXTENSION IF NOT EXISTS postgis;";
@@ -60,12 +72,11 @@ docker compose exec postgres-default bash -c '
        -c "CREATE EXTENSION IF NOT EXISTS vector;"
 '
 
-# vectors DB (port 5433); pgvector + PostGIS
 docker compose exec postgres-vectors bash -c 'psql -U "$PGVECTOR_USER" -d "$PGVECTOR_DB" -c "CREATE EXTENSION IF NOT EXISTS vector;"'
 ```
 
-The vectors database must have both `pgvector` and `PostGIS` extensions
-(configured via `postgres-vectors.Dockerfile`).
+`pg_trgm` and `fuzzystrmatch` are not created here - they arrive with
+migrations 0019/0020.
 
 ---
 
@@ -102,11 +113,46 @@ docker compose exec backend python manage.py init_planet --no-lock
 ```
 
 The backend container runs `init_planet` automatically on startup when
-`RUN_INIT_PLANET=true` (default); but only if planet init is not already
-complete: the entrypoint pre-checks `planet_snapshots` for a `COMPLETED`
-row (a cheap `SELECT 1 ... LIMIT 1`, mirroring the worker migration poll)
-and skips the command entirely when one exists. The worker has
-`RUN_INIT_PLANET=false`.
+`RUN_INIT_PLANET=true` (default). There is no bash pre-check any more -
+`init_planet` owns both the lock and the run's state:
+
+- **Lock**: it short-circuits when a `PlanetSnapshot` for today is
+  `COMPLETED`. Pass `--no-lock` to force a re-run.
+- **Failure is recorded, not hidden.** If any step fails, `finalize` marks the
+  snapshot `FAILED` with the step names instead of `COMPLETED`. Because the
+  lock only short-circuits on `COMPLETED`, the next boot re-runs.
+- **Resume is per step.** `PlanetSnapshot.step_states` records each step's
+  outcome, so a re-run prints `[ok*]` for steps already done and retries the
+  rest instead of paying for the whole chain again.
+- **The worker fails fast** if the schema never appears: it waits
+  `MIGRATION_WAIT_SECONDS` (default 300) and then exits 1, rather than
+  proceeding into a schema-less database.
+
+**Step order matters, and the precondition is the poly files.** On a fresh
+tree, copy the polygons in *before* running init:
+
+```bash
+cp -a <live>/osm_polygon_files/. <TREE>/OSM-PBF-FILES/osm_polygon_files/
+```
+
+Then the canonical order works:
+
+```
+register_planet → extract_continents → sync_hierarchy → prebuild_country_paths
+→ prebuild_subgraphs → prebuild_wikidata_ids → enrich_worldkg_classes
+→ generate_osm_boundaries → train_mapqa_parser → compute_amenity_embeddings
+→ finalize
+```
+
+`extract_continents` self-heals when the hierarchy is empty (it calls
+`sync_poly_regions`), but only if the poly directory has files. If you get the
+order wrong, the tell is `continent_profiles = 0` - `prebuild_worldkg_structure`
+scans the continent directory and finds nothing. In a correct build it is 9.
+
+Continent extracts are written as `{continent}.osh.pbf` so the file header
+reports `with_history=true`. Trees built before that change hold `.pbf` and are
+still accepted (their content is a full history extract; only the header flag
+differs).
 
 For the 16-step list and architecture, see
 `platform/docker_entrypoint_init.md`.
