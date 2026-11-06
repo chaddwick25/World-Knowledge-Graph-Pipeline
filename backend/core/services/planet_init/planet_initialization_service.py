@@ -167,7 +167,60 @@ class PlanetInitializationService:
                 'status': PbfFile.PbfStatus.COMPLETED,
             }
         )
-        
+
+        return self._record_history_flag(pbf)
+
+    def _record_history_flag(self, pbf, known_history=False):
+        """Persist whether the file can serve history extractions.
+
+        ``has_history`` was never written anywhere, so every row defaulted to
+        False and ``run_pbf_extraction_with_caching``'s
+        ``filter(has_history=True)`` matched nothing — the hierarchy resolver
+        silently never ran.
+
+        The authoritative source is ``osmium fileinfo``'s
+        ``header.with_history``, which is header-only for PBF and therefore
+        cheap even on the planet.
+
+        ``known_history=True`` is for files this pipeline produced with
+        ``osmium extract --with-history``: their *content* holds every object
+        version (verified: re-extraction and ``time-filter`` both reconstruct
+        past states), but the header reports ``with_history=no`` because the
+        output is named ``*.pbf`` rather than ``*.osh.pbf`` and osmium derives
+        the format variant from the filename.  Trusting the header alone would
+        mark a usable history source as unusable.  Naming these files
+        ``*.osh.pbf`` is the fix that makes header and content agree; until
+        then this flag follows the capability, not the header.
+        """
+        try:
+            result = OsmiumFacade().file_info(pbf.path)
+            if result.get('exit_code', 1) != 0:
+                self.logger.warning(
+                    "Could not read with_history for %s: %s",
+                    pbf.path, result.get('error', 'unknown error'),
+                )
+                return pbf
+            header = (result.get('info') or {}).get('header') or {}
+            header_says_history = bool(header.get('with_history'))
+        except Exception as exc:
+            self.logger.warning(
+                "Could not read with_history for %s: %s", pbf.path, exc
+            )
+            return pbf
+
+        with_history = header_says_history or known_history
+        if known_history and not header_says_history:
+            self.logger.info(
+                "History content present but header reports non-history (%s) — "
+                "output should be named *.osh.pbf", pbf.path,
+            )
+
+        if pbf.has_history != with_history:
+            pbf.has_history = with_history
+            pbf.save(update_fields=['has_history'])
+            self.logger.info(
+                "Recorded has_history=%s for %s", with_history, pbf.path
+            )
         return pbf
     
     def generate_planetary_metrics(self, pbf_file):
@@ -667,6 +720,7 @@ class PlanetInitializationService:
                             'parent_pbf': planet_pbf
                         }
                     )
+                    pbf_file = self._record_history_flag(pbf_file, known_history=True)
                     # Link to RegionHierarchy
                     if continent.corresponding_pbf_id != pbf_file.id:
                         continent.corresponding_pbf = pbf_file
@@ -697,6 +751,7 @@ class PlanetInitializationService:
                             'parent_pbf': planet_pbf
                         }
                     )
+                    pbf_file = self._record_history_flag(pbf_file, known_history=True)
                     
                     # Link to RegionHierarchy
                     continent.corresponding_pbf = pbf_file

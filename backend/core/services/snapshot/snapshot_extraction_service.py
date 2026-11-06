@@ -185,7 +185,7 @@ class SnapshotExtractionService:
                 return self._fail(
                     f"Snapshot PBF missing or empty: {snapshot_pbf_path}"
                 )
-            info = self.osmium.file_info(str(snapshot_pbf_path))
+            info = self.osmium.file_info(str(snapshot_pbf_path), extended=True)
             if info.get("exit_code", 1) != 0:
                 return self._fail(
                     f"osmium fileinfo failed for {snapshot_pbf_path}: {info.get('error')}"
@@ -351,14 +351,19 @@ class SnapshotExtractionService:
         return Path(output_pbf).exists() and Path(output_pbf).stat().st_size > 0
 
     def _extract_entity_count(self, file_info: dict) -> int:
-        """Best-effort node+way+relation count from osmium fileinfo JSON."""
+        """Node+way+relation count from extended ``osmium fileinfo`` JSON.
+
+        Counts live under ``data.count`` and are only populated with ``-e``;
+        the plain JSON has no counts at all, which is why this used to return
+        0 for every snapshot (``info["objects"]`` never exists).
+        """
         try:
             info = file_info.get("info", {})
-            objects = info.get("objects", {})
-            n = int(objects.get("nodes", 0))
-            w = int(objects.get("ways", 0))
-            r = int(objects.get("relations", 0))
-            return n + w + r
+            counts = (info.get("data") or {}).get("count") or {}
+            return sum(
+                int(counts.get(key, 0) or 0)
+                for key in ("nodes", "ways", "relations")
+            )
         except Exception:
             return 0
 

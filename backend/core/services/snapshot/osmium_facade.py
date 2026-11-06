@@ -57,12 +57,23 @@ class OsmiumFacade:
         except (ValueError, IndexError):
             return None
 
-    def file_info(self, input_file):
+    def file_info(self, input_file, extended=False):
+        """Run ``osmium fileinfo --json``.
+
+        ``extended=True`` adds ``-e``, which scans the file and populates
+        ``data.count`` (object counts), ``data.bbox`` and ``data.timestamp``.
+        Without it the JSON carries only ``file`` and ``header`` — cheap
+        (header-only for PBF) but no counts.  Use it only on small files:
+        ``-e`` on a continent PBF means reading tens of GB.
+        """
 
         if not os.path.exists(input_file):
             return {"error": "File does not exist", "exit_code": 1}
 
-        cmd = [self.OSMIUM_EXECUTABLE, "fileinfo", "--json", input_file]
+        cmd = [self.OSMIUM_EXECUTABLE, "fileinfo", "--json"]
+        if extended:
+            cmd.append("--extended")
+        cmd.append(input_file)
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
