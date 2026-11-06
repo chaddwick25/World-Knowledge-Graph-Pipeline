@@ -47,10 +47,11 @@ def test_pbf_files_passes_with_one_planet_and_n_continents():
 
 # ── continent_profiles: the order/poly check ──────────────────────────────
 
-def test_continent_profiles_zero_points_at_the_ordering_cause():
+def test_continent_profiles_zero_names_the_glob_cause():
+    """0 means the continent directory scan found nothing, not an ordering bug."""
     check = _command()._check_continent_profiles(9)
     assert not check.ok
-    assert "sync_hierarchy ran before the continents existed" in check.detail
+    assert "globs the continents directory" in check.detail
 
 
 # ── planet snapshot + step-state cross-check ──────────────────────────────

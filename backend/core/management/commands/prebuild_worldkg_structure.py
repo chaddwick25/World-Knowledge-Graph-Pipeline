@@ -15,7 +15,7 @@ Run once after planet init. Re-runnable (idempotent).
 
 import json
 import subprocess
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -114,9 +114,18 @@ class Command(BaseCommand):
                     f"{metrics['relations']:,} relations"
                 )
 
+        # Key the row the same way init_planet does: UTC date + planet path.
+        # Two details matter here and both were wrong before:
+        #   * the key was ``snapshot_date`` (a DateField) rather than
+        #     ``snapshot_date_str``, so a second row was created per chain;
+        #   * the date came from ``date.today()``, i.e. container-local time
+        #     (TZ=America/Toronto), while init_planet uses UTC — so the two
+        #     writers disagreed by a day whenever UTC had rolled over.
+        run_date = datetime.now(timezone.utc).date()
         snapshot, created = PlanetSnapshot.objects.get_or_create(
-            snapshot_date=date.today(),
+            snapshot_date_str=run_date.strftime("%Y_%m_%d"),
             planet_osm_path=planet_pbf,
+            defaults={"snapshot_date": run_date},
         )
 
         if metrics and not dry_run:
@@ -124,9 +133,14 @@ class Command(BaseCommand):
             snapshot.way_count = metrics['ways']
             snapshot.relation_count = metrics['relations']
             snapshot.file_size_bytes = metrics['file_size_bytes']
-            snapshot.status = PlanetSnapshot.SnapshotStatus.COMPLETED
-            snapshot.completed_at = timezone.now()
-            snapshot.save()
+            # Deliberately does NOT touch status/completed_at: this runs inside
+            # sync_hierarchy, i.e. mid-chain.  Setting COMPLETED here sealed a
+            # half-built run behind the lock (the exact failure
+            # ISSUE-init-reliability exists to prevent).  Only finalize decides.
+            snapshot.save(update_fields=[
+                'node_count', 'way_count', 'relation_count',
+                'file_size_bytes',
+            ])
 
         self.stdout.write(f"  {'+' if created else '✓'} PlanetSnapshot: {snapshot.id}")
         return snapshot
@@ -147,8 +161,17 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"  ⚠ No continent directory: {continent_pbf_dir}"))
             return 0
 
-        for pbf_path in sorted(continent_pbf_dir.glob('*.osm.pbf')):
-            slug = pbf_path.stem.replace('.osm', '')
+        # ``*.pbf`` rather than ``*.osm.pbf``: continent extracts are named
+        # ``{name}.pbf`` (legacy) or ``{name}.osh.pbf`` (current), and neither
+        # matches ``*.osm.pbf``.  That glob is why ContinentProfile was empty
+        # in every database ever built — not the step ordering, as previously
+        # assumed.
+        for pbf_path in sorted(continent_pbf_dir.glob('*.pbf')):
+            slug = pbf_path.name
+            for suffix in ('.osm.pbf', '.osh.pbf', '.pbf'):
+                if slug.endswith(suffix):
+                    slug = slug[:-len(suffix)]
+                    break
 
             metrics = None
             if not skip_osmium:

@@ -93,7 +93,10 @@ startup command that replaces the planet init Celery canvas).
 - **Fresh-tree precondition: poly files.** Copy
   `osm_polygon_files/` into the new tree before `extract_continents`; it
   self-heals the hierarchy via `sync_poly_regions` only if polys are present.
-  Getting it wrong shows up as `continent_profiles = 0` (should be 9).
+  Getting it wrong shows up as `continent_profiles = 0`. That number was 0 in
+  every database until 2026-11-06 for an unrelated reason:
+  `prebuild_worldkg_structure` globbed `*.osm.pbf` while the files are
+  `{continent}.pbf` / `.osh.pbf`. Fixed; a correct build now shows 9.
 - Continent extracts are `{continent}.osh.pbf` (history flag in the header).
   Legacy `.pbf` names are still accepted by `_extract_continents_simple`; their
   content is already a full history extract, only the header flag differs.

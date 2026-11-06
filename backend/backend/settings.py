@@ -94,8 +94,15 @@ WORLDKG_REDIS_DB = int(os.getenv('WORLDKG_REDIS_DB') or '2')
 WS_HOST = os.getenv('WS_HOST', 'localhost')
 WS_PORT = os.getenv('WS_PORT', '8000')
 
-# Single snapshot per country (Vue-triggered preprocessing)
-SINGLE_SNAPSHOT_DATE = '2025_12_31'
+# Single snapshot per country (Vue-triggered preprocessing).
+# Defaults to *today* (UTC) now that the planet is refreshed on a weekly
+# cadence: a hardcoded date silently ages out and every run then time-filters
+# to a stale point. Set SINGLE_SNAPSHOT_DATE to pin a specific date (a build
+# that must be reproducible, or a deployment still serving older partitions).
+SINGLE_SNAPSHOT_DATE = (
+    os.getenv('SINGLE_SNAPSHOT_DATE')
+    or datetime.now(timezone.utc).strftime('%Y_%m_%d')
+)
 SINGLE_SNAPSHOT_YEAR = int(SINGLE_SNAPSHOT_DATE.split('_')[0])
 
 # Osmium Tool Configuration
@@ -348,14 +355,19 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
-# WorldKG Pipeline snapshot date range defaults
-WORLDKG_SNAPSHOT_START_YEAR = 2021
-WORLDKG_SNAPSHOT_END_YEAR = 2025
+# Earliest snapshot date the dispatcher and backfill will accept.
+# November 2020 is the intended floor: the full-history planet carries every
+# object version back to 2005, so the limit is policy, not data availability.
+SNAPSHOT_DATE_FLOOR = os.getenv('SNAPSHOT_DATE_FLOOR', '2020_11')
+
+# WorldKG Pipeline snapshot date range defaults.  Both derived so they cannot
+# drift from the floor and the default snapshot: the selector used to say
+# 2021-2025 while the default snapshot had moved to 2026.
+WORLDKG_SNAPSHOT_START_YEAR = int(SNAPSHOT_DATE_FLOOR.split('_')[0])
+WORLDKG_SNAPSHOT_END_YEAR = SINGLE_SNAPSHOT_YEAR
 # Short aliases for SnapshotDatesView / SnapshotJobStatusView.
 SNAPSHOT_START_YEAR = WORLDKG_SNAPSHOT_START_YEAR
 SNAPSHOT_END_YEAR = WORLDKG_SNAPSHOT_END_YEAR
-
-SNAPSHOT_DATE_FLOOR = os.getenv('SNAPSHOT_DATE_FLOOR', '2020_09')
 
 # Minimum drift-source snapshot series length for the derived "country
 # complete" state in the admin job-status view (never stored — computed).
@@ -425,8 +437,13 @@ GEODATA_CONFIG = {
     'default_timeout': 30,
 }
 
-# Default maximum temporal range for PBF files without explicit max_timestamp
-DEFAULT_TEMPORAL_RANGE_END = datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+# Default maximum temporal range for PBF files without explicit max_timestamp.
+# Derived from the default snapshot date so the two cannot drift: this was
+# pinned to 2024-12-31 while the default snapshot had moved past it, which made
+# PbfFile temporal ranges end in the past.
+DEFAULT_TEMPORAL_RANGE_END = datetime.strptime(
+    SINGLE_SNAPSHOT_DATE, '%Y_%m_%d'
+).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
 
 # Spatial Semantics Configuration
 SPATIAL_SEMANTICS_CONFIG = {
