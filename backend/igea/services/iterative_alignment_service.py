@@ -44,7 +44,24 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 # TODO: add to yaml file
-ALIGNMENT_THRESHOLD = 0.5   # tha in IGEA paper (Fig. 5: optimal across all countries)
+# IGEA paper, "Alignment Threshold Tuning" (Fig. 5): F1 was evaluated for
+# tha in 0.50..0.90 at 0.1 steps; the highest F1 was achieved at tha = 0.60 for
+# both KGs across all datasets, and the authors set tha = 0.6 for all subsequent
+# experiments. This constant previously read 0.5 with a comment attributing that
+# value to Fig. 5, which the paper does not support.
+ALIGNMENT_THRESHOLD = 0.6
+# The paper's 0.6 is a cross-attention *probability* threshold. Cosine is a
+# different scale: [-1, 1], centred near 0 for unrelated pairs. Applying 0.6 to
+# cosine rejects everything — IE's healthy distribution (spread 0.638, mean
+# 0.233) tops out at 0.554. Calibrated from that distribution.
+COSINE_ALIGNMENT_THRESHOLD = 0.45
+# A BiLSTM cross-attention model trained on a handful of seed pairs learns
+# nothing and emits sigmoid(0) ~= 0.5 for every candidate, which collapses the
+# score distribution to a constant (observed spread 0.003 on NI, three runs over
+# three months) and makes the threshold meaningless. Below this many seeds we
+# skip training and use the OSM2KG-FT cosine baseline instead, which discriminates
+# properly. Ignored when weights are loaded from disk.
+MIN_SEEDS_FOR_MODEL = 100
 MAX_DISTANCE_M = 2500.0     # meters — IGEA Section 3.2 validated value
 MAX_ITERATIONS = 3           # IGEA Fig. 3: performance peaks at iteration 3
 
@@ -137,6 +154,7 @@ class IterativeEntityAlignmentService:
         self.nca_service = NCAServiceCls() if enable_nca and NCAServiceCls is not None else None
 
         self.cross_attention_model = None
+        self._model_from_weights = False
         if cross_attention_weights_path and self._CrossAttentionClass is not None:
             logger.info(f"IGEA: Loading BiLSTM Cross-Attention weights from {cross_attention_weights_path}")
             self.cross_attention_model = self._CrossAttentionClass()
@@ -148,6 +166,9 @@ class IterativeEntityAlignmentService:
                     )
                 )
                 self.cross_attention_model.eval()
+                # Pretrained weights are usable regardless of this country's seed
+                # count, so the MIN_SEEDS_FOR_MODEL guard must not disable them.
+                self._model_from_weights = True
             except Exception as e:
                 logger.error(f"Failed to load Cross-Attention model: {e}")
                 self.cross_attention_model = None
@@ -724,9 +745,30 @@ class IterativeEntityAlignmentService:
                 logger.info(f"IGEA: no new candidates in iteration {iteration}, stopping")
                 break
 
-            # Train cross-attention model on this iteration's pairs
+            # Train cross-attention model on this iteration's pairs.
+            # With too few seeds the model learns nothing and emits ~sigmoid(0)
+            # for every candidate — a constant score that no threshold can
+            # discriminate inside. Skip training and fall back to the cosine
+            # baseline instead. Pretrained weights are exempt (see __init__).
             if self.enable_cross_attention_training:
-                self._train_cross_attention(pairs, seed_map)
+                if self._model_from_weights or len(seed_map) >= MIN_SEEDS_FOR_MODEL:
+                    self._train_cross_attention(pairs, seed_map)
+                else:
+                    logger.warning(
+                        "IGEA: only %d seed pairs (< %d) — skipping cross-attention "
+                        "training, using the cosine baseline instead",
+                        len(seed_map), MIN_SEEDS_FOR_MODEL,
+                    )
+                    self.cross_attention_model = None
+
+            # The acceptance gate depends on which scorer is active: the paper's
+            # 0.6 is a cross-attention *probability* threshold, while cosine is a
+            # similarity in [-1, 1] centred near 0. Comparing cosine against 0.6
+            # rejects everything (IE: max 0.554, mean 0.233, spread 0.638 — a
+            # healthy distribution), so the cosine path gets its own value.
+            _using_model = self.cross_attention_model is not None
+            active_threshold = self.threshold if _using_model else COSINE_ALIGNMENT_THRESHOLD
+            _scorer = "cross-attention" if _using_model else "cosine"
 
             # Score and filter
             accepted_this_iter: List[Tuple[int, str]] = []
@@ -734,7 +776,7 @@ class IterativeEntityAlignmentService:
             for osm_ent, wd_cand in pairs:
                 score = self._score_pair(osm_ent, wd_cand)
                 scores.append(score)
-                if score >= self.threshold:
+                if score >= active_threshold:
                     accepted_this_iter.append((osm_ent['osm_id'], wd_cand['wikidata_uri']))
             
             # Log score distribution for debugging
@@ -745,7 +787,7 @@ class IterativeEntityAlignmentService:
                     f"IGEA iteration {iteration}: score distribution - "
                     f"min={scores_arr.min():.3f}, max={scores_arr.max():.3f}, "
                     f"mean={scores_arr.mean():.3f}, median={np.median(scores_arr):.3f}, "
-                    f"threshold={self.threshold}"
+                    f"threshold={active_threshold:.3f} (scorer={_scorer})"
                 )
 
             # Deduplicate (highest score wins per OSM entity)

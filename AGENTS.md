@@ -140,9 +140,19 @@ were removed.
 - `core/services/snapshot/snapshot_extraction_service.py` - Extract country PBF from continent PBF via osmium. Creates `PbfFile` + `Snapshot` rows.
 - `geovectors_encoder/services/batch_collector.py` - Parallel encode + upsert fan-out (Approach B): `BatchCollector` (drop-in writer replacement), `encoding_worker`, `spawn_encode_workers`, `ErrorBox`.
 - `geovectors_encoder/services/vector_storage_service.py` - SQL COPY upsert into OsmEntity. Now sets `source_snapshot_id` (Snapshot UUID) on every upserted row.
-- `igea/services/igea_pipeline_service.py` - Run IGEA alignment
+- `igea/services/igea_pipeline_service.py` - Run IGEA alignment. **Two acceptance
+  thresholds, one per scoring path** (`iterative_alignment_service.py`): the
+  cross-attention path uses `ALIGNMENT_THRESHOLD = 0.6` (IGEA paper Fig. 5,
+  verified in §"Alignment Threshold Tuning"); the cosine fallback uses
+  `COSINE_ALIGNMENT_THRESHOLD = 0.45`, calibrated empirically because the paper's
+  0.6 is a *probability* threshold and cosine lives on a different scale. For example IE's
+  healthy distribution (spread 0.638, mean 0.233) maxes at 0.554, so a 0.6 gate
+  rejected everything. Below `MIN_SEEDS_FOR_MODEL` (100) seed pairs,
+  cross-attention training is skipped and cosine is used (an under-trained model
+  emits a near-constant score). The score log names the scorer:
+  `threshold=0.450 (scorer=cosine)`. See `ISSUE-igea-degenerate-scoring`.
 - `geovectors_encoder/services/gv_nle_training_service.py` - Train GV-NLE (DeepWalk)
-- `semantic_search/services/spectral_analysis_service.py` - Laplacian eigendecomposition (scipy sparse `eigsh`), heat kernel diffusion. Called by Step 5c.
+- `semantic_search/services/spectral_analysis_service.py` - Laplacian eigendecomposition (scipy sparse `eigsh`), heat kernel diffusion. Called by Step 5c. **The GPU path runs `float32` with `tol=1e-8`** (`_eigsh_gpu`: `dtype=torch.float32`). float32 eps is ~1.2e-7, so that tolerance is unreachable and the solve actually stops near 1e-4 - the inline comment says as much ("sufficient for pgvector diffusion ranking"). That trade is correct on a consumer card (FP64 at 1:64) and wrong on Kepler, where FP64 costs only ~2.6x (0.96 vs 2.4 TFLOPS/die). The intended fix is to make the dtype conditional - `float64` behind a flag, `float32` by default - so the same source is correct on both. The VRAM estimator (`~2240 B/node`, `n*k*4 bytes`) assumes float32 and would need a dtype term.
 - `semantic_search/services/graph_signal_service.py` - WorldKG class signals, Dirichlet energy `sᵀLs`, signal diffusion via `(L + μI)⁻¹s`. Called by Step 5c.
 - `semantic_search/services/community_detection_service.py` - Louvain community detection (NetworkX), class-filtered communities. Called by Step 5c and API.
 - `semantic_search/services/spectral_drift_service.py` - Spectral distance `‖λ_t - λ_{t-1}‖₂`, Fiedler drift, drift classification (low/medium/high/extreme). Called by Step 5d.

@@ -22,12 +22,12 @@ with `gv_tags_embedding`, `tags`, `geom`, `wkg_class`.
 **Step 2: Harvest Wikidata candidates** (SPARQL) →
 `PrecomputedLinkCandidate` rows with `wikidata_uri`, `label`, `wkg_class`.
 
-**Step 3: IGEA — iterative geographic entity alignment** (this doc):
+**Step 3: IGEA - iterative geographic entity alignment** (this doc):
 - Input: `OsmEntity` (vectors DB) + `PrecomputedLinkCandidate` (vectors DB)
 - Output: `OsmEntity.wikidata_uri` populated for aligned entities
 - Output: `EntityAlignment` rows (audit trail with confidence + iteration)
 
-**Step 4: USLP — unsupervised spatial link prediction** → uses aligned
+**Step 4: USLP - unsupervised spatial link prediction** → uses aligned
 entities to predict spatial relationships.
 
 **Source:** <ref_file file="backend/igea/services/igea_pipeline_service.py" />
@@ -220,7 +220,8 @@ IGEA does **not** use `hyperparams.yaml`. Its defaults are hardcoded in
 | Parameter | Default | Purpose |
 |---|---|---|
 | `max_iterations` | 3 | Maximum bootstrapping iterations |
-| `threshold` | 0.6 | Acceptance threshold for alignment score |
+| `threshold` | 0.6 | Acceptance threshold for the **cross-attention probability** path |
+| `COSINE_ALIGNMENT_THRESHOLD` | 0.45 | Acceptance threshold for the **cosine fallback** path - a different scale, see below |
 | `max_distance_m` | 2500.0 | Max Haversine distance for candidate pairs |
 | `enable_nca` | True | Run NCA inside the loop |
 | `enable_cross_attention_training` | True | Train BiLSTM per country |
@@ -282,4 +283,19 @@ acceptance count. The `total_accepted == 0` checks were removed from
   and iteration.
 - IGEA does NOT use `hyperparams.yaml`. Defaults are hardcoded.
 - USLP is NOT gated on IGEA. The two stages are decoupled.
-- The acceptance threshold is 0.6 (lower than USLP's 0.7).
+- **Two thresholds, one per scoring path.** The IGEA paper's `tha = 0.6`
+  (§"Alignment Threshold Tuning", Fig. 5 - swept 0.50 to 0.90, best F1 at 0.60) is a
+  **cross-attention probability** threshold. Cosine similarity is a different
+  scale: `[-1, 1]`, centred near 0 for unrelated pairs, where 0.6 means
+  "strongly similar". Applying the probability gate to cosine rejects
+  everything - measured on Ireland, whose healthy distribution (spread 0.638,
+  mean 0.233) tops out at **0.554**, below a 0.6 gate. The cosine path therefore
+  uses `COSINE_ALIGNMENT_THRESHOLD = 0.45`, calibrated from that distribution and
+  **not** taken from the paper.
+- **Model training needs supervision.** Below `MIN_SEEDS_FOR_MODEL` (100) seed
+  pairs, cross-attention training is skipped and the cosine baseline is used.
+  A model trained on a handful of pairs learns nothing and emits a near-constant
+  score. Weights loaded from disk are exempt.
+- The log line names the active scorer so the two regimes are distinguishable:
+  `threshold=0.450 (scorer=cosine)`.
+- The acceptance threshold is lower than USLP's 0.7 by design.
