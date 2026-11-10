@@ -150,7 +150,7 @@ class PipelineTask(_TaskBase):
 
 
 # ── Celery signals: logging configuration via primitives ────────────────────
-from celery.signals import setup_logging, task_prerun  # noqa: E402
+from celery.signals import setup_logging, task_prerun, worker_init  # noqa: E402
 from pipeline.pipeline_logger import _ensure_console_handler  # noqa: E402
 
 
@@ -190,3 +190,29 @@ def _setup_pipeline_file_logger(task_id, task, args, kwargs, **extra):
     if not isinstance(config, dict) or not config.get("pipeline_run_id"):
         return
     setup_pipeline_run_logger(config["pipeline_run_id"], config.get("iso", ""))
+
+
+@worker_init.connect
+def bound_chord_unlock_retries(**_kwargs):
+    """Bound ``celery.chord_unlock`` retries at worker startup.
+
+    Celery ships ``max_retries=None`` on this task, so a chord whose header task
+    is lost polls forever and the chain stalls silently — it looks like a hang,
+    not a failure. ``PatchedDatabaseBackend.apply_chord`` already passes the
+    budget per chord; this covers chord_unlock tasks published by any other
+    path (nested groups, direct ``chord()`` use).
+
+    patience = CHORD_UNLOCK_INTERVAL * CHORD_UNLOCK_MAX_RETRIES. Both come from
+    Django settings and are env-overridable. See backend/settings.py.
+    """
+    from django.conf import settings as dj
+
+    task = celery_app.tasks.get("celery.chord_unlock")
+    if task is None:
+        return
+    budget = getattr(dj, "CHORD_UNLOCK_MAX_RETRIES", None)
+    if budget is not None:
+        task.max_retries = int(budget)
+    interval = getattr(dj, "CHORD_UNLOCK_INTERVAL", None)
+    if interval is not None:
+        task.default_retry_delay = int(interval)

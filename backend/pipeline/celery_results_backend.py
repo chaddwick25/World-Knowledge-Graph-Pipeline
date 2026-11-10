@@ -47,6 +47,25 @@ logger = get_logger(__name__)
 CHORD_UNLOCK_INTERVAL = 10
 
 
+def _chord_interval() -> int:
+    """Polling interval for chord_unlock, from Django settings when available."""
+    try:
+        from django.conf import settings as dj
+        return int(getattr(dj, "CHORD_UNLOCK_INTERVAL", CHORD_UNLOCK_INTERVAL))
+    except Exception:
+        return CHORD_UNLOCK_INTERVAL
+
+
+def _chord_max_retries():
+    """Retry budget for chord_unlock. None keeps Celery's unbounded default."""
+    try:
+        from django.conf import settings as dj
+        v = getattr(dj, "CHORD_UNLOCK_MAX_RETRIES", None)
+        return None if v is None else int(v)
+    except Exception:
+        return None
+
+
 class PatchedDatabaseBackend(DatabaseBackend):
     """DatabaseBackend that uses ``chord_unlock`` polling instead of ChordCounter.
 
@@ -77,12 +96,16 @@ class PatchedDatabaseBackend(DatabaseBackend):
         # Clean up stale ChordCounter from previous runs
         ChordCounter.objects.filter(group_id=header_result.id).delete()
 
-        # Set a longer polling interval to reduce Redis message volume.
-        # chord.run() passes interval=None explicitly (canvas.py:1422-1429),
-        # so setdefault() — which only sets *absent* keys — would be a no-op.
-        # Use an explicit None-check instead.
+        # Interval and retry budget are env-overridable via Django settings:
+        #   patience = CHORD_UNLOCK_INTERVAL * CHORD_UNLOCK_MAX_RETRIES
+        # chord.run() passes interval=None explicitly (canvas.py), so
+        # setdefault() — which only sets *absent* keys — would be a no-op.
+        # Use explicit None-checks instead. Passing max_retries here bounds the
+        # poller per chord instead of relying on Celery's unbounded default.
         if kwargs.get("interval") is None:
-            kwargs["interval"] = CHORD_UNLOCK_INTERVAL
+            kwargs["interval"] = _chord_interval()
+        if kwargs.get("max_retries") is None:
+            kwargs["max_retries"] = _chord_max_retries()
 
         # Use the standard fallback: schedule chord_unlock polling task
         self.fallback_chord_unlock(header_result, body, **kwargs)

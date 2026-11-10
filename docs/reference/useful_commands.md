@@ -1,6 +1,17 @@
 ## Useful Commands
 Even thugh I use AI. I still like to run the commands manually to understand what's happening.
 
+> **Topology note (2026-11-08).** The commands below target the **local compose
+> stack** - containers `postgres-default`, `postgres-vectors`, `redis`, and the
+> database names `django_db` / `vector_db`. That is the development layout.
+>
+> The **live data tier runs on a separate host**, is defined outside this repo,
+> and uses different container names plus multiple database generations
+> (`django_db_v3`, `vector_db_v3`, ...). For live operations pass the host and
+> the target database explicitly rather than relying on the local service names
+> - `docker compose exec postgres-vectors ...` addresses a container that is
+> not the live one.
+
 # Remove pycache    
 find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; find . -name "*.pyc" -delete 2>/dev/null; echo "Done - caches cleared"
 
@@ -287,6 +298,12 @@ docker compose exec postgres-vectors psql -U vector_user -d vector_db -c "
 # Full database destruction. Default keeps migration files (the fresh-DB E2E
 # needs the real chain, including semantic_search/0006 + worldkg_nca/0018).
 # Pass --wipe-migrations for the nuclear option (deletes migration files).
+# LEGACY single-host reset. It targets the local compose containers and then
+# `rm -rf`s the entire cluster data directory, so it destroys EVERY database
+# generation in the cluster, not just one. Do not use it against the live
+# multi-generation layout. For that, use scripts/reset_worldkg_db.sh, which
+# drops only the targeted generation, backs up first, and requires
+# WORLDKG_PG_HOST (host identity is never baked into a tracked file).
 bash ./scripts/drop_databases_v2.sh
 bash ./scripts/drop_databases_v2.sh --wipe-migrations
 

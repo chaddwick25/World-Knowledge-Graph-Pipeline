@@ -236,6 +236,27 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     )
 }
 
+# Opt-in task routing: set K80_GPU_QUEUE to send the GPU steps (4, 5c) to a
+# dedicated worker. Unset means no routes, and single-host behaviour is unchanged.
+GPU_ROUTED_QUEUE = os.environ.get("K80_GPU_QUEUE", "").strip()
+
+CELERY_TASK_ROUTES = (
+    {
+        "step_4_predict_spatial_links": {"queue": GPU_ROUTED_QUEUE},
+        "sub_run_subgraph_uslp": {"queue": GPU_ROUTED_QUEUE},
+        "step_4b_finalize_subgraph_uslp": {"queue": GPU_ROUTED_QUEUE},
+        "step_5c_graph_spectral_analysis": {"queue": GPU_ROUTED_QUEUE},
+    }
+    if GPU_ROUTED_QUEUE
+    else {}
+)
+
+# Celery ships chord_unlock with max_retries=None, so it retries forever when a
+# header task is lost (celery#9674; upstream remedy is PR #9700). patience =
+# interval * max_retries, applied per chord, not per pipeline run.
+CHORD_UNLOCK_INTERVAL = int(os.environ.get("CHORD_UNLOCK_INTERVAL", "60"))
+CHORD_UNLOCK_MAX_RETRIES = int(os.environ.get("CHORD_UNLOCK_MAX_RETRIES", "480"))
+
 # Deployed frontend origins (Netlify domain) via CORS_EXTRA_ORIGINS; the
 # literals below are the local dev defaults.
 _extra_origins = [o.strip() for o in os.getenv('CORS_EXTRA_ORIGINS', '').split(',') if o.strip()]

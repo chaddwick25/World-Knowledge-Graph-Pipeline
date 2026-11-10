@@ -151,6 +151,35 @@ class WikidataCandidateService(SPARQLRetryMixin):
         )
         return candidates
 
+    # Largest span (degrees) per SPARQL tile. 2 deg is comfortably inside the
+    # range that harvests reliably. Raise only with evidence that a wider query
+    # works — a country-sized box (IE, ~9x7 deg) never returned its first page.
+    BBOX_TILE_DEG = 2.0
+
+    def _tile_bbox(self, min_lon, min_lat, max_lon, max_lat):
+        """Yield (min_lon, min_lat, max_lon, max_lat) tiles covering the bbox.
+
+        A bbox within BBOX_TILE_DEG in both dimensions is yielded unchanged.
+        Anything larger is split into a grid: NI (~5.6x4.4 deg) becomes 9 tiles
+        and IE (~9.3x7.3 deg) becomes 20. Tiling NI is intentional, not
+        incidental — its single-query harvest truncated at offset 14,000 when a
+        page timed out, so smaller tiles also recover that lost tail.
+        """
+        span = max(max_lon - min_lon, max_lat - min_lat)
+        if span <= self.BBOX_TILE_DEG:
+            yield (min_lon, min_lat, max_lon, max_lat)
+            return
+
+        lat = min_lat
+        while lat < max_lat:
+            lat_next = min(lat + self.BBOX_TILE_DEG, max_lat)
+            lon = min_lon
+            while lon < max_lon:
+                lon_next = min(lon + self.BBOX_TILE_DEG, max_lon)
+                yield (lon, lat, lon_next, lat_next)
+                lon = lon_next
+            lat = lat_next
+
     def harvest_by_country(
         self,
         country_code: Optional[str],
@@ -187,11 +216,40 @@ class WikidataCandidateService(SPARQLRetryMixin):
             f"WikidataCandidate: country={country_code} "
             f"bbox=[{bbox[0]:.2f},{bbox[1]:.2f},{bbox[2]:.2f},{bbox[3]:.2f}]"
         )
-        return self.harvest_by_bbox(
-            *bbox,
-            wkg_class_filter=wkg_class_filter,
-            limit=limit,
-        )
+        # Tile large bboxes. wikibase:box degrades badly past a few degrees: NI
+        # (~5x4 deg) harvested fine, IE (~9x7 deg) never returned a first page.
+        # requests' timeout is per socket read, so a trickling response resets it
+        # forever and the request hangs with no error. Tiling keeps every query
+        # in the regime that works and bounds the blast radius of one bad tile.
+        tiles = list(self._tile_bbox(*bbox))
+        if len(tiles) > 1:
+            logger.info(
+                "WikidataCandidate: bbox split into %d tiles (%.1f x %.1f deg)",
+                len(tiles), bbox[2] - bbox[0], bbox[3] - bbox[1],
+            )
+
+        merged: List[Dict] = []
+        seen: set = set()
+        for i, (t_min_lon, t_min_lat, t_max_lon, t_max_lat) in enumerate(tiles, 1):
+            if len(merged) >= limit:
+                break
+            part = self.harvest_by_bbox(
+                t_min_lon, t_min_lat, t_max_lon, t_max_lat,
+                wkg_class_filter=wkg_class_filter,
+                limit=limit - len(merged),
+            )
+            for cand in part:
+                uri = cand.get('wikidata_uri')
+                if uri in seen:
+                    continue
+                seen.add(uri)
+                merged.append(cand)
+            if len(tiles) > 1:
+                logger.info(
+                    "WikidataCandidate: tile %d/%d done (%d candidates so far)",
+                    i, len(tiles), len(merged),
+                )
+        return merged
 
     # ------------------------------------------------------------------
     # SPARQL query (paginated)

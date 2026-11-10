@@ -36,6 +36,7 @@ References:
 """
 
 import logging
+import os
 
 import numpy as np
 import scipy.sparse as sp
@@ -43,6 +44,17 @@ import scipy.sparse.linalg as spla
 import networkx as nx
 
 logger = logging.getLogger(__name__)
+
+# ── Solve precision ───────────────────────────────────────────────────────
+# FP64 on Kepler costs only ~2.6x FP32 (0.96 vs 2.40 TFLOPS/die), so a K80 can
+# afford a genuine double-precision solve. A consumer card runs FP64 at 1:64 and
+# must stay in FP32. Gate per host: set SPECTRAL_FP64=1 on the K80 worker only.
+# Unset (the default) is byte-identical to the previous FP32 behaviour.
+SPECTRAL_FP64 = os.environ.get("SPECTRAL_FP64", "").strip().lower() in (
+    "1", "true", "yes",
+)
+SPECTRAL_DTYPE = np.float64 if SPECTRAL_FP64 else np.float32
+SPECTRAL_VALUE_BYTES = 8 if SPECTRAL_FP64 else 4
 
 # Node count above which the shift-invert solver is preferred over GPU
 # LOBPCG (even when CUDA is available) to avoid VRAM exhaustion.
@@ -332,13 +344,18 @@ def _estimate_gpu_vram_needed(n, k_request, nnz):
     """Estimate VRAM needed for GPU LOBPCG in bytes.
 
     Components:
-    - Sparse Laplacian: nnz * (8 bytes index + 4 bytes value) ≈ nnz * 12
-    - Eigenvectors: n * k * 4 bytes (float32)
+    - Sparse Laplacian: nnz * (8 bytes index + SPECTRAL_VALUE_BYTES value)
+    - Eigenvectors: n * k * SPECTRAL_VALUE_BYTES
     - LOBPCG workspace: ~3x eigenvectors (block vectors + residuals + directions)
     - torch overhead: ~2 GB
+
+    The value width follows SPECTRAL_FP64. A float64 solve doubles both the
+    sparse values and the eigenvector block; the 20% margin in
+    ``_check_gpu_vram`` only partly absorbs that at large k, which is why the
+    width is modelled rather than assumed to be 4.
     """
-    sparse_bytes = nnz * 12
-    eigvec_bytes = n * k_request * 4
+    sparse_bytes = nnz * (8 + SPECTRAL_VALUE_BYTES)
+    eigvec_bytes = n * k_request * SPECTRAL_VALUE_BYTES
     workspace_bytes = eigvec_bytes * 3
     overhead_bytes = 2 * 1024**3  # 2 GB torch overhead
     return sparse_bytes + eigvec_bytes + workspace_bytes + overhead_bytes
@@ -411,7 +428,13 @@ def _eigsh_gpu(L, k_request, n):
     indices = torch.tensor(
         np.vstack([L_coo.row, L_coo.col]), dtype=torch.long,
     )
-    values = torch.tensor(L_coo.data, dtype=torch.float32)
+    # Value width follows SPECTRAL_FP64. On the K80 the FP64 premium is ~2.6x,
+    # so a real double-precision solve is affordable; on a consumer card it is
+    # 64x and float32 stays the correct choice.
+    values = torch.tensor(
+        L_coo.data,
+        dtype=torch.float64 if SPECTRAL_FP64 else torch.float32,
+    )
     L_torch = torch.sparse_coo_tensor(
         indices, values, L_coo.shape,
     ).coalesce().to('cuda:0')
@@ -420,8 +443,10 @@ def _eigsh_gpu(L, k_request, n):
     del indices, values, L_coo
 
     # LOBPCG: block eigensolver, no LU factorization needed
-    # niter=500 gives eigenvalues accurate to ~1e-8 (float64) or
-    # ~1e-4 (float32) — sufficient for pgvector diffusion ranking
+    # niter=500 gives eigenvalues accurate to ~1e-8 (float64) or ~1e-4
+    # (float32). float32 eps is ~1.2e-7, so the tol below is UNREACHABLE in
+    # that mode — it is kept unchanged for behavioural stability, not because
+    # it binds. With SPECTRAL_FP64=1 the same tolerance becomes real.
     logger.info(
         "GPU lobpcg: n=%d k=%d device=cuda:0 (VRAM: %.1f GB free, ~%.1f GB needed)",
         n, k_request,

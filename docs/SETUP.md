@@ -62,7 +62,9 @@ It also sweeps orphaned `pg_type` entries left by crashed migrations (a
 composite type in `pg_type` without a matching `pg_class` row causes a
 `UniqueViolation` when Django retries `CREATE TABLE`).
 
-The manual equivalent, if you ever need it outside the container flow:
+The manual equivalent, if you ever need it outside the container flow (local
+compose stack only - for a remote data tier, run `db_preflight` from a backend
+container pointed at that host, or `psql` against it directly):
 
 ```bash
 docker compose exec postgres-default bash -c '
@@ -124,6 +126,13 @@ The backend container runs `init_planet` automatically on startup when
 - **Resume is per step.** `PlanetSnapshot.step_states` records each step's
   outcome, so a re-run prints `[ok*]` for steps already done and retries the
   rest instead of paying for the whole chain again.
+- **`--step` bypasses the ledger.** A single-step run sets the internal run
+  reference to `None`, so no `PlanetSnapshot` is created and `step_states` is
+  never written. A chain assembled entirely from `--step` invocations therefore
+  ends `COMPLETED` with an empty `step_states`, and `--step finalize` simply
+  attaches to whatever row exists. The outcome is correct but **undocumented**:
+  nothing records which steps ran, and a later `--no-lock` re-run starts from
+  zero. Prefer the full `init_planet` when you want a real ledger.
 - **The worker fails fast** if the schema never appears: it waits
   `MIGRATION_WAIT_SECONDS` (default 300) and then exits 1, rather than
   proceeding into a schema-less database.
@@ -135,14 +144,30 @@ tree, copy the polygons in *before* running init:
 cp -a <live>/osm_polygon_files/. <TREE>/OSM-PBF-FILES/osm_polygon_files/
 ```
 
-Then the canonical order works:
+Then the canonical order works. The chain is **16** steps; five of them are the
+embedding copy/split/merge group and are dropped together by
+`--skip-embeddings`:
 
 ```
 register_planet → extract_continents → sync_hierarchy → prebuild_country_paths
-→ prebuild_subgraphs → prebuild_wikidata_ids → enrich_worldkg_classes
-→ generate_osm_boundaries → train_mapqa_parser → compute_amenity_embeddings
-→ finalize
+→ prebuild_subgraphs → prebuild_wikidata_ids
+→ copy_gb_to_uk → scan_embeddings → split_embeddings → merge_us_embeddings
+→ rescan_embeddings
+→ enrich_worldkg_classes → generate_osm_boundaries → train_mapqa_parser
+→ compute_amenity_embeddings → finalize
 ```
+
+Steps 7-11 (`copy_gb_to_uk` through `rescan_embeddings`) only matter when
+GeoVectors TSVs need splitting or merging (GB, MY/SG/BN, US shards). They are
+the ones `--skip-embeddings` removes, and they are the five most often omitted
+from written-out step lists - if a list shows 11 steps, it is describing the
+`--skip-embeddings` subset.
+
+**FastText model dependency.** `compute_amenity_embeddings` and the USLP step
+both need `BASE_DATA_DIR/OSM-PBF-FILES/models/fasttext/cc.en.300.bin` (~7 GB).
+When it is absent the command logs `Creating mock for development` and writes
+**placeholder vectors**, and `verify_planet_init` still passes because it only
+counts rows. Read the log line, not the row count.
 
 `extract_continents` self-heals when the hierarchy is empty (it calls
 `sync_poly_regions`), but only if the poly directory has files.

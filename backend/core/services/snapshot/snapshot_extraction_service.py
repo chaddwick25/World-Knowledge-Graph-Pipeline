@@ -231,14 +231,20 @@ class SnapshotExtractionService:
         Continent PBFs are created by planet init at:
             ``{OSM_CONTINENTS_OUTPUT_DIR}/{continent_slug}.pbf``
 
+        Since the 2026-11-06 naming fix they are written as
+        ``{continent_slug}.osh.pbf`` so the header reports ``with_history=true``.
+        Both names are accepted here: trees built before the fix hold ``.pbf``
+        and their content is already a full history extract.
+
         Falls back to ``regional_path_service.get_continent_pbf_path()`` if
         the continents directory doesn't have it.
         """
         continents_dir = getattr(settings, "OSM_CONTINENTS_OUTPUT_DIR", None)
         if continents_dir:
-            pbf = Path(continents_dir) / f"{continent_slug}.pbf"
-            if pbf.exists() and pbf.stat().st_size > 0:
-                return pbf
+            for suffix in (".osh.pbf", ".pbf"):
+                pbf = Path(continents_dir) / f"{continent_slug}{suffix}"
+                if pbf.exists() and pbf.stat().st_size > 0:
+                    return pbf
 
         # Fallback: regional_path_service convention
         fallback = regional_path_service.get_continent_pbf_path(continent_slug)

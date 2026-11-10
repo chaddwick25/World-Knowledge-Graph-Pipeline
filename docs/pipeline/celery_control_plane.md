@@ -26,14 +26,13 @@ hands the config dict back to the chain.
 ```
 chain(
   step_1_embed_osm_entities.s(cfg),
-  chord( [sub_embed_subgraph.si(sg) × N], step_1b_finalize.s(cfg) ),
+  chord( [sub_embed_subgraph.si(sg) × N], step_1b_finalize.s(cfg) ),  # omitted if no subgraphs
   step_2_harvest_wikidata.s(),
   step_3_run_igea.s(),
-  chord( [sub_run_subgraph_uslp.si(sg) × N], step_4b_finalize.s(cfg) ),
-  step_5_train_gv_nle.s(),
-  chord( [sub_train_subgraph_gv_nle.si(sg) × N], step_5b_fin.s(cfg) ),
-  step_5c_graph_spectral_analysis.s(),   # non-fatal, conditional
-  step_5d_temporal_drift.s(),            # non-fatal, conditional, ≥2 snapshots
+  chord( [sub_run_subgraph_uslp.si(sg) × N], step_4b_finalize.s(cfg) ),  # omitted if no subgraphs
+  step_5_train_gv_nle.s(),                    # NO chord - see below
+  step_5c_graph_spectral_analysis.s(),        # non-fatal
+  step_5_8_generate_sample_questions.s(),     # non-fatal
   step_6_mark_search_ready.s(),
 )
 
@@ -44,10 +43,21 @@ Dispatched once: canvas.apply_async(task_id=cfg.pipeline_run_id)
   inject the previous task's return value as a positional arg.
 - Chord callbacks receive `(aggregated_results, config_dict)` and return the
   config dict, which the chain passes to the next step.
-- Steps 1 and 5 skip their chord entirely when `has_subgraphs=False`
-  (small territories); Step 4's chord is always present.
-- Steps 5c (graph spectral analysis) and 5d (temporal drift) run after Step
-  5/5b and before Step 6. Both are non-fatal and conditional.
+- **Steps 1 and 4** skip their chord when no subgraphs exist at canvas-build
+  time (`has_subgraphs=False`). Both tasks then rehydrate subgraphs from the DB
+  and self-dispatch per-subgraph work inline (§7).
+- **Step 5 has no chord by design.** Per-subgraph NLE training is serialised by
+  `GpuSlotLock`, so a chord adds no parallelism - and an earlier single-header
+  chord caused a stale-`TaskResult` race that let Step 4 and Step 5 run
+  concurrently on one GPU, producing a CUDA OOM.
+- Step 5c (graph spectral analysis) and Step 5.8 (subdivision sample questions)
+  run after Step 5 and before Step 6. Both are non-fatal.
+- **Step 5d (temporal drift) is NOT in this canvas.** It was removed from both
+  the canvas and the Celery registry on 2026-09-26 - it is a scheduled-interval
+  feature, not a per-run step. The module survives at
+  `pipeline/tasks/country_pipeline_steps/step_5d_temporal_drift.py` for when it
+  is re-added as its own feature. Anything that still schedules it must call the
+  function directly; there is no registered task name to dispatch.
 - **Planet init is NOT in this canvas.** It is the `init_planet` management
   command run as a Docker entrypoint step (see
   [Docker Entrypoint Init](../platform/docker_entrypoint_init.md)).
@@ -124,7 +134,7 @@ The structure per task:
 
 ---
 
-## 3. Registered Tasks (12 total: Steps 1-6 + 5c/5d)
+## 3. Registered Tasks (14 total: Steps 1-6 + 5c/5.8)
 
 Planet init tasks (formerly `step_0_initialize_planet`,
 `step_0b_initialize_continent`, `step_0c`-`step_0m`,
@@ -135,16 +145,22 @@ Planet init tasks (formerly `step_0_initialize_planet`,
 |---|---|---|
 | `step_1_embed_osm_entities` | `step_1_embed_osm_entities` | Preprocessing + encoding + entropy gate + subgraph embed fan-out |
 | `_embed_subgraph` | `sub_embed_subgraph` | Per-subgraph pickle generation (group) |
+| `step_1b_finalize_subgraph_embeds` | `step_1b_finalize_subgraph_embeds` | Chord callback, aggregates subgraph embed results |
 | `step_2_harvest_wikidata` | `step_2_harvest_wikidata` | Wikidata SPARQL candidate harvesting |
 | `step_3_run_igea` | `step_3_run_igea` | Iterative Geographic Entity Alignment |
 | `step_4_predict_spatial_links` | `step_4_predict_spatial_links` | USLP, rehydrates subgraphs from DB; self-dispatches per-subgraph USLP |
 | `_run_subgraph_uslp` | `sub_run_subgraph_uslp` | Per-subgraph USLP via `--poly-file` (chord header, `.si()`) |
 | `step_4b_finalize_subgraph_uslp` | `step_4b_finalize_subgraph_uslp` | Chord callback, aggregates subgraph USLP results |
 | `step_5_train_gv_nle` | `step_5_train_gv_nle` | DeepWalk + subgraph train fan-out |
-| `_train_subgraph_gv_nle` | `sub_train_subgraph_gv_nle` | Per-subgraph DeepWalk training (chord header, `.si()`) |
+| `_train_subgraph_gv_nle` | `sub_train_subgraph_gv_nle` | Per-subgraph DeepWalk training (invoked inline, not via chord) |
+| `step_5b_finalize_subgraph_nle` | `step_5b_finalize_subgraph_nle` | NLE finalize callback (no canvas chord since 2026-09-26) |
 | `step_5c_graph_spectral_analysis` | `step_5c_graph_spectral_analysis` | Laplacian spectral features + graph signals, non-fatal |
-| `step_5d_temporal_drift` | `step_5d_temporal_drift` | Spectral drift + ARIMA forecast + CUSUM, non-fatal, ≥2 snapshots |
+| `step_5_8_generate_sample_questions` | `step_5_8_generate_sample_questions` | Subdivision sample questions, non-fatal |
 | `step_6_mark_search_ready` | `step_6_mark_search_ready` | Upsert `CountrySearchProcessing.is_processed = True` |
+
+**Not registered:** `step_5d_temporal_drift`. It was removed from the Celery
+registry on 2026-09-26 along with its canvas entry; the module file remains but
+has no task name to dispatch.
 
 ---
 
@@ -295,14 +311,55 @@ old eager path would double-execute USLP and NLE training.
 | Worker pool | `--pool=prefork --concurrency=4` | 4 CPU workers for parallel upserts/IGEA/USLP |
 | GPU tasks | `fcntl.flock` per-GPU slot locks | Prevents CUDA OOM on single-GPU machines |
 
-### Known defect: `CHORD_UNLOCK_INTERVAL` is ineffective
+### Routing and host topology
 
-`chord.run` passes `interval=None` **explicitly**, so
-`kwargs.setdefault("interval", CHORD_UNLOCK_INTERVAL)` in
-`PatchedDatabaseBackend.apply_chord` never fires (the key exists with value
-`None`). `chord_unlock` then falls back to `default_retry_delay` = 1 second.
-Impact: ~600 poll messages per 10-minute chord instead of ~60. Cosmetic
-Redis churn, not a correctness issue.
+- **The broker lives on the data-tier host.** Every worker connects to that same
+  Redis, whichever machine it runs on. Results go to Postgres, so the result
+  backend follows whichever database the worker is pointed at.
+- **There is no `task_routes` and no `task_queues` configuration.** Celery uses a
+  single default queue, so every task is eligible for every worker. Sending a
+  specific step to a specific machine requires adding `task_routes` first -
+  nothing in the current config can target a host.
+- **`GpuSlotLock` is host-local.** It is a counting semaphore over `fcntl` lock
+  files under `tempfile.gettempdir()/gpu_slots`. It serialises GPU work within
+  one machine and is invisible across machines, so two hosts each holding their
+  own lock do not contend - correct for a split where each host owns different
+  GPUs.
+- **The chain is linear.** `chain(*canvas_parts)` means steps never overlap
+  within one country; the only intra-run parallelism is the chord fan-out inside
+  Steps 1 and 4. Concurrency across countries needs separate `run_pipeline`
+  invocations with distinct `pipeline_run_id`s.
+
+### Polling interval and retry budget are bounded (was: unbounded)
+
+`chord.run` passes `interval=None` **explicitly**, so a plain
+`kwargs.setdefault("interval", ...)` would never fire. `apply_chord` therefore
+uses an explicit `None` check and now sets **both** `interval` and `max_retries`
+from Django settings:
+
+```python
+CHORD_UNLOCK_INTERVAL    = 60    # env: CHORD_UNLOCK_INTERVAL
+CHORD_UNLOCK_MAX_RETRIES = 480   # env: CHORD_UNLOCK_MAX_RETRIES  -> 8 hours
+```
+
+A `worker_init` signal in `pipeline/celery_app.py` also patches
+`celery.chord_unlock.max_retries` at startup, covering chord_unlock tasks
+published by paths that bypass `apply_chord`.
+
+**Why this matters:** Celery ships `max_retries=None` on `chord_unlock`
+(upstream celery#9674). A lost header task then polls forever with no error and
+no timeout - it looks like a slow job, and a previous incident cost 12 hours
+before `visibility_timeout` redelivered the task. The budget is now bounded and
+fails loudly with `MaxRetriesExceededError`.
+
+**`patience = interval × max_retries`** is the number that matters, and it is
+**per chord**, not per pipeline run - the canvas has at most two chord sites
+(Step 1 embeds, Step 4 USLP), each with an independent poller. Size it to the
+**longest single chord header**, not total pipeline duration. IE's 17-subgraph
+fan-out ran ~1 hour; a 100-second window (the value proposed upstream) would
+have killed it.
+
+See `ISSUE-chord-unlock-unbounded-retries`.
 
 ---
 

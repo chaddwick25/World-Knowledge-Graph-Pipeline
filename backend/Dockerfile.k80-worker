@@ -1,0 +1,97 @@
+# k80 GPU worker — Steps 4 (USLP) and 5c (spectral) only.
+#
+# Why a separate image instead of the backend one:
+#   * backend/Dockerfile pins torch==2.0.1 + torch-geometric 2.6.1 (cu118).
+#     torch >= 2.0 has NO sm_37 cubins: the K80 is visible and then every op
+#     fails. torch-geometric is not needed by either routed step.
+#   * base CUDA 11.7.1 rather than 11.8 — 11.7 is the last line that pairs
+#     cleanly with driver 470 (the last branch that binds Kepler).
+#
+# Derived from the same requirements.txt so the dependency set cannot drift;
+# only the torch line is swapped.
+#
+# Build (on the k80, from the repo root):
+#   docker build -f backend/Dockerfile.k80-worker -t worldkg/k80-worker:1.0 backend
+#
+# Run:
+#   celery -A pipeline.celery_app worker -Q k80-gpu --concurrency=1 ...
+
+FROM nvidia/cuda:11.7.1-runtime-ubuntu20.04
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    DEBIAN_FRONTEND=noninteractive \
+    TZ=UTC
+
+# The 11.7 image ships /usr/local/cuda-11.7/compat/libcuda.so.515, which
+# SHADOWS the host's 470 driver library. Symptom is cuInit rc=100
+# ("no CUDA-capable device") and NVML "Unknown Error" despite --gpus all.
+# This block is load-bearing — do not remove it.
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+RUN rm -f /usr/local/cuda-11.7/compat/libcuda.so* || true
+
+# GDAL is required: Django's GIS app loads libgdal at import time even for
+# steps that never touch geometry.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    curl \
+    ca-certificates \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    python3.8 \
+    python3.8-dev \
+    python3.8-venv \
+    build-essential \
+    git \
+    gdal-bin \
+    libgdal-dev \
+    python3-gdal \
+    libgeos-dev \
+    libproj-dev \
+    postgresql-client \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py | python3.8 && \
+    ln -sf /usr/bin/python3.8 /usr/bin/python && \
+    ln -sf /usr/bin/python3.8 /usr/bin/python3
+
+WORKDIR /app
+
+COPY requirements.txt ./
+
+# Install everything EXCEPT torch / torch-geometric from the shared file, then
+# pin the only torch line that runs on sm_37. Keeps one source of truth for the
+# dependency set without downloading a 2 GB cu118 wheel we cannot use.
+RUN python -m venv /app/.venv && \
+    /app/.venv/bin/pip install --no-cache-dir --upgrade "pip<24.1" setuptools wheel && \
+    grep -vE '^(torch|torch-geometric)' requirements.txt > /tmp/req-k80.txt && \
+    /app/.venv/bin/pip install --no-cache-dir -r /tmp/req-k80.txt && \
+    /app/.venv/bin/pip install --no-cache-dir \
+        torch==1.13.1+cu117 \
+        --extra-index-url https://download.pytorch.org/whl/cu117
+
+COPY . .
+
+ENV PATH="/app/.venv/bin:${PATH}" \
+    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128 \
+    DJANGO_SETTINGS_MODULE=backend.settings
+
+# Sanity gate at build time: the image must see sm_37 and a working lobpcg.
+# Fails the build rather than shipping an image that only fails at runtime.
+RUN python -c "import torch; \
+assert torch.__version__.startswith('1.13'), torch.__version__; \
+print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+
+# concurrency=1 is a decision, not a starting guess: two dies give ~1.45x, not
+# 2x, and die 0 is the thermal constraint (8C hotter, fan-insensitive at 149W).
+# --max-tasks-per-child recycles the CUDA context between tasks.
+CMD ["celery", "-A", "pipeline.celery_app", "worker", \
+     "-Q", "k80-gpu", \
+     "--concurrency=1", \
+     "--pool=prefork", \
+     "--max-tasks-per-child=1", \
+     "--loglevel=info"]

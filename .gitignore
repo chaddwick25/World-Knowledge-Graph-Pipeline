@@ -54,5 +54,5 @@ backend/pipeline/logs/
 
 backend/data/geodata
 backend/backend/data
-
+worldkg-k80-bundle.tar.gz
 *__pycache__ 
