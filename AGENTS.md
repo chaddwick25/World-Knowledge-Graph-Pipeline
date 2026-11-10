@@ -664,3 +664,64 @@ generic copy). KE_SYSTEM_PROMPT: named places resolve + pin live, a
 `Seed:` message is the confirmation, never re-ask a pinned/confirmed
 name. The sample-questions bank was passed over for examples: curated
 rows carry no `anchor` values and their names are settlements.
+
+## IGEA: four defects, not one
+
+Fixed 2026-11-10. JM went from 0 accepted (the state for every country since
+2026-08) to 1,330. All four sat in the same path and masked each other:
+
+1. **Probability threshold on a cosine score.** The paper's `tha = 0.6` is a
+   cross-attention probability. The cosine path now uses
+   `max(COSINE_FLOOR, mean + COSINE_SIGMA*std)` with a spread guard that accepts
+   nothing when the distribution is degenerate.
+2. **`addr:country` required on the entity loader.** A rare address tag, not a
+   country assignment. The partition key already scopes. 96 -> 31,048 entities.
+3. **Same filter on the seed loader.** 4 -> 417 seeds.
+4. **Untrained model left in place** when the "no positive examples" guard fired.
+   `_score_pair` prefers the model whenever it is non-None, so the run scored
+   with an untrained network and collapsed to `sigmoid(0)`. The guard now nulls
+   the model.
+
+**Seeds come from source.** `OsmEntity.wikidata_uri` is written in Step 1 from
+the OSM `wikidata=*` tag, in the same COPY as the embedding. It was previously
+populated only by IGEA's own output, which made the seed set self-referential and
+permanently below `MIN_SEEDS_FOR_MODEL`.
+
+## Upsert throughput: the `ON CONFLICT` rewrite, not the indexes
+
+Measured 2026-11-10. A 20k-row batch took 23.5 s. Breaking it down:
+
+```
+CSV build       0.1 s
+COPY (network)  1.4 s
+INSERT plain    0.4 s
+ON CONFLICT    24.0 s   <- everything
+```
+
+The leaf partition carries **19 indexes** with `fillfactor` 100, and HOT applies
+only 0.6 percent of the time, so every `DO UPDATE` rewrote the row across all 19.
+GIN indexes were measured at 132 ms, 0.6 percent of the batch, and were not the
+cause.
+
+Fix: a `WHERE ... IS DISTINCT FROM` predicate on the `DO UPDATE`, so rows whose
+payload is unchanged are skipped entirely. Re-ingesting an unchanged snapshot now
+takes 3.8 s per batch (`INSERT 0 0`) instead of 23.5 s. A **first** ingest of a
+new snapshot still pays the full cost, since every row genuinely differs.
+
+The documented "I/O-bound ceiling" of 1,733 rows/s predates this understanding
+and was measured against a local database. Current steady state is about 5,200
+rows/s on a re-run.
+
+## USLP: geospatial plus name, never Wiki IDs
+
+USLP links a head carrying `addr:city=X` to the entity *whose name is X*, scored
+on three axes (spatial, semantic, structural) and thresholded at 0.7. Relation
+type selects a geohash precision (1 country, 3 state, 4 locality) and the spatial
+score is normalised per cluster, not against a fixed radius.
+
+Our implementation diverges from `gkmn21/SSLPandUSLP` in four ways: 22 relations
+instead of 14 (`addrCity` is absent from the reference map yet produced 74 percent
+of historical output), an extra fixed radius, weighted score combination instead
+of `np.sum()`, and therefore a different meaning for the 0.7 threshold.
+
+See `docs/igea/uslp_scoring_flow.md` for the visual walkthrough.
