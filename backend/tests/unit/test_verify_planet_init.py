@@ -85,6 +85,13 @@ def test_step_states_inconsistency_is_caught():
     assert "continent_profiles" in check.detail
 
 
+def test_continent_headers_fails_when_no_continents_registered():
+    """Zero rows is not 'all carry history' - that was a vacuous pass."""
+    check = _command()._check_continent_headers()
+    assert not check.ok
+    assert "no continent PBF rows" in check.detail
+
+
 # ── exit code ─────────────────────────────────────────────────────────────
 
 def test_command_exits_nonzero_when_a_check_fails():

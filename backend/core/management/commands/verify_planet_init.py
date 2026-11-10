@@ -188,6 +188,18 @@ class Command(BaseCommand):
     def _check_continent_headers(self):
         """Every continent must carry history, and the naming should say so."""
         facade = OsmiumFacade()
+        rows = list(PbfFile.objects.filter(
+            pbf_file_type=PbfFile.PbfType.CONTINENT
+        ))
+        # Zero rows is not "all fine": the previous version iterated an empty
+        # list and reported success, which is exactly the kind of vacuous pass
+        # this command exists to prevent.
+        if not rows:
+            return Check(
+                "continent_headers", False,
+                "no continent PBF rows registered (extraction has not finished)",
+            )
+
         missing, no_history, legacy = [], [], []
         for pbf in PbfFile.objects.filter(
             pbf_file_type=PbfFile.PbfType.CONTINENT
