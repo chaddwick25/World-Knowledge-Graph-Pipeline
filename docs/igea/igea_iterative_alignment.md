@@ -1,301 +1,342 @@
-# IGEA: Iterative Geographic Entity Alignment (Step 3)
+# IGEA: iterative geographic entity alignment
 
-> **Focus:** how IGEA iteratively aligns OSM entities with Wikidata knowledge
-> graph entries using semantic + geo-spatial features, a per-country
-> cross-attention BiLSTM, and Neural Class Alignment (NCA) for tag→class
-> mapping.
->
-> **Key idea:** IGEA is an **iterative bootstrapping** loop. Start with a
-> seed set of high-confidence alignments (OSM entities that already have a
-> `wikidata=` tag), train a cross-attention model on those seeds, use the
-> model to find new alignments, add the new alignments to the seed set, and
-> repeat. Each iteration expands the seed set and improves the model. NCA
-> runs inside the loop to learn tag→class mappings from the growing seed set.
+How two identity systems that share no key get reconciled, and what that
+reconciliation costs.
+
+**Reference:** Dsouza, Yu, Windoffer, Demidova, *Iterative Geographic Entity
+Alignment with Cross-Attention* (2023).
+**Implementation:** `backend/igea/services/iterative_alignment_service.py`,
+driven by `backend/pipeline/tasks/country_pipeline_steps/step_3_run_igea.py`.
+**Flow companion:** `docs/igea/PAPER_FIGURE_MAP.md` maps each stage to the
+paper figure it implements.
 
 ---
 
-## 1. Where IGEA Sits in the Pipeline
+## 1. The two primitives
 
-**Step 1: Embed OSM entities** (FastText + optional NLE) → `OsmEntity` rows
-with `gv_tags_embedding`, `tags`, `geom`, `wkg_class`.
+The whole pipeline stands on two data sources that describe the world in
+completely different ways.
 
-**Step 2: Harvest Wikidata candidates** (SPARQL) →
-`PrecomputedLinkCandidate` rows with `wikidata_uri`, `label`, `wkg_class`.
-
-**Step 3: IGEA - iterative geographic entity alignment** (this doc):
-- Input: `OsmEntity` (vectors DB) + `PrecomputedLinkCandidate` (vectors DB)
-- Output: `OsmEntity.wikidata_uri` populated for aligned entities
-- Output: `EntityAlignment` rows (audit trail with confidence + iteration)
-
-**Step 4: USLP - unsupervised spatial link prediction** → uses aligned
-entities to predict spatial relationships.
-
-**Source:** <ref_file file="backend/igea/services/igea_pipeline_service.py" />
-
----
-
-## 2. The Iterative Bootstrapping Loop
-
-1. **Harvest candidates.** `WikidataCandidateService.harvest_by_country(
-   iso, limit=50K)` → `PrecomputedLinkCandidate` rows (`wikidata_uri`,
-   `label`, `class`).
-2. **Backfill embeddings.** For candidates missing `gv_tags_embedding`:
-   `FastText.encode(label + class)` → 300D vector.
-3. **Seed alignment.** `OsmEntity.objects.exclude(tags__wikidata__isnull=
-   True)` → `seed_map: {osm_id → wikidata_uri}` (entities that already have
-   a `wikidata=` tag in OSM).
-4. **Iterative loop (max 3 iterations):**
-   a. **Candidate pairs.** Pair OSM entities with Wikidata candidates.
-      Filter by: `max_distance` (2500m), polygon WKT.
-   b. **Train cross-attention (BiLSTM).** Train on (matched, unmatched)
-      pairs from the seed set. 10 epochs, batch 32, Adam, BCE loss. Falls
-      back to cosine if training fails.
-   c. **Score pairs.** `score = cross_attention_model.predict(osm,
-      wikidata)`. Fallback: `cosine(gv_tags_embedding, candidate_emb)`.
-   d. **Accept.** `if score >= threshold (0.6)` →
-      `accepted.append((osm_id, wikidata_uri))`.
-   e. **Write to DB.** `OsmEntity.wikidata_uri = wikidata_uri`;
-      `EntityAlignment(alignment_method, confidence, iter)`.
-   f. **Expand seed set.** `seed_map.update(accepted)`.
-   g. **NCA (neural class alignment).** Learn tag→class mappings from the
-      expanded seed set; apply mappings to unaligned entities; updates
-      `wkg_class` on `OsmEntity` rows.
-5. **Return stats.** `{total_accepted, iterations_run, per_iteration: [...]}`.
-
-**Source:** <ref_file file="backend/igea/services/iterative_alignment_service.py" />
-
----
-
-## 3. The Three Feature Spaces
-
-IGEA uses three feature spaces to score OSM↔Wikidata pairs.
-
-### 3.1 Semantic (`gv_tags_embedding`, 300D)
-
-- **OSM side**: `OsmEntity.gv_tags_embedding`, FastText weighted average of
-  tag key/value embeddings (from Step 1).
-- **Wikidata side**: FastText encoding of the Wikidata label + class
-  (backfilled in step 2 of the IGEA flow).
-- **Comparison**: cosine similarity or cross-attention probability.
-
-### 3.2 Geo-Spatial (Haversine Distance)
-
-- **Max distance**: 2500 meters (hardcoded default).
-- **Filter**: pairs beyond `max_distance_m` are not candidate pairs.
-- **Polygon filter**: only entities within the country's polygon WKT are
-  considered (prevents cross-border false positives).
-
-### 3.3 Class (`wkg_class`)
-
-- **OSM side**: `OsmEntity.wkg_class`, from Step 1 SQL enrichment or NCA.
-- **Wikidata side**: `PrecomputedLinkCandidate.wkg_class`, from Step 2
-  SPARQL harvest.
-- **Purpose**: type compatibility check. A "restaurant" OSM entity should
-  align with a "restaurant" Wikidata entry, not a "country".
-
----
-
-## 4. Cross-Attention BiLSTM
-
-**Source:** `backend/igea/services/iterative_alignment_service.py` (`_train_cross_attention`)
-
-The cross-attention model is a **BiLSTM** (Bidirectional Long Short-Term
-Memory) network trained per-country on matched/unmatched pairs.
-
-### 4.1 Architecture
-
-1. Input: `(osm_embedding(300D), wikidata_embedding(300D))`
-2. **BiLSTM layer** (bidirectional, hidden_size=128), captures sequential
-   dependencies in the embedding dimensions.
-3. **Cross-attention layer**, learns which dimensions of the OSM embedding
-   attend to which dimensions of the Wikidata embedding.
-4. **Dense layer** (sigmoid activation) → probability [0, 1].
-5. Output: alignment probability.
-
-### 4.2 Training
-
-- **Optimizer**: Adam
-- **Loss**: Binary Cross-Entropy (BCE)
-- **Epochs**: 10
-- **Batch size**: 32
-- **Training data**: matched pairs (from seed set) + unmatched pairs
-  (random OSM↔Wikidata combinations)
-- **Per-country**: the model is trained fresh for each country run. It
-  learns country-specific alignment patterns.
-
-### 4.3 Fallback
-
-If cross-attention training fails (e.g. not enough seed pairs), the scorer
-falls back to **cosine similarity** between `gv_tags_embedding` and the
-candidate embedding. Less accurate but always available.
-
----
-
-## 5. NCA: Neural Class Alignment
-
-**Source:** `backend/igea/services/iterative_alignment_service.py` (`_run_nca`)
-
-NCA runs **inside** the iterative loop (step 4g). It learns tag→class
-mappings from the growing seed set and applies them to unaligned entities.
-
-### 5.1 Lifecycle
-
-1. `build_vocabularies(linked_entities)` → extract tag keys/values and
-   Wikidata classes from linked entities
-2. `prepare_training_data(linked_entities)` → create multi-hot vectors
-   (tags) and labels (classes)
-3. `train()` → fit the neural model
-4. `extract_mappings(threshold)` → probe the model to get (tag, class,
-   confidence) triples
-5. `apply_mappings(osm_entities)` → assign `wkg_class` to entities using
-   learned mappings
-
-### 5.2 The wikidata_uri Attachment Fix
-
-**Source:** `iterative_alignment_service.py` lines 257-265
-
-NCA needs `wikidata_uri` on linked entities to build class vocabularies.
-Without it, NCA fails with "Vocabularies not built". The fix attaches the
-URI from the seed map before passing to NCA:
-
-```python
-linked: List[Dict] = []
-for e in osm_entities:
-    osm_id = e.get('osm_id')
-    if osm_id in seed_map:
-        ent = dict(e)
-        ent['wikidata_uri'] = seed_map[osm_id]  # ← the fix
-        linked.append(ent)
+```
+  OSM                                    Wikidata
+  the geographic primitive               the semantic primitive
+  -----------------------------------    -----------------------------------
+  identity   osm_type : osm_id           identity   Q-number
+  carries    geometry, tags, names       carries    labels, classes, claims
+  answers    WHERE, and WHAT SHAPE       answers    WHAT IT IS
+  edited by  mappers, incrementally      edited by  a curated community
+  scale      1,113,366 entities (JM)     1,761 items in the JM bbox
 ```
 
-### 5.3 Minimum Entities
+**They share no key.** OSM does not know what a Q-number is; Wikidata does not
+know what an osm_id is. The only thing connecting them is a `wikidata=Q123` tag
+that a mapper typed onto an OSM object.
 
-NCA requires at least 10 linked entities to train. Below that, the
-vocabularies are too sparse and NCA is skipped.
-
----
-
-## 6. The EntityAlignment Audit Model
-
-**Source:** <ref_file file="backend/igea/models.py" />
-
-```python
-class EntityAlignment(models.Model):
-    id = UUIDField(primary_key=True)
-    osm_type = CharField(max_length=10, indexed)
-    osm_id = BigIntegerField(indexed)
-    wikidata_uri = CharField(max_length=200, indexed)
-    wikidata_label = CharField(max_length=500, null=True)
-    alignment_method = CharField(choices=[
-        ('SEED', 'Seed'),           # from OSM wikidata= tag
-        ('COSINE', 'Cosine'),       # fallback cosine similarity
-        ('CROSS_ATTN', 'CrossAttn') # cross-attention BiLSTM
-    ])
-    confidence = FloatField()       # 0.0-1.0
-    iteration = IntegerField()      # which IGEA iteration found this
-    distance_meters = FloatField()  # Haversine distance
-    created_at, updated_at = DateTimeFields()
-    unique_together = [['osm_type', 'osm_id', 'wikidata_uri']]
+```
+        +-----------------------------+
+        |  OSM entity                 |
+        |  osm_type:osm_id            |
+        |  geom, tags, name           |
+        +-----------------------------+
+                    |
+                    |  wikidata = Q123        <- the entire bridge
+                    |
+        +-----------------------------+
+        |  Wikidata item              |
+        |  Q123                       |
+        |  label, class, claims       |
+        +-----------------------------+
 ```
 
-Every alignment is recorded with:
-- **Method**: how the alignment was found (seed / cosine / cross-attention)
-- **Confidence**: the score from the model
-- **Iteration**: which bootstrapping iteration found it
-- **Distance**: geographic distance between the OSM entity and Wikidata
-  entry
+## 2. The bridge, and how little of it exists
 
-This provides a full audit trail. Any alignment can be traced back to its
-method, confidence, and iteration.
+Measured on JM at snapshot `2025_12_31`:
+
+```
+  OSM entities                                   1,113,366
+  carrying a wikidata=* tag                            738    (0.07%)
+  Wikidata items harvested for the same bbox         1,761
+
+  the bridge covers roughly one OSM entity in 1,500
+```
+
+That number is the central constraint of the pipeline. Every stage either
+**uses** the bridge, **extends** it, or **ignores** it, and the sparsity is why
+extending it matters.
+
+```
+  STAGE            ROLE WITH RESPECT TO THE BRIDGE
+  ---------------  ---------------------------------------------
+  Step 1 ingest    populate the bridge from source tags
+  Step 2/3 harvest load the far shore (Wikidata items in the bbox)
+  Step 3 IGEA      EXTEND the bridge for unlinked entities
+  Step 4 USLP      does not touch the bridge at all
+  Step 5c spectral works on the OSM side only
+```
+
+## 3. Two reconciliations, not one
+
+The most useful distinction in this subsystem: there are two different kinds of
+reference in OSM data, and they need two different resolutions.
+
+```
+  LITERAL reference (unresolved)        RESOLVED reference
+  ------------------------------        ------------------------------
+  addr:city = "Kingston"                wikidata = Q123
+  points at a NAME                      points at an IDENTITY
+  ambiguous, many Kingstons             unambiguous
+  resolved within OSM                   resolved across systems
+  by USLP                               by IGEA
+```
+
+Which gives two reconciliation problems that only look similar:
+
+```
+  +---------------------------------------------------------------+
+  |  RECONCILIATION 1:  OSM entity  <->  Wikidata item            |
+  |                                                               |
+  |  bridge      wikidata=* tags, sparse                          |
+  |  extended by IGEA                                             |
+  |  needs       seeds, candidates, a score scale                 |
+  |  failure     produces nothing if any input is empty           |
+  +---------------------------------------------------------------+
+
+  +---------------------------------------------------------------+
+  |  RECONCILIATION 2:  OSM entity  <->  OSM entity via a literal |
+  |                                                               |
+  |  bridge      addr:* and is_in tags, dense                     |
+  |  resolved by USLP                                             |
+  |  needs       OSM geometry and names only, NO Wikidata         |
+  |  failure     produces nothing if the candidate pool is empty  |
+  +---------------------------------------------------------------+
+```
+
+**This is why USLP produced 488 links with zero IGEA seeds while IGEA produced
+zero.** They solve different problems with different inputs. Treating them as one
+system, or diagnosing one with the other's symptoms, is the mistake that makes
+both look broken at once.
+
+## 4. Seeds versus candidates
+
+IGEA consumes two inputs that are easy to confuse and impossible to substitute.
+
+```
+                SEEDS                            CANDIDATES
+       supervision: what is already known   search space: what might match
+       the known bridge                     the far shore
+
+    +--------------------------+          +--------------------------+
+    | OSM snapshot PBF         |          | Wikidata SPARQL endpoint |
+    | wikidata=Q123 tags       |          | bbox query, one per tile |
+    +--------------------------+          +--------------------------+
+                |                                      |
+                | Step 1 ingest                        | Step 2/3 harvest
+                | vector_storage_service               | wikidata_service
+                v                                      v
+    +--------------------------+          +--------------------------+
+    | OsmEntity.wikidata_uri   |          | PrecomputedLinkCandidate |
+    | one row per linked OSM   |          | one row per Wikidata     |
+    | entity                   |          | item in the bbox         |
+    +--------------------------+          +--------------------------+
+                |                                      |
+                | _get_seed_alignment                  | _candidate_pairs
+                |                                      |
+                v                                      v
+    +--------------------------+          +--------------------------+
+    | seed_map {osm_id -> QID} |          | candidate pairs          |
+    | reported: final_seed_size|          | reported: blocking: N    |
+    +--------------------------+          +--------------------------+
+                |                                      |
+                +------------------+-------------------+
+                                   |
+                                   v
+                       +-----------------------+
+                       | IGEA scoring          |
+                       | score_pair(head,cand) |
+                       | gate(score) -> accept |
+                       +-----------------------+
+```
+
+Their failures have different signatures, which is the practical reason to keep
+them apart:
+
+```
+  SEED failure looks like                CANDIDATE failure looks like
+  -----------------------                ----------------------------
+  final_seed_size absurdly low           blocking: N pairs small or zero
+  "only 4 seed pairs (< 100)"            "SPARQL request timed out at
+  scoring runs without supervision         offset=14000"
+  the model never trains                 the pool is partial
+```
+
+## 5. The flow, as contracts
+
+Each junction states what the implementation assumes. Reading it this way, a
+defect is a junction where an assumption silently defaulted rather than raised.
+
+```
+  INPUT                STAGE                OUTPUT
+  -----                -----                ------
+
+  OSM PBF tags   -->   Step 1 ingest   -->  OsmEntity rows
+  + geometry           vector_storage        tags, geom, wkg_class,
+                                              embedding, wikidata_uri
+                       CONTRACT: every source tag is preserved on the row
+
+  Wikidata bbox  -->   Step 2/3 harvest -->  PrecomputedLinkCandidate
+                       wikidata_service      wikidata_uri, label, class
+                       CONTRACT: every item in the bbox is returned and
+                                 pagination completes
+
+  OsmEntity      -->   Step 3 IGEA      -->  accepted links
+                       iterative_            wikidata_uri written,
+                       alignment_service     rejected rows recorded
+                       CONTRACT: seeds are the already-linked entities;
+                                 the working set is the whole country
+                                 partition, not a tag-defined subset;
+                                 the gate matches the scorer's scale
+```
+
+### Why each contract exists
+
+**Tags preserved on the row.** The OSM primitive carries the bridge. If ingest
+drops `wikidata=*`, the bridge is empty and IGEA has no supervision at all. The
+column existed and was read; nothing wrote it.
+
+**Bbox completeness.** The candidates are the far shore. A truncated harvest
+shrinks the search space silently, so IGEA scores against a partial pool and
+reports success.
+
+**Working set is the partition.** Country membership is already encoded by the
+`country_code` partition key. A tag cannot add that information, only subtract
+entities from it. Filtering on `addr:country` selected 1.4% of the available OSM
+primitive and starved the reconciliation.
+
+**Gate matches the scorer.** The paper's `tha = 0.6` is a cross-attention
+probability. Cosine similarity is a different scale entirely, and the cosine
+distribution also differs per country, so no single absolute value serves all of
+them.
+
+## 6. Where the contracts live
+
+```
+  SUBSYSTEM         FILE                                     CONTRACT
+  ---------         ----                                     --------
+
+  ingest            geovectors_encoder/services/             tag preservation
+                    vector_storage_service.py
+
+  harvest           worldkg_nca/services/                    bbox completeness
+                    wikidata_service.py
+
+  alignment         igea/services/                          seed and working-set
+                    iterative_alignment_service.py           selection, gating
+
+  link prediction   igea/services/                          pool availability
+                    spatial_link_prediction.py
+
+  canvas            pipeline/canvas.py                      stage ordering
+```
+
+The last one is worth noting because it is where the two ordering defects lived:
+the canvas is built from state that a later stage generates, so a first run on
+fresh input sees an empty world. See section 9.
+
+## 7. The scoring path
+
+Two scorers, two scales, and a gate that must follow whichever is active.
+
+```
+                      _score_pair(head, candidate)
+                                  |
+                   cross_attention_model is not None?
+                     +------------+------------+
+                    yes                        no
+                     |                          |
+                     v                          v
+             sigmoid(logits)              cosine(a, b)
+             PROBABILITY                  SIMILARITY
+             range [0, 1]                 range [-1, 1]
+             calibrated by training       raw geometry, uncalibrated
+                     |                          |
+             gate: absolute 0.6          gate: relative to the
+             (IGEA paper Fig. 5)         country's own distribution
+```
+
+The relative gate:
+
+```
+  if spread < COSINE_MIN_SPREAD:      accept nothing
+                                      the metric carries no signal
+  else:                               gate = max(COSINE_FLOOR,
+                                                  mean + COSINE_K_SIGMA * std)
+```
+
+Measured distributions that motivated it:
+
+```
+  country   min      max     mean    spread    what the gate did
+  -------   -----    -----   -----   ------    -----------------
+  IE       -0.084   0.554   0.233   0.638     accepted the upper tail
+  BZ        0.000   0.429   0.187   0.429     accepted its own tail
+  NI        0.500   0.502   0.501   0.002     accepted nothing, correctly
+```
+
+A fixed 0.45 accepted IE's tail and rejected all of BZ. A fixed 0.6 rejected
+everything, because it is a probability threshold applied to a similarity score.
+
+## 8. Measured behaviour
+
+JM at `2025_12_31`, after the flow above was made to hold end to end:
+
+```
+  processing 31,048 entities      (was 96)
+  seed alignment = 417            (was 4)
+
+  iter 1   spread -0.200..0.483   gate 0.257   ->  901 accepted
+  iter 2   spread -0.200..0.396   gate 0.250   ->  315 accepted
+  iter 3   spread -0.200..0.422   gate 0.250   ->  114 accepted
+                                          total  1,330
+```
+
+Seeds come from source, written in the same COPY as the embedding:
+
+```
+  seeds 2,054   distinct QIDs 988   802 one-to-one (81%)
+  node 1,751    way 246             relation 57
+```
+
+## 9. Open items
+
+**Precision is unvalidated.** 2.13 OSM entities per Wikidata target, with a tail
+reaching 83. The one-to-one majority is clean; the tail is not. This is what the
+paper's Fig. 5 threshold tuning measures, and it can now be run because real
+seeds exist.
+
+**Cross-attention never trains.** Seeds are excluded from candidates because they
+are already linked, so training has no positive examples by construction. The
+`MIN_SEEDS_FOR_MODEL` guard is therefore unreachable in practice: the "no positive
+examples" guard always fires first and falls back to cosine.
+
+**Ordering defects are a separate class.** Both the subgraph chord and the USLP
+pool consume state a later stage produces, so a first run on fresh input sees an
+empty world. Documented in `AGENTS.md` under pipeline state-ordering defects.
 
 ---
 
-## 7. Configuration
+## Appendix: parameter reference
 
-### 7.1 Hardcoded Defaults (NOT in hyperparams.yaml)
-
-IGEA does **not** use `hyperparams.yaml`. Its defaults are hardcoded in
-`igea_pipeline_service.py`:
-
-| Parameter | Default | Purpose |
+| Parameter | Default | Meaning |
 |---|---|---|
-| `max_iterations` | 3 | Maximum bootstrapping iterations |
-| `threshold` | 0.6 | Acceptance threshold for the **cross-attention probability** path |
-| `COSINE_ALIGNMENT_THRESHOLD` | 0.45 | Acceptance threshold for the **cosine fallback** path - a different scale, see below |
-| `max_distance_m` | 2500.0 | Max Haversine distance for candidate pairs |
-| `enable_nca` | True | Run NCA inside the loop |
-| `enable_cross_attention_training` | True | Train BiLSTM per country |
+| `max_iterations` | 3 | Bootstrapping rounds |
+| `threshold` | 0.6 | Gate for the cross-attention **probability** path |
+| `COSINE_FLOOR` | 0.25 | Absolute minimum for the cosine path |
+| `COSINE_K_SIGMA` | 1.5 | Cosine gate is `mean + k * std` |
+| `COSINE_MIN_SPREAD` | 0.05 | Below this the metric cannot discriminate |
+| `MIN_SEEDS_FOR_MODEL` | 100 | Below this, skip training and use cosine |
+| `MAX_DISTANCE_M` | 2500.0 | Max Haversine distance for candidate pairs |
+| `enable_nca` | True | Run NCA class alignment inside the loop |
+| `enable_cross_attention_training` | True | Train the BiLSTM per country |
 
-### 7.2 Envelope Fields
-
-| Field | Source | Purpose |
-|---|---|---|
-| `env.iso` | `CountryEnvelope.from_db()` | Country code for candidate harvest |
-| `env.poly_path` | `CountryEnvelope.from_db()` | Polygon file for spatial filter |
-| `env.snapshot_pbf_path` | `CountryEnvelope.from_db()` | Fallback for poly_path |
-| `env.snapshot_date` | `CountryEnvelope.from_db()` | snapshot_id for entity queries |
-
----
-
-## 8. Data Flow
-
-**Inputs:**
-- `OsmEntity` (vectors DB): `gv_tags_embedding` (300D, from Step 1), `tags`
-  (JSONB, including `wikidata=` tag for seeds), `geom` (PostGIS point),
-  `wkg_class` (from Step 1 SQL enrichment), `snapshot_id`, `country_code`
-  (partition pruning)
-- `PrecomputedLinkCandidate` (vectors DB, from Step 2): `wikidata_uri`,
-  `wikidata_label`, `wkg_class` (from Step 2 SPARQL + Redis map),
-  `gv_tags_embedding` (backfilled by IGEA if missing)
-
-**Outputs:**
-- `OsmEntity` (updated): `wikidata_uri` = aligned Wikidata URI,
-  `wkg_enriched_at` = timestamp
-- `EntityAlignment` (new rows, audit trail): `osm_type`, `osm_id`,
-  `wikidata_uri`, `wikidata_label`, `alignment_method`
-  (SEED/COSINE/CROSS_ATTN), `confidence` (0.0-1.0), `iteration` (1-3),
-  `distance_meters`
-
----
-
-## 9. USLP Independence
-
-USLP (Step 4) runs **independently**. It is no longer gated on IGEA
-acceptance count. The `total_accepted == 0` checks were removed from
-`step_4_predict_spatial_links` and `_run_subgraph_uslp`. This means:
-
-- IGEA can produce 0 alignments (e.g. no seed entities) and USLP still runs.
-- USLP uses the `wikidata_uri` field on `OsmEntity` if present, but does not
-  require it.
-- The two stages are decoupled. IGEA failure does not block USLP.
-
----
-
-## 10. Invariants
-
-- IGEA is an iterative bootstrapping loop: seed → train → score → accept →
-  expand seed → repeat (max 3 iterations).
-- The cross-attention BiLSTM is trained per-country, not globally.
-- NCA runs inside the loop to learn tag→class mappings from the growing
-  seed set.
-- The `wikidata_uri` attachment fix is required for NCA vocabulary building.
-- Every alignment is recorded in `EntityAlignment` with method, confidence,
-  and iteration.
-- IGEA does NOT use `hyperparams.yaml`. Defaults are hardcoded.
-- USLP is NOT gated on IGEA. The two stages are decoupled.
-- **Two thresholds, one per scoring path.** The IGEA paper's `tha = 0.6`
-  (§"Alignment Threshold Tuning", Fig. 5 - swept 0.50 to 0.90, best F1 at 0.60) is a
-  **cross-attention probability** threshold. Cosine similarity is a different
-  scale: `[-1, 1]`, centred near 0 for unrelated pairs, where 0.6 means
-  "strongly similar". Applying the probability gate to cosine rejects
-  everything - measured on Ireland, whose healthy distribution (spread 0.638,
-  mean 0.233) tops out at **0.554**, below a 0.6 gate. The cosine path therefore
-  uses `COSINE_ALIGNMENT_THRESHOLD = 0.45`, calibrated from that distribution and
-  **not** taken from the paper.
-- **Model training needs supervision.** Below `MIN_SEEDS_FOR_MODEL` (100) seed
-  pairs, cross-attention training is skipped and the cosine baseline is used.
-  A model trained on a handful of pairs learns nothing and emits a near-constant
-  score. Weights loaded from disk are exempt.
-- The log line names the active scorer so the two regimes are distinguishable:
-  `threshold=0.450 (scorer=cosine)`.
-- The acceptance threshold is lower than USLP's 0.7 by design.
+IGEA does not read `hyperparams.yaml`; defaults are hardcoded. USLP is a separate
+subsystem and is not gated on IGEA output.

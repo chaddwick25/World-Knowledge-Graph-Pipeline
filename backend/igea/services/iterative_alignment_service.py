@@ -51,10 +51,17 @@ logger = logging.getLogger(__name__)
 # value to Fig. 5, which the paper does not support.
 ALIGNMENT_THRESHOLD = 0.6
 # The paper's 0.6 is a cross-attention *probability* threshold. Cosine is a
-# different scale: [-1, 1], centred near 0 for unrelated pairs. Applying 0.6 to
-# cosine rejects everything — IE's healthy distribution (spread 0.638, mean
-# 0.233) tops out at 0.554. Calibrated from that distribution.
-COSINE_ALIGNMENT_THRESHOLD = 0.45
+# different scale: [-1, 1], centred near 0 for unrelated pairs. Worse, the
+# cosine distribution differs by country, so no single absolute value works:
+#   IE  min -0.084  max 0.554  mean 0.233  spread 0.638
+#   BZ  min  0.000  max 0.429  mean 0.187  spread 0.429
+#   NI  min  0.500  max 0.502  mean 0.501  spread 0.002  (degenerate)
+# A fixed 0.45 accepts IE's tail and rejects all of BZ. So the cosine gate is
+# relative to the country's own distribution, with a spread guard for the
+# degenerate case where the metric carries no signal at all.
+COSINE_FLOOR = 0.25        # absolute minimum; a weaker cosine is not "similar"
+COSINE_K_SIGMA = 1.5       # accept mean + k*sigma (roughly the top ~7%)
+COSINE_MIN_SPREAD = 0.05   # below this the metric cannot discriminate: accept none
 # A BiLSTM cross-attention model trained on a handful of seed pairs learns
 # nothing and emits sigmoid(0) ~= 0.5 for every candidate, which collapses the
 # score distribution to a constant (observed spread 0.003 on NI, three runs over
@@ -353,7 +360,17 @@ class IterativeEntityAlignmentService:
                 negatives.append((emb_osm, emb_wd))
 
         if not positives:
-            logger.info("Cross-attention: no positive examples, skipping training")
+            # Clear the model, do not just skip training. An untrained model
+            # still emits sigmoid(0) ~= 0.5 for every pair, and _score_pair
+            # prefers the model whenever the object is non-None -- so leaving it
+            # in place routes the run to a degenerate scorer and accepts nothing
+            # (measured on JM 2026-11-10: spread 0.002, 0 accepted, with 417
+            # seeds available). Setting it to None forces the cosine baseline.
+            logger.info(
+                "Cross-attention: no positive examples, skipping training "
+                "and using the cosine baseline instead"
+            )
+            self.cross_attention_model = None
             return
 
         import random
@@ -441,11 +458,14 @@ class IterativeEntityAlignmentService:
             poly = GEOSGeometry(polygon_wkt, srid=4326)
             qs = qs.filter(geom__within=poly)
 
-        # Apply country tag filter if provided (legacy addr:country approach)
+        # NOTE (2026-11-10): this used to also require tags ? 'addr:country'
+        # and addr:country == country_code, the same legacy filter removed from
+        # the entity loader. Measured on JM @ 2025_12_31: 399 entities carry
+        # both geom and a wikidata tag, but only 4 of those also carry
+        # addr:country='JM' -- so the seed set was 4 instead of 399 and the
+        # cross-attention model could never train. The partition key already
+        # scopes to the country.
         country_filter_needed = False
-        if country_code:
-            qs = qs.filter(tags__has_key='addr:country')
-            country_filter_needed = True
 
         for e in qs.iterator(chunk_size=10_000):
             tags = e.tags or {}
@@ -674,12 +694,16 @@ class IterativeEntityAlignmentService:
             poly = GEOSGeometry(polygon_wkt, srid=4326)
             qs = qs.filter(geom__within=poly)
 
-        # If a country code is provided, further restrict to entities that declare
-        # an addr:country tag. We still apply an in-Python check below to match
-        # the seed alignment behaviour.
-        if country_code:
-            qs = qs.filter(tags__has_key='addr:country')
-            country_filter_needed = True
+        # NOTE (2026-11-10): this used to also require tags ? 'addr:country'
+        # with tags->>'addr:country' == country_code. That discarded almost the
+        # entire country: measured on JM @ 2025_12_31, 26,749 entities carry
+        # geom + wkg_class but only 384 carry addr:country='JM', so IGEA
+        # processed 96 entities out of 1.1M and saw 4 seeds out of 738.
+        # addr:country is a rare address tag, not a country assignment. The
+        # table is partitioned by country_code, so the filter above already
+        # scopes the working set correctly; the tag check added nothing but
+        # loss. Kept as a no-op flag so the in-loop branch below stays clear.
+        country_filter_needed = False
 
         osm_entities = []
         for e in qs.iterator(chunk_size=10_000):
@@ -761,33 +785,49 @@ class IterativeEntityAlignmentService:
                     )
                     self.cross_attention_model = None
 
-            # The acceptance gate depends on which scorer is active: the paper's
-            # 0.6 is a cross-attention *probability* threshold, while cosine is a
-            # similarity in [-1, 1] centred near 0. Comparing cosine against 0.6
-            # rejects everything (IE: max 0.554, mean 0.233, spread 0.638 — a
-            # healthy distribution), so the cosine path gets its own value.
+            # Score everything first: a relative cutoff needs the distribution,
+            # which does not exist until every pair has been scored.
+            import numpy as np
+            scores = [self._score_pair(o, w) for o, w in pairs]
+
+            # The gate depends on which scorer is active. The model path uses
+            # the paper's absolute probability threshold. The cosine path
+            # cannot: its distribution differs per country (see the constants
+            # above), so it is relative to this country's own spread, with a
+            # guard for the degenerate case where the metric carries no signal.
             _using_model = self.cross_attention_model is not None
-            active_threshold = self.threshold if _using_model else COSINE_ALIGNMENT_THRESHOLD
             _scorer = "cross-attention" if _using_model else "cosine"
 
-            # Score and filter
-            accepted_this_iter: List[Tuple[int, str]] = []
-            scores = []
-            for osm_ent, wd_cand in pairs:
-                score = self._score_pair(osm_ent, wd_cand)
-                scores.append(score)
-                if score >= active_threshold:
-                    accepted_this_iter.append((osm_ent['osm_id'], wd_cand['wikidata_uri']))
-            
+            if _using_model:
+                active_threshold = self.threshold
+                _gate = f"absolute {active_threshold:.3f}"
+            else:
+                arr = np.asarray(scores, dtype=float)
+                spread = float(arr.max() - arr.min()) if arr.size else 0.0
+                if spread < COSINE_MIN_SPREAD:
+                    active_threshold = float("inf")
+                    _gate = (f"DEGENERATE spread {spread:.3f} < "
+                             f"{COSINE_MIN_SPREAD:.3f} - accepting nothing")
+                else:
+                    mean, std = float(arr.mean()), float(arr.std())
+                    active_threshold = max(COSINE_FLOOR, mean + COSINE_K_SIGMA * std)
+                    _gate = (f"relative mean+{COSINE_K_SIGMA}sd={active_threshold:.3f} "
+                             f"(floor {COSINE_FLOOR:.3f}, spread {spread:.3f})")
+
+            accepted_this_iter: List[Tuple[int, str]] = [
+                (o['osm_id'], w['wikidata_uri'])
+                for (o, w), s in zip(pairs, scores)
+                if s >= active_threshold
+            ]
+
             # Log score distribution for debugging
             if scores:
-                import numpy as np
-                scores_arr = np.array(scores)
+                scores_arr = np.asarray(scores, dtype=float)
                 logger.info(
                     f"IGEA iteration {iteration}: score distribution - "
                     f"min={scores_arr.min():.3f}, max={scores_arr.max():.3f}, "
                     f"mean={scores_arr.mean():.3f}, median={np.median(scores_arr):.3f}, "
-                    f"threshold={active_threshold:.3f} (scorer={_scorer})"
+                    f"gate={active_threshold:.3f} (scorer={_scorer}, {_gate})"
                 )
 
             # Deduplicate (highest score wins per OSM entity)

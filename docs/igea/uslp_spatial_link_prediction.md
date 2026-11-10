@@ -18,9 +18,9 @@
 
 ## 1. Where USLP Sits in the Pipeline
 
-**Step 3: IGEA — iterative geographic entity alignment** → `OsmEntity.wikidata_uri` populated for aligned entities.
+**Step 3: IGEA - iterative geographic entity alignment** → `OsmEntity.wikidata_uri` populated for aligned entities.
 
-**Step 4: USLP — unsupervised spatial link prediction** (this doc):
+**Step 4: USLP - unsupervised spatial link prediction** (this doc):
 - Input: `OsmEntity` (vectors DB) with `geom`, `tags`, `wkg_class`
 - Output: `SpatialTripletScore` (accepted links, `predicted=True`)
 - Output: `SpatialTripletScoreRejected` (rejected links, below threshold)
@@ -115,7 +115,7 @@ radius. Shorter geohash = larger search area:
 
 ```python
 RELATION_GEOHASH_PRECISION = {
-    # Precision 1 — country/continent level (~5,000 km)
+    # Precision 1 - country/continent level (~5,000 km)
     'isIn':           1,
     'addrPlace':      1,
     'isInContinent':  1,
@@ -124,7 +124,7 @@ RELATION_GEOHASH_PRECISION = {
     'addrCountry':    1,
     'capitalCity':    1,
 
-    # Precision 3 — state/county/district level (~156 km)
+    # Precision 3 - state/county/district level (~156 km)
     'addrState':      3,
     'addrDistrict':   3,
     'addrProvince':   3,
@@ -132,7 +132,7 @@ RELATION_GEOHASH_PRECISION = {
     'isInState':      3,
     'isInDistrict':   3,
 
-    # Precision 4 — local level (~39 km)
+    # Precision 4 - local level (~39 km)
     'addrSubdistrict': 4,
     'addrSuburb':     4,
     'addrHamlet':     4,
@@ -470,10 +470,10 @@ admin-boundary relation). Acceptance (`predicted=True`) means
 
 | Country | Links | Distinct heads | Relations | Notes |
 |---|---|---|---|---|
-| IE | 507,985 | — | 11 | densest |
-| KR | 63,021 | — | 5 | |
+| IE | 507,985 | - | 11 | densest |
+| KR | 63,021 | - | 5 | |
 | BZ | 20,548 | 2,358 (avg 8.7 links/head, max 69) | 6 | ~11.5% of named entities are heads |
-| JM | 482 | — | 3 | ⚠️ sparse, consumers must fall back |
+| JM | 482 | - | 3 | ⚠️ sparse, consumers must fall back |
 
 Heads are power-law distributed (a few entities have many links). Any
 consumer weighting by link count should use rank/percentile-normalized
@@ -505,3 +505,294 @@ where radius/nearest/adjacency questions have **non-trivial** answers.
 
 This mirrors the generator's existing philosophy: USLP narrows *where to
 look*; `ST_DWithin`/haversine/bearing compute *what's true*.
+
+---
+
+## The candidate pool dependency (2026-11-10)
+
+USLP builds its candidate pool from entities that have an embedding Step 5
+produces:
+
+```python
+qs = OsmEntity.objects.using('vectors').filter(
+    gv_nle_embedding__isnull=False,   # written by Step 5 (GV-NLE)
+    geom__isnull=False,
+)
+if not self._pool:
+    return []                          # nothing scored, nothing rejected
+```
+
+The canvas runs **Step 4 before Step 5**. On the first run of a snapshot the pool
+is therefore empty, USLP returns immediately, and writes neither accepted nor
+rejected rows.
+
+**Measured on JM @ `2025_12_31`:**
+
+```
+end-to-end run                 accepted 0     rejected 0
+re-run after Step 5 completed  accepted 475   rejected 4,325
+```
+
+The rejected count moving from 0 to 4,325 is the proof that candidates were
+generated and scored. An empty rejected table always means selection failed, not
+that a threshold rejected everything.
+
+### Reproducing the old baseline
+
+| Relation | Old DB | New DB | Precision |
+|---|---|---|---|
+| `addrCity` | 362 | 349 | 4 |
+| `addrState` | 76 | 76 | 3 |
+| `addrPlace` | 50 | 50 | 1 |
+| **Total** | **488** | **475** | |
+
+97.3 percent agreement with identical relation mix and precision assignment, so
+the implementation is faithful once the pool is populated.
+
+### Log line to distrust
+
+The step logs `N links accepted` where N is the number **scored**, not accepted.
+On JM it logged 4,800 while 475 reached `igea_spatial_triplet_score`. Read the
+table, not the log.
+
+### Fix options
+
+1. **Move USLP after Step 5 in the canvas.** It is the only consumer of
+   `gv_nle_embedding` and nothing depends on its current position.
+2. **Fall back to `gv_tags_embedding` when `gv_nle_embedding` is null.** Step 1
+   writes it so the pool is never empty, but it substitutes the semantic
+   embedding for the spatial one in `space3`, changing scores. A behavioural
+   change rather than a pure fix.
+
+## Divergence from the reference implementation
+
+`gkmn21/SSLPandUSLP`, `USLP/USLP_main.py`:
+
+| Aspect | Reference | Ours |
+|---|---|---|
+| Relation set | 14 relations | 22 relations |
+| Spatial filter | cluster normalisation only | normalisation plus fixed radius |
+| Radius per precision | none | 5000 / 156 / 39 km |
+| Score combination | `np.sum()`, unweighted | weighted by `w_geo`, `w_name`, `w_topo` |
+| Threshold meaning | sum of 3 scores >= 0.7 | weighted sum >= 0.7 |
+
+`addrCity` is absent from the reference `geohash_precision_dictionary` entirely,
+yet it produced 362 of the 488 historical JM links (74 percent). Our extension of
+the relation set is what generated most of the output.
+
+Because a weighted combination can never exceed the unweighted sum, our
+`normalized_score` is not on the same scale as the paper's and the 0.7 threshold
+means something different in each.
+
+
+---
+
+## The scoring flow, visualised
+
+Redrawn from [USLP]. Divergences from the reference are annotated inline
+and tabulated in PAPER_FIGURE_MAP.md.
+
+## 1. The shape of the problem
+
+A USLP head is an entity that names a place in a tag but has no link to the
+entity that place actually is. The paper's own example:
+
+> The entity representing Leicester carries the relations `wkgs:isInCountry` and
+> `wkgs:isInCounty`, holding the literals "United Kingdom" and "Leicestershire",
+> while lacking links to the entities those literals name.
+
+So the task is: given a head with a literal, find the tail entity that literal
+refers to, and decide whether the match is good enough to assert.
+
+```
+  head entity                                  candidate tail
+  +---------------------------+                +---------------------------+
+  | node 773213335            |                | node 4012862325           |
+  | addr:city = "Kingston"    |  - - - - - ->  | name   = "Kingston"       |
+  | geom = (17.99, -76.79)    |                | geom = (17.98, -76.80)    |
+  | no link to Kingston       |                | is Kingston               |
+  +---------------------------+                +---------------------------+
+        |                                              ^
+        |                                              |
+        +---- score it on three axes, accept if good --+
+```
+
+---
+
+## 2. The full flow
+
+```
+                        head entity (osm_type, osm_id, tags, geom)
+                                        |
+                                        v
+              +-------------------------------------------------+
+              | 1. EXTRACT SPATIAL LITERALS                     |
+              |    for each tag in SPATIAL_LITERAL_TAGS:        |
+              |      addr:city   -> relation addrCity           |
+              |      addr:state  -> relation addrState          |
+              |      is_in       -> relation isIn               |
+              |    value becomes the LITERAL string             |
+              +-------------------------------------------------+
+                                        |
+                                        v
+              +-------------------------------------------------+
+              | 2. PICK PRECISION FOR THE RELATION              |
+              |    RELATION_GEOHASH_PRECISION[relation]         |
+              |      precision 1  country / continent           |
+              |      precision 3  state / county / district     |
+              |      precision 4  suburb / hamlet / locality    |
+              +-------------------------------------------------+
+                                        |
+                                        v
+              +-------------------------------------------------+
+              | 3. FIND CANDIDATE TAILS                         |
+              |    BallTree radius query around the head        |
+              |    radius from precision (ours; see section 5)  |
+              +-------------------------------------------------+
+                                        |
+                                        v
+              +-------------------------------------------------+
+              | 4. SCORE EACH CANDIDATE ON THREE AXES           |
+              |                                                 |
+              |   space1  spatial      geohash cluster similarity|
+              |   space2  semantic     cosine(literal, label)   |
+              |   space3  structural   type + relation embedding|
+              |   space4  optional     SBERT tag-value (ablation)|
+              +-------------------------------------------------+
+                                        |
+                                        v
+              +-------------------------------------------------+
+              | 5. COMBINE AND THRESHOLD                        |
+              |    reference:  sum(scores)  >= 0.7              |
+              |    ours:       weighted sum >= 0.7              |
+              +-------------------------------------------------+
+                                        |
+                        +---------------+---------------+
+                        |                               |
+                        v                               v
+              accepted: written to               rejected: written to
+              igea_spatial_triplet_score          ..._score_rejected
+```
+
+**The diagnostic that matters:** an empty *rejected* table means step 3 produced
+no candidates at all. A threshold problem rejects; a selection problem produces
+nothing. Those are different failures and they look identical in the accepted
+count.
+
+---
+
+## 3. What the precision actually does
+
+The precision is **not** a fixed distance cutoff in the reference. It selects a
+set of geohash cluster centres, and the spatial score is normalised against the
+distances between those centres as they actually occur in the data.
+
+```
+  precision 1  (country / continent)          precision 4  (locality)
+
+  +--------+     +--------+                   +--+  +--+  +--+
+  | C1     |     | C2     |                   |c1|  |c2|  |c3|
+  |        |     |        |                   +--+  +--+  +--+
+  |   *    |     |   *    |                    *     *     *
+  +--------+     +--------+                   (head sits inside one cell)
+
+  cluster centres are thousands of km apart   centres are a few km apart
+
+  score = 1 - ( d(head, tail) / d_max_for_this_cluster )
+```
+
+`d_max_for_this_cluster` is the distance from the cluster centre to its farthest
+sibling centre. So the same physical distance scores differently at precision 1
+and precision 4, because the administrative level it represents is different.
+
+```
+  same 30 km separation, two different relations:
+
+  addrState (precision 3)              addrCity (precision 4)
+  |<---------- 156 km ---------->|      |<---- 39 km ---->|
+       30 km is small                      30 km is large
+       -> high geo score                   -> low geo score
+```
+
+This is the criterion you were describing: **the scale is set by what the label
+represents, not by a constant.** It is the same principle as normalising a
+similarity score against its own distribution rather than comparing it to a
+hardcoded number.
+
+---
+
+## 4. The three spaces
+
+```
+  space1  SPATIAL
+          head geohash at the relation's precision
+          vs precomputed cluster-centre similarity matrix
+          -> how plausible is this distance for this relation level
+
+  space2  SEMANTIC
+          cosine( embedding(literal string), embedding(candidate labelNameEn) )
+          -> does "Kingston" look like the candidate's name
+
+  space3  STRUCTURAL
+          type + relation embeddings
+          -> is this candidate the right KIND of thing for this relation
+
+  space4  OPTIONAL (ablation only)
+          SBERT over the entity's tag values
+```
+
+The reference sums them:
+
+```python
+tail_scores = np.sum(scores_list)     # USLP_main.py
+```
+
+There is no weighting in the paper's implementation. Each space contributes
+raw, and the 0.7 threshold applies to the sum of three (or four) values.
+
+---
+
+## 5. Where our implementation differs from the reference
+
+| Aspect | Reference | Ours |
+|---|---|---|
+| Relation set | 14 relations | 22 relations |
+| Spatial filter | cluster normalisation only | normalisation **plus** fixed radius |
+| Radius per precision | none | 5000 / 156 / 39 km |
+| Score combination | `np.sum()`, unweighted | weighted by `w_geo`, `w_name`, `w_topo` |
+| Threshold meaning | sum of 3 scores >= 0.7 | weighted sum >= 0.7 |
+
+### The relation set
+
+The reference dictionary covers 14 relations and **does not include `addrCity`**:
+
+```
+reference:  isIn, addrPlace, isInContinent, country, isInCountry, addrCountry,
+            capitalCity, addrState, addrDistrict, addrProvince, isInCounty,
+            addrSubdistrict, addrSuburb, addrHamlet
+
+ours adds:  addrCity, addrVillage, addrTown, addrNeighbour, isInState,
+            isInDistrict, addrPlace(4)
+```
+
+`addrCity` is the notable one: it is absent from the paper's map, yet it
+accounted for **362 of the 488 links** the old database produced for JM (74%).
+Our extension of the relation set is what generated most of the historical
+output.
+
+### The radius
+
+The reference lets the cluster normalisation decide plausibility. We query a
+BallTree with a hard radius first, so a candidate just outside 39 km at
+precision 4 is discarded before it is ever scored. That is a source of false
+negatives the paper does not have.
+
+### The weighting
+
+A weighted combination can never exceed the unweighted sum, so `normalized_score`
+is not on the same scale as the paper's. The 0.7 threshold therefore means
+something different in each implementation, and any calibration must account for
+that before comparing against published results.
+
+---
+
