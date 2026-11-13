@@ -38,9 +38,12 @@ QUERYABLE_COUNTRY_ALLOWLIST = os.getenv('QUERYABLE_COUNTRY_ALLOWLIST', '')
 # derived settings crash on None.
 BASE_DATA_DIR = os.getenv('BASE_DATA_DIR') or str(BASE_DIR / 'data')
 
-# History PBF — the file the pipeline actually consumes.
-_default_planet_osm = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/planet/history-260209.osm.pbf') if BASE_DATA_DIR else None
-PLANET_OSM_FILE_PATH = os.getenv('PLANET_OSM_FILE_PATH') or _default_planet_osm
+# History PBF: the file the pipeline actually consumes. The filename is dated
+# (history-YYMMDD.osh.pbf) and changes with every planet build, so it must come
+# from the environment, never from a hardcoded default. Consumers that require
+# it (init_planet, prebuild_worldkg_structure) fail with a clear message when
+# it is unset.
+PLANET_OSM_FILE_PATH = os.getenv('PLANET_OSM_FILE_PATH') or None
 
 _default_polygon_files_dir = os.path.join(BASE_DATA_DIR, 'OSM-PBF-FILES/osm_polygon_files') if BASE_DATA_DIR else None
 # Env-overridable. compose.override.yml has always set POLYGON_FILES_DIR and it
@@ -236,20 +239,16 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     )
 }
 
-# Opt-in task routing: set K80_GPU_QUEUE to send the GPU steps (4, 5c) to a
-# dedicated worker. Unset means no routes, and single-host behaviour is unchanged.
+# Task routing: set K80_GPU_QUEUE to send the GPU steps (4, 5c) to a dedicated
+# worker. The deployment sets it to "k80-gpu" for the backend and worker
+# services (docker-compose.yml), so every USLP entry point runs on the K80:
+# the canvas step, the subgraph fan-out, the chord callback, and the API task.
+# Unset means no routes, which keeps a single-host dev stack working.
+from pipeline.task_routing import build_task_routes  # noqa: E402
+
 GPU_ROUTED_QUEUE = os.environ.get("K80_GPU_QUEUE", "").strip()
 
-CELERY_TASK_ROUTES = (
-    {
-        "step_4_predict_spatial_links": {"queue": GPU_ROUTED_QUEUE},
-        "sub_run_subgraph_uslp": {"queue": GPU_ROUTED_QUEUE},
-        "step_4b_finalize_subgraph_uslp": {"queue": GPU_ROUTED_QUEUE},
-        "step_5c_graph_spectral_analysis": {"queue": GPU_ROUTED_QUEUE},
-    }
-    if GPU_ROUTED_QUEUE
-    else {}
-)
+CELERY_TASK_ROUTES = build_task_routes(GPU_ROUTED_QUEUE)
 
 # Celery ships chord_unlock with max_retries=None, so it retries forever when a
 # header task is lost (celery#9674; upstream remedy is PR #9700). patience =

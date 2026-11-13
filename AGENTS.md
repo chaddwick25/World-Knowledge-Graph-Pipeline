@@ -724,4 +724,34 @@ instead of 14 (`addrCity` is absent from the reference map yet produced 74 perce
 of historical output), an extra fixed radius, weighted score combination instead
 of `np.sum()`, and therefore a different meaning for the 0.7 threshold.
 
-See `docs/igea/uslp_scoring_flow.md` for the visual walkthrough.
+The candidate pool is `geom IS NOT NULL` plus the `snapshot_id` and
+`country_code` partition keys plus an optional polygon. It does **not** filter on
+`gv_nle_embedding` (no embedding filter exists) and it does **not** match the
+country against OSM tags. `addr:country` is a rare address tag, not a country
+assignment: on JM @ 2025_12_31 it cut 1,113,365 geometry rows to 384. The same
+mistake had starved IGEA and was fixed there first. Country and polygon are
+independent filters. An empty pool logs at ERROR with its scope, and the pool
+size is logged as `USLP: Pool: N candidates (...)`. Scoring uses
+`gv_tags_embedding` (space 2), which Step 1 writes; there is no Step 5
+dependency. See `docs/igea/uslp_spatial_link_prediction.md` for the walkthrough
+and `plans/issues/ISSUE-uslp-in-chain-zero.md` for the defect record.
+
+**USLP runs on the k80 only.** `pipeline/task_routing.py` routes all four USLP
+entry points (`step_4_predict_spatial_links`, `sub_run_subgraph_uslp`,
+`step_4b_finalize_subgraph_uslp`, `igea.tasks.run_uslp_for_subgraph_batch`) to
+`K80_GPU_QUEUE`; the backend and worker services set it to `k80-gpu`
+(docker-compose.yml), and the k80 worker consumes `-Q k80-gpu`. With
+`uslp.use_gpu=true` (hyperparams.yaml), a host without CUDA fails the step
+instead of scoring on CPU. Do not reintroduce a CPU fallback: the two paths
+produced different link counts and only the CPU path wrote rejected rows.
+`run_pipeline --stage 4 --wait` dispatches to the k80 and blocks on the result
+(it only uses eager mode when `K80_GPU_QUEUE` is unset).
+
+Verified 2026-11-11 on JM @ `2026_11_02`, full chain `8f8d4391`: Step 4 on the
+k80 loaded a 28,930-candidate pool, scored 49,100 links from 709 heads, and
+persisted 3,746 accepted / 45,354 rejected. The vectors DB ended with 3,799
+accepted / 45,352 rejected rows for that snapshot. A standalone `--stage 4` run
+produced the same split, and the chain advanced on the remote result (Step 3
+ended `10:29:01`, k80 Step 4 ran `10:29:02` to `10:30:04`, Step 5 started
+`10:30:04`). The execution log lines live in the k80's per-run log, not the
+dispatcher's; forwarding them is the remaining item (ISSUE acceptance 2).

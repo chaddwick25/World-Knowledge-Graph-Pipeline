@@ -31,7 +31,7 @@ from typing import Callable, Iterable, Optional, Tuple
 
 from django.conf import settings
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 logger = logging.getLogger("pipeline")
@@ -76,17 +76,30 @@ class Command(BaseCommand):
     # Step implementations
     # ──────────────────────────────────────────────────────────────────────
 
+    def _resolve_planet_pbf(self) -> Path:
+        """Return the planet history PBF path, or fail with a clear message.
+
+        The filename is dated and comes from ``PLANET_OSM_FILE_PATH``. There
+        is no hardcoded fallback, so an unset variable must surface here
+        rather than as a ``Path(None)`` TypeError.
+        """
+        planet_pbf = getattr(self, "_planet_pbf", None) or settings.PLANET_OSM_FILE_PATH
+        if not planet_pbf:
+            raise CommandError(
+                "PLANET_OSM_FILE_PATH is not set. Set it to the dated OSM "
+                "history PBF (for example "
+                "/app/data/OSM-PBF-FILES/planet/history-YYMMDD.osh.pbf) or "
+                "pass --planet-pbf."
+            )
+        return Path(planet_pbf)
+
     def _register_planet(self) -> None:
         """Step 0a — register the planet PBF + Wikidata hierarchy skeleton."""
         from core.services.planet_init.planet_initialization_service import (
             PlanetInitializationService,
         )
 
-        planet_pbf = (
-            Path(self._planet_pbf)
-            if self._planet_pbf
-            else Path(settings.PLANET_OSM_FILE_PATH)
-        )
+        planet_pbf = self._resolve_planet_pbf()
         policy = {
             "stages": {
                 "planet_initialization": {
@@ -118,11 +131,7 @@ class Command(BaseCommand):
             PlanetInitializationService,
         )
 
-        planet_pbf = (
-            Path(self._planet_pbf)
-            if self._planet_pbf
-            else Path(settings.PLANET_OSM_FILE_PATH)
-        )
+        planet_pbf = self._resolve_planet_pbf()
         policy = {
             "stages": {
                 "planet_initialization": {
@@ -269,9 +278,7 @@ class Command(BaseCommand):
             # ``--step finalize``: attach to today's row from an earlier run.
             run = PlanetSnapshot.objects.filter(
                 snapshot_date_str=now.strftime("%Y_%m_%d"),
-                planet_osm_path=str(
-                    self._planet_pbf or settings.PLANET_OSM_FILE_PATH
-                ),
+                planet_osm_path=str(self._resolve_planet_pbf()),
             ).first()
         if run is None:
             raise RuntimeError(
@@ -445,7 +452,7 @@ class Command(BaseCommand):
         from core.models import PlanetSnapshot
 
         now = datetime.now(timezone.utc)
-        planet_path = self._planet_pbf or settings.PLANET_OSM_FILE_PATH
+        planet_path = self._resolve_planet_pbf()
         run, _created = PlanetSnapshot.objects.get_or_create(
             snapshot_date_str=now.strftime("%Y_%m_%d"),
             planet_osm_path=str(planet_path),

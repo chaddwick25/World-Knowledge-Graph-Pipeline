@@ -16,6 +16,7 @@ The tasks are designed to:
 from typing import List, Dict, Optional
 import logging
 import json
+import socket
 import time
 from pathlib import Path
 
@@ -198,7 +199,7 @@ def run_uslp_for_subgraph_batch(
         use_gpu: Whether to use GPU-accelerated USLP.
         gpu_device: CUDA device string.
         use_fp64: Use FP64 precision for haversine (GPU only).
-        snapshot_id: Optional TemporalSnapshot UUID for scoping.
+        snapshot_id: Optional source Snapshot UUID for scoping.
         session_id: Optional ProcessingSession ID for websocket + metrics.
 
     Returns:
@@ -212,27 +213,32 @@ def run_uslp_for_subgraph_batch(
         _push_step_update(session_id, "predict_links", "failed", msg, pct=0)
         return {"success": False, "error": "no_subgraphs"}
 
-    # Initialise USLP service (GPU or CPU)
+    # Initialise USLP service (GPU or CPU). USLP is a GPU stage routed to the
+    # k80; a missing GPU means the task landed on the wrong host, so fail
+    # instead of silently scoring on CPU (the two paths produced different
+    # link counts and only the CPU path wrote rejected rows).
     service: SpatialLinkPredictionService
     if use_gpu:
         try:
             import torch  # type: ignore
 
             from igea.services.gpu_uslp_service import GPUAcceleratedUSLP
+        except Exception as exc:
+            raise RuntimeError(
+                "USLP: GPU requested but the torch/CUDA stack is unavailable "
+                f"on host {socket.gethostname()!r}. USLP must run on the k80 "
+                "worker: check K80_GPU_QUEUE=k80-gpu routing."
+            ) from exc
 
-            if not torch.cuda.is_available():
-                logger.warning(
-                    "GPU requested but CUDA not available. Falling back to CPU USLP."
-                )
-                service = SpatialLinkPredictionService()
-            else:
-                logger.info(f"USLP: Using GPU device {gpu_device} (FP64={use_fp64})")
-                service = GPUAcceleratedUSLP(device=gpu_device, use_fp64=use_fp64)
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning(
-                "Failed to initialise GPU USLP (%s). Falling back to CPU.", exc
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "USLP: GPU requested but CUDA is not available on host "
+                f"{socket.gethostname()!r}. USLP must run on the k80 worker: "
+                "check K80_GPU_QUEUE=k80-gpu routing."
             )
-            service = SpatialLinkPredictionService()
+
+        logger.info(f"USLP: Using GPU device {gpu_device} (FP64={use_fp64})")
+        service = GPUAcceleratedUSLP(device=gpu_device, use_fp64=use_fp64)
     else:
         logger.info("USLP: Using CPU mode")
         service = SpatialLinkPredictionService()
@@ -359,23 +365,26 @@ def run_uslp_for_subgraph_batch(
             )
             continue
 
-        # Predict links
-        links = service.predict_links_batch(head_entities, threshold=threshold, top_k=top_k)
+        # Predict links. The service returns top_k per head including
+        # sub-threshold candidates (persist_links splits accepted/rejected),
+        # so filter here before reporting or writing the accepted-links JSONL.
+        scored_links = service.predict_links_batch(head_entities, threshold=threshold, top_k=top_k)
+        links = [link for link in scored_links if link['normalized_score'] >= threshold]
         links_found = len(links)
         logger.info(
-            "USLP: Subgraph %s — %d links found (threshold=%.2f, top_k=%d)",
+            "USLP: Subgraph %s: %d links accepted from %d scored (threshold=%.2f, top_k=%d)",
             name,
             links_found,
+            len(scored_links),
             threshold,
             top_k,
         )
 
         links_saved = 0
         links_file_path: Optional[Path] = None
-
-        if links:
+        if scored_links:
             # Persist to DB (SpatialTripletScore and SpatialTripletScoreRejected)
-            links_saved = service.persist_links(links, snapshot_id=snapshot_id, country_name=country_name, threshold=threshold)
+            links_saved = service.persist_links(scored_links, snapshot_id=snapshot_id, country_name=country_name, threshold=threshold)
             total_saved += links_saved
 
             # Also write to JSONL file for redundancy / offline analysis

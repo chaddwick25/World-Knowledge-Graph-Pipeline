@@ -248,7 +248,7 @@ class TorchUSLP(GPUAcceleratedUSLP):
         Full-GPU batched scoring for all head entities.
         """
         if not self._pool:
-            logger.warning("TorchUSLP: pool is empty")
+            self._log_empty_pool("TorchUSLP.predict_links_batched")
             return []
 
         self._init_gpu_services()
@@ -270,24 +270,27 @@ class TorchUSLP(GPUAcceleratedUSLP):
                 scores, geo_mat, name_mat, class_mat = self.score_batch(
                     lit_embs, lats, lons, relation, return_components=True
                 )
-                # TODO: Update this to collect the rejected links
                 for i, head in enumerate(chunk):
                     row = scores[i]
-                    mask = row >= threshold
-                    if not mask.any():
+                    # Keep the top-k overall, not the top-k above the
+                    # threshold: persist_links() splits on the threshold and
+                    # writes the sub-threshold ones to the rejected table.
+                    # Filtering here left SpatialTripletScoreRejected empty on
+                    # every GPU run, so the rejected table could not prove
+                    # scoring ran. Mirrors the CPU path, which returns
+                    # all_scored[:top_k] and lets persist_links split.
+                    k = min(top_k, row.numel())
+                    if k == 0:
                         continue
-
-                    k = min(top_k, mask.sum().item())
-                    top_vals, top_idxs = torch.topk(row[mask], k)
-                    masked_pool_idxs = torch.where(mask)[0][top_idxs]
+                    top_vals, top_idxs = torch.topk(row, k)
 
                     # Gather per-space scores at the selected top-k indices.
-                    geo_row = geo_mat[i][masked_pool_idxs].cpu().tolist()
-                    name_row = name_mat[i][masked_pool_idxs].cpu().tolist()
-                    class_row = class_mat[i][masked_pool_idxs].cpu().tolist()
+                    geo_row = geo_mat[i][top_idxs].cpu().tolist()
+                    name_row = name_mat[i][top_idxs].cpu().tolist()
+                    class_row = class_mat[i][top_idxs].cpu().tolist()
 
                     for j, (score_val, pool_idx) in enumerate(
-                        zip(top_vals.cpu().tolist(), masked_pool_idxs.cpu().tolist())
+                        zip(top_vals.cpu().tolist(), top_idxs.cpu().tolist())
                     ):
                         all_links.append({
                             'head_osm_id': head['osm_id'],
@@ -302,6 +305,13 @@ class TorchUSLP(GPUAcceleratedUSLP):
                             'literal': head['literal'],
                         })
 
+        accepted = sum(1 for link in all_links if link['normalized_score'] >= threshold)
+        logger.info(
+            "TorchUSLP: Scored %d links from %d head entities (%d accepted, "
+            "%d rejected at threshold %.2f)",
+            len(all_links), len(head_entities), accepted,
+            len(all_links) - accepted, threshold,
+        )
         return all_links
 
     def _adaptive_head_batch_size(self, requested: int) -> int:

@@ -316,10 +316,6 @@ old eager path would double-execute USLP and NLE training.
 - **The broker lives on the data-tier host.** Every worker connects to that same
   Redis, whichever machine it runs on. Results go to Postgres, so the result
   backend follows whichever database the worker is pointed at.
-- **There is no `task_routes` and no `task_queues` configuration.** Celery uses a
-  single default queue, so every task is eligible for every worker. Sending a
-  specific step to a specific machine requires adding `task_routes` first -
-  nothing in the current config can target a host.
 - **`GpuSlotLock` is host-local.** It is a counting semaphore over `fcntl` lock
   files under `tempfile.gettempdir()/gpu_slots`. It serialises GPU work within
   one machine and is invisible across machines, so two hosts each holding their

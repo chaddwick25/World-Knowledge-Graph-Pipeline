@@ -17,7 +17,7 @@ To preserve the paper's line-by-line algorithm, the pipeline reconstructs the `U
 
 **Database Storage:**
 - **SpatialTripletScore Model**: Stores predicted links with decomposed scores (geo_score, name_score, topo_score, unnormalized_score, normalized_score) plus a `predicted` flag (True if normalized_score ≥ 0.7)
-- **SpatialTripletScoreRejected Model**: Stores rejected links (score < threshold) separately for analysis. **Caveat:** only populated by the CPU and `GPUAcceleratedUSLP` paths: `TorchUSLP.predict_links_batched` (the pipeline default, `uslp_use_gpu=True`) filters below-threshold rows before persistence (see `torch_uslp_service.py` TODO), so this table stays empty on GPU pipeline runs
+- **SpatialTripletScoreRejected Model**: Stores rejected links (score < threshold) separately for analysis. All three paths populate it: `TorchUSLP.predict_links_batched` keeps the top-k overall (not just the rows above the threshold) and `persist_links()` splits accepted from rejected. Verified on JM @ `2026_11_02`: 3,746 accepted / 45,354 rejected from the GPU pipeline path.
 - **Subgraph Scoping**: Candidate pool filtered by subgraph polygon for accurate local link prediction
 - **Geohash Precision**: Relation-specific precision stored for reproducibility
 - **Country Name**: country_name field for filtering independent of snapshot_id (stores the `--country` value: the ISO code in pipeline runs)
@@ -45,12 +45,12 @@ normalized_score   = unnormalized_score / 3.0              ← ÷3 preserves ran
 - Relation names mapped to natural text for better embedding quality (e.g., `addrCity` → "city town")
 
 **Key Fixes (May 2026):**
-- **Pre-filtering removal**: All scored candidates now returned to `persist_links` for proper accepted/rejected split (CPU and `GPUAcceleratedUSLP` paths only: `TorchUSLP.predict_links_batched` still pre-filters by threshold and drops rejected rows)
+- **Pre-filtering removal**: All scored candidates are returned to `persist_links` for a proper accepted/rejected split on every path, including `TorchUSLP.predict_links_batched`
 - **Geo formula restoration**: `_geo_score` uses the paper's `1 - d/d_max` mapping (reference repo `dataprep_utils.py:83`) with per-tail-cluster `d_max` precomputed at pool-load time, clamped to [0, 1]. The prior `1 / (1 + dist_km)` mapping crushed the geo signal to near-zero. All three paths (CPU, GPU, TorchUSLP) now score geohash cluster-center distances identically.
 - **GPU FastText compatibility**: GPU path uses `get_word_vector` with weighted averaging to match CPU path
 - **Class embedding fallback**: When `wkg_class` is None, derives class text from OSM tags (priority: amenity, building, highway, leisure, landuse, natural, waterway, railway, aeroway, place, tourism, historic, shop, office, craft, sport)
 - **Relation name mapping**: Compound OSM relation names (e.g., `addrCity`, `isInCountry`) mapped to natural text for valid FastText embeddings
-- **Canonical bbox gating**: For country-level runs without an explicit polygon, `SpatialLinkPredictionService.load_candidate_pool_from_db()` now resolves a canonical bbox via `CountryPipelineProfile` + `populate_bbox_for_profile`. If no bbox can be resolved, it fails fast instead of silently loading planet-scale candidate sets.
+- **Partition-key scoping (2026-11-11)**: `SpatialLinkPredictionService.load_candidate_pool_from_db()` scopes by the `country_code` partition key, not by OSM tags. `addr:country` is a rare address tag, not a country assignment: on JM @ 2025_12_31 it cut 1,113,365 geometry rows to 384, which is the defect that made Step 4 write zero rows. Country and polygon are independent filters, and an empty pool logs at ERROR with its country/snapshot/polygon scope instead of returning `[]` silently. The canonical bbox lookup and its fail-fast path were removed with the tag filter.
 
 **Code Reference:** `backend/igea/services/spatial_link_prediction.py`
 ```python

@@ -508,23 +508,163 @@ look*; `ST_DWithin`/haversine/bearing compute *what's true*.
 
 ---
 
-## The candidate pool dependency (2026-11-10)
+## The candidate pool (corrected 2026-11-11)
 
-USLP builds its candidate pool from entities that have an embedding Step 5
-produces:
+**An earlier revision of this section claimed the pool requires `gv_nle_embedding`.
+That was wrong.** No embedding filter exists in the pool query.
 
-```python
-qs = OsmEntity.objects.using('vectors').filter(
-    gv_nle_embedding__isnull=False,   # written by Step 5 (GV-NLE)
-    geom__isnull=False,
-)
-if not self._pool:
-    return []                          # nothing scored, nothing rejected
+```
+pool = geom IS NOT NULL
+     + snapshot_id partition
+     + country_code partition        <- NOT a tag match (see below)
+     + optional polygon
 ```
 
-The canvas runs **Step 4 before Step 5**. On the first run of a snapshot the pool
-is therefore empty, USLP returns immediately, and writes neither accepted nor
-rejected rows.
+USLP scores on **`gv_tags_embedding`**, which Step 1 writes for every entity.
+`gv_nle_embedding` is a DeepWalk graph embedding and is not one of the paper's
+three spaces; it is not a USLP input. There is no dependency on Step 5.
+
+### The country tag filter: a second `addr:country` mistake
+
+`load_candidate_pool_from_db` contains:
+
+```python
+if country and not polygon_wkt:
+    country_keys = ...         # matches ISO / name / QID against TAGS
+    qs = qs.filter(...)
+```
+
+A tag is being used as a country assignment when the table is already partitioned
+by `country_code`. Measured on JM @ `2026_09_30`:
+
+```
+geometry rows                     31,048
+after the country tag filter          96     <- the addr:country='JM' count
+```
+
+The same filter on JM @ `2025_12_31`: 1,113,365 entities carry a geometry but
+only 384 carry `addr:country='JM'`, so the pool was cut to 0.3 percent of the
+country. `addr:country` is a rare address tag, not a country assignment.
+
+A pool of 96 yields almost no heads, nothing passes the 0.7 gate, and the GPU
+path returned `[]` with no log and no exception. The step reported success. An
+empty pool now logs at ERROR with its country/snapshot/polygon scope.
+
+This is the **same mistake that starved IGEA**, in a different function, fixed
+there and not here. The table is partitioned by `country_code`, so the partition
+key already scopes the pool exactly and the tag check added nothing but loss.
+Country and polygon are independent filters now: a country-scoped run may also
+pass a polygon without the country filter disappearing. The intended query uses
+the partition key:
+
+```python
+if country:      qs = qs.filter(country_code=country)
+if polygon_wkt:  qs = qs.filter(geom__within=poly_geom)
+```
+
+The same tag filter also starved the head set. `predict_spatial_links` applied
+it a second time when loading head entities (`--country` without `--poly-file`).
+On JM @ `2025_12_31`, only 384 of 1,113,365 geometry rows carry
+`addr:country='JM'`, so the tag check kept 0.03 percent of the country:
+
+```
+JM @ 2025_12_31, heads with a spatial literal tag
+  country_code partition + tag key existence      5,164
+  plus addr:country / is_in:country / is_in tag        384
+```
+
+The table is partitioned by `country_code`, so the partition key scopes the
+heads exactly and the tag check added nothing but loss. Both queries now use
+`country_code` and treat country and polygon as independent filters.
+
+### Status
+
+```
+identified     yes - the tag filter is the cause of the 96-row pool
+fixed          yes - 2026-11-11, pool and head queries use country_code
+verified       yes - 2026-11-11, JM @ 2026_11_02 end-to-end
+```
+
+Verified run `8f8d4391`, full JM chain:
+
+```
+Step 1  embed_osm_entities          399,007 ms
+Step 2  harvest_wikidata            110,349 ms
+Step 3  run_igea                     32,538 ms
+Step 4  predict_spatial_links        62,129 ms   on the k80
+Step 5  train_gv_nle                213,252 ms
+Step 5.7 graph_spectral_analysis    156,460 ms
+Step 5.8 generate_sample_questions        6 ms
+Step 6  mark_search_ready            52,129 ms
+```
+
+Step 4 on the k80:
+
+```
+USLP: Pool: 28,930 candidates (country_code=JM, snapshot=2026_11_02, polygon=no, limit=1720000)
+TorchUSLP: Scored 49,100 links from 709 head entities (3,746 accepted, 45,354 rejected)
+SpatialLinkPredictionService: persisted 3,746 accepted, 45,354 rejected
+```
+
+Rows in the k80 vectors DB for `2026_11_02`:
+
+```
+igea_spatial_triplet_score           3,799
+igea_spatial_triplet_score_rejected  45,352
+```
+
+The chain advanced on the remote result: Step 3 completed at `10:29:01`, the k80
+ran Step 4 from `10:29:02` to `10:30:04`, and Step 5 started at `10:30:04`. A
+standalone `--stage 4` run (`e5c5e0dc`) produced the same 3,746 / 45,354 split.
+
+One gap remains: the execution lines are written to the k80's per-run log, not
+the dispatcher's copy. That is the remaining log-forwarding gap.
+
+The fix:
+
+```
+load_candidate_pool_from_db
+  geom IS NOT NULL
++ snapshot_id partition
++ country_code partition   (resolve_iso_code, no tag matching)
++ optional polygon         (independent of country)
+
+empty pool                 logger.error with country/snapshot/polygon scope
+pool size                  logger.info "USLP: Pool: N candidates (...)"
+
+TorchUSLP.predict_links_batched
+  keeps top_k overall, persist_links splits accepted/rejected, so the
+  rejected table is populated on the GPU path too
+```
+
+### Where USLP runs
+
+USLP is a GPU stage. All four entry points route to the k80 worker by task
+name (`pipeline/task_routing.py` -> `K80_GPU_QUEUE`):
+
+```
+step_4_predict_spatial_links            canvas + run_pipeline --stage 4
+sub_run_subgraph_uslp                   subgraph fan-out
+step_4b_finalize_subgraph_uslp          chord callback
+igea.tasks.run_uslp_for_subgraph_batch  API batch
+```
+
+The backend and worker services set `K80_GPU_QUEUE=k80-gpu` by default
+(docker-compose.yml), and the k80 worker consumes `-Q k80-gpu`. When
+`uslp.use_gpu=true` and the executing host has no CUDA, the step fails instead
+of falling back to CPU: the two paths produced different link counts and only
+the CPU path wrote rejected rows, so a misrouted step looked like a data defect.
+`--wait` no longer forces eager execution when the queue is set, so
+`--stage 4 --wait` dispatches to the k80 and blocks on the result.
+
+The k80 image bakes the code (no bind mount), so a USLP change is not live
+there until the image is rebuilt:
+
+```bash
+# on the k80, from a synced copy of backend/
+docker build -f Dockerfile.k80-worker -t worldkg/k80-worker:1.0 .
+cd /opt/worldkg-deploy && docker compose -f compose.worker.yml up -d
+```
 
 **Measured on JM @ `2025_12_31`:**
 
@@ -549,20 +689,21 @@ that a threshold rejected everything.
 97.3 percent agreement with identical relation mix and precision assignment, so
 the implementation is faithful once the pool is populated.
 
-### Log line to distrust
+### The log line that used to lie
 
-The step logs `N links accepted` where N is the number **scored**, not accepted.
-On JM it logged 4,800 while 475 reached `igea_spatial_triplet_score`. Read the
-table, not the log.
+The step used to log `N links accepted` where N was the number **scored**, not
+accepted. On JM it logged 4,800 while 475 reached `igea_spatial_triplet_score`.
+Since 2026-11-11 the command logs `N links scored, M accepted (threshold=...)`,
+and `TorchUSLP` plus the command log the accepted/rejected split explicitly.
+Still read the table for the authoritative count.
 
-### Fix options
+### Why moving USLP after Step 5 does not help
 
-1. **Move USLP after Step 5 in the canvas.** It is the only consumer of
-   `gv_nle_embedding` and nothing depends on its current position.
-2. **Fall back to `gv_tags_embedding` when `gv_nle_embedding` is null.** Step 1
-   writes it so the pool is never empty, but it substitutes the semantic
-   embedding for the spatial one in `space3`, changing scores. A behavioural
-   change rather than a pure fix.
+USLP does not read `gv_nle_embedding`, so its canvas position relative to Step 5
+is irrelevant to pool population. The pool is geometry plus partition keys; the
+scoring uses `gv_tags_embedding` (space 2, name/semantic) which Step 1 writes.
+The earlier suggestion to move the stage or to fall back to `gv_tags_embedding`
+addressed a dependency that does not exist.
 
 ## Divergence from the reference implementation
 

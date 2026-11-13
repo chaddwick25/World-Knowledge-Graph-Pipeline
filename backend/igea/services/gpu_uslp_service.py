@@ -182,7 +182,7 @@ class GPUAcceleratedUSLP(SpatialLinkPredictionService):
         Uses vectorized GPU operations for scoring all candidates.
         """
         if not self._pool:
-            logger.warning("GPU USLP: pool is empty")
+            self._log_empty_pool("GPUAcceleratedUSLP.predict_links_for_entity")
             return []
         
         self._init_gpu_services()

@@ -102,6 +102,10 @@ services:
       - COLD_STORAGE_BASE_DIR=${COLD_STORAGE_BASE_DIR}
       - RUN_MIGRATIONS=true
       - RUN_INIT_PLANET=true
+      # USLP (Step 4) and Step 5c run on the k80, never on this host. The
+      # backend is the dispatcher: the canvas and every --stage run route by
+      # task name to this queue. Set empty to restore single-host behaviour.
+      - K80_GPU_QUEUE=${K80_GPU_QUEUE:-k80-gpu}
       - LLM_BASE_URL=http://ollama:11434/v1
       - LLM_MODEL=qwen3:8b
       # Research orchestrator LLM (batch path) — the RTX 2070 instance.
@@ -182,12 +186,17 @@ services:
       - OSMIUM_EXECUTABLE=/usr/bin/osmium
       - OSMIUM_BINARY_PATH=/usr/bin/osmium
       - COLD_STORAGE_BASE_DIR=${COLD_STORAGE_BASE_DIR}
-      # GPU 1 = RTX 4070 Ti SUPER (16 GB) — the pipeline's compute card
-      # (GV-NLE / USLP / spectral). Shared with ollama's resident model;
-      # cuda:0 inside the container remaps to physical GPU 1.  GPU device
-      # scheduling is set in pipeline/hyperparams.yaml (gv_nle section).
+      # GPU 1 = RTX 4070 Ti SUPER (16 GB), the GV-NLE compute card.
+      # Shared with ollama's resident model; cuda:0 inside the container
+      # remaps to physical GPU 1. GPU device scheduling is set in
+      # pipeline/hyperparams.yaml (gv_nle section). USLP and Step 5c are
+      # routed to the k80 via K80_GPU_QUEUE below, so this worker does not
+      # consume them.
       - NVIDIA_VISIBLE_DEVICES=1
       - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+      # Tasks this worker dispatches (subgraph chords, API USLP) also go to
+      # the k80. The k80 worker sets the same value in its own compose file.
+      - K80_GPU_QUEUE=${K80_GPU_QUEUE:-k80-gpu}
       - RUN_MIGRATIONS=false
       - RUN_INIT_PLANET=false
       - LLM_BASE_URL=http://ollama:11434/v1

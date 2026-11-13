@@ -29,6 +29,8 @@ Usage:
     python manage.py run_pipeline MZ --snapshot-date 2024_06_30
 """
 
+import os
+
 from django.core.management.base import BaseCommand, CommandError
 
 
@@ -89,8 +91,13 @@ class Command(BaseCommand):
         preprocess = options.get('preprocess', False)
         preprocess_phases_str = options.get('preprocess_phases', '1,2,3')
 
-        # In --wait mode, use eager execution so no broker/worker is needed
-        if wait:
+        # In --wait mode, use eager execution so no broker/worker is needed.
+        # Exception: when GPU steps are routed to the k80 (K80_GPU_QUEUE set),
+        # eager mode would run Step 4 inside this container, which has no CUDA
+        # and now fails the GPU preflight. Dispatch to the routed worker and
+        # block on the result instead.
+        gpu_queue = os.environ.get("K80_GPU_QUEUE", "").strip()
+        if wait and not gpu_queue:
             from pipeline.celery_app import celery_app
             celery_app.conf.update(
                 task_always_eager=True,
@@ -134,6 +141,26 @@ class Command(BaseCommand):
                     f'Stage {stage} dispatched — task_id={task_id}'
                 )
             )
+            if wait:
+                # Stage mode used to return here even with --wait. It now
+                # blocks on the dispatched task so --stage 4 --wait waits for
+                # the k80 result instead of silently running Step 4 on CPU in
+                # this container (the eager path above).
+                self.stdout.write(f'Waiting for stage {stage} to complete...')
+                result = AsyncResult(task_id)
+                try:
+                    result.wait(timeout=14400)  # 4 hours max
+                except Exception as exc:
+                    raise CommandError(
+                        f'Stage {stage} did not complete: {exc}'
+                    )
+                if not result.successful():
+                    raise CommandError(
+                        f'Stage {stage} failed: {result.result}'
+                    )
+                self.stdout.write(
+                    self.style.SUCCESS(f'Stage {stage} completed successfully!')
+                )
             return
 
         # Full pipeline mode

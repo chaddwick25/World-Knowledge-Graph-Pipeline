@@ -214,6 +214,12 @@ class SpatialLinkPredictionService:
         self._ft_model = None                 # lazy FastText model
         self._spatial_index = None            # BallTree for spatial queries
         self._embedding_cache: Dict[str, np.ndarray] = {}  # Cache for FastText embeddings
+        # Scope of the last load_candidate_pool_from_db() call, carried so
+        # the empty-pool error can name the country/snapshot that produced
+        # it instead of only saying "pool is empty".
+        self._pool_country_code: Optional[str] = None
+        self._pool_snapshot_id: Optional[str] = None
+        self._pool_has_polygon: bool = False
         
         self.transe_service = None
         if transe_model_path and entity2id and rel2id:
@@ -293,158 +299,85 @@ class SpatialLinkPredictionService:
         Args:
             limit: Max number of candidates to load
             polygon_wkt: Optional WKT polygon to spatially filter candidates
-            country: Optional country name or ISO code to filter by tags
+            country: Optional ISO 3166-1 alpha-2 code, country name or QID.
+                Resolved to an ISO code and applied to the ``country_code``
+                partition key, never to OSM tags (see NOTE 2026-11-11).
             snapshot_id: Phase 6 VARCHAR partition key (YYYY_MM_DD) for
                          partition pruning on the partitioned table.
         """
         from worldkg_nca.models import OsmEntity
         from django.contrib.gis.geos import GEOSGeometry
+        from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
+
+        # Record the scope of this load so an empty pool can be reported with
+        # the country/snapshot that produced it (see _log_empty_pool).
+        self._pool_country_code = None
+        self._pool_snapshot_id = snapshot_id
+        self._pool_has_polygon = bool(polygon_wkt)
 
         qs = OsmEntity.objects.using('vectors').filter(geom__isnull=False)
 
         # Phase 6: partition key filter for pruning
         if snapshot_id:
             qs = qs.filter(snapshot_id=snapshot_id)
-        
+
+        # Scope candidates by the country_code partition key. Country and
+        # polygon are independent filters.
+        if country:
+            country_code = resolve_iso_code(country) or country.strip().upper()
+            if len(country_code) != 2:
+                logger.warning(
+                    "USLP: Could not resolve country %r to an ISO 3166-1 "
+                    "alpha-2 code; filtering country_code=%r anyway",
+                    country,
+                    country_code,
+                )
+            qs = qs.filter(country_code=country_code)
+            self._pool_country_code = country_code
+
         # If polygon provided, filter candidates to within the polygon
         if polygon_wkt:
             poly_geom = GEOSGeometry(polygon_wkt, srid=4326)
             qs = qs.filter(geom__within=poly_geom)
 
-        # Pre-compute country tokens (ISO/name/QID) and optional bbox using centralized resolver
-        country_tokens = None
-        bbox_applied = False
-        if country and not polygon_wkt:
-            from core.services.planet_init import osm_wikidata_resolver
-
-            country_tokens = set()
-            country_upper = country.upper()
-            iso_for_bbox = None
-
-            try:
-                # Prefer DB-backed relations (handles ISO2 + Wikidata QIDs)
-                relations = osm_wikidata_resolver.get_country_relations_dict()
-                meta = relations.get(country_upper) or relations.get(country)
-            except Exception as exc:
-                logger.warning(
-                    "USLP: get_country_relations_dict failed for %s: %s",
-                    country,
-                    exc,
-                )
-                meta = None
-
-            # Fallback to direct lookups if relations lookup missed
-            if not meta:
-                meta = (
-                    osm_wikidata_resolver.get_country_by_iso(country)
-                    or osm_wikidata_resolver.get_country_by_name(country)
-                )
-
-            if meta:
-                # Canonical country name
-                name_val = meta.get("name")
-                if name_val:
-                    country_tokens.add(str(name_val).upper())
-
-                # ISO2 / canonical code when available — use for CountryPipelineProfile lookup
-                iso_code = meta.get("iso_code")
-                if iso_code:
-                    iso_code_str = str(iso_code).upper()
-                    country_tokens.add(iso_code_str)
-                    iso_for_bbox = iso_code_str
-
-                # Wikidata ID as a last-resort token
-                wikidata_id = meta.get("wikidata_id")
-                if wikidata_id:
-                    wikidata_upper = str(wikidata_id).upper()
-                    country_tokens.add(wikidata_upper)
-
-            # Always include the raw input token so callers like 'jamaica' or 'Q766' still work
-            country_tokens.add(country_upper)
-
-            # If we resolved an ISO code, resolve bbox via the canonical
-            # CountryPipelineProfile store (populate_bbox_for_profile).
-            if iso_for_bbox:
-                bbox = None
-                try:
-                    from django.db import models
-                    from core.models import CountryPipelineProfile
-
-                    profile = (
-                        CountryPipelineProfile.objects.filter(
-                            models.Q(iso2__iexact=iso_for_bbox)
-                            | models.Q(iso3__iexact=iso_for_bbox)
-                        ).first()
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "USLP: Failed to load CountryPipelineProfile for %s: %s",
-                        iso_for_bbox,
-                        exc,
-                    )
-                    profile = None
-
-                if profile:
-                    # Use the canonical bbox population function which resolves
-                    # from the best available source and persists the result.
-                    bbox = osm_wikidata_resolver.populate_bbox_for_profile(profile)
-
-                if bbox:
-                    try:
-                        wkt = osm_wikidata_resolver.bbox_to_wkt(*bbox)
-                        poly_geom = GEOSGeometry(wkt, srid=4326)
-                        qs = qs.filter(geom__within=poly_geom)
-                        bbox_applied = True
-                        logger.info(
-                            "USLP: Applied bbox for country=%s (iso=%s, bbox=%s)",
-                            country,
-                            iso_for_bbox,
-                            bbox,
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "USLP: Failed to apply bbox for %s (%s): %s",
-                            country,
-                            iso_for_bbox,
-                            exc,
-                        )
-                if not bbox:
-                    raise RuntimeError(
-                        f"USLP: Cannot resolve bbox for country '{country}' (iso={iso_for_bbox}). "
-                        f"No bbox found in CountryPipelineProfile or any fallback source. "
-                        f"Run prebuild_worldkg_structure to populate the profile bbox. "
-                        f"Processing without spatial filtering would load ALL entities (planet-scale), "
-                        f"which is not acceptable for country-level USLP."
-                    )
-        
         qs = qs[:limit]
         entities = []
         for e in qs.iterator(chunk_size=1_000):
-            tags = e.tags or {}
-            
-            # Apply country tag filter in Python (JSONField doesn't support efficient key-value filtering).
-            # If a bbox filter has already been applied, skip tag-based filtering to avoid over-restricting.
-            if country and not polygon_wkt and country_tokens and not bbox_applied:
-                tag_country = (tags.get('addr:country') or '').upper()
-                is_in_country = (tags.get('is_in:country') or '').upper()
-                is_in = (tags.get('is_in') or '').upper()
-                if not any(
-                    token == tag_country
-                    or token == is_in_country
-                    or (token and token in is_in)
-                    for token in country_tokens
-                ):
-                    continue
-            
             entities.append({
                 'osm_id': e.osm_id,
                 'lat': e.geom.y,
                 'lon': e.geom.x,
-                'tags': tags,
+                'tags': e.tags or {},
                 'wkg_class': e.wkg_class,
                 'gv_tags_embedding': list(e.gv_tags_embedding) if e.gv_tags_embedding is not None else None,
             })
+
+        logger.info(
+            "USLP: Pool: %d candidates (country_code=%s, snapshot=%s, polygon=%s, limit=%d)",
+            len(entities),
+            self._pool_country_code or '-',
+            snapshot_id or '-',
+            'yes' if polygon_wkt else 'no',
+            limit,
+        )
         return self.load_candidate_pool(entities)
+
+    def _log_empty_pool(self, caller: str) -> None:
+        """Report an empty candidate pool at ERROR, naming its scope.
+
+        An empty pool used to return [] silently, so a 96-row pool and a
+        27,151-row pool looked identical from outside and the step reported
+        success while writing nothing. Every prediction entry point calls
+        this before returning.
+        """
+        logger.error(
+            "%s: candidate pool is empty (country_code=%s, snapshot=%s, "
+            "polygon=%s); no links can be predicted for this scope",
+            caller,
+            self._pool_country_code or '-',
+            self._pool_snapshot_id or '-',
+            'yes' if self._pool_has_polygon else 'no',
+        )
 
     # ------------------------------------------------------------------
     # Three-space scoring (USLP Section 3.3)
@@ -634,7 +567,7 @@ class SpatialLinkPredictionService:
             List of dicts: {head_osm_id, relation, tail_osm_id, score, literal}
         """
         if not self._pool:
-            logger.warning("SpatialLinkPredictionService: pool is empty")
+            self._log_empty_pool("SpatialLinkPredictionService.predict_links_for_entity")
             return []
 
         all_scored = []  # Collect all candidates across all tags
@@ -717,11 +650,13 @@ class SpatialLinkPredictionService:
         Args:
             entities: list of dicts with keys:
                 osm_id, lat, lon, tags
-            threshold: acceptance threshold
+            threshold: acceptance threshold (applied by persist_links)
             top_k:     max links per (entity, relation) pair
 
         Returns:
-            Flat list of accepted link dicts.
+            Flat list of the top_k scored link dicts per (entity, relation),
+            including sub-threshold candidates. persist_links() splits them
+            into the accepted and rejected tables.
         """
         all_links = []
         total = len(entities)

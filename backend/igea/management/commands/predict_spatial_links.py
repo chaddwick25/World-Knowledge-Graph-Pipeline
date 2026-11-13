@@ -15,11 +15,13 @@ Usage:
 """
 
 # TODO: Refactor and take notes
-from django.core.management.base import BaseCommand
+import logging
+import socket
+
+from django.core.management.base import BaseCommand, CommandError
 from igea.services.spatial_link_prediction import (
     SpatialLinkPredictionService,
 )
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +71,7 @@ class Command(BaseCommand):
             '--snapshot-id',
             type=str,
             default=None,
-            help='Only predict for entities from this TemporalSnapshot UUID',
+            help='Only predict for entities from this source Snapshot UUID',
         )
         parser.add_argument(
             '--snapshot-date',
@@ -156,16 +158,25 @@ class Command(BaseCommand):
         else:
             _push_ws = None
 
-        # GPU availability check
+        # GPU availability check. USLP is a GPU stage: every pipeline run
+        # routes it to the k80 worker (CELERY_TASK_ROUTES -> K80_GPU_QUEUE).
+        # A missing GPU means the task landed on the wrong host or the worker
+        # lost its device, so fail loudly instead of silently scoring on CPU
+        # (the CPU and GPU paths previously produced different link counts and
+        # only the CPU path wrote rejected rows, which made the difference
+        # look like a data defect).
         torch_mod = None
         if use_gpu:
             torch_mod = _lazy_import_torch()
             if torch_mod is None or not torch_mod.cuda.is_available():
-                self.stdout.write(self.style.WARNING(
-                    "⚠️  GPU requested but CUDA not available or torch import failed. "
-                    "Falling back to CPU."
-                ))
-                use_gpu = False
+                raise CommandError(
+                    "USLP: GPU requested (uslp.use_gpu=true) but CUDA is not "
+                    f"available on host {socket.gethostname()!r}. USLP must run "
+                    "on the k80 worker: check that K80_GPU_QUEUE=k80-gpu is set "
+                    "on the dispatcher (backend and worker services) and that "
+                    "the k80-gpu worker sees its GPU. Run without --gpu for a "
+                    "deliberate CPU run."
+                )
 
         self.stdout.write(self.style.SUCCESS(
             f"\n{'='*60}\n"
@@ -269,73 +280,18 @@ class Command(BaseCommand):
             poly = GEOSGeometry(polygon_wkt, srid=4326)
             qs = qs.filter(geom__within=poly)
 
-        # Apply bbox filter from CountryPipelineProfile when --country is specified
-        # (same logic as load_candidate_pool_from_db to avoid scanning all 32M entities).
-        # We now apply this even when snapshot_id is provided so snapshot-scoped runs
-        # still benefit from country-level spatial filtering.
-        if country and not polygon_wkt:
-            from core.services.planet_init import osm_wikidata_resolver
-            try:
-                country_upper = country.upper()
-                relations = osm_wikidata_resolver.get_country_relations_dict()
-                meta = relations.get(country_upper) or relations.get(country)
-            except Exception as exc:
+        # Scope heads by the country_code partition key. Country and polygon
+        # are independent filters.
+        if country:
+            from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
+            country_code = resolve_iso_code(country) or country.strip().upper()
+            if len(country_code) != 2:
                 self.stdout.write(self.style.WARNING(
-                    f"  get_country_relations_dict failed for {country}: {exc}"
+                    f"  Could not resolve {country!r} to an ISO 3166-1 alpha-2 "
+                    f"code; filtering country_code={country_code!r} anyway"
                 ))
-                meta = None
-
-            if not meta:
-                meta = (
-                    osm_wikidata_resolver.get_country_by_iso(country)
-                    or osm_wikidata_resolver.get_country_by_name(country)
-                )
-
-            iso_code = meta.get("iso_code") if meta else None
-
-            if iso_code:
-                from django.db import models
-                from core.models import CountryPipelineProfile
-
-                profile = (
-                    CountryPipelineProfile.objects.filter(
-                        models.Q(iso2__iexact=iso_code)
-                        | models.Q(iso3__iexact=iso_code)
-                    ).first()
-                )
-
-                bbox = None
-                if profile and getattr(profile, "country_relations_payload", None):
-                    bb = profile.country_relations_payload.get("bbox")
-                    if bb:
-                        try:
-                            bbox = (
-                                float(bb["min_lon"]),
-                                float(bb["min_lat"]),
-                                float(bb["max_lon"]),
-                                float(bb["max_lat"]),
-                            )
-                        except Exception as exc:
-                            self.stdout.write(self.style.WARNING(
-                                f"  Invalid bbox on CountryPipelineProfile for {iso_code}: {exc}"
-                            ))
-
-                if bbox:
-                    try:
-                        min_lon, min_lat, max_lon, max_lat = bbox
-                        bbox_wkt = (
-                            f"POLYGON(({min_lon} {min_lat}, {max_lon} {min_lat}, "
-                            f"{max_lon} {max_lat}, {min_lon} {max_lat}, {min_lon} {min_lat}))"
-                        )
-                        poly_geom = GEOSGeometry(bbox_wkt, srid=4326)
-                        qs = qs.filter(geom__within=poly_geom)
-                        self.stdout.write(
-                            f"  Using CountryPipelineProfile bbox for head entities: {iso_code}"
-                        )
-                    except Exception as exc:
-                        self.stdout.write(self.style.WARNING(
-                            f"  Bbox filter failed for {iso_code}: {exc}"
-                        ))
+            qs = qs.filter(country_code=country_code)
+            self.stdout.write(f"  Scoping head entities to country_code={country_code}")
 
         # Push spatial tag existence filter into the DB to avoid scanning
         # rows that cannot possibly be head entities. On PostgreSQL JSONField
@@ -345,29 +301,9 @@ class Command(BaseCommand):
 
         head_entities = []
 
-        # Pre-resolve country/ISO once instead of per-row to avoid redundant work
-        from core.services.planet_init.osm_wikidata_resolver import resolve_iso_code
-        country_upper = country.upper() if country else None
-        iso_code_for_tags = (
-            resolve_iso_code(country).upper()
-            if country
-            else None
-        )
-        matches = None
-        if country_upper:
-            matches = (country_upper, iso_code_for_tags) if iso_code_for_tags else (country_upper,)
-
         for e in qs.iterator(chunk_size=10_000):
             # Only include if entity has at least one spatial literal tag
             tags = e.tags or {}
-
-            # Apply country filter if specified (fallback if no polygon)
-            if country and not polygon_wkt and matches:
-                tag_country = (tags.get('addr:country') or '').upper()
-                is_in_country = (tags.get('is_in:country') or '').upper()
-                is_in = (tags.get('is_in') or '').upper()
-                if not any(m in (tag_country, is_in_country) or m in is_in for m in matches):
-                    continue
 
             if any(k in tags for k in spatial_keys):
                 head_entities.append({
@@ -400,13 +336,25 @@ class Command(BaseCommand):
         links = service.predict_links_batch(
             head_entities, threshold=threshold, top_k=top_k
         )
-        self.stdout.write(self.style.SUCCESS(f"  ✓ {len(links):,} links accepted"))
+        accepted_count = sum(
+            1 for link in links if link['normalized_score'] >= threshold
+        )
+        logger.info(
+            "USLP: Scored %d links from %d head entities (%d accepted, "
+            "%d rejected at threshold %.2f)",
+            len(links), len(head_entities), accepted_count,
+            len(links) - accepted_count, threshold,
+        )
+        self.stdout.write(self.style.SUCCESS(
+            f"  ✓ {len(links):,} links scored, {accepted_count:,} accepted "
+            f"(threshold={threshold})"
+        ))
 
         if _push_ws:
             _push_ws('step_update',
                     name='predict_triples',
                     status='in_progress',
-                    message=f'Predicted {len(links):,} spatial links',
+                    message=f'Scored {len(links):,} spatial links, {accepted_count:,} accepted',
                     pct=90)
 
         if not dry_run:
@@ -416,7 +364,9 @@ class Command(BaseCommand):
             persist_snapshot_id = snapshot_date or snapshot_id
             n_saved = service.persist_links(links, snapshot_id=persist_snapshot_id, country_name=country)
             self.stdout.write(self.style.SUCCESS(
-                f"\n✓ Persisted {n_saved:,} SpatialLink records"
+                f"\n✓ Persisted {n_saved:,} SpatialLink records "
+                f"({accepted_count:,} accepted, "
+                f"{len(links) - accepted_count:,} rejected)"
             ))
         else:
             self.stdout.write(self.style.WARNING(
@@ -433,7 +383,7 @@ class Command(BaseCommand):
             _push_ws('step_update',
                     name='predict_triples',
                     status='completed',
-                    message=f'USLP complete: {n_saved if not dry_run else len(links)} links',
+                    message=f'USLP complete: {accepted_count:,} accepted links',
                     pct=100)
 
         self.stdout.write(self.style.SUCCESS(
