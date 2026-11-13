@@ -327,8 +327,14 @@ class PlanetInitializationService:
         )
         
         if metrics:
+            # OneToOne: a rotated planet produces a new metrics row that must
+            # claim the shared 'planet' hierarchy, so detach the previous owner
+            # first (it still points at the superseded planet PBF).
+            PlanetaryMetrics.objects.filter(
+                osm_wikidata_hierarchy=hierarchy
+            ).exclude(pk=metrics.pk).update(osm_wikidata_hierarchy=None)
             metrics.osm_wikidata_hierarchy = hierarchy
-            metrics.save()
+            metrics.save(update_fields=['osm_wikidata_hierarchy'])
         
         return hierarchy
     

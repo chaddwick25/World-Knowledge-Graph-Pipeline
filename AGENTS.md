@@ -734,7 +734,7 @@ independent filters. An empty pool logs at ERROR with its scope, and the pool
 size is logged as `USLP: Pool: N candidates (...)`. Scoring uses
 `gv_tags_embedding` (space 2), which Step 1 writes; there is no Step 5
 dependency. See `docs/igea/uslp_spatial_link_prediction.md` for the walkthrough
-and `plans/issues/ISSUE-uslp-in-chain-zero.md` for the defect record.
+and the defect record.
 
 **USLP runs on the k80 only.** `pipeline/task_routing.py` routes all four USLP
 entry points (`step_4_predict_spatial_links`, `sub_run_subgraph_uslp`,

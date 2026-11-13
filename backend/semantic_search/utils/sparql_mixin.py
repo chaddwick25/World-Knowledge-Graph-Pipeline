@@ -18,8 +18,13 @@ logger = logging.getLogger(__name__)
 # Default constants (can be overridden by subclasses)
 WIKIDATA_SPARQL_ENDPOINT = "https://query.wikidata.org/sparql"
 WIKIDATA_USER_AGENT = "EDAVectorSearchToolkit/1.0 (WorldKG-IGEA; contact via GitHub)"
-SPARQL_TIMEOUT_S = 10
-SPARQL_MAX_RETRIES = 1
+SPARQL_TIMEOUT_S = 30
+# 1 retry against a public endpoint is a coin flip, not a policy. Measured
+# 2026-11-10 on the NZ harvest: 3,508 sequential requests, continuous 429/502,
+# and roughly 70 lost batches, each of which silently leaves 100 entities with
+# no wkg_class. 5 attempts with the existing exponential backoff absorbs a
+# sustained throttle without changing the request count.
+SPARQL_MAX_RETRIES = 5
 SPARQL_BACKOFF_BASE_S = 2
 
 

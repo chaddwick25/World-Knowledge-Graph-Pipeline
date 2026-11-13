@@ -228,6 +228,22 @@ class WikidataCandidateService(SPARQLRetryMixin):
                 len(tiles), bbox[2] - bbox[0], bbox[3] - bbox[1],
             )
 
+        # Oversized-bbox guard. The bbox comes from the country's OSM relation,
+        # and a relation can include offshore or claimed territory: NZ's covers
+        # the Ross Dependency, which produced 2,700 tiles and 350,802 candidates
+        # for about 90 square degrees of land, then spent 4+ hours enriching them
+        # against a throttling endpoint. Surface that at harvest time rather than
+        # letting it appear as a slow enrichment phase later.
+        area_deg2 = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+        if area_deg2 > 500:
+            logger.warning(
+                "WikidataCandidate: bbox for %s covers %.0f sq degrees "
+                "(%d tiles). This is disproportionate for most countries and "
+                "usually means the OSM relation includes offshore or claimed "
+                "territory. Consider clipping to the country polygon.",
+                country_code, area_deg2, len(tiles),
+            )
+
         merged: List[Dict] = []
         seen: set = set()
         for i, (t_min_lon, t_min_lat, t_max_lon, t_max_lat) in enumerate(tiles, 1):
