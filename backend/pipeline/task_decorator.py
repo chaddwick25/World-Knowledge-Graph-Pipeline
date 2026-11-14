@@ -188,6 +188,11 @@ def _update_run_stage(
             run.start_stage(step_name)
         elif completed:
             run.complete_stage(step_name, metrics)
+            # A single-stage run has no later step to close it, so the
+            # completion hook must mark the whole run COMPLETED. Without this
+            # the row stays RUNNING until the next dispatch's zombie recovery.
+            if run.pipeline_type == "single_stage":
+                run.mark_completed()
         elif failed:
             run.mark_failed(f"Step {step_name} failed")
     except Exception as exc:

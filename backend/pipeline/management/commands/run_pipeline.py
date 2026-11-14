@@ -34,6 +34,25 @@ import os
 from django.core.management.base import BaseCommand, CommandError
 
 
+def _queue_has_consumer(queue: str, timeout: float = 2.0) -> bool:
+    """Return True if any Celery worker reports consuming ``queue``.
+
+    ``--wait`` blocks on the result, so a queue with no consumer looks like a
+    four-hour hang. Fail before dispatching instead.
+    """
+    from pipeline.celery_app import celery_app
+
+    try:
+        active = celery_app.control.inspect(timeout=timeout).active_queues() or {}
+    except Exception:
+        return False
+    return any(
+        q.get("name") == queue
+        for queues in active.values()
+        for q in queues
+    )
+
+
 class Command(BaseCommand):
     help = 'Execute the WorldKG Pipeline v2 (Steps 1–5) via Celery Canvas'
 
@@ -70,6 +89,12 @@ class Command(BaseCommand):
             help='Wait for the pipeline to complete before returning',
         )
         parser.add_argument(
+            '--wait-timeout',
+            type=int,
+            default=14400,
+            help='Seconds to wait for the result in --wait mode (default: 14400)',
+        )
+        parser.add_argument(
             '--preprocess',
             action='store_true',
             default=False,
@@ -88,6 +113,8 @@ class Command(BaseCommand):
         skip_entropy = options.get('skip_entropy_gate', False)
         snapshot_date = options.get('snapshot_date')
         wait = options.get('wait', False)
+        # TODO: Robost testing needed
+        wait_timeout = options.get('wait_timeout', 14400)
         preprocess = options.get('preprocess', False)
         preprocess_phases_str = options.get('preprocess_phases', '1,2,3')
 
@@ -97,6 +124,12 @@ class Command(BaseCommand):
         # and now fails the GPU preflight. Dispatch to the routed worker and
         # block on the result instead.
         gpu_queue = os.environ.get("K80_GPU_QUEUE", "").strip()
+        # TODO: Robost testing needed
+        if wait and gpu_queue and not _queue_has_consumer(gpu_queue):
+            raise CommandError(
+                f"No Celery worker is consuming {gpu_queue!r}. Start the k80 "
+                "worker (or dispatch without --wait) before waiting."
+            )
         if wait and not gpu_queue:
             from pipeline.celery_app import celery_app
             celery_app.conf.update(
@@ -149,7 +182,7 @@ class Command(BaseCommand):
                 self.stdout.write(f'Waiting for stage {stage} to complete...')
                 result = AsyncResult(task_id)
                 try:
-                    result.wait(timeout=14400)  # 4 hours max
+                    result.wait(timeout=wait_timeout)
                 except Exception as exc:
                     raise CommandError(
                         f'Stage {stage} did not complete: {exc}'
@@ -196,7 +229,7 @@ class Command(BaseCommand):
         if wait:
             self.stdout.write('Waiting for pipeline to complete...')
             result = AsyncResult(pipeline_run_id)
-            result.wait(timeout=14400)  # 4 hours max
+            result.wait(timeout=wait_timeout)
             if result.successful():
                 self.stdout.write(
                     self.style.SUCCESS('Pipeline completed successfully!')
