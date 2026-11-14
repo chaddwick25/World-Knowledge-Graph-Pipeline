@@ -187,7 +187,7 @@ def test_diffusion_rank_subgraph_scoped(seeded_spectral):
         FactorResolutionService, "_get_eigenvalues",
         staticmethod(
             lambda snapshot_id, country_code, subgraph_slug=None:
-                features["eigenvalues"]
+                (features["eigenvalues"], None)
         ),
     ):
         results = frs.diffusion_rank(

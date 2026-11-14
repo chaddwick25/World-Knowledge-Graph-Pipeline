@@ -346,12 +346,16 @@ def _stream_body(resp) -> str:
 
 @pytest.mark.django_db(transaction=False, databases=["default"])
 class TestResearchStreamView:
+
+    @pytest.fixture(autouse=True)
+    def _no_queryable_gate(self, settings):
+        settings.QUERYABLE_COUNTRY_ALLOWLIST = ""
     """Regression: the emit path must not reference TraceService out of
     scope (NameError observed 2026-09-19 when TRACE_DETERMINISTIC_STAGES=1)."""
 
     @staticmethod
     def _fake_plan(prompt, country_code, snapshot_date, event_callback=None,
-                   subdivision_qid=None):
+                   subdivision_qid=None, recipe_key=None):
         if event_callback:
             event_callback({"event": "plan", "questions": [
                 {"question": "Which hotels are within 2km of Belize City?"},
@@ -430,7 +434,8 @@ class TestResearchStreamView:
         from core.models import ResearchRun
 
         def failing_plan(prompt, country_code, snapshot_date,
-                         event_callback=None, subdivision_qid=None):
+                         event_callback=None, subdivision_qid=None,
+                         recipe_key=None):
             if event_callback:
                 event_callback({"event": "summary_delta", "delta": "Hel"})
                 event_callback({"event": "summary_delta", "delta": "lo"})

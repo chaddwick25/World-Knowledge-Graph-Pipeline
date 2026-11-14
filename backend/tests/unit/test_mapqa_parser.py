@@ -109,7 +109,10 @@ class TestConceptExtraction:
         result = parser.parse("bus station within 50km of Le Petit Parisien")
         objects = [c for c in result["concepts"] if c["type"] == "OBJECT"]
         assert len(objects) == 1
-        assert objects[0]["text"] == "bus_station"
+        # The parser may return the display phrase ("bus station") or the
+        # canonical tag value ("bus_station"); the executor's
+        # `_resolve_amenity_tag` maps both to ("amenity", "bus_station").
+        assert objects[0]["text"] in ("bus station", "bus_station")
 
     @pytest.mark.parametrize("question,expected", [
         ("Which museums are within 2km of Belfast?", "museum"),

@@ -81,15 +81,17 @@ class TestSnapshotDateFloor:
         assert exc.value.code == "invalid"
 
     def test_before_floor_rejected(self):
+        from django.conf import settings
         from core.services.pipeline.run_dispatch_service import (
             PipelineDispatchError,
         )
         with pytest.raises(PipelineDispatchError) as exc:
             self._validate("2020_08_31")
-        assert "2020_09" in str(exc.value)
+        assert settings.SNAPSHOT_DATE_FLOOR in str(exc.value)
 
     def test_at_floor_accepted(self):
-        self._validate("2020_09_01")  # must not raise
+        from django.conf import settings
+        self._validate(f"{settings.SNAPSHOT_DATE_FLOOR}_01")  # must not raise
 
     def test_after_floor_accepted(self):
         self._validate("2025_12_31")  # must not raise
@@ -242,13 +244,14 @@ class TestRunSnapshotBackfill:
             run_snapshot_backfill("", "2024_01", "2024_03")
 
     def test_start_before_floor_rejected(self):
+        from django.conf import settings
         with patch(
             "core.services.pipeline.run_dispatch_service.resolve_country_iso",
             return_value="JM",
         ):
             with pytest.raises(BackfillError) as exc:
                 run_snapshot_backfill("Jamaica", "2019_12", "2020_02")
-        assert "2020_09" in str(exc.value)
+        assert settings.SNAPSHOT_DATE_FLOOR in str(exc.value)
 
     def test_start_after_end_rejected(self):
         with patch(

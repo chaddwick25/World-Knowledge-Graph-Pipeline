@@ -103,7 +103,8 @@ class TestSystemStatusView:
         data = self._get(client).json()
         assert data["processed_countries"] == []
 
-    def test_processed_countries_lists_search_ready_only(self, client):
+    def test_processed_countries_lists_search_ready_only(self, client, settings):
+        settings.QUERYABLE_COUNTRY_ALLOWLIST = ""
         from core.models import CountrySearchProcessing
 
         CountrySearchProcessing.objects.create(

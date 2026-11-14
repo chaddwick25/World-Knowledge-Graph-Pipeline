@@ -31,9 +31,11 @@ PARSED = {
 # No osm_id/osm_type on purpose: keeps _enrich_results and
 # EntityContextService.get_context on their DB-free early paths.
 FAKE_RESULTS = [
-    {"name": "Alpha", "tags": {"name": "Alpha", "amenity": "cafe"},
+    {"osm_id": 1, "name": "Alpha",
+     "tags": {"name": "Alpha", "amenity": "cafe"},
      "wkg_class": "wkgs:Cafe", "lat": 1.0, "lon": 2.0},
-    {"name": "Beta", "tags": {"name": "Beta", "amenity": "bar"},
+    {"osm_id": 2, "name": "Beta",
+     "tags": {"name": "Beta", "amenity": "bar"},
      "wkg_class": "wkgs:Bar", "lat": 1.1, "lon": 2.1},
 ]
 
@@ -61,6 +63,11 @@ def _patch_hermetic(monkeypatch):
     monkeypatch.setattr(
         QueryExecutorService, "_get_snapshot_id",
         staticmethod(lambda *a, **k: "2025_12_31"),
+    )
+    monkeypatch.setattr(
+        "semantic_search.services.entity_context_service."
+        "EntityContextService.get_context",
+        classmethod(lambda cls, *a, **k: {}),
     )
 
 

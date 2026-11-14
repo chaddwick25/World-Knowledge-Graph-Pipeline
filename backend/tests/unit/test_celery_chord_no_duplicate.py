@@ -287,8 +287,9 @@ class TestPatchedDatabaseBackend:
                     interval=None, countdown=1, max_retries=None,
                 )
 
+                from django.conf import settings
                 _, kwargs = mock_fallback.call_args
-                assert kwargs.get("interval") == CHORD_UNLOCK_INTERVAL, (
+                assert kwargs.get("interval") == settings.CHORD_UNLOCK_INTERVAL, (
                     f"fallback_chord_unlock got interval="
                     f"{kwargs.get('interval')!r} — expected "
                     f"{CHORD_UNLOCK_INTERVAL}. chord.run passes "
